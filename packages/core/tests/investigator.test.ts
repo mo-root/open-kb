@@ -8,6 +8,7 @@ import { SpanStream } from "../src/spans.js"
 import { FakeSearch, FakeFetch } from "../src/testing/fake-provider.js"
 import { investigate } from "../src/investigator.js"
 import { loadPrompt, composePrompt } from "../src/prompts.js"
+import type { StoredNode, StoredEdge } from "../src/tools.js"
 
 const AGENTS_DIR = "prompts/agents"
 const DOCTRINE_DIR = "prompts/doctrine"
@@ -75,8 +76,42 @@ describe("investigate", () => {
       runId: "r1",
       agentId: "inv1",
       parentId: "lead",
-      graph: { nodes: new Map(), edges: [] },
+      graph: { nodes: new Map<string, StoredNode>(), edges: [] as StoredEdge[] },
     }
+
+    // Another agent got here first. Several investigators share one graph, one span stream
+    // and one evidence store, so what this run reports must be a delta against what it was
+    // handed — an absolute total would credit this agent with the other one's work. Node,
+    // edge and spend are all seeded, so a regression to absolutes fails on every counter
+    // rather than only the one that happened to be covered.
+    ctx.graph.nodes.set("company:already-here", {
+      id: "company:already-here",
+      kind: "company",
+      name: "Already Here",
+      what: "written by another investigator before this one started",
+      whyHere: "someone else's finding",
+      howFound: "someone else's query",
+      evidence: [],
+    })
+    ctx.graph.edges.push({
+      from: "company:already-here",
+      to: "company:example.com",
+      relation: "competitor",
+      whyHere: "someone else's finding",
+      howFound: "someone else's query",
+      evidence: [],
+    })
+    ctx.spans.emit({
+      runId: "r1",
+      agentId: "other",
+      parentId: "lead",
+      kind: "search",
+      name: "serp",
+      argsDigest: "someone else's query",
+      ms: 5,
+      usd: 0.004,
+      ok: true,
+    })
 
     // Scripted model: search, then fetch, then remember, then a closing summary.
     // The turn is counted from the transcript the SDK hands back, so each step sees the
@@ -88,8 +123,15 @@ describe("investigate", () => {
       { type: "tool-call" as const, toolCallId: id, toolName, input: JSON.stringify(input) },
     ]
 
+    // What the model was actually handed as its system prompt. `investigate` composing a
+    // prompt it then fails to pass to the agent would be invisible to every other assertion
+    // here, so capture it and check the doctrine really made the trip.
+    let systemPrompt = ""
+
     const model = new MockLanguageModelV4({
       doGenerate: async ({ prompt }) => {
+        const system = prompt.find((m) => m.role === "system")
+        if (system) systemPrompt = String(system.content)
         const turn = prompt.filter((m) => m.role === "tool").length
         const content =
           turn === 0
@@ -112,7 +154,16 @@ describe("investigate", () => {
                         evidence: [{ handle: "ev1", quote: "Rival sells an anti-bot bypass API" }],
                       },
                     ],
-                    edges: [],
+                    edges: [
+                      {
+                        from: "company:rival",
+                        to: "company:example.com",
+                        relation: "competitor",
+                        whyHere: "sells the anchor's capability to the anchor's buyer",
+                        howFound: "anti-bot bypass api",
+                        evidence: [{ handle: "ev1", quote: "anti-bot bypass API to developers" }],
+                      },
+                    ],
                   })
                 : [{ type: "text" as const, text: "Found one rival." }]
 
@@ -130,21 +181,38 @@ describe("investigate", () => {
 
     const out = await investigate({ anchor: "example.com", mission: "find head-on rivals", ctx, model, maxSteps: 6 })
 
-    expect(out.nodes).toBe(1)
-    expect(out.edges).toBe(0)
-    expect(out.summary).toContain("Found one rival")
-    expect(ctx.graph.nodes.size).toBe(1)
+    // The doctrine is what makes this agent an investigator rather than a chat model with
+    // four tools. If it never reached the model, nothing else in this test would notice.
+    expect(systemPrompt).toContain("the anchor is the ceiling, not")
+    expect(systemPrompt).toContain("Quotes are checked against the bytes")
+    expect(systemPrompt).toContain("Work the mission you were given")
 
-    const node = [...ctx.graph.nodes.values()][0]!
+    // One node and one edge written by THIS run, on a graph that already held someone
+    // else's one of each. Absolute counts would read 2 and 2 here.
+    expect(out.nodes).toBe(1)
+    expect(out.edges).toBe(1)
+    expect(out.summary).toContain("Found one rival")
+    expect(ctx.graph.nodes.size).toBe(2)
+    expect(ctx.graph.edges.length).toBe(2)
+
+    const node = ctx.graph.nodes.get("company:rival")!
     expect(node.name).toBe("Rival")
     expect(node.whyHere).toContain("same capability")
-    // The whole promise: the citation points at a URL this run actually fetched,
-    // and the quote was proven against those bytes rather than asserted.
+    // The whole promise: the citation points at a URL this run actually fetched, and the
+    // quote was proven against those bytes rather than asserted. `hasFetched` is only true
+    // for a URL this run stored a `found` body for, so it cannot be satisfied by a URL the
+    // model merely named.
     expect(node.evidence[0]!.url).toBe("https://rival.com")
     expect(ctx.evidence.hasFetched(node.evidence[0]!.url)).toBe(true)
     expect(node.evidence[0]!.quote).toBe("Rival sells an anti-bot bypass API")
 
-    // One search at $0.001 and one free direct fetch — the run reports what it spent.
+    const edge = ctx.graph.edges.find((e) => e.from === "company:rival")!
+    expect(edge.relation).toBe("competitor")
+    expect(ctx.evidence.hasFetched(edge.evidence[0]!.url)).toBe(true)
+
+    // One search at $0.001 and one free direct fetch — what THIS run spent, not the
+    // $0.005 on the shared stream.
     expect(out.usd).toBeCloseTo(0.001, 6)
+    expect(ctx.spans.totalUsd()).toBeCloseTo(0.005, 6)
   })
 })

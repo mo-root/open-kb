@@ -35,10 +35,14 @@ actually does the job the anchor does.
 ## Reading a company
 
 There is no fixed order to try. The cheap route inverts by company type: developer-tool
-companies often publish a machine-readable summary at a conventional path while their
-homepage is an empty shell that renders in the browser, and older industrial companies
-are the exact reverse — no summary at all, but a homepage that hands you thousands of
-words of plain text for free. Look at what you got, and judge.
+companies often publish a machine-readable summary at `/llms.txt` while their homepage
+is an empty shell that renders in the browser, and older industrial companies are the
+exact reverse — no summary at all, but a homepage that hands you thousands of words of
+plain text for free. Measured on one developer-tools company: its `/llms.txt` came back
+in half a second, for free, with more than ten thousand characters of product detail,
+while a documentation page on the same domain — fetched in the expensive mode — came
+back blocked. Cost and success do not move together. Try the cheap read first, look at
+what you actually got, and judge.
 
 Where structure exists, use it. A large document with many headings is usually an index,
 and the headings alone can carry the whole product line at a fraction of the bytes. A
