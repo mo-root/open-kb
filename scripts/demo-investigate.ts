@@ -53,6 +53,10 @@ const out = await investigate({
   ctx,
   model: openrouter(process.env.OPENKB_MODEL ?? "google/gemini-3.5-flash"),
   maxSteps: 20,
+  // gemini-3.5-flash on OpenRouter: $1.50 / $9.00 per million tokens.
+  // Supplied here, not in core — the engine must not know which vendor it talks to.
+  modelName: process.env.OPENKB_MODEL ?? "google/gemini-3.5-flash",
+  pricing: { inputPerMTok: 1.5, outputPerMTok: 9.0 },
 })
 ctx.spans.close()
 await watcher

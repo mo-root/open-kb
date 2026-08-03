@@ -10,6 +10,15 @@ export interface InvestigateOptions {
   maxSteps?: number
   agentsDir?: string
   doctrineDir?: string
+  /**
+   * What the model costs, in dollars per million tokens. Supplied by the caller because the
+   * engine must not know which vendor it is talking to. Omit it and token cost is reported as
+   * zero — with an error on every model span saying so, since a silently free run is worse
+   * than an obviously unpriced one.
+   */
+  pricing?: { inputPerMTok: number; outputPerMTok: number }
+  /** Model identifier for the span log. Never used to make a decision. */
+  modelName?: string
 }
 
 export interface InvestigateResult {
@@ -65,9 +74,40 @@ export async function investigate(opts: InvestigateOptions): Promise<Investigate
     stopWhen: stepCountIs(opts.maxSteps ?? 24),
   })
 
+  const startedAt = Date.now()
   const result = await agent.generate({
     prompt: `The map is anchored on: ${anchor}\n\nYour mission: ${mission}\n\nGO.`,
   })
+
+  // Emit one span per model turn. Without these the run's cost is provider-only — every SERP
+  // call and page fetch is accounted for and not a single token is, which makes a spend target
+  // unmeasurable rather than merely approximate. Priced from a rate the caller supplies, because
+  // the engine must not know which vendor or model it is talking to.
+  const rate = opts.pricing
+  const steps = result.steps ?? []
+  const perStepMs = steps.length ? Math.round((Date.now() - startedAt) / steps.length) : 0
+  let turn = 0
+  for (const step of steps) {
+    turn++
+    const inTok = step.usage?.inputTokens ?? 0
+    const outTok = step.usage?.outputTokens ?? 0
+    const usd = rate ? (inTok / 1e6) * rate.inputPerMTok + (outTok / 1e6) * rate.outputPerMTok : 0
+    ctx.spans.emit({
+      runId: ctx.runId,
+      agentId: ctx.agentId,
+      parentId: ctx.parentId,
+      kind: "model",
+      name: opts.modelName ?? "model",
+      argsDigest: `turn ${turn} of ${steps.length}`,
+      ms: perStepMs,
+      ok: true,
+      tokensIn: inTok,
+      tokensOut: outTok,
+      usd,
+      // A run priced at zero because nobody supplied a rate must not look like a free run.
+      error: rate ? undefined : "no model pricing supplied — token cost not counted",
+    })
+  }
 
   return {
     summary: result.text,

@@ -55,6 +55,14 @@ export interface StoredNode {
   howFound: string
   evidence: Evidence[]
   /**
+   * Competing accounts of the same thing, kept when two agents record one entity. With a single
+   * writer these stay empty. With thirty provers working different angles at once, a collision is
+   * usually two true descriptions of one company rather than a duplicate, and keeping only the
+   * first-arrived silently discards the second agent's whole contribution.
+   */
+  alsoWhat: string[]
+  alsoWhyHere: string[]
+  /**
    * Set only on the node a run seeds for its anchor (see `anchorNode`). It is the one node
    * on the map that carries no evidence, because nothing was fetched to prove it — it is
    * where the map starts, not something the map found. A surface rendering "0 citations" as
@@ -125,6 +133,8 @@ export function anchorNode(anchor: string): StoredNode {
     whyHere: "This is the anchor. The map exists to explain this company's position, and every other node here is stated against it.",
     howFound: "Seeded as the anchor of this run, before any search ran. Not discovered, and carries no evidence.",
     evidence: [],
+    alsoWhat: [],
+    alsoWhyHere: [],
     isAnchor: true,
   }
 }
@@ -476,8 +486,21 @@ export function makeTools(ctx: RunContext): Tools {
         if (!ev) continue
         const id = nodeId(n.kind, n.name)
         const existing = ctx.graph.nodes.get(id)
-        if (existing) existing.evidence.push(...ev)
-        else ctx.graph.nodes.set(id, { id, kind: n.kind, name: n.name, what: n.what, whyHere: n.whyHere, howFound: n.howFound, evidence: ev })
+        if (existing) {
+          // Two agents found the same thing. Keep both accounts rather than letting whoever
+          // arrived first own the record: with one writer a collision is a duplicate, but with
+          // thirty provers running at once it is usually two different angles on one company,
+          // and silently keeping only the earlier one throws away the deliverable.
+          existing.evidence.push(...ev)
+          if (n.what && n.what !== existing.what) existing.alsoWhat.push(n.what)
+          if (n.whyHere && n.whyHere !== existing.whyHere) existing.alsoWhyHere.push(n.whyHere)
+          if (n.howFound && !existing.howFound.includes(n.howFound)) existing.howFound += ` · ${n.howFound}`
+        } else {
+          ctx.graph.nodes.set(id, {
+            id, kind: n.kind, name: n.name, what: n.what, whyHere: n.whyHere,
+            howFound: n.howFound, evidence: ev, alsoWhat: [], alsoWhyHere: [],
+          })
+        }
         wroteNodes++
       }
 
