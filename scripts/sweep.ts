@@ -20,6 +20,7 @@ const spans = new SpanStream()
 const out = await sweep({
   domain: anchor,
   queries: TARGET,
+  pages: Number(process.env.OPENKB_PAGES ?? 4),
   spans,
   creds: {
     token: process.env.BRIGHTDATA_API_TOKEN!,

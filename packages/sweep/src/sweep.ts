@@ -160,6 +160,17 @@ export interface SweepOptions {
   modelId?: string
   runId?: string
   pricing?: ModelPricing
+  /** Result pages read per query. Measured: one query across five pages returned
+   *  37 distinct hosts against 7 from the first page alone, and had not
+   *  saturated. A page costs exactly what a query costs, so depth here buys more
+   *  of a market than breadth does. */
+  pages?: number
+  /** Ceiling on how many times the run may look at its own map and ask for more
+   *  queries. It usually stops before this because the model says it has enough. */
+  maxWaves?: number
+  /** A wave adding fewer new hosts than this ends the run — more queries would be
+   *  buying corroboration rather than coverage. */
+  minNewHosts?: number
   /** SERP calls in flight at once. */
   concurrency?: number
   /** Hosts per classification batch. */
@@ -221,7 +232,14 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   const CONC = Math.max(1, Math.floor(opts.concurrency ?? 20))
   const BATCH = Math.max(1, Math.floor(opts.batchSize ?? 40))
 
-  const search = brightDataSearch(creds)
+  const PAGES = Math.max(1, Math.floor(opts.pages ?? 3))
+  /** How many times the run may look at what it has and ask for more. A ceiling,
+   *  not a target — most runs stop earlier because the model says enough. */
+  const MAX_WAVES = Math.max(1, Math.floor(opts.maxWaves ?? 4))
+  /** A wave adding fewer new hosts than this is reaching ground already covered.
+   *  The harness's backstop for a model that keeps asking while learning nothing. */
+  const MIN_NEW_HOSTS = Math.max(1, Math.floor(opts.minNewHosts ?? 8))
+  const search = brightDataSearch(creds, { pages: PAGES })
   const fetcher = brightDataFetch(creds)
 
   const t0 = Date.now()
@@ -490,20 +508,31 @@ Return exactly the queries, nothing else.`,
     // comes back.
     requested: target,
     written: planned.length,
-    estimatedUsd: queries.length * 0.0015,
+    estimatedUsd: queries.length * PAGES * 0.0015,
     budgetUsd: 0,
     uncapped: false,
   })
 
-  // ── 3. fire everything ────────────────────────────────────────────────────
-  say("sweep", `firing ${queries.length} queries`)
+  // ── 3. fire, look, and decide whether to fire again ───────────────────────
+  //
+  // A query count fixed before the run has seen anything is a guess. The size of
+  // a market is not knowable in advance — one anchor's 40 queries returned 104
+  // things while another's 80 returned 88 — so the run fires a wave, looks at
+  // what it actually got, and decides whether that is enough.
+  //
+  // It stops when a wave stops paying: when new queries keep returning hosts
+  // already on the map, more queries buy corroboration rather than coverage, and
+  // the honest move is to stop rather than to spend the rest of the budget
+  // proving what is already known.
   const hits: Array<{ url: string; title: string; description: string; q: string; intent: string }> = []
-  for (let i = 0; i < queries.length; i += CONC) {
+
+  const fire = async (batchQueries: PlannedQuery[]) => {
+  for (let i = 0; i < batchQueries.length; i += CONC) {
     if (signal?.aborted) throw new Error("aborted")
-    const batch = queries.slice(i, i + CONC)
+    const batch = batchQueries.slice(i, i + CONC)
     const res = await search.search(batch.map((b) => b.q))
     res.forEach((r, j) => {
-      serpCalls += 1
+      serpCalls += PAGES
       bill("serp", "sweep", r.usd, r.ms, r.ok)
       // One span per SERP call, carrying the QUERY TEXT — the only place a
       // reader can see which question the run just paid for.
@@ -545,7 +574,86 @@ Return exactly the queries, nothing else.`,
         })),
       })
     })
-    say("sweep", `  ${Math.min(i + CONC, queries.length)}/${queries.length} — ${hits.length} results so far`)
+    say("sweep", `  ${Math.min(i + CONC, batchQueries.length)}/${batchQueries.length} — ${hits.length} results so far`)
+  }
+  }
+
+  const distinctHosts = () => {
+    const s = new Set<string>()
+    for (const h of hits) {
+      try {
+        s.add(new URL(h.url).hostname.toLowerCase().replace(/^www\./, ""))
+      } catch {
+        // a row without a parseable URL is not a host — skip rather than count it
+      }
+    }
+    return s
+  }
+
+  const asked: PlannedQuery[] = [...queries]
+  let wave = 1
+  say("sweep", `wave 1 — ${queries.length} queries × ${PAGES} pages`)
+  await fire(queries)
+
+  while (wave < MAX_WAVES) {
+    if (signal?.aborted) throw new Error("aborted")
+    const before = distinctHosts().size
+
+    // Ask, rather than assume. The model sees how big the map is, what the last
+    // wave added, and which angles have been worked — and decides whether this
+    // is a map worth showing or one with an obvious hole in it. `enough` is its
+    // call; the yield floor below is the harness's backstop for when it keeps
+    // saying no while learning nothing.
+    const verdict = await call(
+      "plan",
+      "assess",
+      z.object({
+        enough: z.boolean().describe("is this a map worth showing, or is something obviously missing?"),
+        missing: z.string().describe("what is thin or absent — one line. Empty if nothing is."),
+        queries: z.array(PlannedQuery).describe("queries aimed at what is missing. Empty if enough."),
+      }),
+      `A market map is being built for ${anchor} — ${decomp.sells}
+Its buyer: ${decomp.buyer}
+
+So far, after ${wave} wave${wave === 1 ? "" : "s"}: **${before} distinct hosts** from ${asked.length} queries.
+
+Angles already worked (intent · platform):
+${asked.map((q) => `  ${q.intent} · ${q.platform} — ${q.q}`).join("\n")}
+
+A sample of what came back:
+${[...distinctHosts()].slice(0, 60).join(", ")}
+
+Is this enough to show someone as a map of this market, or is something obviously
+missing? Think about the facets a complete map holds: companies going head-on,
+things that solve the same problem a different way, what this is built on and what
+plugs into it, and where these buyers actually gather and talk.
+
+If something is missing, write queries aimed at THAT — not more of what has already
+been asked. Every rule from before still binds: never name a company, describe what
+things do, and each query must ask something the others do not.`,
+    )
+
+    if (verdict.enough || verdict.queries.length === 0) {
+      say("plan", `wave ${wave}: enough — ${before} hosts${verdict.missing ? ` (noted gap: ${verdict.missing})` : ""}`)
+      break
+    }
+
+    wave += 1
+    const next = verdict.queries.slice(0, Math.max(1, Math.floor(target / 2)))
+    say("plan", `wave ${wave}: ${verdict.missing || "widening"} — ${next.length} more queries`)
+    think("plan", `after ${before} hosts the model wants more: ${verdict.missing}`)
+    asked.push(...next)
+    await fire(next)
+
+    const gained = distinctHosts().size - before
+    say("sweep", `wave ${wave} added ${gained} new hosts (${distinctHosts().size} total)`)
+    if (gained < MIN_NEW_HOSTS) {
+      // The backstop. A wave that adds almost nothing means the queries are
+      // reaching ground already covered, and another wave would spend money to
+      // confirm what is already known.
+      say("plan", `wave ${wave} added only ${gained} — stopping, further queries are buying corroboration`)
+      break
+    }
   }
 
   const byHost = new Map<string, typeof hits>()
