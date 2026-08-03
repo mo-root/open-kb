@@ -192,7 +192,9 @@ describe("investigate", () => {
     expect(out.nodes).toBe(1)
     expect(out.edges).toBe(1)
     expect(out.summary).toContain("Found one rival")
-    expect(ctx.graph.nodes.size).toBe(2)
+    // Three nodes on the graph: the other investigator's, the anchor this run seeded before
+    // its counters were read, and the one this run proved. Only the last is its delta.
+    expect(ctx.graph.nodes.size).toBe(3)
     expect(ctx.graph.edges.length).toBe(2)
 
     const node = ctx.graph.nodes.get("company:rival")!
@@ -214,5 +216,96 @@ describe("investigate", () => {
     // $0.005 on the shared stream.
     expect(out.usd).toBeCloseTo(0.001, 6)
     expect(ctx.spans.totalUsd()).toBeCloseTo(0.005, 6)
+  })
+
+  it("seeds the anchor as a node, so an edge stated from the anchor resolves", async () => {
+    const ctx = {
+      evidence: new EvidenceStore(),
+      spans: new SpanStream(),
+      search: new FakeSearch({}),
+      fetch: new FakeFetch({
+        "https://rival.com": {
+          httpStatus: 200,
+          body: "<p>" + "Rival sells an anti-bot bypass API to developers. ".repeat(8) + "</p>",
+        },
+      }),
+      runId: "r2",
+      agentId: "inv1",
+      parentId: null,
+      graph: { nodes: new Map<string, StoredNode>(), edges: [] as StoredEdge[] },
+    }
+
+    const call = (id: string, toolName: string, input: unknown) => [
+      { type: "tool-call" as const, toolCallId: id, toolName, input: JSON.stringify(input) },
+    ]
+
+    // The model writes `from: "example.com"` — the anchor, named the way it thinks of it,
+    // which is exactly what the live stripe.com run did on all eight of its edges.
+    const model = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = prompt.filter((m) => m.role === "tool").length
+        const content =
+          turn === 0
+            ? call("1", "fetch", { urls: ["https://rival.com"], mode: "direct", why: "confirm what this host is" })
+            : turn === 1
+              ? call("2", "remember", {
+                  nodes: [
+                    {
+                      kind: "company",
+                      name: "Rival",
+                      what: "anti-bot bypass API",
+                      whyHere: "sells the same capability to the same buyer",
+                      howFound: "anti-bot bypass api",
+                      evidence: [{ handle: "ev1", quote: "Rival sells an anti-bot bypass API" }],
+                    },
+                  ],
+                  edges: [
+                    {
+                      from: "example.com",
+                      to: "Rival",
+                      relation: "competitor",
+                      whyHere: "takes the anchor's buyer with the anchor's capability",
+                      howFound: "anti-bot bypass api",
+                      evidence: [{ handle: "ev1", quote: "anti-bot bypass API to developers" }],
+                    },
+                  ],
+                })
+              : [{ type: "text" as const, text: "Done." }]
+
+        return {
+          content,
+          finishReason: { unified: turn >= 2 ? ("stop" as const) : ("tool-calls" as const), raw: undefined },
+          usage: {
+            inputTokens: { total: 100, noCache: 100, cacheRead: 0, cacheWrite: 0 },
+            outputTokens: { total: 20, text: 20, reasoning: 0 },
+          },
+          warnings: [],
+        }
+      },
+    })
+
+    const out = await investigate({ anchor: "example.com", mission: "find head-on rivals", ctx, model, maxSteps: 6 })
+
+    // The anchor is a real entity on the map — the one everything else is stated against.
+    const anchor = ctx.graph.nodes.get("company:example.com")!
+    expect(anchor).toBeDefined()
+    expect(anchor.kind).toBe("company")
+    expect(anchor.name).toBe("example.com")
+    // Nothing was fetched to prove the anchor, and it says so rather than pretending.
+    expect(anchor.evidence).toHaveLength(0)
+    expect(anchor.isAnchor).toBe(true)
+    expect(anchor.howFound).toMatch(/anchor/i)
+
+    // Seeding the anchor is not a finding: the delta this run reports is the node it proved.
+    expect(out.nodes).toBe(1)
+    expect(out.edges).toBe(1)
+
+    const edge = ctx.graph.edges[0]!
+    expect(edge.from).toBe("company:example.com")
+    expect(edge.to).toBe("company:rival")
+    for (const e of ctx.graph.edges) {
+      expect(ctx.graph.nodes.has(e.from)).toBe(true)
+      expect(ctx.graph.nodes.has(e.to)).toBe(true)
+    }
   })
 })

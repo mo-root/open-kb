@@ -20,14 +20,25 @@ export interface RunContext {
 export const RELATIONS = ["competitor", "substitute", "dependency", "integration", "shaper"] as const
 export type Relation = (typeof RELATIONS)[number]
 
+export const NODE_KINDS = ["company", "capability", "buyer"] as const
+export type NodeKind = (typeof NODE_KINDS)[number]
+
 export interface StoredNode {
   id: string
-  kind: "company" | "capability" | "buyer"
+  kind: NodeKind
   name: string
   what: string
   whyHere: string
   howFound: string
   evidence: Evidence[]
+  /**
+   * Set only on the node a run seeds for its anchor (see `anchorNode`). It is the one node
+   * on the map that carries no evidence, because nothing was fetched to prove it — it is
+   * where the map starts, not something the map found. A surface rendering "0 citations" as
+   * a defect needs this flag to tell the anchor apart from an unproven claim; nothing else
+   * can reach the graph without citations, since `remember` is the only other way in.
+   */
+  isAnchor?: true
 }
 
 export interface StoredEdge {
@@ -40,7 +51,7 @@ export interface StoredEdge {
 }
 
 export interface NodeInput {
-  kind: "company" | "capability" | "buyer"
+  kind: NodeKind
   name: string
   what: string
   whyHere: string
@@ -60,6 +71,138 @@ export interface EdgeInput {
 export interface Finding {
   nodes: NodeInput[]
   edges: EdgeInput[]
+}
+
+/**
+ * The one place a node id is minted. Both `remember` and `anchorNode` go through it, so a
+ * node written by the agent and a node seeded by the run cannot drift into two id spellings
+ * of the same company.
+ */
+export function nodeId(kind: NodeKind, name: string): string {
+  return `${kind}:${name.trim().toLowerCase().replace(/\s+/g, "-")}`
+}
+
+/**
+ * The company the map is drawn around, as a node.
+ *
+ * It is a real entity on the map — every edge is stated against it — but it is the only node
+ * with an empty `evidence` array, because nothing was fetched to prove it. That is honest
+ * rather than convenient: the alternative was to invent a citation for it, which is exactly
+ * the failure `cite()` exists to prevent. It is seeded straight onto the graph rather than
+ * through `remember`, so the tool's "at least one verified quote" rule is untouched for
+ * every node the agent discovers.
+ */
+export function anchorNode(anchor: string): StoredNode {
+  const name = anchor.trim()
+  return {
+    id: nodeId("company", name),
+    kind: "company",
+    name,
+    what: "Not established by this run — no page was fetched to describe the anchor itself.",
+    whyHere: "This is the anchor. The map exists to explain this company's position, and every other node here is stated against it.",
+    howFound: "Seeded as the anchor of this run, before any search ran. Not discovered, and carries no evidence.",
+    evidence: [],
+    isAnchor: true,
+  }
+}
+
+const SCHEME = /^[a-z][a-z0-9+.-]*:\/\//
+/** A leading `www.`, whether the endpoint carries a kind prefix (`company:www.x.com`) or not. */
+const LEADING_WWW = new RegExp(`^((?:${NODE_KINDS.join("|")}):)?www\\.`)
+const TRAILING_SLASH = /\/+$/
+
+/**
+ * Reduce an edge endpoint — or a node's own id or name — to a comparison key.
+ *
+ * Every step here is a reversible spelling difference, never a similarity: case, surrounding
+ * and interior whitespace, a URL scheme, a leading `www.`, a trailing slash. Nothing is
+ * dropped that could distinguish two companies, so two keys are equal only when the two
+ * strings name the same thing. Deliberately absent: prefix, substring and edit-distance
+ * matching. A wrong edge asserts a relationship nobody can trace back to a page, which is
+ * worse than an edge the model has to write again.
+ */
+function endpointKey(raw: string): string {
+  return raw
+    .trim()
+    .toLowerCase()
+    .replace(SCHEME, "")
+    .replace(LEADING_WWW, "$1")
+    .replace(TRAILING_SLASH, "")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+/**
+ * Every spelling that unambiguously names a node on the graph, mapped to the ids that claim
+ * it. A key claimed by two different nodes is kept as both, never resolved to whichever was
+ * seen first: `company:checkout` and `capability:checkout` both answer to "checkout", and
+ * guessing between them would silently attach the edge to the wrong entity.
+ */
+function endpointIndex(nodes: Iterable<StoredNode>): Map<string, Set<string>> {
+  const index = new Map<string, Set<string>>()
+  const add = (spelling: string, id: string) => {
+    const key = endpointKey(spelling)
+    if (!key) return
+    const claimed = index.get(key)
+    if (claimed) claimed.add(id)
+    else index.set(key, new Set([id]))
+  }
+  for (const n of nodes) {
+    add(n.id, n.id)
+    add(n.name, n.id)
+    // The id without its kind prefix — `checkout.com` for `company:checkout.com`. This is how
+    // a model that is thinking about a company writes it, and it is an exact slice of the id
+    // rather than a guess at one.
+    add(n.id.slice(n.kind.length + 1), n.id)
+  }
+  return index
+}
+
+type Resolved = { ok: true; id: string } | { ok: false; problem: string }
+
+/**
+ * Turn what the model wrote into a node id that is really on the graph, or say what to do
+ * about it. Never creates the node: an edge to a company nobody recorded is a claim with no
+ * page behind it, and inventing the node would launder it into a fact.
+ */
+function resolveEndpoint(raw: string, index: Map<string, Set<string>>): Resolved {
+  const claimed = index.get(endpointKey(raw))
+  if (!claimed || claimed.size === 0) {
+    return {
+      ok: false,
+      problem:
+        `"${raw}" is not a node on this map. Record that company as a node first, with a quote from a page you ` +
+        `fetched, then write this edge again using the name you gave it.`,
+    }
+  }
+  if (claimed.size > 1) {
+    return {
+      ok: false,
+      problem: `"${raw}" names more than one node (${[...claimed].sort().join(", ")}). Write the exact node id you mean.`,
+    }
+  }
+  return { ok: true, id: [...claimed][0]! }
+}
+
+/** One refused claim: what the model called it, and why it did not land. */
+interface Rejection {
+  label: string
+  reason: string
+}
+
+/** How many rejections a span spells out in full before the rest are named but not explained. */
+const REJECTIONS_IN_FULL = 3
+
+/**
+ * One line for a span's `error` field. Every rejected claim is named — a log that says
+ * "3 rejected" without saying which is the invisible failure this exists to end — while only
+ * the first few carry their full reason, so one bad batch cannot flood the log.
+ */
+function summariseRejections(rejections: Rejection[]): string {
+  const parts = rejections.slice(0, REJECTIONS_IN_FULL).map((r) => `${r.label}: ${r.reason}`)
+  const rest = rejections.slice(REJECTIONS_IN_FULL)
+  if (rest.length) parts.push(`+${rest.length} more rejected: ${rest.map((r) => r.label).join(", ")}`)
+  return `${rejections.length} rejected — ${parts.join(" | ")}`
 }
 
 // Explicit input/output shapes for each tool, named so `makeTools` can carry an explicit
@@ -254,12 +397,14 @@ export function makeTools(ctx: RunContext): Tools {
   const remember = tool({
     description:
       "Write what you found onto the map. Every node and edge needs a reason it belongs here and a quote " +
-      "from a page you actually fetched. Anything you cannot prove is rejected and told back to you.",
+      "from a page you actually fetched. Anything you cannot prove is rejected and told back to you. " +
+      "An edge may only join companies that are already on the map, so record a company as a node " +
+      "before you draw an edge to it — the same call is fine, nodes are written first.",
     inputSchema: z.object({
       nodes: z
         .array(
           z.object({
-            kind: z.enum(["company", "capability", "buyer"]),
+            kind: z.enum(NODE_KINDS),
             name: z.string(),
             what: z.string().describe("what it sells, and to whom"),
             whyHere: z.string().describe("why it belongs on THIS map, stated against the company we started from"),
@@ -271,8 +416,8 @@ export function makeTools(ctx: RunContext): Tools {
       edges: z
         .array(
           z.object({
-            from: z.string(),
-            to: z.string(),
+            from: z.string().describe("a company already on the map, by the name you recorded it under"),
+            to: z.string().describe("a company already on the map, by the name you recorded it under"),
             relation: z.enum(RELATIONS),
             whyHere: z.string(),
             howFound: z.string(),
@@ -282,7 +427,7 @@ export function makeTools(ctx: RunContext): Tools {
         .default([]),
     }),
     execute: async ({ nodes, edges }) => {
-      const rejected: string[] = []
+      const rejections: Rejection[] = []
       let wroteNodes = 0
       let wroteEdges = 0
 
@@ -292,7 +437,7 @@ export function makeTools(ctx: RunContext): Tools {
           try {
             out.push(ctx.evidence.cite(r.handle, r.quote))
           } catch (e) {
-            rejected.push(`${label}: ${(e as CitationError).message}`)
+            rejections.push({ label, reason: (e as CitationError).message })
             return null
           }
         }
@@ -302,22 +447,48 @@ export function makeTools(ctx: RunContext): Tools {
       for (const n of nodes) {
         const ev = mint(n.evidence, `node "${n.name}"`)
         if (!ev) continue
-        const id = `${n.kind}:${n.name.toLowerCase().replace(/\s+/g, "-")}`
+        const id = nodeId(n.kind, n.name)
         const existing = ctx.graph.nodes.get(id)
         if (existing) existing.evidence.push(...ev)
         else ctx.graph.nodes.set(id, { id, kind: n.kind, name: n.name, what: n.what, whyHere: n.whyHere, howFound: n.howFound, evidence: ev })
         wroteNodes++
       }
 
+      // Built after the nodes land, so an edge can join two companies recorded in this very
+      // call — which is how a model writes a finding: the nodes and the relation together.
+      const index = endpointIndex(ctx.graph.nodes.values())
+
       for (const e of edges) {
-        const ev = mint(e.evidence, `edge ${e.from}->${e.to}`)
+        // The label quotes the endpoints as the model wrote them, so the rejection it reads
+        // back names the strings it can find in its own last message.
+        const label = `edge ${e.from}->${e.to}`
+        const ev = mint(e.evidence, label)
         if (!ev) continue
-        ctx.graph.edges.push({ from: e.from, to: e.to, relation: e.relation, whyHere: e.whyHere, howFound: e.howFound, evidence: ev })
+        const from = resolveEndpoint(e.from, index)
+        const to = resolveEndpoint(e.to, index)
+        if (!from.ok || !to.ok) {
+          // A Set, because `from` and `to` can be the same unresolved string and saying so
+          // twice reads like two different problems.
+          const problems = new Set<string>()
+          if (!from.ok) problems.add(from.problem)
+          if (!to.ok) problems.add(to.problem)
+          rejections.push({ label, reason: [...problems].join(" ") })
+          continue
+        }
+        ctx.graph.edges.push({ from: from.id, to: to.id, relation: e.relation, whyHere: e.whyHere, howFound: e.howFound, evidence: ev })
         wroteEdges++
       }
 
-      span("remember", "write", `${wroteNodes}n/${wroteEdges}e`, { ms: 0, usd: 0, ok: rejected.length === 0 })
-      return { written: { nodes: wroteNodes, edges: wroteEdges }, rejected }
+      // The reasons go to the model AND to the log. A refusal recorded only in the reply is
+      // invisible the moment the run ends: the live stripe.com run logged eleven failed
+      // `remember` spans with an empty error field, and nothing anywhere said why.
+      span("remember", "write", `${wroteNodes}n/${wroteEdges}e`, {
+        ms: 0,
+        usd: 0,
+        ok: rejections.length === 0,
+        error: rejections.length ? summariseRejections(rejections) : undefined,
+      })
+      return { written: { nodes: wroteNodes, edges: wroteEdges }, rejected: rejections.map((r) => `${r.label}: ${r.reason}`) }
     },
   })
 

@@ -1,5 +1,5 @@
 import { ToolLoopAgent, stepCountIs, type LanguageModel } from "ai"
-import { makeTools, type RunContext } from "./tools.js"
+import { makeTools, anchorNode, type RunContext } from "./tools.js"
 import { composePrompt } from "./prompts.js"
 
 export interface InvestigateOptions {
@@ -29,6 +29,19 @@ export interface InvestigateResult {
  */
 export async function investigate(opts: InvestigateOptions): Promise<InvestigateResult> {
   const { anchor, mission, ctx, model } = opts
+
+  // The anchor goes on the map before the agent runs. Every edge the agent writes is stated
+  // against it, so without it `from: <the anchor>` cannot resolve and the whole map hangs off
+  // an endpoint that is missing by construction — which is what a live run produced.
+  //
+  // Seeded before the counters below are read, on purpose: the anchor is where the map starts,
+  // not something this agent found, and counting it would credit the agent with a node it was
+  // handed. Guarded, because several investigators share one graph and only the first arrival
+  // seeds it — an unguarded write would also discard citations a previous agent proved against
+  // the anchor's own id.
+  const seed = anchorNode(anchor)
+  if (!ctx.graph.nodes.has(seed.id)) ctx.graph.nodes.set(seed.id, seed)
+
   const beforeNodes = ctx.graph.nodes.size
   const beforeEdges = ctx.graph.edges.length
   const beforeUsd = ctx.spans.totalUsd()
