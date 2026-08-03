@@ -7,7 +7,7 @@ import { formatDuration, formatUsd, readRunCost } from "@/components/build/types
 import { StatTile } from "@/components/viz";
 
 /**
- * THE WHOLE RUN, ON ONE PAGE, AFTER THE FACT.
+ * THE whole RUN, ON ONE page, after THE fact.
  *
  * Everything a run knows about itself used to live on the live stream and die
  * with the browser tab: close the page and there was nothing left. "What did

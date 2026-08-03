@@ -12,7 +12,7 @@ import {
   type UnderstandingView,
 } from "./types";
 
-/* The two panels that make a run legible BEFORE the sweep spends anything:
+/* The two panels that make a run legible before the sweep spends anything:
    what it understood, and — the requirement this file exists for — every query
    it planned WITH THE REASON IT IS WORTH BUYING.
 
@@ -184,7 +184,7 @@ export function PlanCard({ plan }: { plan: PlanView }) {
   const groups = groupPlan(plan.queries);
   // Running start index per group, so the numbering reads 001…N across the whole
   // plan rather than restarting inside every group. Precomputed rather than
-  // accumulated during render — a variable mutated inside .map() is exactly the
+  // accumulated during render, a variable mutated inside .map() is exactly the
   // pattern the React compiler refuses.
   const offsets = groups.reduce<number[]>(
     (acc, g, i) => [...acc, (acc[i] ?? 0) + g.queries.length],

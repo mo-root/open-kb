@@ -1,8 +1,8 @@
-// NodeGlyph — the bureau's icon system. One ultra-light SVG glyph per semantic
+// NodeGlyph, the bureau's icon system. One ultra-light SVG glyph per semantic
 // note type, drawn like drafting-instrument marks: 24x24 viewBox, thin strokes
 // (1.4, auto-bumped at small sizes so marks survive 1x displays), stroke =
 // currentColor so callers pick the colour via the node-type palette. No fills
-// except tiny accent dots (radar blips, window lights, speech dots) — the
+// except tiny accent dots (radar blips, window lights, speech dots), the
 // dots grow proportionally at small sizes so they never render sub-pixel.
 //
 // Usage:
@@ -45,7 +45,7 @@ export const GLYPH_KINDS: readonly GlyphKind[] = [
   "alert",
 ];
 
-/** Node type -> its bureau glyph. Core is the hub — the company building.
+/** Node type -> its bureau glyph. Core is the hub, the company building.
  *  Shared by the composition bar, the graph legend and any future consumer
  *  so all surfaces draw the same mark for the same type. */
 export const TYPE_GLYPH: Record<NodeType, GlyphKind> = {
@@ -107,7 +107,7 @@ const GLYPHS: Record<GlyphKind, (dot: number) => ReactNode> = {
     </>
   ),
 
-  // A source point broadcasting rightward — three widening arcs.
+  // A source point broadcasting rightward, three widening arcs.
   signal: (dot) => (
     <>
       <circle cx="5.5" cy="12" r={1.3 * dot} fill="currentColor" stroke="none" />
@@ -195,7 +195,7 @@ const GLYPHS: Record<GlyphKind, (dot: number) => ReactNode> = {
     </>
   ),
 
-  // Survey triangle with stem + dot — the bureau's warning mark.
+  // Survey triangle with stem + dot, the bureau's warning mark.
   alert: (dot) => (
     <>
       <path d="M12 4 20.7 19.6 H3.3 Z" />
@@ -225,7 +225,7 @@ export default function NodeGlyph({
   ...rest
 }: NodeGlyphProps) {
   // At <=13px a 1.4 viewBox stroke renders under 0.8px and the accent dots
-  // under a pixel — thicken strokes and grow dots so the mark stays crisp.
+  // under a pixel, thicken strokes and grow dots so the mark stays crisp.
   const small = size <= 13;
   const sw = strokeWidth ?? (small ? 1.9 : 1.4);
   const dot = small ? 1.5 : 1;

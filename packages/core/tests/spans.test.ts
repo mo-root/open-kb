@@ -72,7 +72,7 @@ describe("SpanStream", () => {
 
   it("fans out every span to two consumers started before any emit, in the same order", async () => {
     // A web view, a CLI renderer, and a cost tracker all tap the same run. Each must see the
-    // whole log — a shared waiter queue that hands each span to only one consumer would silently
+    // whole log, a shared waiter queue that hands each span to only one consumer would silently
     // split the audit trail, which is the same failure shape as a non-finite cost reading $0.00.
     const s = new SpanStream()
     const got1: number[] = []
@@ -102,7 +102,7 @@ describe("SpanStream", () => {
       for await (const sp of s.stream()) got2.push(sp.seq)
     })()
     s.close()
-    // Both consumers must resolve — neither may be left parked on a waiter nobody wakes.
+    // Both consumers must resolve, neither may be left parked on a waiter nobody wakes.
     await Promise.all([c1, c2])
     expect(got1).toEqual([])
     expect(got2).toEqual([])

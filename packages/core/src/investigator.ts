@@ -13,7 +13,7 @@ export interface InvestigateOptions {
   /**
    * What the model costs, in dollars per million tokens. Supplied by the caller because the
    * engine must not know which vendor it is talking to. Omit it and token cost is reported as
-   * zero — with an error on every model span saying so, since a silently free run is worse
+   * zero, with an error on every model span saying so, since a silently free run is worse
    * than an obviously unpriced one.
    */
   pricing?: { inputPerMTok: number; outputPerMTok: number }
@@ -41,12 +41,12 @@ export async function investigate(opts: InvestigateOptions): Promise<Investigate
 
   // The anchor goes on the map before the agent runs. Every edge the agent writes is stated
   // against it, so without it `from: <the anchor>` cannot resolve and the whole map hangs off
-  // an endpoint that is missing by construction — which is what a live run produced.
+  // an endpoint that is missing by construction, which is what a live run produced.
   //
   // Seeded before the counters below are read, on purpose: the anchor is where the map starts,
   // not something this agent found, and counting it would credit the agent with a node it was
   // handed. Guarded, because several investigators share one graph and only the first arrival
-  // seeds it — an unguarded write would also discard citations a previous agent proved against
+  // seeds it, an unguarded write would also discard citations a previous agent proved against
   // the anchor's own id.
   const seed = anchorNode(anchor)
   if (!ctx.graph.nodes.has(seed.id)) ctx.graph.nodes.set(seed.id, seed)
@@ -68,7 +68,7 @@ export async function investigate(opts: InvestigateOptions): Promise<Investigate
     // and an interface has no implicit index signature, so it is not assignable to the
     // SDK's `ToolSet` (`Record<string, Tool>`) even though its every member is a `Tool`.
     // Spreading into a fresh object literal gives an inferred object type, which does get
-    // the implicit index signature. The alternative — widening `Tools` in tools.ts — would
+    // the implicit index signature. The alternative, widening `Tools` in tools.ts, would
     // undo a deliberate declaration-emit fix documented there.
     tools: { ...makeTools(ctx) },
     stopWhen: stepCountIs(opts.maxSteps ?? 24),
@@ -79,7 +79,7 @@ export async function investigate(opts: InvestigateOptions): Promise<Investigate
     prompt: `The map is anchored on: ${anchor}\n\nYour mission: ${mission}\n\nGO.`,
   })
 
-  // Emit one span per model turn. Without these the run's cost is provider-only — every SERP
+  // Emit one span per model turn. Without these the run's cost is provider-only, every SERP
   // call and page fetch is accounted for and not a single token is, which makes a spend target
   // unmeasurable rather than merely approximate. Priced from a rate the caller supplies, because
   // the engine must not know which vendor or model it is talking to.

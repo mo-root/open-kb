@@ -1,15 +1,15 @@
 /**
  * Sweep: the shape the map actually wants.
  *
- *   1. read the company        — free fetch, one model call -> what it sells
- *   2. write the catalog       — one model call -> N queries, generated BEFORE any company
+ *   1. read the company, free fetch, one model call -> what it sells
+ *   2. write the catalog, one model call -> N queries, generated before any company
  *                                name is known, so a look-up query is impossible to write
- *   3. fire everything at once — parallel, cheap
- *   4. extract in bulk         — every company visible in the results, in batches
+ *   3. fire everything at once, parallel, cheap
+ *   4. extract in bulk, every company visible in the results, in batches
  *
  * This is the library form of what `scripts/sweep.ts` used to be inline. It is
- * the SAME code the CLI and the web route run — the script is now a thin
- * argv-and-console wrapper — so a fix made for the browser is a fix the script
+ * the same code the CLI and the web route run, the script is now a thin
+ * argv-and-console wrapper, so a fix made for the browser is a fix the script
  * gets, and there is no second copy of the pipeline to drift.
  *
  * Everything it does is emitted onto a `SpanStream` as it happens rather than
@@ -21,7 +21,7 @@
 import { generateObject } from "ai"
 import type { LanguageModel } from "ai"
 import { z } from "zod"
-import { sniff, type SpanStream } from "@open-kb/core"
+import { sniff, condense, type SpanStream } from "@open-kb/core"
 import {
   brightDataSearch,
   brightDataFetch,
@@ -94,20 +94,10 @@ export const ENTITY_KINDS = [
 /**
  * How an entity stands to the anchor.
  *
- * The first seven describe a COMMERCIAL stance — they answer "does this thing
- * compete for the anchor's budget, sit under it, sit beside it, or buy it".
- *
- * The last three exist because that question has no answer for most of a market.
- * A trade publication does not compete with the anchor, substitute for it or
- * integrate with it; it WRITES ABOUT IT, and given only commercial words the
- * classifier had to reach for `none`. That was measured, not guessed: of 438
- * hosts on one run, 144 came back `none` — 85 publishers, 37 directories, 15
- * communities — and every one of them dropped off the map unconnected, because
- * a node with no relation gets no edge. Thirty-seven percent of a market map
- * floating away for lack of a word for "covers it".
- *
- * These are the channels a GTM reader is here for, so they need saying out loud:
- * where the market is written about, indexed, and argued over.
+ * The first seven are commercial stances. The last three cover hosts that have
+ * no commercial stance but still relate: publications, directories, forums.
+ * With only commercial words, 144 of 438 hosts on one run came back `none` and
+ * dropped off the map, since a node with no relation gets no edge.
  */
 export const RELATIONS = [
   "competitor",
@@ -133,20 +123,13 @@ const Decomposition = z.object({
     }),
   ),
   /**
-   * The products, grouped into the markets they actually sit in.
+   * The products, grouped into the markets they sit in.
    *
-   * De-branding was being applied to NAMING and not to STRUCTURE, and the
-   * structure is the company's SKU sheet — which is a sales artifact, not a map
-   * of markets. Measured: brightdata.com yields 9 products, of which Residential,
-   * Datacenter and ISP Proxies are three SKUs of one capability (route a request
-   * through an IP you do not own). They took three of ten query slots. SERP API,
-   * a genuinely separate market with its own rivals — SerpApi, Zenserp — took
-   * none. The budget went three times into one market and never into another.
+   * A SKU sheet is a pricing artifact. On one run, three proxy SKUs of a single
+   * capability took 3 of 10 query slots while a separate product line with its
+   * own rivals took 0. Grouping splits the budget by market instead.
    *
-   * The grouping test is "would these have DIFFERENT competitors?", never "do
-   * these sound similar". Two SKUs a buyer picks between inside one purchase are
-   * one capability; two things bought by different teams are two, however close
-   * the words look.
+   * Group by "would these have different competitors", not by similar wording.
    */
   capabilities: z
     .array(
@@ -183,8 +166,8 @@ const Entity = z.object({
 })
 
 /** What one query cost and what it returned. Persisted with the run, because
- *  per-query yield only ever existed on the span stream — which dies with the
- *  process — so every question about which SHAPES of query pay ("are ours too
+ *  per-query yield only ever existed on the span stream, which dies with the
+ *  process, so every question about which shapes of query pay ("are ours too
  *  long?") had to be answered from the query text alone, by eye. */
 export interface QueryYield {
   q: string
@@ -228,7 +211,7 @@ export interface SweepResult {
   report: Record<string, unknown>
 }
 
-/** Dollars per million tokens. Accounting only — nothing here bills anyone, and
+/** Dollars per million tokens. Accounting only, nothing here bills anyone, and
  *  a wrong number here makes the cost readout wrong rather than the run. */
 export interface ModelPricing {
   inUsdPerM: number
@@ -255,7 +238,7 @@ export interface SweepOptions {
   /** Ceiling on how many times the run may look at its own map and ask for more
    *  queries. It usually stops before this because the model says it has enough. */
   maxWaves?: number
-  /** A wave adding fewer new hosts than this ends the run — more queries would be
+  /** A wave adding fewer new hosts than this ends the run, more queries would be
    *  buying corroboration rather than coverage. */
   minNewHosts?: number
   /** SERP calls in flight at once. */
@@ -323,7 +306,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
 
   const PAGES = Math.max(1, Math.floor(opts.pages ?? 3))
   /** How many times the run may look at what it has and ask for more. A ceiling,
-   *  not a target — most runs stop earlier because the model says enough. */
+   *  not a target, most runs stop earlier because the model says enough. */
   const MAX_WAVES = Math.max(1, Math.floor(opts.maxWaves ?? 4))
   /** A wave adding fewer new hosts than this is reaching ground already covered.
    *  The harness's backstop for a model that keeps asking while learning nothing. */
@@ -343,7 +326,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   let unlockerCalls = 0
 
   /** The itemised bill, accumulated as the run spends rather than reconstructed
-   *  from the trace afterwards — the trace is capped for display and a
+   *  from the trace afterwards, the trace is capped for display and a
    *  reconstruction from it would quietly under-report a wide sweep. */
   interface Line {
     label: string
@@ -374,7 +357,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     emitUi(spans, runId, "progress", agent, { round: 1, agent, message, atSec: sec() })
   }
   /** The model's own words, verbatim, to the panel that reads along. Not a
-   *  paraphrase written here — the point is to show what came back. */
+   *  paraphrase written here, the point is to show what came back. */
   const think = (agent: Phase, text: string) => {
     emitUi(spans, runId, "agent", agent, { type: "text-delta", delta: `${text}\n` })
   }
@@ -457,8 +440,12 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       usd: raw.usd,
     })
     if (found) {
-      pages.push(`--- ${url} ---\n${s.text.slice(0, 14_000)}`)
-      say("understand", `  ${url} -> ${s.text.length} chars`)
+      const kept = condense(s.text)
+      pages.push(`--- ${url} ---\n${kept}`)
+      say(
+        "understand",
+        `  ${url} -> ${s.text.length} chars${kept.length < s.text.length ? ` (condensed to ${kept.length})` : ""}`,
+      )
     }
     return found
   }
@@ -469,7 +456,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   }
 
   // A domain that does not resolve is settled, not unlucky. Retrying it and then
-  // spending an unlocker call on it wastes time and money, and — worse — the
+  // spending an unlocker call on it wastes time and money, and, worse, the
   // "probably a temporary blip, worth running again" message that follows turns a
   // typo into an apparent outage. `brightdata.ccom` cost six fetches, an unlocker
   // call, and a reader's confidence in the tool.
@@ -481,7 +468,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
 
   // Try the free surfaces again before spending anything. A run once died here
   // reporting a company unreadable when all three direct fetches AND the unlocker
-  // failed inside the same second — a network blip, not a fact about the site;
+  // failed inside the same second, a network blip, not a fact about the site;
   // the same domain read fine minutes later. Direct fetches cost nothing, so
   // there was never a reason for one bad instant to end a run. Two seconds of
   // patience is cheaper than a wasted map.
@@ -557,13 +544,13 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
 
   // The requested count is a sentence in a prompt, and a prompt is a request.
   // Gemini rejects array-length constraints in a structured-output schema, so
-  // nothing in the schema holds the model to it either — meaning the number a
+  // nothing in the schema holds the model to it either, meaning the number a
   // caller typed, the number they are billed for, and the number the model felt
   // like writing were three independent quantities.
   //
   // Clamped here instead. Over the ask is truncated, because the caller set a
   // budget and a run that quietly spends 2.5x it has broken a promise. Under the
-  // ask is kept and SAID: a short catalog is a real outcome worth seeing, and
+  // ask is kept and said: a short catalog is a real outcome worth seeing, and
   // silently topping it up would hide that the market gave the model less to
   // work with than it was asked for.
   const planned = cat.queries
@@ -589,7 +576,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     brand: anchor,
     queries: queries.map((q) => ({ q: q.q, source: q.intent, rationale: q.why, concept: q.platform })),
     // Priced from Bright Data's SERP rate, which is the only part of the bill
-    // that is knowable before the run — the model half depends on how much text
+    // that is knowable before the run, the model half depends on how much text
     // comes back.
     requested: target,
     written: planned.length,
@@ -601,8 +588,8 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   // ── 3. fire, look, and decide whether to fire again ───────────────────────
   //
   // A query count fixed before the run has seen anything is a guess. The size of
-  // a market is not knowable in advance — one anchor's 40 queries returned 104
-  // things while another's 80 returned 88 — so the run fires a wave, looks at
+  // a market is not knowable in advance, one anchor's 40 queries returned 104
+  // things while another's 80 returned 88, so the run fires a wave, looks at
   // what it actually got, and decides whether that is enough.
   //
   // It stops when a wave stops paying: when new queries keep returning hosts
@@ -619,7 +606,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     res.forEach((r, j) => {
       serpCalls += PAGES
       bill("serp", "sweep", r.usd, r.ms, r.ok)
-      // One span per SERP call, carrying the QUERY TEXT — the only place a
+      // One span per SERP call, carrying the query text, the only place a
       // reader can see which question the run just paid for.
       spans.emit({
         runId,
@@ -635,8 +622,8 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       })
       for (const h of r.hits) hits.push({ ...h, q: r.query, intent: batch[j]!.intent })
 
-      // The results themselves, not just the count. Everything downstream — the
-      // hosts, the classifications, the map — is derived from these rows, and
+      // The results themselves, not just the count. Everything downstream, the
+      // hosts, the classifications, the map, is derived from these rows, and
       // without them a reader is asked to trust an aggregate: "580 results, 88
       // hosts" is not something anyone can check. This is the raw material.
       emitResult("sweep", {
@@ -669,7 +656,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       try {
         s.add(new URL(h.url).hostname.toLowerCase().replace(/^www\./, ""))
       } catch {
-        // a row without a parseable URL is not a host — skip rather than count it
+        // a row without a parseable URL is not a host, skip rather than count it
       }
     }
     return s
@@ -685,7 +672,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     const before = distinctHosts().size
 
     // Ask, rather than assume. The model sees how big the map is, what the last
-    // wave added, and which angles have been worked — and decides whether this
+    // wave added, and which angles have been worked, and decides whether this
     // is a map worth showing or one with an obvious hole in it. `enough` is its
     // call; the yield floor below is the harness's backstop for when it keeps
     // saying no while learning nothing.
@@ -760,7 +747,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   // In parallel, because these batches never needed to wait for each other.
   //
   // Each one classifies its own hosts against the anchor and reads nothing from
-  // any other, yet they ran one after another — eleven calls at ~44s each on one
+  // any other, yet they ran one after another, eleven calls at ~44s each on one
   // measured run, which was 485 of that run's 771 seconds. Sixty-three percent of
   // the wall clock spent queueing behind work that had no dependency on it.
   //

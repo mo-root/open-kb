@@ -1,41 +1,27 @@
 /**
  * The wire contract between the run's five streams and this surface.
  *
- * Everything here is a READER, not a type assertion. The streams are NDJSON off
- * a live run, and the page must degrade to showing less rather than crashing on
- * `.map` of a number. Every reader therefore returns `null` for a frame it does
- * not recognise, and fills every list it does.
+ * These are readers, not type assertions. The streams are NDJSON off a live
+ * run, so every reader returns `null` for a frame it does not recognise rather
+ * than crashing the page.
  *
- * The five streams (see app/api/run/[id]/stream/route.ts, and lib/stream-adapter.ts
- * for how a `Span` becomes one of these):
+ *   (default)     results   understanding, planned, ranked, complete, error
+ *   ?ns=progress  { round, agent, message, atSec? }
+ *   ?ns=agent     the model's own output, AI-SDK-shaped chunks
+ *   ?ns=cost      { round, usd, tokens, serpCalls, unlockerCalls }
+ *   ?ns=trace     one TraceRow per tool call
  *
- *   (default)   results   — understanding · planned · ranked · complete · error
- *   ?ns=progress          — { round, agent, message, atSec? }
- *   ?ns=agent             — the model's own output, as AI-SDK-shaped chunks
- *   ?ns=cost              — { round, usd, tokens, serpCalls, unlockerCalls }
- *   ?ns=trace             — one TraceRow per tool call
- *
- * PORT NOTE. Adapted from v1's components/build/types.ts. Two things changed and
- * both are the point of the rewrite:
- *
- *   1. NINE STAGES BECAME FIVE. v1's rail carried `resolve · discover ·
- *      orchestrate · investigate` for a multi-round orchestration this engine
- *      does not have. A stage that can never light reads as a run that stalled
- *      before reaching it, so they are gone. The five that remain are exactly
- *      the sweep's four phases plus its finish.
- *   2. THE PLAN GROUPS BY INTENT, NOT BY ANCHOR. v1 grouped queries by whether
- *      they were composed from the brand, a product, a category… because its
- *      plan mixed branded and de-branded queries and the mix WAS the story. This
- *      engine writes its catalog before it knows any company name, so every
- *      query is de-branded and that axis carries no information. What varies is
- *      the QUESTION each one asks, so that is what the plan is grouped by.
+ * Changed from v1: nine stages became five, since v1's rail carried stages this
+ * engine has no phase for and a stage that never lights reads as a stall. And
+ * the plan groups by intent rather than by anchor, because every query here is
+ * de-branded so that axis carries no information.
  */
 
 // ------------------------------------------------------------------ stages --
 
 /** The run's spine, in the order the sweep walks it.
  *
- *  These are UI stages, not steps: the run emits progress under an AGENT name,
+ *  These are UI stages, not steps: the run emits progress under an agent name,
  *  and `stageOf` is that mapping. It matters because when it silently misses a
  *  name the rail freezes on the stage before and the run looks hung while it is
  *  in fact working. */
@@ -133,8 +119,8 @@ const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 // -------------------------------------------------------------------- plan --
 
 /** The eight questions the catalog spreads itself across. This is the ONE axis
- *  along which the queries differ — every one of them is de-branded, by
- *  construction — so it is what the plan panel groups by. */
+ *  along which the queries differ, every one of them is de-branded, by
+ *  construction, so it is what the plan panel groups by. */
 export const INTENTS = [
   "pain",
   "switching",
@@ -160,7 +146,7 @@ export const INTENT_LABEL: Record<Intent, string> = {
   unknown: "planned",
 };
 
-/** Why the group exists at all — the catalog's own thesis, in the panel. */
+/** Why the group exists at all, the catalog's own thesis, in the panel. */
 export const INTENT_BLURB: Record<Intent, string> = {
   pain: "someone describing the failure this market exists to fix, before they know any vendor's name",
   switching: "a migration post names the thing being left AND the thing being moved to — two players per page",
@@ -180,7 +166,7 @@ export interface PlannedQueryView {
   q: string;
   source: Intent;
   rationale: string;
-  /** The platform the query targets — `site:reddit.com`, hackernews, github. */
+  /** The platform the query targets, `site:reddit.com`, hackernews, github. */
   concept?: string;
 }
 
@@ -242,7 +228,7 @@ export interface PlanGroup {
 /**
  * Group the plan by the question each query asks, largest group first.
  *
- * Order inside a group is left alone — it is the order the catalog wrote them
+ * Order inside a group is left alone, it is the order the catalog wrote them
  * in, which is the order they were fired in.
  */
 export function groupPlan(queries: readonly PlannedQueryView[]): PlanGroup[] {
@@ -269,9 +255,9 @@ export interface CostView {
 
 export function readCost(v: unknown): CostView | null {
   const o = obj(v);
-  // A frame with no numeric `usd` is DROPPED rather than defaulted. A default of
+  // A frame with no numeric `usd` is dropped rather than defaulted. A default of
   // 0 renders a permanently healthy-looking spend, which is the one thing a cost
-  // readout must never do — the same failure `SpanStream.emit` guards on the
+  // readout must never do, the same failure `SpanStream.emit` guards on the
   // way in by flagging a non-finite price as a failed span.
   if (!o || typeof o.usd !== "number" || !Number.isFinite(o.usd)) return null;
   return {
@@ -284,7 +270,7 @@ export function readCost(v: unknown): CostView | null {
 }
 
 /** Four decimals, because a whole run costs a third of a dollar and a single
- *  SERP call costs $0.0015 — two decimals would render most of this UI as
+ *  SERP call costs $0.0015, two decimals would render most of this UI as
  *  "$0.00" for the first minute. */
 export function formatUsd(usd: number | undefined | null): string {
   if (typeof usd !== "number" || !Number.isFinite(usd)) return "—";
@@ -396,7 +382,7 @@ export interface TraceView {
   agent: string;
   tool: string;
   kind: string;
-  /** The digest — for a SERP row this is the QUERY TEXT ITSELF, which is the
+  /** The digest, for a SERP row this is the query text itself, which is the
    *  only place a reader can see which question the run just paid for. */
   argsDigest: string;
   ms: number;

@@ -5,20 +5,20 @@ import { useEffect, useMemo, useRef, useState } from "react";
 /**
  * What the models actually said, live.
  *
- * THE GAP THIS FILLS. A run showed five stage headlines and nothing about how it
- * reached them — the sentence the model wrote about what this company sells, the
+ * THE GAP this fills. A run showed five stage headlines and nothing about how it
+ * reached them, the sentence the model wrote about what this company sells, the
  * reason it gave for putting a host on the map. All of that was produced, paid
  * for, and thrown away.
  *
- * PORT NOTE. v1 fed this panel a genuine token stream from `runAgent`'s
+ * port NOTE. v1 fed this panel a genuine token stream from `runAgent`'s
  * writable. This engine calls `generateObject`, which returns a whole object
- * rather than streaming one, so what arrives here is each model call's OUTPUT,
- * verbatim, as text chunks — not a live reasoning trace. It is the model's own
+ * rather than streaming one, so what arrives here is each model call's output,
+ * verbatim, as text chunks, not a live reasoning trace. It is the model's own
  * words either way; it is just not word-by-word. Switching the sweep to
  * `streamObject` is what would close that gap.
  *
  * The chunks are AI-SDK-shaped. Only three kinds matter for reading along —
- * text deltas, tool calls, and tool results — and everything else is protocol
+ * text deltas, tool calls, and tool results, and everything else is protocol
  * noise that would drown them, so it is dropped rather than rendered.
  */
 
@@ -62,7 +62,7 @@ export function AgentPanel({ chunks }: { chunks: readonly AgentChunk[] }) {
     let id = 0;
     for (const c of chunks) {
       const t = String(c.type ?? "");
-      // Consecutive text deltas are one thought, not one line each — a token
+      // Consecutive text deltas are one thought, not one line each, a token
       // stream rendered as rows is unreadable.
       if (t === "text-delta" || t === "text") {
         const piece = String(c.delta ?? c.text ?? "");
@@ -89,7 +89,7 @@ export function AgentPanel({ chunks }: { chunks: readonly AgentChunk[] }) {
     return out;
   }, [chunks]);
 
-  // Follow the tail, but stop the moment the reader scrolls up — yanking
+  // Follow the tail, but stop the moment the reader scrolls up, yanking
   // someone back to the bottom while they are reading is worse than not
   // following at all.
   useEffect(() => {

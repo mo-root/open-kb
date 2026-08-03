@@ -26,7 +26,7 @@ const ctx = {
   graph: { nodes: new Map(), edges: [] as any[] },
 }
 
-// Watch the run as it happens — this is the stream the web surface will render.
+// Watch the run as it happens, this is the stream the web surface will render.
 const spanLog: any[] = []
 const watcher = (async () => {
   for await (const s of ctx.spans.stream()) {
@@ -54,7 +54,7 @@ const out = await investigate({
   model: openrouter(process.env.OPENKB_MODEL ?? "google/gemini-3.5-flash"),
   maxSteps: 20,
   // gemini-3.5-flash on OpenRouter: $1.50 / $9.00 per million tokens.
-  // Supplied here, not in core — the engine must not know which vendor it talks to.
+  // Supplied here, not in core, the engine must not know which vendor it talks to.
   modelName: process.env.OPENKB_MODEL ?? "google/gemini-3.5-flash",
   pricing: { inputPerMTok: 1.5, outputPerMTok: 9.0 },
 })

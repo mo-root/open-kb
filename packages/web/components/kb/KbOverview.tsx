@@ -21,7 +21,7 @@ import {
   type BarMeterRow,
 } from "@/components/viz";
 
-/* KbOverview — the KB's intelligence dashboard: an instrument panel reading
+/* KbOverview, the KB's intelligence dashboard: an instrument panel reading
    what this brain holds and what it aims at, in one glance. Real hand-rolled
    dataviz (composition donut, ecosystem bars, signal-quality gauges), never
    chrome for its own sake.
@@ -181,7 +181,7 @@ function CompositionPanel({
   );
 }
 
-/* PORT NOTE — v1's "Signal quality" panel drew mean relevance against 100 and
+/* port NOTE, v1's "Signal quality" panel drew mean relevance against 100 and
    documentation coverage (docs read / docs enumerated), with a deliberate
    withheld state for the second dial: "A doc-coverage gauge with no doc set
    reads as '0% read', which is a different and much worse claim than 'this
@@ -251,7 +251,7 @@ function PlacementPanel({
   );
 }
 
-/* The competitive field at a glance — favicons of the top rivals by placement.
+/* The competitive field at a glance, favicons of the top rivals by placement.
    Always shown when there are players, so the dashboard surfaces WHO the rivals
    are, not just how many. */
 function PlayerFaces({ players }: { players: NoteRef[] }) {
@@ -396,7 +396,7 @@ function CommunitiesPanel({ communities }: { communities: NoteRef[] }) {
  *
  * v1's version of this panel was empty by design: its engine streamed the
  * numbers over a cost channel and wrote none of them into the manifest, so
- * there was nothing to read back and the panel said where the numbers WERE
+ * there was nothing to read back and the panel said where the numbers were
  * rather than drawing a row of zeroes. The run's own ledger is persisted here
  * (lib/runs.ts writes the whole `SweepResult`), so the panel reports it. */
 function RunTelemetry({
@@ -450,7 +450,7 @@ function RunTelemetry({
   );
 }
 
-/* Skeleton mirroring the dashboard shape — no spinners. */
+/* Skeleton mirroring the dashboard shape, no spinners. */
 function OverviewSkeleton() {
   return (
     <div className="animate-pulse space-y-4">
@@ -488,8 +488,8 @@ export function KbOverview({
     // this effect so a slug change could not show the previous KB's dashboard;
     // a synchronous setState in an effect body is a cascading render
     // (react-hooks/set-state-in-effect) and this repo's lint rejects it. The
-    // parent keys this component by slug instead — the same idiom NotesTab
-    // already uses for NoteView — so a new slug is a fresh mount with
+    // parent keys this component by slug instead, the same idiom NotesTab
+    // already uses for NoteView, so a new slug is a fresh mount with
     // loading=true and there is nothing stale left to clear.
     let cancelled = false;
 

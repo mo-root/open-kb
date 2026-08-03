@@ -5,7 +5,7 @@ import { KindChip } from "@/components/ui";
 import { SiteIcon } from "@/components/SiteIcon";
 import { formatUsd, type TraceView } from "./types";
 
-/* Streamed findings — the run's actual discoveries, not just counters.
+/* Streamed findings, the run's actual discoveries, not just counters.
 
    Ported from v1's FindingsPanel (same tab strip, same sticky-header table) and
    re-fed from THIS engine's streams. v1's `notes` tab is gone: there are no

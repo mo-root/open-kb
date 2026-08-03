@@ -14,50 +14,41 @@ import type {
 import type { StoredRun } from "./runs"
 
 /**
- * THE READING LAYER: a completed run, read as a knowledge base.
+ * THE reading layer: a completed run, read as a knowledge base.
  *
- * WHAT THIS REPLACES. v1 had `lib/kb-read.ts`, which listed a blob store of
+ * what this replaces. v1 had `lib/kb-read.ts`, which listed a blob store of
  * markdown notes and built its graph from the `[[wikilinks]]` inside them. That
- * store is not part of this rewrite. A "KB" here is a COMPLETED RUN and a
+ * store is not part of this rewrite. A "KB" here is a completed RUN and a
  * "note" is one classified entity, so this file is the whole translation: run
  * in, the shapes in lib/viewTypes.ts out. Nothing above it knows there was ever
  * a note store, and nothing in `packages/` knows there is a browser.
  *
  * It is a pure function of a `SweepResult`. No fetch, no disk (lib/runs.ts owns
- * that), no caching — a run is a fixed object once it is finished, so a reader
+ * that), no caching, a run is a fixed object once it is finished, so a reader
  * that re-derives is a reader that cannot go stale.
  */
 
 /* ---------------------------------------------------------------- the mapping */
 
 /**
- * ENTITY KIND -> NODE TYPE, and why.
+ * Entity kind to node type.
  *
- * The canvas keys colour off `NodeType`, and those four colours come from the
- * `--type-*` tokens in globals.css, which brand law fixes across both themes.
- * A fifth type would need a fifth token, so six kinds have to land on four
- * colours and the collapse has to be defensible:
+ * The canvas colours off `NodeType`, and its four colours come from the
+ * `--type-*` tokens in globals.css. Six kinds land on four colours:
  *
- *   company    -> player     a vendor in this market. v1's pink is the "rival"
- *                            hue and a company on this map is here because it
- *                            plays in the same market, whatever its relation.
- *   product    -> product    same word, same meaning, same blue.
- *   community  -> community  same word, same meaning, same lavender.
- *   publisher  -> community  a blog, a newsletter, a news site.
- *   directory  -> community  G2, Capterra, an "awesome-x" list.
+ *   company    -> player      a vendor in this market
+ *   product    -> product
+ *   community  -> community
+ *   publisher  -> community   a blog, newsletter or news site
+ *   directory  -> community   G2, Capterra, an "awesome-x" list
  *
- * Publisher and directory are the judgement call. They are NOT players: G2 does
- * not compete with Resend and colouring it rival-pink would assert that it
- * does. They are not products either. What they ARE is third-party venues where
- * this market talks about itself and lists itself — which is precisely what v1's
- * `community` bucket held (subreddits, forums, conferences, NEWSLETTERS). So
- * they take the lavender.
+ * Publisher and directory take lavender rather than rival-pink: G2 does not
+ * compete with Resend, and pink would claim it does. They are third-party
+ * venues where the market lists and discusses itself, which is what v1's
+ * community bucket held.
  *
- * The collapse is lossy, so the loss is never hidden: every node, note ref and
- * detail card carries the classifier's own `kind` alongside its colour, and the
- * graph legend's footnote says the lavender covers three kinds.
- *
- * `noise` maps to nothing — see `graphOf`'s `dangling`.
+ * The collapse loses information, so every node and card also shows the
+ * classifier's own `kind`. `noise` maps to nothing; see `graphOf`'s `dangling`.
  */
 const KIND_GROUP: Record<string, string> = {
   company: "players",
@@ -68,22 +59,14 @@ const KIND_GROUP: Record<string, string> = {
 }
 
 /**
- * PLACEMENT WEIGHT — what fills v1's `relevance` slot, and what it is not.
+ * Placement weight: what fills v1's `relevance` slot.
  *
- * v1 scored every note 0-100 during its build and the canvas reads that number
- * for node radius, the top-N labels, the prov-rail and every sort. This engine
- * measures no such thing: `SweepResult.entities` carries a name, a domain, a
- * kind, a relation and two sentences. The one signal that WOULD be a
- * measurement — how many distinct queries surfaced a host — is computed inside
- * the sweep and not returned, and `packages/sweep/src` is not ours to change.
+ * v1 scored every note 0-100 during its build. This engine measures nothing
+ * like it, so this is a rank derived from the only ordering a run asserts: how
+ * firmly the classifier placed the entity. Labels say "placement" rather than
+ * "relevance"; the field keeps v1's name because components read it.
  *
- * So this is a RANK, derived from the only ordering the run actually asserts:
- * how firmly the classifier placed the entity against the anchor. It is an
- * honest ordering and a dishonest measurement, which is why every label that
- * shows it to a reader says "placement" and not "relevance" — the FIELD keeps
- * v1's name because it is the component contract, the WORDS do not.
- *
- * If the sweep ever returns `seenIn`, this map should be deleted, not tuned.
+ * Delete this map if the sweep ever returns `seenIn`. Do not tune it.
  */
 const RELATION_WEIGHT: Record<string, number> = {
   competitor: 95,
@@ -93,9 +76,7 @@ const RELATION_WEIGHT: Record<string, number> = {
   shaper: 55,
   buyer: 45,
   target: 40,
-  // The channel relations. Ranked under every commercial one — a competitor
-  // matters more to a reader than a blog that covered it — but far above `none`,
-  // because a publication that covers this market is placed, not unplaced.
+  // Channel relations: below every commercial one, well above `none`.
   lists: 38,
   covers: 35,
   discusses: 32,
@@ -108,24 +89,17 @@ const ANCHOR_PATH = "company.md"
 
 /** `postmarkapp.com` -> `players/postmarkapp.com.md`.
  *
- *  The path SHAPE is load-bearing: `nodeTypeOf`, `groupLabel`,
- *  `glyphForNotePath` and `NotesTab`'s grouping are all written against
- *  "<group>/<file>.md", and keeping the shape is what let all four come across
- *  from v1 without an edit.
- *
- *  It is an ID, never a filesystem path — nothing here opens a file. The
- *  slashes and dots are what those four functions read, and the `.md` is
- *  vestigial: it is kept only so a v1-shaped id still means what it meant. */
+ *  An ID, not a filesystem path. `nodeTypeOf`, `groupLabel`, `glyphForNotePath`
+ *  and `NotesTab` all parse "<group>/<file>.md", which is what let them come
+ *  across from v1 unedited. The `.md` is vestigial. */
 function pathFor(group: string, e: Entity): string {
   const base = (e.domain || e.name || "unknown").trim().toLowerCase().replace(/^www\./, "")
   const safe = base.replace(/[/\\?#]/g, "-") || "unknown"
   return `${group}/${safe}.md`
 }
 
-/** One entity per host. The classifier runs in batches and the same host can
- *  come back twice; the first placement wins, except that a real relation
- *  always beats `none` — a second look that PLACED something is better
- *  evidence than a first look that shrugged. */
+/** One entity per host. The classifier batches, so a host can come back twice.
+ *  First placement wins, except that any real relation beats `none`. */
 function dedupe(entities: readonly Entity[]): Entity[] {
   const by = new Map<string, Entity>()
   for (const e of entities) {
@@ -161,20 +135,14 @@ function place(result: SweepResult): { kept: Placed[]; noise: Entity[] } {
   const noise: Entity[] = []
 
   /**
-   * The anchor is already `company.md`. It must not also be a player.
+   * The anchor is `company.md`. Drop it if it also comes back as a player.
    *
-   * The sweep's own domain turns up in its own search results — which is
-   * correct, it IS in this market — so the classifier dutifully classifies it,
-   * and every surface then counted the map's subject as one of its own findings.
-   * Measured on two live maps: brightdata.com was drawn twice and joined to
-   * itself by a `shaper` edge, a self-loop presented as a real relation; on the
-   * resend.com map the duplicate came back `none`, which made the anchor the
-   * entire content of the "1 unplaced" badge — a gap indicator whose only member
-   * was the company the map is of.
+   * A company appears in its own search results, so the classifier classifies
+   * it. On two live maps that drew the anchor twice: one joined to itself by a
+   * `shaper` edge, the other filling the "1 unplaced" badge with the company
+   * the map is of.
    *
-   * Dropped rather than merged: `company.md` is built from the decomposition,
-   * which is a whole page read from the company itself, and a one-line
-   * classification of a search result has nothing to add to it.
+   * Dropped, not merged: `company.md` comes from a full page read.
    */
   const anchorHost = (result.anchor || "").trim().toLowerCase().replace(/^www\./, "")
 
@@ -184,7 +152,7 @@ function place(result: SweepResult): { kept: Placed[]; noise: Entity[] } {
 
     const group = KIND_GROUP[e.kind]
     // `noise` is the classifier saying "this is not in this market at all".
-    // It gets no node — it becomes a dangling link instead, which is the
+    // It gets no node, it becomes a dangling link instead, which is the
     // truthful shape: the run paid for the host and put nothing on the map.
     if (!group) {
       noise.push(e)
@@ -202,7 +170,7 @@ function place(result: SweepResult): { kept: Placed[]; noise: Entity[] } {
 }
 
 /** The anchor itself, as a node. It is the hub the whole map hangs off, so it
- *  is core-typed and carries the top placement — nothing on the map is more
+ *  is core-typed and carries the top placement, nothing on the map is more
  *  firmly placed than the company the map is OF. */
 function anchorRef(result: SweepResult): NoteRef {
   return {
@@ -233,7 +201,7 @@ export function manifestOf(run: StoredRun): KbManifest {
     // v1's "violations" was a failed quality check per note. This engine runs
     // no such check, and reporting 0 would claim one passed. The KB surfaces
     // read `violations` through `manifestNum`, which returns undefined for an
-    // absent key — so it is left absent on purpose.
+    // absent key, so it is left absent on purpose.
     usd: r.stats.usd,
     seconds: r.stats.seconds,
     results: r.stats.results,
@@ -333,9 +301,9 @@ export function noteOf(run: StoredRun, path: string): NoteView | null {
 /**
  * The map, as the canvas eats it.
  *
- * A STAR, HONESTLY. The sweep classifies each host against the ANCHOR and
- * nothing else — it never asks whether two competitors integrate with each
- * other — so the only edges it can substantiate run anchor -> entity. Drawing
+ * A star, honestly. The sweep classifies each host against the anchor and
+ * nothing else, it never asks whether two competitors integrate with each
+ * other, so the only edges it can substantiate run anchor -> entity. Drawing
  * cross-links would be drawing relationships nobody measured, so the topology
  * stays a star and the canvas's hub-heavy banner (which exists to explain
  * exactly this shape) is left to say so.
@@ -374,7 +342,7 @@ export function graphOf(run: StoredRun): GraphView {
   ]
 
   // `relation: none` is the classifier declining to place something. There is
-  // no edge to draw, so none is drawn — the node sits unconnected and is
+  // no edge to draw, so none is drawn, the node sits unconnected and is
   // reported as an orphan rather than wired to the hub with a made-up label.
   const edges: GraphEdge[] = kept
     .filter((p) => p.entity.relation !== "none")

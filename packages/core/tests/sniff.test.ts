@@ -3,7 +3,7 @@ import { sniff, extractText } from "../src/sniff.js"
 
 describe("sniff", () => {
   it("calls a 200 with an empty body blocked", () => {
-    // MEASURED: Bright Data Unlocker on stripe.com returned HTTP 200,
+    // measured: Bright Data Unlocker on stripe.com returned HTTP 200,
     // Content-Length 0, after 33-60s. Twice, on two different zones.
     const r = sniff({ url: "https://stripe.com/radar", httpStatus: 200, body: "" })
     expect(r.status).toBe("blocked")
@@ -18,7 +18,7 @@ describe("sniff", () => {
   })
 
   it("calls HTML returned for a .txt request a soft 404", () => {
-    // MEASURED: vercel.com/llms-full.txt returned HTTP 200 with 487KB of HTML.
+    // measured: vercel.com/llms-full.txt returned HTTP 200 with 487KB of HTML.
     const r = sniff({
       url: "https://vercel.com/llms-full.txt",
       httpStatus: 200,
@@ -36,7 +36,7 @@ describe("sniff", () => {
   })
 
   it("accepts an ordinary content page and returns its text", () => {
-    // MEASURED: an industrial manufacturer's homepage yielded 8,335 chars to a plain curl.
+    // measured: an industrial manufacturer's homepage yielded 8,335 chars to a plain curl.
     const body = "<html><body><h1>Cables, Connectors, PCBA</h1><p>" + "we assemble boards. ".repeat(60) + "</p></body></html>"
     const r = sniff({ url: "https://www.nortechsys.com/", httpStatus: 200, body })
     expect(r.status).toBe("found")
@@ -82,7 +82,7 @@ describe("sniff", () => {
   })
 
   it("extracts HTML fragment without contentType (no DOCTYPE, no <html> prefix)", () => {
-    // REGRESSION FIX 2: HTML fragments without DOCTYPE often appear from WAF interstitials
+    // regression 2: HTML fragments without doctype often appear from WAF interstitials
     // and server-side-rendered components. Without contentType hint, old code skipped extraction
     // if body didn't start with <!doctype or <html>.
     const fragment = "<!-- generated --><div><h1>Real Company</h1><p>" + "we make things. ".repeat(30) + "</p></div>"
@@ -94,7 +94,7 @@ describe("sniff", () => {
   })
 
   it("extracts HTML served with text/plain contentType", () => {
-    // REGRESSION FIX 2: Genuine HTML served with wrong Content-Type (e.g., legacy servers,
+    // regression 2: Genuine HTML served with wrong Content-Type (e.g., legacy servers,
     // WAF interstitials) should still be recognized and extracted as HTML.
     // Vocabulary check catches 2+ known tags regardless of contentType header.
     const html = "<html><head><title>x</title></head><body>" + "<h1>content</h1><p>more prose. ".repeat(20) + "</p></body></html>"
@@ -122,7 +122,7 @@ describe("sniff", () => {
   })
 
   it("does not corrupt TypeScript with multiple type parameters and generics", () => {
-    // REGRESSION FIX 3: Critical defect with opening-tag matching.
+    // regression 3: Critical defect with opening-tag matching.
     // Old pattern /<\/?[tag]\b[^>]*>/ matches `<a, b>` in `Pair<a, b>` because:
     //   - `<a` matches
     //   - `, b` matches `[^>]*`
@@ -145,7 +145,7 @@ describe("sniff", () => {
   })
 
   it("preserves short generic type parameters that never close", () => {
-    // REGRESSION FIX 3: Closing-tag guarantee.
+    // regression 3: Closing-tag guarantee.
     // `type Foo<a> = a` contains `<a` but no `</a>`.
     // `type Bar<p> = p` contains `<p` but no `</p>`.
     // Opening-tag approach: both could match as tags (2+ matches threshold).
@@ -162,9 +162,9 @@ describe("sniff", () => {
   })
 
   it("extracts a void-element-heavy fragment with only one closing tag", () => {
-    // REGRESSION FIX 4: counting closing tags alone under-detects.
+    // regression 4: counting closing tags alone under-detects.
     // A gallery is mostly void elements, which have no closing form at all,
-    // so round 3 saw a single `</div>` — below the threshold of two — and
+    // so round 3 saw a single `</div>`, below the threshold of two, and
     // stored the raw markup as evidence text.
     // An opening tag carrying a real attribute (`<img src="...">`) is as
     // unambiguous as a closing tag: a generic parameter never has attributes.
@@ -181,7 +181,7 @@ describe("sniff", () => {
   })
 
   it("extracts an XHTML fragment whose tags all self-close", () => {
-    // REGRESSION FIX 4: XHTML self-closes everything, so a fragment can contain
+    // regression 4: xhtml self-closes everything, so a fragment can contain
     // zero true closing tags and still be markup. Round 3 stored `<br/>` soup
     // as evidence text. A trailing `/` before `>` is another shape a generic
     // parameter can never produce.
@@ -195,7 +195,7 @@ describe("sniff", () => {
   })
 
   it("extracts a lone paragraph that carries an attribute", () => {
-    // REGRESSION FIX 4: one closing tag was below the threshold, so a
+    // regression 4: one closing tag was below the threshold, so a
     // single-element fragment was stored with its tags visible in the evidence.
     // The attributed opener supplies the second independent signal.
     const paragraph =
@@ -208,10 +208,10 @@ describe("sniff", () => {
   })
 
   it("leaves a bare lone paired element unextracted (known limitation)", () => {
-    // KNOWN LIMITATION, deliberately locked in.
+    // known limitation, deliberately locked in.
     // `<p>...</p>` with no attributes yields exactly one unambiguous signal,
     // and the threshold is two. Lowering it to one would mean any prose that
-    // mentions a single closing tag — an HTML tutorial, a changelog — gets
+    // mentions a single closing tag, an HTML tutorial, a changelog, gets
     // tag-stripped wholesale. Over-detection silently corrupts the whole body;
     // under-detection here leaves two visible tags around otherwise intact text.
     // The cheaper failure wins. Real fragments carry attributes or nest, and
@@ -223,11 +223,11 @@ describe("sniff", () => {
   })
 
   it("preserves generic type parameters with spaces, bounds, and defaults", () => {
-    // GUARD on the attribute rule added in round 4. Round 3's defect was
+    // guard on the attribute rule added in round 4. Round 3's defect was
     // `[^>]*` after the element name swallowing `, b` in `Pair<a, b>`.
     // The attribute rule must therefore demand: whitespace, then a real
     // attribute name, then `=`, then a value. Each line below defeats a
-    // looser boundary — a comma after a space, a bound with no `=`, and a
+    // looser boundary, a comma after a space, a bound with no `=`, and a
     // default whose `=` is not preceded by an attribute name.
     const generics =
       "type Pair<a , b> = [a, b]\n" +

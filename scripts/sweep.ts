@@ -1,7 +1,7 @@
 /**
  * The sweep, from a terminal.
  *
- * The pipeline itself lives in `packages/sweep` — this file is argv, credentials
+ * The pipeline itself lives in `packages/sweep`, this file is argv, credentials
  * and a console, nothing else. The web route drives the same function, so what
  * you see here is what the browser runs.
  *

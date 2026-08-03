@@ -1,4 +1,4 @@
-/* The shapes the /api/kb/** routes return — the contract between the reading
+/* The shapes the /api/kb/** routes return, the contract between the reading
    layer (lib/kb-from-run.ts) and anything that renders a KB.
 
    Kept apart from the ENGINE's own model on purpose. `@open-kb/sweep`'s
@@ -27,10 +27,10 @@ import type { NodeType } from "./nodeTypes"
 /**
  * What each relation means, in a reader's words.
  *
- * It lives HERE, next to the shapes, rather than in lib/kb-from-run.ts, because
+ * It lives here, next to the shapes, rather than in lib/kb-from-run.ts, because
  * every consumer is a client component: the graph's edge tooltip, the entity
  * page's chips, the ecosystem panel. lib/kb-from-run.ts imports lib/runs.ts,
- * which imports `node:fs` — pulling that into a `"use client"` module is how a
+ * which imports `node:fs`, pulling that into a `"use client"` module is how a
  * browser bundle ends up trying to read a directory.
  */
 export const RELATION_BLURB: Record<string, string> = {
@@ -57,7 +57,7 @@ export interface KbManifest {
   slug?: string
   input?: string
   brand?: string
-  /** ISO timestamp. `built_at` is accepted as a synonym — v1's reference engine
+  /** ISO timestamp. `built_at` is accepted as a synonym, v1's reference engine
    *  wrote snake_case and this one writes camelCase; both are the same fact. */
   builtAt?: string
   built_at?: string
@@ -77,10 +77,10 @@ export interface KbSummary {
   slug: string
   manifest: KbManifest | null
   counts: TypeCounts
-  /** Substantive entities — the anchor and everything the classifier kept. */
+  /** Substantive entities, the anchor and everything the classifier kept. */
   notes: number
   /** On the map but connected to nothing: `relation: "none"`. v1's card badged
-   *  "violations" here — a quality check this engine does not run — so the slot
+   *  "violations" here, a quality check this engine does not run, so the slot
    *  carries the number that IS measured instead. */
   unplaced: number
   /** Hosts the run paid for and the classifier threw away as `kind: "noise"`. */
@@ -90,15 +90,15 @@ export interface KbSummary {
 /** An entity as it appears in a list: enough to sort, group and label it
  *  without paying to load every body. */
 export interface NoteRef {
-  /** The node id, shaped like a v1 note path — "players/postmarkapp.com.md".
+  /** The node id, shaped like a v1 note path, "players/postmarkapp.com.md".
    *  Keeping the path shape is what lets `nodeTypeOf`, `groupLabel`,
    *  `glyphForNotePath` and the canvas's domain reconstruction all carry over
    *  from v1 untouched. */
   path: string
   title: string
-  /** PLACEMENT, not a measurement — see lib/kb-from-run.ts's RELATION_WEIGHT.
+  /** placement, not a measurement, see lib/kb-from-run.ts's RELATION_WEIGHT.
    *  The field keeps v1's name because it is the component contract (node
-   *  radius, the prov-rail, the sort); every LABEL that shows it to a reader
+   *  radius, the prov-rail, the sort); every label that shows it to a reader
    *  says "placement". */
   relevance: number
   type: NodeType
@@ -151,7 +151,7 @@ export interface NoteView {
 
 /* --------------------------------------------------------------------- graph */
 
-/* PORT NOTE — TWO OF v1's FIELDS ARE NOT HERE.
+/* port NOTE, TWO OF v1's fields ARE NOT here.
    `GraphNode.isIndex` ("this is a table of contents") and
    `GraphEdge.structural` ("this list merely mentions that note") existed
    because v1's map was markdown wired by wikilinks. This engine writes no
@@ -201,11 +201,11 @@ export interface GraphView {
   /** v1: "Wikilinks that resolve to nothing: a gap named, not a failure."
    *  Ours: hosts the run paid for and the classifier threw away as noise. The
    *  run saw them and there is no node on the map for them, which is exactly a
-   *  dead link — and hiding them would make every map look like it found only
+   *  dead link, and hiding them would make every map look like it found only
    *  signal. */
   dangling: DanglingLink[]
   /** v1: notes unreachable from company.md. Ours: entities the classifier
-   *  placed on the map but would not connect to the anchor — `relation: none`.
+   *  placed on the map but would not connect to the anchor, `relation: none`.
    *  They have no edge, so they are unreachable in the literal sense, and the
    *  count is the most honest number on the page. */
   orphans: string[]

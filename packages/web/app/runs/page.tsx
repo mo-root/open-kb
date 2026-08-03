@@ -7,12 +7,12 @@ import { StatTile } from "@/components/viz";
 /**
  * The maps this deployment has bought.
  *
- * THE GAP THIS FILLS. `HeaderNav` carries a "Runs" item, and for a while there
- * was no page behind it — a 404 in our own navigation, which is exactly the
+ * THE GAP this fills. `HeaderNav` carries a "Runs" item, and for a while there
+ * was no page behind it, a 404 in our own navigation, which is exactly the
  * dangling-link class this project refuses to ship inside a knowledge base.
  *
- * PORT NOTE. v1 built this page from the KB MANIFESTS on disk, which meant one
- * row per knowledge base — its LAST build — and a long apology for the history
+ * port NOTE. v1 built this page from the KB manifests on disk, which meant one
+ * row per knowledge base, its last build, and a long apology for the history
  * it could not show ("a run whose notes were overwritten by a later run of the
  * same subject is not recoverable from what we store"). That apology does not
  * apply here: a run is keyed by its own id and never overwrites another, so

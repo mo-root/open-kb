@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import { Sparkline } from "./Sparkline";
 
-/* StatTile — one headline number in the KPI row: a glyph, a value, a label,
+/* StatTile, one headline number in the KPI row: a glyph, a value, a label,
    and an optional hint or trend spark. The value uses proportional figures
    (never tabular — tnum is for aligned columns, and it makes a display number
    look loose), auto-compacted (1,284 / 12.9K / 4.2M). Text wears text tokens;

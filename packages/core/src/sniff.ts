@@ -66,11 +66,11 @@ const ELEMENT =
  */
 const ATTR = "[a-z_:][a-z0-9_:.-]*\\s*=\\s*(?:\"[^\"]*\"|'[^']*'|[^\\s\"'=<>`]+)"
 
-/** `</p>` — a type parameter never closes. */
+/** `</p>`, a type parameter never closes. */
 const CLOSING_TAG = new RegExp(`</${ELEMENT}\\b\\s*>`, "gi")
-/** `<br/>` — a type parameter never carries the slash. */
+/** `<br/>`, a type parameter never carries the slash. */
 const SELF_CLOSING_TAG = new RegExp(`<${ELEMENT}\\b\\s*/>`, "gi")
-/** `<img src="x">` — a type parameter never carries attributes. */
+/** `<img src="x">`, a type parameter never carries attributes. */
 const ATTRIBUTED_TAG = new RegExp(`<${ELEMENT}\\b(?:\\s+${ATTR})+\\s*/?>`, "gi")
 
 /**
@@ -100,7 +100,7 @@ function countHtmlSignals(body: string): number {
  * damaging either way: extracting from prose deletes everything between angle
  * brackets, and not extracting from markup stores tag soup as the evidence a
  * quote is later verified against. It is settled by counting tag shapes that
- * prose cannot imitate — closing, self-closing, and attributed tags — and never
+ * prose cannot imitate, closing, self-closing, and attributed tags, and never
  * bare openers, which are ambiguous with generic type parameters.
  */
 export function sniff(r: RawResponse): SniffResult {
@@ -118,7 +118,7 @@ export function sniff(r: RawResponse): SniffResult {
   // of the body has the last word.
   //
   // Two signals, not one. One is reachable by prose that merely mentions a tag
-  // — a page about HTML, a changelog quoting `</div>` — and over-detection
+  //, a page about HTML, a changelog quoting `</div>`, and over-detection
   // corrupts the whole body silently, so the threshold buys asymmetric safety.
   // The cost is a known gap: a lone attribute-free pair, `<p>text</p>`, has one
   // signal and is stored raw. That failure is visible (two tags in the text)
@@ -133,4 +133,60 @@ export function sniff(r: RawResponse): SniffResult {
   }
 
   return { status: "found", text }
+}
+
+/**
+ * Shrink a page to the part that names things.
+ *
+ * Measured on one company's two site indexes: 159,000 chars of source, of which
+ * a 14,000-char prefix admitted 14%. Four products appeared only past the cut,
+ * so five runs over the same pages returned 5, 6, 9, 9 and 11 products.
+ *
+ * These indexes are link lists. One had 821 links under 3 headings, so headings
+ * alone say nothing; the sections live in the URL paths. Folding paths two
+ * segments deep turns 99,000 chars into 6,600 that name every section.
+ *
+ * Prose pages get cut instead, since there the prefix is the content.
+ */
+export function condense(text: string, budget = 24_000): string {
+  if (text.length <= budget) return text
+
+  const links = [...text.matchAll(/\]\((https?:\/\/[^)\s]+)\)/g)].map((m) => m[1]!)
+  // Below this a page is prose that happens to cite things, and folding its few
+  // links would discard the argument while keeping the footnotes.
+  if (links.length < 40) return text.slice(0, budget)
+
+  const heads = text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => /^#{1,4}\s/.test(l))
+
+  const tree = new Map<string, number>()
+  for (const href of links) {
+    let path: string
+    try {
+      path = new URL(href).pathname
+    } catch {
+      continue
+    }
+    const key = path.split("/").filter(Boolean).slice(0, 2).join("/")
+    if (key) tree.set(key, (tree.get(key) ?? 0) + 1)
+  }
+  if (!tree.size) return text.slice(0, budget)
+
+  const sections = [...tree.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([k, n]) => `  ${k} (${n})`)
+    .join("\n")
+
+  // Prose still gets whatever budget the structure did not need, the structure
+  // says what exists, the prose says what it is for, and the first answer is
+  // useless without some of the second.
+  const structure = [...heads, "", "sections, by page count:", sections].join("\n")
+  const room = budget - structure.length - 32
+  const prose =
+    room > 500
+      ? `\n\nfrom the page text:\n${text.replace(/^\s*[-*]\s*\[.+$/gm, "").replace(/\n{3,}/g, "\n\n").slice(0, room)}`
+      : ""
+  return structure + prose
 }

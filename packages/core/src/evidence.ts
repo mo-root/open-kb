@@ -4,11 +4,11 @@ import type { FetchStatus } from "./sniff.js"
 /**
  * How the bytes behind a citation were obtained.
  *
- * `page` — the run fetched that URL and read its content.
- * `snippet` — the run ran a search and the engine returned this title and description for that
+ * `page`, the run fetched that URL and read its content.
+ * `snippet`, the run ran a search and the engine returned this title and description for that
  *   URL. Weaker: it is somebody else's summary, and the page itself was never opened. But it is
  *   a real retrieval this run performed, and refusing to record it was measured throwing away
- *   85% of what a run found — 91 domains seen, 14 recorded, because only fetched pages were
+ *   85% of what a run found, 91 domains seen, 14 recorded, because only fetched pages were
  *   citable and the fetch budget was 13 pages.
  *
  * The tier travels with the evidence so a reader, and the confidence calculation, can tell a
@@ -45,14 +45,14 @@ export class CitationError extends Error {
 const squash = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase()
 
 /**
- * Below this, a "quote" proves nothing — it matches too much of the page to mean anything.
+ * Below this, a "quote" proves nothing, it matches too much of the page to mean anything.
  * Matches the `quote: z.string().min(8)` the `remember` tool schema enforces one layer up,
  * so the two checks agree instead of drifting.
  */
 const MIN_QUOTE_LENGTH = 8
 
 /**
- * Every byte the run fetched, and the ONLY way to turn those bytes into a citation.
+ * Every byte the run fetched, and the only way to turn those bytes into a citation.
  *
  * `cite` is the single mint. It has no fallback branch on purpose: if a quote cannot be
  * proven against stored bytes, no Evidence exists. A previous generation of this system

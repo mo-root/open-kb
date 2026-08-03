@@ -18,7 +18,7 @@ const FINGERPRINTS: Record<string, string> = {
 /**
  * The composed prompt is the agent's whole world. It is loaded at runtime from markdown, so
  * nothing in the type system stops a file from being renamed, mis-declared, or quietly dropped
- * from the includes list — the failure would surface as an agent behaving oddly in production,
+ * from the includes list, the failure would surface as an agent behaving oddly in production,
  * which is exactly how a previous run researched twelve competitors and recorded none.
  */
 describe("prompt files", () => {
@@ -86,7 +86,7 @@ describe("prompt files", () => {
 
   it("stays within a size a model will actually read", () => {
     const composed = composePrompt("investigator", AGENTS, DOCTRINE)
-    // Every line competes with every other for attention. Length IS emphasis: the live
+    // Every line competes with every other for attention. Length is emphasis: the live
     // failure happened partly because search guidance was long and recording was one line.
     expect(composed.length).toBeGreaterThan(4_000)
     // Raised from 20,000 once, deliberately, to admit the section telling the agent a search
@@ -95,7 +95,7 @@ describe("prompt files", () => {
     // be cited and it had budget to open thirteen. Redundancy in the breadth file was trimmed
     // first; this is what remained. Raise it again only for something that earns as much.
     //
-    // Raised again, to 23,000, for the channel relations — `covers`, `lists`, `discusses`. The
+    // Raised again, to 23,000, for the channel relations, `covers`, `lists`, `discusses`. The
     // vocabulary described commercial stance only, so of 438 hosts on a measured run 144 came
     // back unplaceable: every publication, directory and forum, 37% of the map, dropped for want
     // of a word. Recovering it clears the bar the previous raise set. Duplication that the new

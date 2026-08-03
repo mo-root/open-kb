@@ -18,7 +18,7 @@ export interface SearchResult {
 /**
  * Search is batched: one call carries many queries, so one model turn can buy a whole
  * wave of searches. A per-query failure is reported inside that query's SearchResult
- * (ok: false, error set) — it must never reject the batch.
+ * (ok: false, error set), it must never reject the batch.
  */
 export interface SearchPort {
   search(queries: string[]): Promise<SearchResult[]>

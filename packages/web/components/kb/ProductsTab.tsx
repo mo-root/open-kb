@@ -229,13 +229,13 @@ export function ProductsTab({
   );
 }
 
-/* WhyFound — the audit trail behind a single entity.
+/* WhyFound, the audit trail behind a single entity.
  *
  * v1 shipped this drawer wired to a `Provenance` record its engine computed
  * while ranking and then never persisted, so `why` was permanently `{}` and no
- * card ever rendered one. The reasoning IS persisted here — the classifier
+ * card ever rendered one. The reasoning IS persisted here, the classifier
  * writes a line per host explaining why it belongs on this map, against the
- * anchor — so the drawer finally has its content. A native <details> keeps it
+ * anchor, so the drawer finally has its content. A native <details> keeps it
  * collapsed by default: the reasoning is available, not imposed. */
 function WhyFound({ p }: { p: NoteRef }) {
   if (!p.why) return null;

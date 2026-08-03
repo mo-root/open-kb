@@ -29,7 +29,7 @@ export type NodeKind = (typeof NODE_KINDS)[number]
  * This is not documentation for us. It is spliced into the `remember` tool's schema, because a
  * kind the model is never told about is a kind that stays empty: `capability` and `buyer` were
  * in the enum for the whole of the first live run against a payments company, nothing anywhere
- * said what they were for, and that run recorded four nodes — all of them `company`.
+ * said what they were for, and that run recorded four nodes, all of them `company`.
  *
  * Keyed by `NodeKind`, so a kind cannot be added to `NODE_KINDS` without the compiler demanding
  * the sentence that tells the model what to put in it.
@@ -64,7 +64,7 @@ export interface StoredNode {
   alsoWhyHere: string[]
   /**
    * Set only on the node a run seeds for its anchor (see `anchorNode`). It is the one node
-   * on the map that carries no evidence, because nothing was fetched to prove it — it is
+   * on the map that carries no evidence, because nothing was fetched to prove it, it is
    * where the map starts, not something the map found. A surface rendering "0 citations" as
    * a defect needs this flag to tell the anchor apart from an unproven claim; nothing else
    * can reach the graph without citations, since `remember` is the only other way in.
@@ -116,7 +116,7 @@ export function nodeId(kind: NodeKind, name: string): string {
 /**
  * The company the map is drawn around, as a node.
  *
- * It is a real entity on the map — every edge is stated against it — but it is the only node
+ * It is a real entity on the map, every edge is stated against it, but it is the only node
  * with an empty `evidence` array, because nothing was fetched to prove it. That is honest
  * rather than convenient: the alternative was to invent a citation for it, which is exactly
  * the failure `cite()` exists to prevent. It is seeded straight onto the graph rather than
@@ -145,7 +145,7 @@ const LEADING_WWW = new RegExp(`^((?:${NODE_KINDS.join("|")}):)?www\\.`)
 const TRAILING_SLASH = /\/+$/
 
 /**
- * Reduce an edge endpoint — or a node's own id or name — to a comparison key.
+ * Reduce an edge endpoint, or a node's own id or name, to a comparison key.
  *
  * Every step here is a reversible spelling difference, never a similarity: case, surrounding
  * and interior whitespace, a URL scheme, a leading `www.`, a trailing slash. Nothing is
@@ -183,7 +183,7 @@ function endpointIndex(nodes: Iterable<StoredNode>): Map<string, Set<string>> {
   for (const n of nodes) {
     add(n.id, n.id)
     add(n.name, n.id)
-    // The id without its kind prefix — `checkout.com` for `company:checkout.com`. This is how
+    // The id without its kind prefix, `checkout.com` for `company:checkout.com`. This is how
     // a model that is thinking about a company writes it, and it is an exact slice of the id
     // rather than a guess at one.
     add(n.id.slice(n.kind.length + 1), n.id)
@@ -227,8 +227,8 @@ interface Rejection {
 const REJECTIONS_IN_FULL = 3
 
 /**
- * One line for a span's `error` field. Every rejected claim is named — a log that says
- * "3 rejected" without saying which is the invisible failure this exists to end — while only
+ * One line for a span's `error` field. Every rejected claim is named, a log that says
+ * "3 rejected" without saying which is the invisible failure this exists to end, while only
  * the first few carry their full reason, so one bad batch cannot flood the log.
  */
 function summariseRejections(rejections: Rejection[]): string {
@@ -307,8 +307,8 @@ export interface RememberToolOutput {
 
 // The fields below are typed as the bare, generics-defaulted `Tool` rather than
 // `Tool<SearchToolInput, SearchToolOutput>` etc. The AI SDK's `Tool` union carries an
-// optional `toModelOutput` callback whose parameter is contravariant in OUTPUT, plus an
-// `outputSchema`-bearing union member with no `execute` — pinning the generics here makes
+// optional `toModelOutput` callback whose parameter is contravariant in output, plus an
+// `outputSchema`-bearing union member with no `execute`, pinning the generics here makes
 // assignment from the real, inferred tool objects fight that contravariance and those
 // union members for no benefit, since the input/output shapes are already documented
 // above and enforced structurally by each tool's own `execute` body and zod schema.
@@ -359,9 +359,9 @@ export function makeTools(ctx: RunContext): Tools {
           ok: r.ok,
           error: r.error,
           hits: r.hits.map((h) => {
-            // A search result IS a retrieval this run performed: the engine returned this title
+            // A search result is a retrieval this run performed: the engine returned this title
             // and description for this URL. Recording it makes the whole result bag citable
-            // instead of only the few pages a run has time to open — measured at 91 domains seen
+            // instead of only the few pages a run has time to open, measured at 91 domains seen
             // against 14 recorded, because nothing but a fetched page could be cited.
             // Tiered `snippet` so a reader can tell it from a page the run actually read.
             const rec = ctx.evidence.record({
@@ -523,7 +523,7 @@ export function makeTools(ctx: RunContext): Tools {
       }
 
       // Built after the nodes land, so an edge can join two companies recorded in this very
-      // call — which is how a model writes a finding: the nodes and the relation together.
+      // call, which is how a model writes a finding: the nodes and the relation together.
       const index = endpointIndex(ctx.graph.nodes.values())
 
       for (const e of edges) {
@@ -547,7 +547,7 @@ export function makeTools(ctx: RunContext): Tools {
         wroteEdges++
       }
 
-      // The reasons go to the model AND to the log. A refusal recorded only in the reply is
+      // The reasons go to the model and to the log. A refusal recorded only in the reply is
       // invisible the moment the run ends: the live stripe.com run logged eleven failed
       // `remember` spans with an empty error field, and nothing anywhere said why.
       span("remember", "write", `${wroteNodes}n/${wroteEdges}e`, {

@@ -5,7 +5,7 @@ import { graphOf } from "@/lib/kb-from-run"
  * The map, as `GraphCanvas` eats it: `GraphView` from lib/viewTypes.ts.
  *
  * v1 built this from the `[[wikilinks]]` between markdown notes. There are no
- * notes and no wikilinks here — the graph is derived from the run's classified
+ * notes and no wikilinks here, the graph is derived from the run's classified
  * entities (lib/kb-from-run.ts `graphOf`), which is also where the reasoning
  * behind the kind→colour collapse and the star topology is written down.
  */

@@ -26,7 +26,7 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
    *
    * Reading only the first page was leaving most of the market unread. Measured
    * on one query: page 1 returned 7 distinct hosts, and pages 2-5 added 9, 9, 5
-   * and 7 more — **37 hosts across five pages against 7 from the first**, still
+   * and 7 more, **37 hosts across five pages against 7 from the first**, still
    * not saturating at the fifth. `num` cannot substitute for this; Google
    * deprecated it and returns roughly eight organic rows whatever you ask for.
    *
@@ -38,7 +38,7 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
 
   return {
     async search(queries) {
-      // One request per query PER PAGE, all in flight together. Results from the
+      // One request per query PER page, all in flight together. Results from the
       // pages of one query are merged and deduplicated by URL before returning,
       // so a caller still sees one result per query and cannot double-count a row
       // that appeared on two pages.
@@ -95,7 +95,7 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
           query,
           hits,
           // A query whose first page worked has produced results, even if a later
-          // page failed. Only a query where EVERY page failed is a failed query —
+          // page failed. Only a query where every page failed is a failed query —
           // calling it failed because page four timed out would discard the rows
           // pages one to three actually returned.
           ok: failures.length < mine.length,
@@ -134,11 +134,11 @@ export function brightDataFetch(creds: BrightDataCredentials, opts: Opts = {}): 
         })
         const body = await res.text()
         // Deliberately returned as-is. A 200 with an empty body is a real, measured outcome
-        // and it is the sniffer's job to call it — not ours to hide.
+        // and it is the sniffer's job to call it, not ours to hide.
         return { url, httpStatus: res.status, body, contentType: res.headers.get("content-type") ?? undefined, ms: Date.now() - started, usd: price }
       } catch (e) {
         // The request never completed (DNS failure, connection reset, timeout before any
-        // response) — Bright Data has nothing to bill, so this must not carry a price.
+        // response), Bright Data has nothing to bill, so this must not carry a price.
         // Compare the completed-but-error-status branch above, which keeps `usd: price`
         // because a response that came back (even a 500) was a request Bright Data serviced.
         return { url, httpStatus: 0, body: "", ms: Date.now() - started, usd: 0, contentType: undefined }

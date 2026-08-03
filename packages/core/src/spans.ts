@@ -9,7 +9,7 @@ export interface Span {
   kind: SpanKind
   /** model id, or tool name */
   name: string
-  /** the real query or URL — the only place a viewer sees which question was bought */
+  /** the real query or URL, the only place a viewer sees which question was bought */
   argsDigest: string
   ms: number
   ok: boolean
@@ -32,14 +32,14 @@ interface Subscriber {
  * One append-only log of everything the run did, successes and failures alike.
  * A failed call that emits nothing is indistinguishable from work never attempted.
  *
- * Several surfaces read the same run at once — a web view, a CLI renderer, a cost tracker.
+ * Several surfaces read the same run at once, a web view, a CLI renderer, a cost tracker.
  * `stream()` is a genuine fan-out: every call gets its own cursor over the shared log, so every
  * consumer sees every span in `seq` order, independent of how many other consumers are attached
  * or when each one started. A single shared waiter queue that handed each span to only one
- * consumer would silently split the audit trail between readers — the same failure shape as a
+ * consumer would silently split the audit trail between readers, the same failure shape as a
  * non-finite cost rendering as a healthy $0.00.
  *
- * The log itself is unbounded for the lifetime of the stream — nothing here evicts old spans, so
+ * The log itself is unbounded for the lifetime of the stream, nothing here evicts old spans, so
  * a long-running, never-closed run grows this array without limit. Callers own `close()`.
  */
 export class SpanStream {
@@ -121,7 +121,7 @@ export class SpanStream {
         if (!more) return
       }
     } finally {
-      // Unsubscribe on every exit path — normal close, and a consumer that `break`s early —
+      // Unsubscribe on every exit path, normal close, and a consumer that `break`s early —
       // so a reader that stops watching does not keep accumulating spans it will never read.
       this.#subscribers.delete(sub)
     }

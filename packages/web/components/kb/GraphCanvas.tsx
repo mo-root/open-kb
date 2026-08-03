@@ -25,7 +25,7 @@ import {
 import { GraphLegend } from "./GraphLegend";
 
 // react-force-graph-2d gives us zoom / pan / physics for free. dynamic() cannot
-// carry the library's generics, so we import it as an UNTYPED boundary (the
+// carry the library's generics, so we import it as an untyped boundary (the
 // catalog-app pattern) and keep every accessor typed internally against our own
 // FNode/FLink shapes. ssr:false because the library touches window/canvas.
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
@@ -93,7 +93,7 @@ interface FLink {
   relation: string;
 }
 
-// A serialisable snapshot of the clicked node — drives the React detail card.
+// A serialisable snapshot of the clicked node, drives the React detail card.
 interface Detail {
   id: string;
   title: string;
@@ -136,8 +136,8 @@ const HUB_DEGREE_FRAC = 0.3; // node counts as a hub above this share of node co
 const STAR_EDGE_FRAC = 0.4; // banner threshold: one node carrying > this share of edges
 const TOP_LABELS = 6; // top-N by relevance get an always-on label
 const DARK_INK = "rgba(10,20,31,0.9)"; // glyph ink drawn on bright node fills
-// Near-paper chip drawn behind a competitor favicon. Held CONSTANT across
-// themes — like the node palette — so a dark-on-transparent brand mark always
+// Near-paper chip drawn behind a competitor favicon. Held constant across
+// themes, like the node palette, so a dark-on-transparent brand mark always
 // reads, whether the page is light or dark.
 const FAVICON_BACKING = "#F2F6FF";
 // Only paint a favicon once the node is ≥ ~16px across on screen; smaller than
@@ -184,7 +184,7 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-/* PORT NOTE — `slugToDomain` and its COMPOUND_TLD table are gone.
+/* port NOTE, `slugToDomain` and its COMPOUND_TLD table are gone.
    v1 reconstructed a competitor's domain by un-mangling the note FILENAME
    ("firecrawl-dev.md" → "firecrawl.dev"), with a table of registry TLDs so
    "core-ac-uk" did not become "core-ac.uk". It was a careful workaround for a
@@ -201,7 +201,7 @@ function subscribeCoarsePointer(cb: () => void): () => void {
 const getCoarsePointer = () => window.matchMedia("(pointer: coarse)").matches;
 const getCoarsePointerServer = () => false;
 
-/* Reduced-motion as an external store too — drives warmup/cooldown props (so
+/* Reduced-motion as an external store too, drives warmup/cooldown props (so
    it must be reactive) without a setState-in-effect. Freezes the layout fast. */
 function subscribeReducedMotion(cb: () => void): () => void {
   const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -306,7 +306,7 @@ export function GraphCanvas({
 
   // The payload is lib/viewTypes' GraphView, straight off /api/kb/[slug]/graph:
   // the engine's own graph (lib/kb/graph.ts) plus the two things a reader needs
-  // and the engine does not — a display title and the folder to colour by.
+  // and the engine does not, a display title and the folder to colour by.
   const [graph, setGraph] = useState<GraphView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [visibleTypes, setVisibleTypes] = useState<Record<NodeType, boolean>>({
@@ -318,8 +318,8 @@ export function GraphCanvas({
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [showLegend, setShowLegend] = useState(true);
-  // The unplaced — entities the classifier put on the map and then would not
-  // connect to the anchor (`relation: "none"`) — are SHOWN by default.
+  // The unplaced, entities the classifier put on the map and then would not
+  // connect to the anchor (`relation: "none"`), are shown by default.
   //
   // v1's equivalent control defaulted the other way, and for a good reason: its
   // registry notes carried 241 of 467 edges and collapsed the force layout into
@@ -328,7 +328,7 @@ export function GraphCanvas({
   // at all, so it cannot collapse anything; the tether force below holds it in
   // frame and it sits in the outer ring, visibly unconnected.
   //
-  // And it is usually a LOT of the map — on a 40-query run, 22 of 40. Hiding
+  // And it is usually a LOT of the map, on a 40-query run, 22 of 40. Hiding
   // the majority of what the run found, by default, to make the picture tidier
   // is exactly the dishonesty this project refuses: a map that shows only what
   // it could classify is a map that looks finished. The control is there for a
@@ -344,7 +344,7 @@ export function GraphCanvas({
 
   // Canvas needs concrete colours, not CSS-var strings. We resolve the shared
   // --type-* / --dataflow / ink tokens from computed styles on mount, but hold
-  // them in a REF (not state) — the fallbacks below are the canonical brand
+  // them in a REF (not state), the fallbacks below are the canonical brand
   // hexes and equal the resolved vars, so there is no flash and no re-render;
   // the accessors read the ref at paint time, after the effect has resolved it.
   const paletteRef = useRef({
@@ -358,12 +358,12 @@ export function GraphCanvas({
 
   // Competitor favicons for player nodes, keyed by reconstructed domain. Held in
   // a ref (survives interaction renders) with a per-entry ok flag so the paint
-  // decides favicon-vs-glyph off cached state — never re-touching the network.
+  // decides favicon-vs-glyph off cached state, never re-touching the network.
   const faviconCacheRef = useRef<Map<string, { img: HTMLImageElement; ok: boolean }>>(
     new Map(),
   );
   // Bump-only counter: an async favicon load flips autoPauseRedraw's engine off,
-  // so we force one React render — the fresh nodeCanvasObject closure makes the
+  // so we force one React render, the fresh nodeCanvasObject closure makes the
   // kapsule repaint (no simulation reheat, layout untouched).
   const [, forceRepaint] = useState(0);
   const bumpFavicon = useCallback(() => forceRepaint((n) => n + 1), []);
@@ -381,11 +381,11 @@ export function GraphCanvas({
     getReducedMotionServer,
   );
 
-  // resolve the palette from CSS vars (client-only reads) into a ref — no
+  // resolve the palette from CSS vars (client-only reads) into a ref, no
   // setState, so a brand tweak to --type-*/--dataflow still moves the canvas
   // without a cascading render. The canvas draws concrete hexes, so when the
   // ThemeToggle flips documentElement.dataset.theme (which re-keys every var)
-  // we MUST re-resolve and force one repaint — otherwise labels keep the stale
+  // we must re-resolve and force one repaint, otherwise labels keep the stale
   // theme's ink (--text) and vanish against the flipped surface.
   useEffect(() => {
     const resolve = () => {
@@ -420,7 +420,7 @@ export function GraphCanvas({
     return () => mo.disconnect();
   }, [bumpFavicon]);
 
-  // clear the focus highlight + detail card (stable — used by the Escape effect)
+  // clear the focus highlight + detail card (stable, used by the Escape effect)
   const clearFocus = useCallback(() => {
     setDetail(null);
     setFocusId(null);
@@ -442,7 +442,7 @@ export function GraphCanvas({
     };
   }, [slug]);
 
-  // Derived degree / adjacency / hub / sizing / topology stats — the single
+  // Derived degree / adjacency / hub / sizing / topology stats, the single
   // source of truth the graph data and every accessor read from.
   const meta = useMemo(() => {
     const nodes = graph?.nodes ?? [];
@@ -456,8 +456,8 @@ export function GraphCanvas({
     // v1 filtered structural (table-of-contents) edges out of degree and
     // adjacency here, not just out of the picture, because degree drives node
     // sizing, the hub ring, the focus set and the detail card's neighbour
-    // count. This engine emits no such edges — every edge is a relation the
-    // classifier asserted — so every link is active and the name is kept for
+    // count. This engine emits no such edges, every edge is a relation the
+    // classifier asserted, so every link is active and the name is kept for
     // the readers downstream.
     const activeLinks = links;
     for (const l of activeLinks) {
@@ -512,12 +512,12 @@ export function GraphCanvas({
 
   // Build the force-graph data per graph (and per reset). Kept stable across
   // hover/focus renders so the simulation and node positions survive
-  // interaction; a resetSeed bump makes a FRESH copy (new node objects, seeded
+  // interaction; a resetSeed bump makes a fresh copy (new node objects, seeded
   // start positions) so "reset" is a real re-layout without mutating a memo.
   const data = useMemo(() => {
-    // Hidden nodes are removed from the DATA, not merely hidden from the paint.
+    // Hidden nodes are removed from the data, not merely hidden from the paint.
     // Left in the simulation they have no links, so charge repulsion flings
-    // them far off-screen — and zoomToFit measures every node, visible or not,
+    // them far off-screen, and zoomToFit measures every node, visible or not,
     // so those invisible outliers inflated the bounding box and left the real
     // cluster stranded tiny in the middle.
     const list = (graph?.nodes ?? []).filter(
@@ -574,7 +574,7 @@ export function GraphCanvas({
   useEffect(() => {
     if (!data.nodes.length) return;
     // A new data object means a fresh layout run (mount, index toggle, reset),
-    // so arm the fit again — the settled positions are not known until the
+    // so arm the fit again, the settled positions are not known until the
     // engine stops, and fitting before then under-fills the pane.
     shouldFitRef.current = true;
     let tries = 0;
@@ -587,7 +587,7 @@ export function GraphCanvas({
       }
       // Charge scales with degree so well-connected nodes claim more space.
       // Every edge here is a relation the classifier asserted, so this responds
-      // to real connectivity — which in a star means the anchor, and only the
+      // to real connectivity, which in a star means the anchor, and only the
       // anchor, pushes hard.
       fg.d3Force("charge")?.strength?.(
         (n: FNode) => -30 * (1 + (n.deg / nodeCount) * 3),
@@ -609,7 +609,7 @@ export function GraphCanvas({
       // Tether toward the origin. This is the force that makes the unplaced
       // showable at all: an entity with `relation: "none"` has no edge, so no
       // spring holds it, charge repulsion pushes it to infinity, and zoomToFit
-      // measures it — a handful of escapees drag the bounding box wide and
+      // measures it, a handful of escapees drag the bounding box wide and
       // shrink the real cluster to nothing.
       // Hiding them would be dishonest (they are genuine hosts the run found),
       // so they are held in frame instead: barely-there for connected nodes,
@@ -620,7 +620,7 @@ export function GraphCanvas({
       const pull = (n: FNode) => (n.deg === 0 ? 0.34 : 0.012);
       fg.d3Force("x", forceX<FNode>(0).strength(pull));
       fg.d3Force("y", forceY<FNode>(0).strength(pull));
-      // per-type centroid pull — segments loosely group
+      // per-type centroid pull, segments loosely group
       fg.d3Force("cluster", makeClusterForce());
       fg.d3ReheatSimulation?.();
     };
@@ -628,7 +628,7 @@ export function GraphCanvas({
     return () => cancelAnimationFrame(raf);
   }, [data, nodeCount]);
 
-  // Preload competitor favicons for player nodes (client-only — new Image()
+  // Preload competitor favicons for player nodes (client-only, new Image()
   // touches the DOM). DuckDuckGo's icon service maps a domain to a small .ico;
   // we cache the Image per domain and repaint once each settles. onerror also
   // repaints so the glyph fallback appears promptly instead of waiting on a
@@ -675,7 +675,7 @@ export function GraphCanvas({
   //
   // Calling zoomToFit directly from here was a bug: once the engine settles the
   // library stops redrawing, so the camera animated across a canvas that was
-  // never repainted and every frame painted over the last — nodes smeared into
+  // never repainted and every frame painted over the last, nodes smeared into
   // radial streaks. Fitting only ever happens from onEngineStop, where the
   // engine is by definition still driving frames.
   useEffect(() => {
@@ -771,7 +771,7 @@ export function GraphCanvas({
     return <div className="p-6 text-sm text-rose-300">Graph unavailable: {error}</div>;
   }
   if (!graph) {
-    // skeleton mirroring the final layout — the bureau shows a chart being
+    // skeleton mirroring the final layout, the bureau shows a chart being
     // plotted, not a spinner
     return (
       <div aria-busy="true">
@@ -793,15 +793,15 @@ export function GraphCanvas({
   const visibleNodeCount = graph.nodes.filter(
     (n) => visibleTypes[nodeTypeOf(n.group)] && (showUnplaced || n.relation !== "none"),
   ).length;
-  // v1 raised this banner to APOLOGISE for hub-heavy wiring: a KB whose links
+  // v1 raised this banner to apologise for hub-heavy wiring: a KB whose links
   // all ran through one note was a KB whose cross-references had not been
   // written yet, and the copy said so ("rebuilt KBs get denser cross-links").
   //
   // Here the star is not a defect to be grown out of, it is the measurement.
-  // The sweep classifies every host against the ANCHOR and never against
+  // The sweep classifies every host against the anchor and never against
   // another host, so anchor→entity is the only edge it can substantiate.
   // Cross-links would have to be invented. The banner therefore states the
-  // shape once rather than promising it away — same threshold, opposite claim.
+  // shape once rather than promising it away, same threshold, opposite claim.
   const showBanner =
     !bannerDismissed && meta.share > STAR_EDGE_FRAC && meta.activeLinks.length > 0;
   const hiddenNodes = graph.nodes.length - data.nodes.length;
@@ -822,7 +822,7 @@ export function GraphCanvas({
     (typeof e === "object" ? e?.id : e) ?? "";
 
   // The unplaced filter happens in the `data` memo, so these only handle type
-  // filters — a node that reaches here is already meant to be in the layout.
+  // filters, a node that reaches here is already meant to be in the layout.
   const nodeVisibility = (n: FNode) => visibleTypes[n.type];
   const linkVisibility = (l: FLink) => {
     const s = asNode(l.source);
@@ -830,7 +830,7 @@ export function GraphCanvas({
     return !!s && !!t && visibleTypes[s.type] && visibleTypes[t.type];
   };
 
-  // Cyan is the bureau's data-flow hue — every edge and glow is drawn in it.
+  // Cyan is the bureau's data-flow hue, every edge and glow is drawn in it.
   // In hover/focus mode the incident edges light up; everything else recedes.
   const linkColor = (l: FLink) => {
     const palette = paletteRef.current;
@@ -856,8 +856,8 @@ export function GraphCanvas({
     return 1;
   };
 
-  // The tooltip leads with the classifier's OWN two words — its kind and the
-  // relation it placed the entity in — because those are what the run actually
+  // The tooltip leads with the classifier's OWN two words, its kind and the
+  // relation it placed the entity in, because those are what the run actually
   // decided. "placement", not "relevance": the number is a rank derived from
   // that relation, not a measurement (see lib/kb-from-run.ts).
   const nodeLabel = (n: FNode) =>
@@ -879,7 +879,7 @@ export function GraphCanvas({
   };
 
   // Full custom paint: node dimming (hover/focus focus-mode), the anchor hub's
-  // cyan survey ring, a type GLYPH / hub initial on larger nodes, and labels.
+  // cyan survey ring, a type glyph / hub initial on larger nodes, and labels.
   const nodeCanvasObject = (
     n: FNode,
     ctx: CanvasRenderingContext2D,
@@ -919,7 +919,7 @@ export function GraphCanvas({
       ctx.stroke();
     }
 
-    // the anchor wears a cyan survey ring — the centre of data flow
+    // the anchor wears a cyan survey ring, the centre of data flow
     if (n.isHub) {
       ctx.beginPath();
       ctx.arc(x, y, r + 3.5, 0, Math.PI * 2);
@@ -937,7 +937,7 @@ export function GraphCanvas({
     // Player identity: draw the cached favicon on a paper chip clipped to the
     // node, leaving the pink type fill as a rim so the "player" read survives.
     //
-    // NOTE: drawing these third-party images is what TAINTS the canvas. Once
+    // NOTE: drawing these third-party images is what taints the canvas. Once
     // tainted, getImageData / toDataURL throw a SecurityError, so a client-side
     // PNG export of the graph is impossible. Do not add an export button.
     const fav =
@@ -989,7 +989,7 @@ export function GraphCanvas({
       ctx.fillStyle = isHover || isFocus ? palette.text : palette.muted;
       ctx.textBaseline = "alphabetic";
       // Halo the label in the page surface (theme-aware): a paper cut-out in
-      // light mode, a dark cut-out when --bg flips to navy — so ink labels stay
+      // light mode, a dark cut-out when --bg flips to navy, so ink labels stay
       // legible against the canvas in both.
       ctx.shadowColor = hexToRgba(palette.paper, 0.85);
       ctx.shadowBlur = 4;
@@ -1014,7 +1014,7 @@ export function GraphCanvas({
   const onNodeClick = (n: FNode) => {
     // One click always does the same thing: focus the node, show its
     // neighbours, raise the card. Opening the note is an explicit button on the
-    // card (or a double-click) — the old "click the focused node again" gesture
+    // card (or a double-click), the old "click the focused node again" gesture
     // was undiscoverable, and it made a second click on a card you were reading
     // navigate away unexpectedly.
     setFocusId(n.id);
@@ -1037,7 +1037,7 @@ export function GraphCanvas({
   return (
     <div>
       {showBanner && (
-        /* amber-* is remapped to the brand PINK ramp in globals.css — the
+        /* amber-* is remapped to the brand pink ramp in globals.css, the
            highlight hue for advisories/badges. sky-* would render this passive
            notice in the reserved action blue, so it must never be used here. */
         <div className="mb-3 flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-300">

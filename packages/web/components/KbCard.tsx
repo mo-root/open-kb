@@ -10,11 +10,11 @@ import type { KbSummary } from "@/lib/viewTypes";
 //   · glyph counts read the same marks as the graph legend
 //   · amber "N unplaced" / emerald "all placed" badge, mono built-date stamp
 //
-// PORT NOTE — THE BADGE. v1 badged `manifest.violations` here: green "verified",
-// titled "Every claim is cited, every link resolves, nothing is unsourced — the
+// port NOTE, THE badge. v1 badged `manifest.violations` here: green "verified",
+// titled "Every claim is cited, every link resolves, nothing is unsourced, the
 // KB passed all integrity checks". This engine runs NO integrity check, and
 // `manifestNum(m, "violations") ?? 0` would have rendered that green badge on
-// every card — an unearned pass on a test that was never taken, which is the
+// every card, an unearned pass on a test that was never taken, which is the
 // exact failure mode this project exists to avoid.
 //
 // So the slot carries the number that IS measured: how many entities the
@@ -33,7 +33,7 @@ export function KbCard({ kb }: { kb: KbSummary }) {
     kb.notes > 1 ? Math.round(((kb.notes - 1 - unplaced) / (kb.notes - 1)) * 100) : 0;
 
   // Counts come from the reader, which tallies the notes actually on disk with
-  // registry notes excluded — never from a manifest field, because the manifest
+  // registry notes excluded, never from a manifest field, because the manifest
   // records what a build *harvested* and those are different numbers (see the
   // O1 note in components/kb/KbBrowser.tsx).
   const products = c.product;
@@ -49,12 +49,12 @@ export function KbCard({ kb }: { kb: KbSummary }) {
   const mass = segments.reduce((sum, s) => sum + s.value, 0);
 
   // Glyph counts double as the composition bar's legend: notes is neutral
-  // chrome. products/players borrow the fixed --type-* vars — blue #3d7ffc and
+  // chrome. products/players borrow the fixed --type-* vars, blue #3d7ffc and
   // pink #eb368c both hold contrast on paper AND navy, so chip == segment there.
   // Community is the exception: its brand-fixed lavender #c4c1f8 lands at ~1.6:1
   // on the light card, so a hairline stroke glyph would vanish. A solid segment
-  // FILL survives any luminance (bar stays --type-community), but the standalone
-  // mark uses the theme-flipped violet ramp — text-violet-400 resolves to a
+  // fill survives any luminance (bar stays --type-community), but the standalone
+  // mark uses the theme-flipped violet ramp, text-violet-400 resolves to a
   // paper-legible #7e79c3 in light and back to the lavender #c4c1f8 in dark.
   const allStats: Stat[] = [
     { glyph: "docs", label: "notes", value: kb.notes, className: "text-slate-400" },

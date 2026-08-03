@@ -5,9 +5,9 @@ import type { NextConfig } from "next"
 const repoRoot = path.resolve(import.meta.dirname, "../..")
 
 /**
- * The credentials live in the REPO ROOT's `.env`, and Next only looks in the app
+ * The credentials live in the repo root's `.env`, and Next only looks in the app
  * directory. Rather than keep a second copy of live API tokens next to a
- * Next.js app — or a symlink that a fresh clone would not have — the root file
+ * Next.js app, or a symlink that a fresh clone would not have, the root file
  * is read here, at config time, in the same Node process that then serves every
  * route.
  *
@@ -54,34 +54,34 @@ loadRepoEnv()
 process.env.OPENKB_RUNS_DIR ??= path.join(repoRoot, "runs")
 
 /**
- * NO WORKFLOW WRAPPER. The v1 app wrapped this config in `withWorkflow()` and
+ * No workflow wrapper. The v1 app wrapped this config in `withWorkflow()` and
  * started runs with `start(buildWorkflow)`. That `"use step"` sandbox is what
  * this rewrite exists to escape: a run here is a plain async function writing
  * into a `SpanStream` held by an in-memory registry (lib/runs.ts).
  */
 const nextConfig: NextConfig = {
   // Pin the workspace root so a stray lockfile elsewhere on the machine is not
-  // picked as the root — there are several above this directory.
+  // picked as the root, there are several above this directory.
   turbopack: { root: repoRoot },
   // The engine packages resolve to raw TypeScript (`main: ./src/index.ts`), so
   // the bundler has to compile them rather than treat them as prebuilt deps.
   transpilePackages: ["@open-kb/core", "@open-kb/providers", "@open-kb/sweep"],
 
   /**
-   * WHY THIS APP RUNS ON WEBPACK AND NOT TURBOPACK.
+   * Why this app runs on webpack rather than turbopack.
    *
    * `packages/core` and `packages/providers` are NodeNext ESM, so every internal
    * specifier carries the extension the runtime will use: `export * from
    * "./evidence.js"` in a file that is actually `evidence.ts`. TypeScript and
    * Node both understand that; Turbopack does not remap it, and every import
-   * inside the engine fails with `Can't resolve './evidence.js'` — ten of them,
+   * inside the engine fails with `Can't resolve './evidence.js'`, ten of them,
    * before a single route can be served.
    *
    * `extensionAlias` is webpack's answer to exactly this, and it is one line.
    * The alternatives were worse: point the packages at their compiled `dist`
    * (a build step before every `dev`, and no HMR across the workspace), or edit
    * core's specifiers (which this task is explicitly not allowed to do, and
-   * should not want to — NodeNext is correct for a package meant to run under
+   * should not want to, NodeNext is correct for a package meant to run under
    * plain `node`).
    *
    * `next dev --webpack` in package.json is the other half of this; without the

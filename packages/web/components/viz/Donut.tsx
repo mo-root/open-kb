@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 
-/* Donut — part-to-whole for a small set of categories (composition by node
+/* Donut, part-to-whole for a small set of categories (composition by node
    type). Segments are stroked ring arcs separated by a real angular gap so the
    card surface shows through (the 2px surface-gap spacer, not a drawn border).
    A legend is always present so identity never rests on colour alone; the ring

@@ -1,10 +1,10 @@
 import { formatDuration, formatUsd, shareOf, type CostLineView, type RunCostView } from "./types";
 
 /**
- * WHAT THE RUN COST, AT THE END OF IT.
+ * what THE RUN cost, AT THE END OF IT.
  *
  * The run used to finish with one number. "$1.30" answers "how much" and none of
- * the questions anyone asks next — was that the searches or the models, which
+ * the questions anyone asks next, was that the searches or the models, which
  * stage spent it, and what a single entity on the map ended up costing. Those
  * have different remedies: a bill that is mostly search is fixed by planning
  * fewer queries, a bill that is mostly one agent is fixed by changing that
@@ -14,7 +14,7 @@ import { formatDuration, formatUsd, shareOf, type CostLineView, type RunCostView
  *
  *   the headline    total · ceiling · duration · calls · tokens
  *   where it went   by tool kind, then by agent, each with its share of the bill
- * v1 carried a third band — the project ledger — because its runs were gated on
+ * v1 carried a third band, the project ledger, because its runs were gated on
  * a project budget. Nothing here refuses a run, so there is no ledger to show.
  */
 

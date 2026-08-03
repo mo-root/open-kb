@@ -40,15 +40,9 @@ export function composePrompt(agent: string, agentsDir: string, doctrineDir: str
 /**
  * Fill `{{name}}` placeholders in a prompt body.
  *
- * Deliberately strict: a placeholder with no value THROWS rather than rendering
- * as an empty string or as the literal `{{name}}`. A prompt is the instruction a
- * paid model run receives, and silently sending it with a hole where the buyer
- * description should be produces a plausible, expensive, wrong answer that looks
- * exactly like a right one. Failing here costs nothing.
- *
- * The reverse — a value with no placeholder — throws too. It means the caller
- * believes it is saying something the model never sees, which is the same class
- * of bug read from the other end.
+ * Throws on a placeholder with no value, and on a value with no placeholder.
+ * Both mean the prompt sent to a paid model call differs from the one the
+ * caller wrote.
  */
 export function render(body: string, vars: Record<string, string | number>): string {
   const wanted = new Set([...body.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]!))

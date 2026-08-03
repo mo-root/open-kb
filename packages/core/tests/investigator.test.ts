@@ -81,7 +81,7 @@ describe("investigate", () => {
 
     // Another agent got here first. Several investigators share one graph, one span stream
     // and one evidence store, so what this run reports must be a delta against what it was
-    // handed — an absolute total would credit this agent with the other one's work. Node,
+    // handed, an absolute total would credit this agent with the other one's work. Node,
     // edge and spend are all seeded, so a regression to absolutes fails on every counter
     // rather than only the one that happened to be covered.
     ctx.graph.nodes.set("company:already-here", {
@@ -115,7 +115,7 @@ describe("investigate", () => {
 
     // Scripted model: search, then fetch, then remember, then a closing summary.
     // The turn is counted from the transcript the SDK hands back, so each step sees the
-    // real tool results of the step before it — that transcript is the loop under test.
+    // real tool results of the step before it, that transcript is the loop under test.
     //
     // `doGenerate`, not `doStream`: ToolLoopAgent.generate() routes through generateText,
     // which only ever calls doGenerate. A doStream-only mock throws "Not implemented".
@@ -136,7 +136,7 @@ describe("investigate", () => {
 
         // Read the handle out of the transcript rather than hardcoding one. A real model cites
         // what it was just handed. Hardcoding `ev1` made this test depend on which tool happened
-        // to record first — and when `search` began recording every hit so the whole result bag
+        // to record first, and when `search` began recording every hit so the whole result bag
         // is citable, the numbering shifted and the test broke on an implementation detail
         // rather than on a behaviour. Prefer a fetched page (it reports `bytes`); fall back to
         // the last handle seen.
@@ -200,7 +200,7 @@ describe("investigate", () => {
     expect(systemPrompt).toContain("A finding you did not record did not happen")
     expect(systemPrompt).toContain("Work that mission")
 
-    // One node and one edge written by THIS run, on a graph that already held someone
+    // One node and one edge written by this run, on a graph that already held someone
     // else's one of each. Absolute counts would read 2 and 2 here.
     expect(out.nodes).toBe(1)
     expect(out.edges).toBe(1)
@@ -225,7 +225,7 @@ describe("investigate", () => {
     expect(edge.relation).toBe("competitor")
     expect(ctx.evidence.hasFetched(edge.evidence[0]!.url)).toBe(true)
 
-    // One search at $0.001 and one free direct fetch — what THIS run spent, not the
+    // One search at $0.001 and one free direct fetch, what this run spent, not the
     // $0.005 on the shared stream.
     expect(out.usd).toBeCloseTo(0.001, 6)
     expect(ctx.spans.totalUsd()).toBeCloseTo(0.005, 6)
@@ -252,7 +252,7 @@ describe("investigate", () => {
       { type: "tool-call" as const, toolCallId: id, toolName, input: JSON.stringify(input) },
     ]
 
-    // The model writes `from: "example.com"` — the anchor, named the way it thinks of it,
+    // The model writes `from: "example.com"`, the anchor, named the way it thinks of it,
     // which is exactly what the live stripe.com run did on all eight of its edges.
     const model = new MockLanguageModelV4({
       doGenerate: async ({ prompt }) => {
@@ -260,7 +260,7 @@ describe("investigate", () => {
 
         // Read the handle out of the transcript rather than hardcoding one. A real model cites
         // what it was just handed. Hardcoding `ev1` made this test depend on which tool happened
-        // to record first — and when `search` began recording every hit so the whole result bag
+        // to record first, and when `search` began recording every hit so the whole result bag
         // is citable, the numbering shifted and the test broke on an implementation detail
         // rather than on a behaviour. Prefer a fetched page (it reports `bytes`); fall back to
         // the last handle seen.
@@ -312,7 +312,7 @@ describe("investigate", () => {
 
     const out = await investigate({ anchor: "example.com", mission: "find head-on rivals", ctx, model, maxSteps: 6 })
 
-    // The anchor is a real entity on the map — the one everything else is stated against.
+    // The anchor is a real entity on the map, the one everything else is stated against.
     const anchor = ctx.graph.nodes.get("company:example.com")!
     expect(anchor).toBeDefined()
     expect(anchor.kind).toBe("company")

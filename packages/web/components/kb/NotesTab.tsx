@@ -6,7 +6,7 @@ import { groupLabel, nodeTypeOf, TYPE_CSS } from "@/lib/nodeTypes";
 import { NodeGlyph, glyphForNotePath } from "@/components/icons";
 import { NoteView } from "./NoteView";
 
-/* PORT NOTE — ported verbatim except for two things.
+/* port NOTE, ported verbatim except for two things.
    The sidebar now shows the classifier's RELATION beside each entity instead of
    a bare number, because "competitor" is what a reader is scanning for and the
    number is only a rank derived from it (see lib/kb-from-run.ts). Entities the

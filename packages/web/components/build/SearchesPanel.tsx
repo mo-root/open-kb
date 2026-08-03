@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 /**
  * Every question the run asked, why it asked it, and what came back.
  *
- * The rest of the build view reports aggregates — "580 results, 88 hosts" — and an
+ * The rest of the build view reports aggregates, "580 results, 88 hosts", and an
  * aggregate is not something a reader can check. Everything downstream is derived
  * from these rows: the hosts, the classifications, the map. This is the raw
  * material, so it is the one panel that makes the run auditable rather than
@@ -25,7 +25,7 @@ export interface SearchView {
   query: string;
   intent: string;
   platform: string;
-  /** The model's stated reason for asking — written before any result existed. */
+  /** The model's stated reason for asking, written before any result existed. */
   why: string;
   ok: boolean;
   error?: string;
@@ -35,7 +35,7 @@ export interface SearchView {
 }
 
 /** Reads a `searched` frame off the results stream. Returns null on anything else,
- *  in the same defensive style as the other readers — an unrecognised frame is
+ *  in the same defensive style as the other readers, an unrecognised frame is
  *  dropped, never rendered as an empty search that looks like a failed one. */
 export function readSearched(v: unknown): SearchView | null {
   if (!v || typeof v !== "object") return null;

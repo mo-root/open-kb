@@ -33,22 +33,16 @@ import {
 /**
  * The map surface: one domain in, a live sweep out.
  *
- * PORT NOTE. This is v1's BuildWorkflow with its engine replaced. What changed:
+ * v1's BuildWorkflow with its engine replaced. `POST /api/map` starts a plain
+ * async function against an in-memory registry (lib/runs.ts) instead of a
+ * durable workflow; the surface only ever knew about NDJSON, so nothing below
+ * changed. v1 also gated on a per-run dollar limit, where this bounds a run by
+ * query count.
  *
- *  1. NO VERCEL WORKFLOW. v1 started a run with `start(buildWorkflow)` from
- *     `workflow/api` and read it back through `getRun(id).getReadable({ns})`.
- *     `POST /api/map` now starts a plain async function against an in-memory
- *     registry (lib/runs.ts). Everything below this line is unchanged by that,
- *     which is the point — the surface only ever knew about NDJSON.
- *  2. NO BUDGET CEILING. v1's gate was a per-run dollar limit, so its header
- *     showed spend against that number. This engine has no ceiling; what bounds
- *     a run is the QUERY COUNT, which is also the only lever that matters, so
- *     that is the second input.
+ * Five independent NDJSON streams, so the verbose trace channel cannot slow the
+ * cost readout:
  *
- * The run is read over five independent NDJSON streams, so the verbose trace
- * channel can never slow the cost readout down:
- *
- *   /api/run/{id}/stream               results  (understanding · planned · ranked · complete)
+ *   /api/run/{id}/stream               results
  *   /api/run/{id}/stream?ns=progress   stage + status
  *   /api/run/{id}/stream?ns=agent      the model's own output
  *   /api/run/{id}/stream?ns=cost       { usd, tokens, serpCalls, unlockerCalls }
@@ -56,12 +50,12 @@ import {
  */
 
 /**
- * Read one namespaced NDJSON stream, RECONNECTING until the caller aborts.
+ * Read one namespaced NDJSON stream, reconnecting until the caller aborts.
  *
- * THE FAILURE THIS FIXES. A serverless response caps at 300s, so the response
+ * THE failure this fixes. A serverless response caps at 300s, so the response
  * ends after about five minutes while a run keeps going. A single fetch saw
  * `done` and stopped, so the rail sat on one stage for the rest of a run that
- * was working perfectly — the product looked broken while doing exactly what it
+ * was working perfectly, the product looked broken while doing exactly what it
  * was asked.
  *
  * `startIndex` is what makes the reconnect lossless: the count of frames already
@@ -76,10 +70,10 @@ async function readNdjson(
   isOver: () => Promise<boolean> = async () => true,
 ): Promise<void> {
   let received = 0;
-  // CONSECUTIVE empty reconnects, not total attempts.
+  // consecutive empty reconnects, not total attempts.
   //
-  // THE FAILURE THIS FIXES. The counter used to be the loop's own index, so
-  // every reconnect — including the ones that DELIVERED — counted toward giving
+  // THE failure this fixes. The counter used to be the loop's own index, so
+  // every reconnect, including the ones that delivered, counted toward giving
   // up. The results stream emits `understanding` and `planned` in its first
   // seconds and then nothing for the minutes of sweep and classification, so it
   // was already several iterations in when the silence began and quit shortly
@@ -95,7 +89,7 @@ async function readNdjson(
       continue;
     }
     quiet += 1;
-    // Silence is not the end of a run — it is what the middle of one looks
+    // Silence is not the end of a run, it is what the middle of one looks
     // like. Only the run itself can say, so it is asked.
     if (quiet > 3 && (await isOver())) return;
     await new Promise((r) => setTimeout(r, Math.min(8000, 500 * 2 ** Math.min(quiet, 5))));
@@ -146,11 +140,11 @@ async function readOnce(
  * reader picks an intent and sees what it costs, rather than picking a number and
  * discovering what it bought.
  *
- * The numbers are anchored on runs we paid for, and they are RANGES because the
+ * The numbers are anchored on runs we paid for, and they are ranges because the
  * count below is a starting budget rather than a total: the agent assesses the
  * map after each wave and fires more queries at whatever looks thin, so a run
  * that finds a market with an obvious hole in it costs more than one that does
- * not. Measured anchors — 12 queries → 4½ min and $0.35; 50 queries → $1.26.
+ * not. Measured anchors, 12 queries → 4½ min and $0.35; 50 queries → $1.26.
  *
  * These were badly stale once. They were written when a query meant one SERP
  * call and a run meant one wave, and they survived both changes unchanged,
@@ -254,8 +248,8 @@ export function BuildWorkflow() {
         | { runId?: string; error?: string }
         | null;
       if (!res.ok || !body?.runId) {
-        // The API rejects an input that names no company BEFORE starting a run,
-        // and that message is the useful one — not "HTTP 400".
+        // The API rejects an input that names no company before starting a run,
+        // and that message is the useful one, not "HTTP 400".
         setErrorText(body?.error ?? `HTTP ${res.status}`);
         setRunning(false);
         return;
@@ -335,15 +329,15 @@ export function BuildWorkflow() {
 
     // When the results stream closes without a `complete` frame the run threw,
     // or the connection dropped. Either way the surface must stop claiming to be
-    // live — a spinner that never ends is the failure mode this guards. Only the
-    // CURRENT run may clear the flag; an abort caused by a newer run must not.
+    // live, a spinner that never ends is the failure mode this guards. Only the
+    // current run may clear the flag; an abort caused by a newer run must not.
     void readNdjson(`/api/run/${started.runId}/stream`, onResult, ctrl.signal, runIsOver)
       .catch(() => {})
       .finally(() => {
         if (abort.current !== ctrl) return;
         setRunning(false);
-        // THE RESULT MUST NOT DEPEND ON CATCHING A FRAME. Ask the run for its
-        // own summary — the same object the `complete` frame carries, held by
+        // THE result must NOT depend ON catching A frame. Ask the run for its
+        // own summary, the same object the `complete` frame carries, held by
         // the registry rather than by whoever happened to be watching.
         void (async () => {
           const r = await fetch(`/api/run/${started.runId}`, { signal: ctrl.signal }).catch(() => null);

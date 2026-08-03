@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 
-/* Sparkline — a hand-rolled SVG micro-line for a small series (a stat-tile
+/* Sparkline, a hand-rolled SVG micro-line for a small series (a stat-tile
    trend or a distribution profile). 2px round-joined stroke, optional 10%
    area wash and an end marker carrying a 2px surface ring so it stays legible
    where it crosses gridlines or other marks (dataviz mark specs). Pure render,
@@ -19,7 +19,7 @@ export interface SparklineProps {
   /** Draw the filled end marker with a surface ring. Default true. */
   showEnd?: boolean;
   strokeWidth?: number;
-  /** Surface colour for the end-dot ring — match the card behind the spark. */
+  /** Surface colour for the end-dot ring, match the card behind the spark. */
   surface?: string;
   /** "none" + a `w-full` class lets the spark stretch fluidly to its
    *  container; the stroke stays crisp via non-scaling-stroke. Default "meet". */

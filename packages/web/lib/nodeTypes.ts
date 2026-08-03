@@ -40,7 +40,7 @@ export const TYPE_COLOR: Record<NodeType, string> = {
 }
 
 /** Canonical CSS colour per type: the --type-* var when defined, else the hex
- *  above. Use THIS in styles and canvas fallbacks — never inline the var+hex
+ *  above. Use this in styles and canvas fallbacks, never inline the var+hex
  *  pair locally, so the palette can only drift in one place. */
 export const TYPE_CSS: Record<NodeType, string> = {
   product: `var(--type-product, ${TYPE_COLOR.product})`,

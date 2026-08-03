@@ -3,7 +3,7 @@ import type { Span, SpanStream } from "@open-kb/core"
 /**
  * How narration rides the span log.
  *
- * The run has exactly one append-only log — `SpanStream` — and everything a
+ * The run has exactly one append-only log, `SpanStream`, and everything a
  * viewer reads comes off it, so a reader that reconnects mid-run replays the
  * same sequence a reader that was there from the start saw. That log's unit is
  * a `Span`: a thing the run DID, with a duration and a price.
@@ -16,7 +16,7 @@ import type { Span, SpanStream } from "@open-kb/core"
  *
  * So they ride as spans whose `name` is prefixed `ui:`, carrying their payload
  * as JSON in `argsDigest`. The adapter routes those verbatim to the namespace
- * named after the prefix and — critically — never counts them as tool calls,
+ * named after the prefix and, critically, never counts them as tool calls,
  * which is what keeps `serpCalls` equal to the number of searches actually
  * bought.
  */
@@ -24,8 +24,8 @@ import type { Span, SpanStream } from "@open-kb/core"
 export const UI_PREFIX = "ui:"
 
 /** The namespaces narration can be addressed to. `cost` and `trace` are not
- *  here on purpose: both are DERIVED from real spans, so nothing may inject a
- *  cost line by hand — a hand-written cost frame is how a run reports spending
+ *  here on purpose: both are derived from real spans, so nothing may inject a
+ *  cost line by hand, a hand-written cost frame is how a run reports spending
  *  it never did. */
 export type UiNamespace = "progress" | "agent" | "results"
 

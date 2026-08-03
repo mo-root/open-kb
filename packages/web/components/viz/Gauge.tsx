@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 
-/* Gauge — a single ratio against a limit, drawn as a 240° arc dial (dataviz:
+/* Gauge, a single ratio against a limit, drawn as a 240° arc dial (dataviz:
    a meter, not a one-slice pie). The fill arc rides on a lighter same-ramp
    track so the state reads across the whole sweep; round caps, one hue. The
    centre carries the value as a proportional hero-style number (never tabular
@@ -35,7 +35,7 @@ export interface GaugeProps {
   thickness?: number;
   /** Fill colour (severity or a brand token). Default: primary accent. */
   color?: string;
-  /** Unfilled track — a lighter step of the same ramp. */
+  /** Unfilled track, a lighter step of the same ramp. */
   trackColor?: string;
   /** Small label under the number. */
   label?: string;

@@ -2,7 +2,7 @@ import { getStoredRun } from "@/lib/runs"
 import { noteOf } from "@/lib/kb-from-run"
 
 /**
- * One entity, whole — what `NoteView` renders.
+ * One entity, whole, what `NoteView` renders.
  *
  * `?path=` is the node id, which is shaped like a v1 note path
  * ("players/postmarkapp.com.md"). It never touches the filesystem: the run is

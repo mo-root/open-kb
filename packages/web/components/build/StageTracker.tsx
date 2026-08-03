@@ -6,7 +6,7 @@ import {
   type StageState,
 } from "./types";
 
-/* The run's spine. Ported from public-kb's StageTracker — same numbered
+/* The run's spine. Ported from public-kb's StageTracker, same numbered
    markers, same connecting rule, same chip row — widened to this engine's nine
    stages and given the one thing the old rail lacked: a sentence under the
    ACTIVE stage saying what it is doing. "Sweep" on its own tells a reader
@@ -59,8 +59,8 @@ export function StageTracker({
             {i < STAGES.length - 1 && (
               <span
                 // 20px, not 8px. The rule starts 24px down and the next marker
-                // begins 4px past this item, so `100%-8px` ran 12px INTO a 20px
-                // badge — and being absolute over static markers, it painted a
+                // begins 4px past this item, so `100%-8px` ran 12px into a 20px
+                // badge, and being absolute over static markers, it painted a
                 // hairline straight through the 02/03/04 digits.
                 className={`absolute left-[11px] top-6 h-[calc(100%-20px)] w-px ${
                   state === "done" ? "bg-emerald-500/30" : "bg-slate-800"

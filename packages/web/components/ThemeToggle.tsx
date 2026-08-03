@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 
 // The theme switch: flips document.documentElement.dataset.theme and persists
-// the choice to localStorage 'kb-theme' (read pre-paint by the no-FOUC script in
-// layout.tsx). LIGHT is the product default — the paper-white dashboard — so the
+// the choice to localStorage 'kb-theme' (read pre-paint by the no-fouc script in
+// layout.tsx). light is the product default, the paper-white dashboard, so the
 // stored/attribute value is only ever "dark" when the user has opted in.
 //
 // Theme is a client-only fact (it lives on <html> before React mounts), so the
@@ -26,7 +26,7 @@ export function ThemeToggle({ className = "" }: { className?: string }) {
     try {
       localStorage.setItem("kb-theme", next);
     } catch {
-      /* private mode / storage disabled — the toggle still works for the session */
+      /* private mode / storage disabled, the toggle still works for the session */
     }
     setTheme(next);
   }

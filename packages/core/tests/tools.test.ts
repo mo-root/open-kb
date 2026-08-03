@@ -110,7 +110,7 @@ describe("read tool", () => {
     const c = ctx()
     const t = makeTools(c)
     // The fetch tool never hands a blocked page's handle to the model (see the fetch tests
-    // above) — but the run still recorded it internally. `read` must refuse it the same way
+    // above), but the run still recorded it internally. `read` must refuse it the same way
     // `remember` would, and say why, rather than pretending the page has content.
     const rec = c.evidence.record({ url: "https://stripe.com/radar", text: "", status: "blocked", reason: "empty-body" })
     const out = await t.read.execute!({ handle: rec.handle, offset: 0 }, {} as never)
@@ -215,7 +215,7 @@ describe("remember tool", () => {
       ],
     }, {} as never)
 
-    // The two provable nodes were kept, and are really on the graph — not just counted.
+    // The two provable nodes were kept, and are really on the graph, not just counted.
     expect(out.written.nodes).toBe(2)
     expect(c.graph.nodes.has("company:rival")).toBe(true)
     expect(c.graph.nodes.has("capability:anti-bot-bypass-api")).toBe(true)
@@ -253,7 +253,7 @@ describe("remember, the kinds the model is told about", () => {
     // A kind the model is never told about is a kind that stays empty. `capability` and `buyer`
     // were in this enum for the whole of the live stripe.com run and nothing said what they were
     // for; that run recorded four nodes and all four were companies. Being in the enum is not
-    // enough — the prose the model reads has to name the kind too.
+    // enough, the prose the model reads has to name the kind too.
     const field = kindField()
     const described = `${makeTools(ctx()).remember.description ?? ""} ${field.description ?? ""}`
     for (const kind of NODE_KINDS) {
@@ -324,7 +324,7 @@ describe("remember, edge endpoints", () => {
     const t = makeTools(c)
     const h = await pages(t)
 
-    // Nodes and their edge in ONE call, the way a model actually writes a finding.
+    // Nodes and their edge in one call, the way a model actually writes a finding.
     const out = await t.remember.execute!(
       {
         nodes: [company("checkout.com", h.checkout, CHECKOUT_QUOTE), company("adyen.com", h.adyen, ADYEN_QUOTE)],

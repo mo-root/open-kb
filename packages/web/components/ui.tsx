@@ -88,7 +88,7 @@ export function SectionHead({
 
 /**
  * Console micro header (level B): platform / day / group labels inside a
- * section — one rank, one style, everywhere.
+ * section, one rank, one style, everywhere.
  */
 export function MicroHead({ title, count }: { title: string; count?: number }) {
   return (
@@ -103,7 +103,7 @@ export function MicroHead({ title, count }: { title: string; count?: number }) {
 
 /**
  * A related entity rendered as a chip tinted by its node type. `dead` marks a
- * target with nothing behind it (rendered muted, non-interactive) — in v1 an
+ * target with nothing behind it (rendered muted, non-interactive), in v1 an
  * unresolved wikilink, here an entity the map named but never placed.
  */
 export function TypeChip({
@@ -168,9 +168,9 @@ export function relevanceTone(n: number): string {
 }
 
 /**
- * PORT NOTE — v1 called this "rel", short for relevance, and its number was
+ * port NOTE, v1 called this "rel", short for relevance, and its number was
  * measured during the build. This engine measures no such thing: the number is
- * a PLACEMENT rank derived from the relation the classifier assigned (see
+ * a placement rank derived from the relation the classifier assigned (see
  * lib/kb-from-run.ts's RELATION_WEIGHT). The badge therefore says "place", and
  * the tooltip says what it is. The component name and the `relevance` field
  * keep v1's spelling because they are the contract every KB surface is written

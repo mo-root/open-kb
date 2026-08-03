@@ -10,7 +10,7 @@ import { RELATIONS, ENTITY_KINDS } from "../src/sweep.js"
  *
  * Every instruction a paid model run receives lives in `prompts/` so it can be
  * read and edited without touching TypeScript. That only stays true if something
- * checks — the four sweep prompts spent their whole life as template literals
+ * checks, the four sweep prompts spent their whole life as template literals
  * buried in `sweep.ts` while `prompts/` sat beside them describing an agent that
  * this pipeline never runs, and nothing noticed.
  *
@@ -32,7 +32,7 @@ describe("the sweep's prompts", () => {
   it.each(AGENTS)("%s composes with its doctrine", (agent) => {
     const composed = composePrompt(agent, join(root(), "agents"), join(root(), "doctrine"))
     expect(composed.length).toBeGreaterThan(200)
-    // Placeholders survive composition — they are filled at call time, not here.
+    // Placeholders survive composition, they are filled at call time, not here.
     expect(composed).toMatch(/\{\{\w+\}\}/)
   })
 

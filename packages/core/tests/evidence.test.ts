@@ -26,7 +26,7 @@ describe("EvidenceStore", () => {
   })
 
   it("refuses to cite a page that was blocked", () => {
-    // Blocked pages are not citable because the fetch did not succeed — not because a blocked
+    // Blocked pages are not citable because the fetch did not succeed, not because a blocked
     // page never has text. (A thin-render block, for example, can carry up to ~199 characters of
     // real text; see the next test.) This particular case just happens to have none either.
     const s = new EvidenceStore(NOW)
@@ -89,7 +89,7 @@ describe("EvidenceStore", () => {
   it("refuses a quote just under the minimum length, even when it is a genuine substring", () => {
     const s = new EvidenceStore(NOW)
     const rec = s.record({ url: "https://a.com/p", text: "Acme sells anti-bot bypass APIs.", status: "found" })
-    // "Acme se" is 7 characters and is a real substring of the stored text — length alone must refuse it.
+    // "Acme se" is 7 characters and is a real substring of the stored text, length alone must refuse it.
     expect(() => s.cite(rec.handle, "Acme se")).toThrow(CitationError)
   })
 
@@ -103,7 +103,7 @@ describe("EvidenceStore", () => {
   it("measures the minimum length after squashing whitespace, closing the padding workaround", () => {
     const s = new EvidenceStore(NOW)
     const rec = s.record({ url: "https://a.com/p", text: "Acme sells anti-bot bypass APIs.", status: "found" })
-    // Raw length is 9 (>= 8), but it squashes down to "a b" (3 chars) — the length that matters.
+    // Raw length is 9 (>= 8), but it squashes down to "a b" (3 chars), the length that matters.
     expect(() => s.cite(rec.handle, "a       b")).toThrow(CitationError)
   })
 })

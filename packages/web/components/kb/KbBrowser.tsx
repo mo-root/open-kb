@@ -75,7 +75,7 @@ export function KbBrowser({
   const queries = manifestNum(manifest, "queries");
   const hosts = manifestNum(manifest, "hosts");
 
-  /* PORT NOTE — v1's "O1" bug, and why it cannot recur here.
+  /* port NOTE, v1's "O1" bug, and why it cannot recur here.
      Upstream this line read `manifest.player_notes ?? counts.player`, with a
      long comment about `manifest.players` being the number of player HOMEPAGES
      HARVESTED (8) while `player_notes` was the number of notes WRITTEN (44) —

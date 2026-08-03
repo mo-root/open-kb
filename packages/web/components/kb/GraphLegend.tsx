@@ -7,19 +7,19 @@ import { TYPE_CSS, TYPE_LABEL, type NodeType } from "@/lib/nodeTypes";
  * Corner overlay for the graph: one row per node type present in the map —
  * colour swatch + glyph + label + count. Rows are toggles: click to hide or
  * show that type on the canvas. Colours come from the shared TYPE_CSS map in
- * lib/nodeTypes — the single palette source — so the legend can never drift
+ * lib/nodeTypes, the single palette source, so the legend can never drift
  * from the canvas or the rest of the app.
  *
- * PORT NOTE — THE FOOTNOTE EARNS ITS LINE.
+ * port NOTE, THE footnote earns ITS line.
  *
  * v1's read "counts = drawn nodes · size = relevance · ring = company hub ·
  * players wear their favicon". Two of those four are no longer true here: the
- * size encodes PLACEMENT (a rank derived from the classifier's relation, not a
- * measured relevance — see lib/kb-from-run.ts) and the ring marks the ANCHOR.
+ * size encodes placement (a rank derived from the classifier's relation, not a
+ * measured relevance, see lib/kb-from-run.ts) and the ring marks the anchor.
  *
  * A third line is added, because the legend is exactly where the palette's one
  * lie has to be confessed: `communities` is drawn for three different
- * classifier kinds — community, publisher and directory — since the `--type-*`
+ * classifier kinds, community, publisher and directory, since the `--type-*`
  * tokens are fixed at four hues and none of the other three would be honest for
  * a newsletter or a vendor directory. Every node's card names its real kind.
  */

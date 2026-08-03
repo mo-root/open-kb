@@ -25,7 +25,7 @@ describe("brightDataSearch", () => {
       return n === 1 ? new Response("boom", { status: 500 }) : new Response(JSON.stringify({ organic: [] }), { status: 200 })
     })
     // pages: 1 so "the first call" and "the whole query" are the same thing. With
-    // the default of 3 this would assert something else entirely — that a query
+    // the default of 3 this would assert something else entirely, that a query
     // whose first page failed and whose other two succeeded counts as failed,
     // which is not what we want and not what the code does.
     const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 1 })
@@ -55,7 +55,7 @@ describe("brightDataSearch", () => {
     expect(seen.some((u) => !u.includes("start="))).toBe(true) // page 1 carries no offset
     expect(seen.some((u) => u.includes("start=10"))).toBe(true)
     expect(seen.some((u) => u.includes("start=20"))).toBe(true)
-    // One result per query, not three — the pages are folded back together.
+    // One result per query, not three, the pages are folded back together.
     expect(r!.hits).toHaveLength(3)
     expect(r!.usd).toBeCloseTo(0.0045) // billed per page, because each page is a call
   })
@@ -97,7 +97,7 @@ describe("brightDataFetch", () => {
   })
 
   it("returns a zero-byte 200 unchanged so the sniffer can judge it", async () => {
-    // MEASURED: this is exactly what stripe.com does. The provider must not paper over it.
+    // measured: this is exactly what stripe.com does. The provider must not paper over it.
     const fetchImpl = vi.fn(async () => new Response("", { status: 200 }))
     const f = brightDataFetch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch })
     const r = await f.get("https://stripe.com/radar", "unlocked")
@@ -117,7 +117,7 @@ describe("brightDataFetch", () => {
 
   it("does not throw and charges nothing when the unlocked request never reaches Bright Data", async () => {
     // A connection that never opens (DNS failure, reset, timeout before any response) is a
-    // call Bright Data never billed — unlike a completed request that comes back as a 500,
+    // call Bright Data never billed, unlike a completed request that comes back as a 500,
     // which stays priced. Charging for this would corrupt the run's cost accounting.
     const fetchImpl = vi.fn(async () => {
       throw new Error("fetch failed: connection reset")

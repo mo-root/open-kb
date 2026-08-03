@@ -38,9 +38,9 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      // The no-FOUC script below stamps data-theme on <html> before paint, so
+      // The no-fouc script below stamps data-theme on <html> before paint, so
       // the server markup (no attribute) and the pre-hydration DOM differ by one
-      // attribute — expected, and suppressed here.
+      // attribute, expected, and suppressed here.
       suppressHydrationWarning
       className={`${plexSans.variable} ${plexMono.variable} ${plexSerif.variable} h-full antialiased`}
     >

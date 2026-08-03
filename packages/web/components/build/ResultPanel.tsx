@@ -2,7 +2,7 @@ import { BarMeter, Donut } from "@/components/viz";
 import { CostBreakdown } from "./CostBreakdown";
 import { formatDuration, formatUsd, readRunCost } from "./types";
 
-/* How a run ends. Ported from v1's ResultPanel — same badge-and-stat-grid
+/* How a run ends. Ported from v1's ResultPanel, same badge-and-stat-grid
    layout, same three endings — and re-keyed to this engine's outcome.
 
    v1's ending was a knowledge base: notes written, citations verified,
@@ -134,7 +134,7 @@ export function ResultPanel({
   }
 
   // A run that came back with nothing is NOT a failure and must not wear the
-  // failure colour — but it must be unmistakable, because an empty map with a
+  // failure colour, but it must be unmistakable, because an empty map with a
   // green badge reads as a quiet market rather than as a sweep that missed.
   if ((result.kept ?? 0) === 0) {
     return (

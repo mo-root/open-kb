@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 
-/* BarMeter — a labelled horizontal bar breakdown: magnitude across a few
+/* BarMeter, a labelled horizontal bar breakdown: magnitude across a few
    categories (players by kind, listening layers). Every bar is direct-labelled
    with its name and value, so colour is a reinforcing channel, never the sole
    identity — which keeps adjacent hues gate-safe (dataviz series ladder). Bars

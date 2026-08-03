@@ -3,7 +3,7 @@ import { sweep } from "@open-kb/sweep"
 import { createRun, failRun, finishRun } from "@/lib/runs"
 
 /**
- * Start a map. Returns as soon as the run has an id — the sweep itself runs in
+ * Start a map. Returns as soon as the run has an id, the sweep itself runs in
  * the background, writing into that run's `SpanStream`, and the browser watches
  * it through `/api/run/{id}/stream`.
  *

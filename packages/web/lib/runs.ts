@@ -7,38 +7,26 @@ import type { SweepResult } from "@open-kb/sweep"
 /**
  * Every run this server is holding.
  *
- * WHAT THIS REPLACES. v1 started a run with `start(buildWorkflow)` and read it
- * back with `getRun(id).getReadable({ namespace })` — the durable-workflow
- * platform owned the run's identity, its stream and its return value, and in
- * exchange every step had to live inside a `"use step"` sandbox. That sandbox
- * is what strangled the orchestration this rewrite exists to free.
+ * v1 used a durable-workflow platform that owned each run's identity, stream
+ * and return value, and required every step to live in a `"use step"` sandbox.
+ * That sandbox is what this rewrite exists to escape, so what replaces it is a
+ * Map. A run is a plain async function writing into a `SpanStream`.
  *
- * So the platform is gone and this is what is left of it: a Map. A run is a
- * plain async function writing into a `SpanStream`; this holds the stream so a
- * browser can attach to it, and holds the result so a browser that attached too
- * late can still read the answer.
+ * The stream stays in memory: a restart forgets every live stream, and a stream
+ * only matters while a run is in flight.
  *
- * THE STREAM IS IN-MEMORY. THE ANSWER IS NOT.
+ * The result does not. A finished run is a knowledge base and /kb lists those,
+ * so a gallery that empties on every dev restart claims the work never
+ * happened. Finished runs are written to `runs/run-<id>.json`. No database, no
+ * schema, and `rm` is a valid uninstall.
  *
- * The registry above is still deliberately local: a restart forgets every live
- * stream, and a second server process shares none of them. That is the correct
- * trade for a stream — it is only interesting while a run is in flight.
- *
- * The RESULT is a different fact. A finished run is a knowledge base, /kb lists
- * knowledge bases, and a gallery that empties itself every time the dev server
- * restarts is a gallery that says the work never happened. So a run that
- * finishes is also written to `runs/run-<id>.json` — one JSON file per run,
- * under a directory that is already gitignored. That is the whole durability
- * story: no database, no schema, no migration, and a `rm` is a valid uninstall.
- *
- * `run-` prefixed on purpose. `runs/` already holds `sweep-*.json` written by
- * `scripts/sweep.ts` (a bare `SweepResult`, no envelope), and the loader must
- * not read one shape as the other.
+ * The `run-` prefix matters: `runs/` also holds `sweep-*.json` from
+ * `scripts/sweep.ts`, which is a bare `SweepResult` with no envelope.
  */
 
 export type RunStatus = "running" | "complete" | "failed"
 
-/** A finished run as it lands on disk — the registry's fields minus the stream,
+/** A finished run as it lands on disk, the registry's fields minus the stream,
  *  which is the one thing that cannot outlive the process. */
 export interface StoredRun {
   id: string
@@ -66,7 +54,7 @@ export interface RunRecord {
  * Held on `globalThis`, not in a module-level `const`.
  *
  * Next's dev server re-evaluates a route's module graph on edit, and a fresh
- * module instance means a fresh Map — every in-flight run would vanish from the
+ * module instance means a fresh Map, every in-flight run would vanish from the
  * registry while its background task carried on spending money into a stream
  * nobody could reach. The global survives the re-evaluation.
  */
@@ -110,7 +98,7 @@ export function finishRun(id: string, result: SweepResult): void {
   // Not awaited: the caller is the sweep's completion path, and a run that
   // succeeded must not be reported as failed because a disk write was slow.
   // A write that fails is logged and the run stays readable from memory until
-  // the process ends — losing the file is losing a listing, not losing work.
+  // the process ends, losing the file is losing a listing, not losing work.
   void persist(r).catch((e) => {
     console.error(`[runs] could not persist ${id}:`, e)
   })
@@ -140,8 +128,8 @@ function evict(): void {
  * Where the JSON goes.
  *
  * `next.config.ts` sets `OPENKB_RUNS_DIR` in the same Node process that then
- * serves every route — the same trick it already uses to read the repo-root
- * `.env` — so the normal path needs no guessing. The walk-up is the fallback
+ * serves every route, the same trick it already uses to read the repo-root
+ * `.env`, so the normal path needs no guessing. The walk-up is the fallback
  * for anything that imports this module outside a Next server (a script, a
  * test), and `<cwd>/runs` is the last resort.
  */
@@ -167,7 +155,7 @@ const FILE_PREFIX = "run-"
  * A run costing real money and half an hour of waiting should not be invisible in
  * the browser purely because of where it was started from, so the gallery adopts
  * those files too: the filename supplies the id, and the timings come from the
- * result the sweep already records. The two shapes stay distinct on disk — this
+ * result the sweep already records. The two shapes stay distinct on disk, this
  * reads one as the other deliberately, rather than by accident.
  */
 const CLI_PREFIX = "sweep-"
@@ -175,13 +163,13 @@ const CLI_PREFIX = "sweep-"
 function adoptCliRun(filename: string, parsed: unknown): StoredRun | null {
   if (!parsed || typeof parsed !== "object") return null
   const r = parsed as Partial<SweepResult> & { stats?: Partial<SweepResult["stats"]> }
-  // `anchor`, not `domain` — the sweep names the company it started from, and the
+  // `anchor`, not `domain`, the sweep names the company it started from, and the
   // registry names the thing a run was asked about. Same value, different word.
   if (typeof r.anchor !== "string" || !Array.isArray(r.entities)) return null
 
   const id = filename.slice(CLI_PREFIX.length, -".json".length)
   const seconds = r.stats?.seconds ?? 0
-  // The CLI stamps its filenames `<domain>-YYYYMMDDHHMM`, so the run's real end
+  // The CLI stamps its filenames `<domain>-yyyymmddhhmm`, so the run's real end
   // time is recoverable from the id and the gallery can order CLI runs against
   // each other honestly. Files written before the stamp existed fall back to
   // `Date.now()`: the CLI records a duration, not wall-clock instants, and an
@@ -209,10 +197,10 @@ function adoptCliRun(filename: string, parsed: unknown): StoredRun | null {
  * alphabet is refused rather than escaped: a traversal here would read an
  * arbitrary JSON file off the host and serve it as a knowledge base.
  *
- * Both the LIST and the READ go through this. They used not to, and the
+ * Both the list and the read go through this. They used not to, and the
  * mismatch was a live bug: a file whose id failed the check was still listed by
  * `listStoredRuns` (which only read the filename) and then 404'd when the
- * reader clicked it — a gallery card that opens onto nothing.
+ * reader clicked it, a gallery card that opens onto nothing.
  */
 function isRunId(id: unknown): id is string {
   return typeof id === "string" && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id)
@@ -238,7 +226,7 @@ async function persist(r: RunRecord): Promise<void> {
   await writeFile(fileFor(r.id), JSON.stringify(stored, null, 2), "utf8")
 }
 
-/** A record only counts as stored once it has a result — a run that is still
+/** A record only counts as stored once it has a result, a run that is still
  *  in flight has nothing to read. */
 function storedFrom(r: RunRecord): StoredRun | null {
   if (!r.result || r.status !== "complete") return null
@@ -271,7 +259,7 @@ function isStoredRun(v: unknown): v is StoredRun {
  *
  * Memory wins over disk for the same id: the in-process record is the one a
  * just-finished run is readable from before its file has landed. A file that
- * does not parse is SKIPPED and logged rather than thrown — one corrupt run
+ * does not parse is skipped and logged rather than thrown, one corrupt run
  * must not take the whole gallery down with it.
  */
 export async function listStoredRuns(): Promise<StoredRun[]> {
@@ -302,7 +290,7 @@ export async function listStoredRuns(): Promise<StoredRun[]> {
   return [...byId.values()].sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0))
 }
 
-/** One completed run. Memory first — a run that finished a moment ago is
+/** One completed run. Memory first, a run that finished a moment ago is
  *  readable before its file lands. */
 export async function getStoredRun(id: string): Promise<StoredRun | null> {
   const live = runs.get(id)
@@ -314,7 +302,7 @@ export async function getStoredRun(id: string): Promise<StoredRun | null> {
     const parsed: unknown = JSON.parse(await readFile(fileFor(id), "utf8"))
     if (isStoredRun(parsed)) return parsed
   } catch {
-    // not a browser-started run — fall through and try the CLI's shape
+    // not a browser-started run, fall through and try the CLI's shape
   }
   const name = `${CLI_PREFIX}${id}.json`
   try {

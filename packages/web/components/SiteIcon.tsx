@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { NodeGlyph } from "@/components/icons";
 
-/* SiteIcon — a competitor / player favicon chip.
+/* SiteIcon, a competitor / player favicon chip.
 
    Renders the site's favicon from DuckDuckGo's icon proxy
    (`icons.duckduckgo.com/ip3/<domain>.ico`) — privacy-friendlier than Google's
@@ -42,7 +42,7 @@ export function domainFromSlug(slug?: string | null): string {
   return `${s.slice(0, i)}.${s.slice(i + 1)}`;
 }
 
-/** First alphanumeric of a name, uppercased — the monogram fallback glyph. */
+/** First alphanumeric of a name, uppercased, the monogram fallback glyph. */
 function monogram(name?: string): string {
   const m = (name ?? "").match(/[a-z0-9]/i);
   return m ? m[0].toUpperCase() : "";
@@ -53,7 +53,7 @@ export interface SiteIconProps {
   domain?: string | null;
   /** Box edge in px (width === height). Default 16. */
   size?: number;
-  /** Competitor name — used for the alt text and the monogram fallback. */
+  /** Competitor name, used for the alt text and the monogram fallback. */
   name?: string;
   className?: string;
 }
@@ -65,7 +65,7 @@ export function SiteIcon({
   className = "",
 }: SiteIconProps) {
   const host = normalizeDomain(domain);
-  // Track the host that FAILED (not a bare boolean): when `domain` changes as a
+  // Track the host that failed (not a bare boolean): when `domain` changes as a
   // list row is reused, `errored === host` is false again, so the new favicon
   // is retried without a manual reset effect.
   const [errored, setErrored] = useState<string | null>(null);
