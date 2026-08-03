@@ -324,9 +324,26 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     return found
   }
 
-  for (const u of [`https://${anchor}/llms.txt`, `https://docs.${anchor}/llms.txt`, `https://${anchor}/`]) {
+  const surfaces = [`https://${anchor}/llms.txt`, `https://docs.${anchor}/llms.txt`, `https://${anchor}/`]
+  for (const u of surfaces) {
     await read(u, "direct")
   }
+
+  // Try the free surfaces again before spending anything. A run once died here
+  // reporting a company unreadable when all three direct fetches AND the unlocker
+  // failed inside the same second — a network blip, not a fact about the site;
+  // the same domain read fine minutes later. Direct fetches cost nothing, so
+  // there was never a reason for one bad instant to end a run. Two seconds of
+  // patience is cheaper than a wasted map.
+  if (!pages.length) {
+    say("understand", `nothing readable on the first pass — waiting a moment and trying again`)
+    await new Promise((r) => setTimeout(r, 2_000))
+    for (const u of surfaces) {
+      if (signal?.aborted) throw new Error("aborted")
+      await read(u, "direct")
+    }
+  }
+
   if (!pages.length) {
     // A site that refuses an anonymous GET is the common case, not an
     // exceptional one, and giving up here would end the run over a bot wall.
@@ -335,7 +352,14 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     say("understand", `direct fetch found nothing — retrying ${anchor} through the unlocker`)
     await read(`https://${anchor}/`, "unlocked")
   }
-  if (!pages.length) throw new Error(`could not read ${anchor} — neither its own pages nor the unlocker returned readable text`)
+  if (!pages.length) {
+    throw new Error(
+      `could not read ${anchor}. Tried ${surfaces.join(", ")} directly (twice, two seconds apart) and ` +
+        `once through the unlocker; none returned readable text. If the site loads in a browser this is ` +
+        `most likely a temporary block or a network blip — the same domain has read fine minutes later. ` +
+        `Worth simply running again.`,
+    )
+  }
 
   const decomp = await call(
     "understand",
