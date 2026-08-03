@@ -58,7 +58,11 @@ export function StageTracker({
           <li key={stage} className="relative flex gap-3 pb-4">
             {i < STAGES.length - 1 && (
               <span
-                className={`absolute left-[11px] top-6 h-[calc(100%-8px)] w-px ${
+                // 20px, not 8px. The rule starts 24px down and the next marker
+                // begins 4px past this item, so `100%-8px` ran 12px INTO a 20px
+                // badge — and being absolute over static markers, it painted a
+                // hairline straight through the 02/03/04 digits.
+                className={`absolute left-[11px] top-6 h-[calc(100%-20px)] w-px ${
                   state === "done" ? "bg-emerald-500/30" : "bg-slate-800"
                 }`}
               />

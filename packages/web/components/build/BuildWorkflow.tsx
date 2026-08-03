@@ -538,7 +538,12 @@ export function BuildWorkflow() {
       {/* -------------------------------------------------- stages + panels -- */}
       {runId || errorText ? (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,300px)_minmax(0,1fr)]">
-          <div className="lg:sticky lg:top-20 lg:self-start">
+          {/* Capped and scrollable, matching NotesTab.tsx:57. A sticky element
+              taller than the viewport pins its TOP and strands everything past
+              the fold with no way to reach it — and this rail grows all run, one
+              chip per progress line, so on a Deep run `Classify` and `Map` were
+              unreachable exactly while they were the stages worth watching. */}
+          <div className="lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:self-start lg:overflow-y-auto">
             <div className="rounded-lg border border-slate-800 bg-slate-900/30 p-5">
               <div className="mb-4 font-mono text-[11px] uppercase tracking-wider text-slate-500">
                 pipeline

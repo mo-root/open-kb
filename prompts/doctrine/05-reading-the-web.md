@@ -47,9 +47,9 @@ party writing about it, often says more than its homepage would have.
 Record what a page names, not the page. A roundup listing ten vendors is valuable *because* it names
 ten — it is not one of them.
 
-The exception is the page that is itself a player: a forum, a subreddit, a conference, a trade body,
-the publication this market reads. Those are communities and they belong on the map. The question is
-not whether it is a page, it is whether the market would notice its absence.
+The exception is the page that is itself a player — a forum, a conference, the publication this
+market reads. The question is not whether it is a page, but whether the market would notice its
+absence.
 
 But do not judge a host from a search snippet. A vendor writing "the best alternatives to X" looks
 exactly like a publisher and is not one — it is a competitor spending money to position against X,

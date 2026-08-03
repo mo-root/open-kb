@@ -132,6 +132,31 @@ const Decomposition = z.object({
       does: z.string().describe("what this product does, stripped of the company's own naming"),
     }),
   ),
+  /**
+   * The products, grouped into the markets they actually sit in.
+   *
+   * De-branding was being applied to NAMING and not to STRUCTURE, and the
+   * structure is the company's SKU sheet — which is a sales artifact, not a map
+   * of markets. Measured: brightdata.com yields 9 products, of which Residential,
+   * Datacenter and ISP Proxies are three SKUs of one capability (route a request
+   * through an IP you do not own). They took three of ten query slots. SERP API,
+   * a genuinely separate market with its own rivals — SerpApi, Zenserp — took
+   * none. The budget went three times into one market and never into another.
+   *
+   * The grouping test is "would these have DIFFERENT competitors?", never "do
+   * these sound similar". Two SKUs a buyer picks between inside one purchase are
+   * one capability; two things bought by different teams are two, however close
+   * the words look.
+   */
+  capabilities: z
+    .array(
+      z.object({
+        name: z.string().describe("the capability in the market's words, no brand, no product name"),
+        does: z.string().describe("the job it does for the buyer, one line"),
+        covers: z.array(z.string()).describe("which of the products above this groups"),
+      }),
+    )
+    .describe("the products grouped into distinct markets — the unit the search budget is split across"),
   coinages: z
     .array(z.string())
     .describe("words this company invented — product names, brand terms. Queries must never contain these."),
@@ -156,6 +181,18 @@ const Entity = z.object({
   relation: z.enum(RELATIONS),
   why: z.string().describe("why it belongs on this map, stated against the anchor"),
 })
+
+/** What one query cost and what it returned. Persisted with the run, because
+ *  per-query yield only ever existed on the span stream — which dies with the
+ *  process — so every question about which SHAPES of query pay ("are ours too
+ *  long?") had to be answered from the query text alone, by eye. */
+export interface QueryYield {
+  q: string
+  intent: string
+  words: number
+  hits: number
+  ok: boolean
+}
 
 export type Decomposition = z.infer<typeof Decomposition>
 export type PlannedQuery = z.infer<typeof PlannedQuery>
@@ -482,7 +519,8 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   )
 
   say("understand", `sells: ${decomp.sells}`)
-  say("understand", `${decomp.products.length} products, ${decomp.coinages.length} coinages to avoid`)
+  say("understand", `${decomp.products.length} products → ${decomp.capabilities.length} distinct markets, ${decomp.coinages.length} coinages to avoid`)
+  for (const c of decomp.capabilities) think("understand", `capability — ${c.name}: ${c.does}`)
   think("understand", `sells — ${decomp.sells}`)
   think("understand", `buyer — ${decomp.buyer}`)
   for (const p of decomp.products) think("understand", `product — ${p.name}: ${p.does}`)
@@ -510,7 +548,9 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       target,
       sells: decomp.sells,
       buyer: decomp.buyer,
-      products: decomp.products.map((p) => p.does).join(" | "),
+      capabilities: decomp.capabilities
+        .map((c) => `${c.name} — ${c.does}${c.covers.length > 1 ? `  (covers ${c.covers.join(", ")})` : ""}`)
+        .join("\n  "),
       coinages: decomp.coinages.join(", "),
     }),
   )

@@ -44,6 +44,15 @@ market.
 in the results looks like an error — they are real companies, just not this market's. The only way
 to catch it is to ask whether what came back actually does the job the anchor does.
 
+**Too long.** Every term is ANDed, so each one multiplies the constraint.
+`HTTP 403 Forbidden on python requests but works in browser` is a sentence, not a query: it matches
+only the pages where someone wrote that sentence, and a market is not in those pages.
+
+Three to six words, at most one operator. A `site:` plus three quoted phrases is four simultaneous
+demands and the pages meeting all four are a rounding error; spend quotes on the one phrase carrying
+the meaning. A query that wants to say two things is two queries — splitting is free, over-
+constraining is not.
+
 ## Looseness brings publishers
 
 The vaguer the term, the more of your results are people writing *about* the market rather than

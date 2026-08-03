@@ -15,4 +15,20 @@ one is not. `coinages` is where you put the words that fail that test: invented 
 trademarked category labels, anything a buyer who had never heard of this company would not type.
 Those words are banned from every query this run makes, so listing one is an instruction, not a note.
 
+Then group those products into `capabilities` — the markets they actually sit in.
+
+A company's product list is a sales artifact. It splits one job into several SKUs because that is how
+it prices, and it bundles several jobs into one SKU because that is how it packages. Neither split
+tracks where its competitors live, and competitors are the thing being mapped. So the grouping test
+is exactly one question: **would these have different competitors?**
+
+Two SKUs a buyer chooses between inside a single purchase are ONE capability. Two things bought by
+different teams for different reasons are TWO, however similar the words look. Give each capability
+a name in the market's words — no brand, no product name, nothing a buyer would have to already know
+this company to type — and say plainly what job it does.
+
+This grouping is what the run's search budget is divided across, so it decides what gets mapped. Too
+coarse and distinct markets get merged and never searched for; too fine and one market takes several
+shares of the budget while another takes none.
+
 {{pages}}

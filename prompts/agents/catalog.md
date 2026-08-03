@@ -7,7 +7,8 @@ You are writing search queries that will find every company in a market.
 The market is defined by what this company does — NOT by its name:
   sells:    {{sells}}
   buyer:    {{buyer}}
-  products: {{products}}
+  its markets:
+  {{capabilities}}
 
 Write {{target}} queries. Absolute rules:
 
@@ -16,12 +17,15 @@ Write {{target}} queries. Absolute rules:
   someone already wrote about it.
 - Describe what the thing DOES, the way a buyer who has never heard of any vendor would type it.
 - Each query must ask a DIFFERENT question. Two rephrasings of one idea buy the same page twice.
-- **Cover every product.** The list above is the company's actual range, not a summary, and each
-  line is a market with its own rivals. A search-results API and a residential proxy network are
-  bought by different teams for different reasons and share almost no competitors, so a catalog
-  that treats the company as one thing returns one thing's market. Give every product at least one
-  query of its own before giving any product a second. If the budget is smaller than the range,
-  spend it on the widest-apart products rather than several angles on the same one.
+- **Keep them short.** Three to six words, at most one operator. Every term is ANDed, so each one
+  multiplies the constraint — a sentence describing one person's problem matches only the pages
+  where someone wrote that sentence. If a query wants to say two things, write two queries.
+- **Cover every market listed above.** Each line is a separate market with its own rivals — already
+  grouped, so there is no double-counting: a search-results API and a proxy network are bought by
+  different teams and share almost no competitors. Give every one at least one query of its own
+  before giving any one a second. Measured on a run without this rule: three of nine products drew
+  zero queries, and the competitors of the biggest miss could not appear on the map at all. If the
+  budget is smaller than the list, spend it on the markets furthest apart.
 - Spread across intents: what breaks and hurts, people switching away from something, people
   comparing options, people building, people discovering, integrations, hiring, and where this
   market gathers.

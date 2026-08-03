@@ -48,10 +48,9 @@ problem phrased the way they would phrase it at 2am, "best X subreddit", "X foru
 community", the conferences and trade bodies and trade publications that market runs on, the
 newsletter everyone in it reads.
 
-Record the place, not a post in it — a subreddit, a Discord, an annual conference, a trade magazine
-— proven by a page you fetched, like everything else. Most need no edge to be worth having; where
-one genuinely sets the terms of the market, a standards body or a trade association, that is a
-`shaper` and you should say so.
+Record the place, not a post in it — a subreddit, a Discord, a conference, a trade magazine. Most
+relate as `discusses`; one that sets the market's terms, a standards body or trade association, is a
+`shaper`.
 
 ## One relation type is a suspicious map
 

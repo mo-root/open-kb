@@ -1,4 +1,4 @@
-import { getRun } from "@/lib/runs"
+import { getStoredRun, getRun } from "@/lib/runs"
 
 /**
  * THE RUN'S FINAL ANSWER, WITHOUT HAVING TO CATCH IT LIVE.
@@ -20,7 +20,31 @@ export const dynamic = "force-dynamic"
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const run = getRun(id)
-  if (!run) return Response.json({ status: "unknown" }, { status: 404 })
+
+  // Memory first, then DISK — the registry is per-process and holds only the
+  // last 20 finished runs, so a restart or a busy session makes a run that
+  // completed and persisted look like a run that never existed.
+  //
+  // That gap was not cosmetic. This endpoint is what the client consults to
+  // decide whether silence means "over" or "still working", and it treats a
+  // failed lookup as "cannot tell, keep reading". So a finished map — already
+  // on disk, already listed in the gallery, one click away — left the page that
+  // built it spinning a live indicator forever with its Map button disabled.
+  // The obvious response to that is to run the same map again and pay twice.
+  if (!run) {
+    const stored = await getStoredRun(id)
+    if (stored) {
+      return Response.json({
+        status: stored.status,
+        domain: stored.domain,
+        queries: stored.queries,
+        startedAt: stored.startedAt,
+        endedAt: stored.endedAt,
+        result: stored.result,
+      })
+    }
+    return Response.json({ status: "unknown" }, { status: 404 })
+  }
 
   return Response.json({
     status: run.status,
