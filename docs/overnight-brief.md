@@ -2,6 +2,23 @@
 
 What each loop iteration does, so the work is the same whether it runs at 2am or 5am.
 
+## Start here
+
+An audit checked 207 entities from a real map against the live web: **86 right, 121 wrong**. Every
+error was the same one. The classifier receives a hostname, three titles and one description, and is
+asked to be certain, so it promotes anything ranking for the market's vocabulary into a competitor.
+A comparison site that ranks the anchor #1 was recorded as a rival selling proxies; a host whose
+name contained "llm" was given a proxy network it does not have.
+
+The prompt has been told to stop guessing, which is a floor rather than a fix. **The fix is to
+classify from fetched front pages instead of snippets**, and the doctrine has said so all along:
+"when you need to know what a host is, fetch its front page. It is free and it is definitive."
+
+A direct fetch costs $0 and about a second, and runs concurrently. Four hundred hosts is under a
+minute of wall clock and nothing on the bill. This is the first thing to build, and the first
+overnight run should measure it: same anchor, same query count, classification from snippets versus
+from fetched pages, and how many of the audit's named failures survive.
+
 ## The question being answered
 
 Every measurement in this repo comes from `brightdata.com` and `resend.com`. Both publish an
