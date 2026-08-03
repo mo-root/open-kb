@@ -176,6 +176,35 @@ const DEFAULT_PRICING: ModelPricing = { inUsdPerM: 1.5, outUsdPerM: 9.0 }
  *  on the stage before, so the mapping is a name, not a free-text label. */
 export type Phase = "understand" | "plan" | "sweep" | "rank" | "write"
 
+
+/** Does this name exist at all? A DNS lookup is free, instant, and definitive —
+ *  the one check that can tell a typo apart from a bad minute. */
+async function resolves(host: string): Promise<boolean> {
+  try {
+    const { lookup } = await import("node:dns/promises")
+    await lookup(host)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** A typo is nearly always a doubled or transposed letter in the TLD, so the
+ *  useful reply is a concrete alternative rather than "check your spelling". */
+function suggest(host: string): string {
+  const parts = host.split(".")
+  const tld = parts.at(-1) ?? ""
+  const fixes = new Set<string>()
+  for (const good of ["com", "io", "ai", "dev", "app", "co", "net", "org"]) {
+    // one character away: a doubled letter, a missing one, or two swapped
+    if (tld === good) continue
+    if (tld.replace(/(.)\1/, "$1") === good) fixes.add(good)
+    if (tld.length === good.length + 1 && tld.includes(good)) fixes.add(good)
+  }
+  const alt = [...fixes][0]
+  return alt ? `Did you mean ${[...parts.slice(0, -1), alt].join(".")}?` : ""
+}
+
 export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   const {
     domain: anchor,
@@ -327,6 +356,17 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   const surfaces = [`https://${anchor}/llms.txt`, `https://docs.${anchor}/llms.txt`, `https://${anchor}/`]
   for (const u of surfaces) {
     await read(u, "direct")
+  }
+
+  // A domain that does not resolve is settled, not unlucky. Retrying it and then
+  // spending an unlocker call on it wastes time and money, and — worse — the
+  // "probably a temporary blip, worth running again" message that follows turns a
+  // typo into an apparent outage. `brightdata.ccom` cost six fetches, an unlocker
+  // call, and a reader's confidence in the tool.
+  if (!pages.length && !(await resolves(anchor))) {
+    throw new Error(
+      `${anchor} does not resolve — there is no such domain. ${suggest(anchor)}`.trim(),
+    )
   }
 
   // Try the free surfaces again before spending anything. A run once died here
