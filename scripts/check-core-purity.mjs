@@ -2,9 +2,13 @@ import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join } from "node:path"
 
 const FORBIDDEN = [
-  [/process\.env/, "process.env — credentials are a parameter"],
-  [/\bdocument\.|window\./, "DOM API in a headless engine"],
+  [/process\s*\??\.\s*env/, "process.env — credentials are a parameter"],
+  [/\b(document|window)\s*\??\./, "DOM API in a headless engine"],
   [/brightdata|openrouter|gemini/i, "vendor name in core"],
+  [
+    /\bfetch\s*\(|\bXMLHttpRequest\b|\bnew\s+Request\s*\(|(?:\bimport\s*\(\s*|\bfrom\s+|\brequire\(\s*)["']node:https?["']/,
+    "HTTP framing — core declares a port, a provider implements it",
+  ],
 ]
 
 function walk(dir) {
