@@ -18,7 +18,12 @@ export interface FetchRecord {
   reason?: string
 }
 
-export class CitationError extends Error {}
+export class CitationError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "CitationError"
+  }
+}
 
 const squash = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase()
 
@@ -59,6 +64,7 @@ export class EvidenceStore {
       status: input.status,
       reason: input.reason,
     }
+    Object.freeze(rec)
     this.#records.set(handle, rec)
     if (input.status === "found") this.#byUrl.set(canonical, handle)
     return rec

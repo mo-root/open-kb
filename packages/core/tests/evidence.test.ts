@@ -26,10 +26,39 @@ describe("EvidenceStore", () => {
   })
 
   it("refuses to cite a page that was blocked", () => {
-    // A blocked page has no bytes to prove anything with.
+    // Blocked pages are not citable because the fetch did not succeed — not because a blocked
+    // page never has text. (A thin-render block, for example, can carry up to ~199 characters of
+    // real text; see the next test.) This particular case just happens to have none either.
     const s = new EvidenceStore(NOW)
     const rec = s.record({ url: "https://stripe.com/radar", text: "", status: "blocked", reason: "empty-body" })
     expect(() => s.cite(rec.handle, "anything")).toThrow(CitationError)
+  })
+
+  it("refuses to cite a blocked page even when it carries real, substantial, quotable text", () => {
+    // This is the test that would actually fail if the status gate were weakened or removed:
+    // the text below contains a genuine >=8-character substring, so only the status check
+    // stands between this quote and a minted Evidence.
+    const s = new EvidenceStore(NOW)
+    const rec = s.record({
+      url: "https://a.com/app",
+      text: "Please enable JavaScript to view this page correctly.",
+      status: "blocked",
+      reason: "thin-render",
+    })
+    expect(() => s.cite(rec.handle, "enable JavaScript")).toThrow(CitationError)
+  })
+
+  it("refuses to cite a not-found page even when it carries real, substantial, quotable text", () => {
+    // Same guarantee for not_found: a soft-404 can carry genuine HTML-derived text. It is not
+    // citable because the fetch did not resolve to the real resource, not because it was empty.
+    const s = new EvidenceStore(NOW)
+    const rec = s.record({
+      url: "https://a.com/missing",
+      text: "The page you requested could not be found on this server.",
+      status: "not_found",
+      reason: "soft-404",
+    })
+    expect(() => s.cite(rec.handle, "could not be found")).toThrow(CitationError)
   })
 
   it("normalises whitespace when matching so wrapped quotes still verify", () => {
@@ -69,5 +98,12 @@ describe("EvidenceStore", () => {
     const rec = s.record({ url: "https://a.com/p", text: "Acme sells anti-bot bypass APIs.", status: "found" })
     // "Acme sel" is 8 characters and is a real substring of the stored text.
     expect(() => s.cite(rec.handle, "Acme sel")).not.toThrow()
+  })
+
+  it("measures the minimum length after squashing whitespace, closing the padding workaround", () => {
+    const s = new EvidenceStore(NOW)
+    const rec = s.record({ url: "https://a.com/p", text: "Acme sells anti-bot bypass APIs.", status: "found" })
+    // Raw length is 9 (>= 8), but it squashes down to "a b" (3 chars) — the length that matters.
+    expect(() => s.cite(rec.handle, "a       b")).toThrow(CitationError)
   })
 })
