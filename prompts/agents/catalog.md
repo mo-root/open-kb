@@ -16,6 +16,12 @@ Write {{target}} queries. Absolute rules:
   someone already wrote about it.
 - Describe what the thing DOES, the way a buyer who has never heard of any vendor would type it.
 - Each query must ask a DIFFERENT question. Two rephrasings of one idea buy the same page twice.
+- **Cover every product.** The list above is the company's actual range, not a summary, and each
+  line is a market with its own rivals. A search-results API and a residential proxy network are
+  bought by different teams for different reasons and share almost no competitors, so a catalog
+  that treats the company as one thing returns one thing's market. Give every product at least one
+  query of its own before giving any product a second. If the budget is smaller than the range,
+  spend it on the widest-apart products rather than several angles on the same one.
 - Spread across intents: what breaks and hurts, people switching away from something, people
   comparing options, people building, people discovering, integrations, hiring, and where this
   market gathers.

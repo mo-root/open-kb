@@ -159,7 +159,29 @@ interface Placed {
 function place(result: SweepResult): { kept: Placed[]; noise: Entity[] } {
   const kept: Placed[] = []
   const noise: Entity[] = []
+
+  /**
+   * The anchor is already `company.md`. It must not also be a player.
+   *
+   * The sweep's own domain turns up in its own search results — which is
+   * correct, it IS in this market — so the classifier dutifully classifies it,
+   * and every surface then counted the map's subject as one of its own findings.
+   * Measured on two live maps: brightdata.com was drawn twice and joined to
+   * itself by a `shaper` edge, a self-loop presented as a real relation; on the
+   * resend.com map the duplicate came back `none`, which made the anchor the
+   * entire content of the "1 unplaced" badge — a gap indicator whose only member
+   * was the company the map is of.
+   *
+   * Dropped rather than merged: `company.md` is built from the decomposition,
+   * which is a whole page read from the company itself, and a one-line
+   * classification of a search result has nothing to add to it.
+   */
+  const anchorHost = (result.anchor || "").trim().toLowerCase().replace(/^www\./, "")
+
   for (const e of dedupe(result.entities)) {
+    const host = (e.domain || e.name || "").trim().toLowerCase().replace(/^www\./, "")
+    if (anchorHost && host === anchorHost) continue
+
     const group = KIND_GROUP[e.kind]
     // `noise` is the classifier saying "this is not in this market at all".
     // It gets no node — it becomes a dangling link instead, which is the
