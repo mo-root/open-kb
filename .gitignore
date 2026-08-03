@@ -1,0 +1,33 @@
+# --- secrets -----------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- local reference material (nested git repos, not part of this product) ----
+inspiration/
+
+# --- dependencies -------------------------------------------------------------
+node_modules/
+.pnpm-store/
+
+# --- build output -------------------------------------------------------------
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# --- test / coverage ----------------------------------------------------------
+coverage/
+.nyc_output/
+
+# --- caches -------------------------------------------------------------------
+.cache/
+.turbo/
+.eslintcache
+
+# --- runtime artifacts --------------------------------------------------------
+*.log
+.DS_Store
