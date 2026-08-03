@@ -436,6 +436,30 @@ Return exactly the queries, nothing else.`,
         usd: r.usd,
       })
       for (const h of r.hits) hits.push({ ...h, q: r.query, intent: batch[j]!.intent })
+
+      // The results themselves, not just the count. Everything downstream — the
+      // hosts, the classifications, the map — is derived from these rows, and
+      // without them a reader is asked to trust an aggregate: "580 results, 88
+      // hosts" is not something anyone can check. This is the raw material.
+      emitResult("sweep", {
+        kind: "searched",
+        query: r.query,
+        intent: batch[j]!.intent,
+        platform: batch[j]!.platform,
+        why: batch[j]!.why,
+        ok: r.ok,
+        error: r.error,
+        ms: r.ms,
+        usd: r.usd,
+        hits: r.hits.map((h) => ({
+          url: h.url,
+          title: h.title,
+          // Trimmed, not dropped: a whole page of descriptions is what made a
+          // previous design's context explode, and the first sentence is what a
+          // reader actually reads anyway.
+          description: (h.description ?? "").slice(0, 200),
+        })),
+      })
     })
     say("sweep", `  ${Math.min(i + CONC, queries.length)}/${queries.length} — ${hits.length} results so far`)
   }
