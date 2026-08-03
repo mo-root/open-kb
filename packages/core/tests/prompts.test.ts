@@ -12,6 +12,7 @@ const FINGERPRINTS: Record<string, string> = {
   "03-evidence": "A finding you did not record did not happen",
   "04-search-craft": "would a buyer who had never heard of this company type this",
   "05-reading-the-web": "Cost and success do not move together",
+  "06-breadth": "The map is the ecosystem, not the shortlist",
 }
 
 /**
@@ -62,6 +63,16 @@ describe("prompt files", () => {
     for (const [file, fingerprint] of Object.entries(FINGERPRINTS)) {
       expect(composed, `${file} missing from composed prompt`).toContain(fingerprint)
     }
+  })
+
+  it("the composed prompt asks for an ecosystem rather than a list of rivals", () => {
+    // The other live failure: four nodes, all of kind `company`, joined by six `competitor`
+    // edges and nothing else. The doctrine that answers it is the easiest kind of file to drop
+    // from an includes list, and nothing in the type system would notice.
+    const composed = composePrompt("investigator", AGENTS, DOCTRINE)
+    expect(composed).toContain("The map is the ecosystem, not the shortlist")
+    expect(composed).toContain("Communities are first-class")
+    expect(composed).toContain("One relation type is a suspicious map")
   })
 
   it("the composed prompt states that recording is the job", () => {

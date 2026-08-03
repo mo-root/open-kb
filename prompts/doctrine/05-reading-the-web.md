@@ -22,9 +22,9 @@ cheap thing to try early, not a step you must take.
 On one domain, a free fetch succeeded while an expensive one came back blocked. Spending more does
 not mean getting more.
 
-Spend the slow, expensive mode on a page that will **name many companies at once** — a roundup, a
-directory, a registry. Never spend it to find out what a single host is; a free fetch of its front
-page settles that instantly.
+Spend the slow, expensive mode on a page that will **name many things at once** — a roundup, a
+directory, a registry, a conference programme. Never spend it to find out what a single host is; a
+free fetch of its front page settles that instantly.
 
 ## Judge structure before trusting it
 
@@ -44,8 +44,12 @@ party writing about it, often says more than its homepage would have.
 
 ## Publishers and players
 
-Record the companies a page names; never record the page. A roundup listing ten vendors is valuable
-*because* it names ten — it is not one of them.
+Record what a page names, not the page. A roundup listing ten vendors is valuable *because* it names
+ten — it is not one of them.
+
+The exception is the page that is itself a player: a forum, a subreddit, a conference, a trade body,
+the publication this market reads. Those are communities and they belong on the map. The question is
+not whether it is a page, it is whether the market would notice its absence.
 
 But do not judge a host from a search snippet. A vendor writing "the best alternatives to X" looks
 exactly like a publisher and is not one — it is a competitor spending money to position against X,

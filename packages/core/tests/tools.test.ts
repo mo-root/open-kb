@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest"
+import { z } from "zod"
 import { EvidenceStore } from "../src/evidence.js"
 import { SpanStream } from "../src/spans.js"
 import { FakeSearch, FakeFetch } from "../src/testing/fake-provider.js"
-import { makeTools, anchorNode } from "../src/tools.js"
+import { makeTools, anchorNode, nodeId, NODE_KINDS } from "../src/tools.js"
 
 const ctx = () => ({
   evidence: new EvidenceStore(() => "2026-08-03T10:00:00.000Z"),
@@ -236,6 +237,63 @@ describe("remember tool", () => {
     const edgeRejection = out.rejected.find((r) => r.includes("company:rival->company:ghost-co"))
     expect(edgeRejection).toBeDefined()
     expect(edgeRejection).toContain("quote not present")
+  })
+})
+
+describe("remember, the kinds the model is told about", () => {
+  /** The `kind` field of a node, as the model receives it. */
+  const kindField = () => {
+    const schema = z.toJSONSchema(makeTools(ctx()).remember.inputSchema as unknown as z.ZodType) as {
+      properties: { nodes: { items: { properties: { kind: { enum: string[]; description?: string } } } } }
+    }
+    return schema.properties.nodes.items.properties.kind
+  }
+
+  it("offers every kind the graph supports, and says what each one is for", async () => {
+    // A kind the model is never told about is a kind that stays empty. `capability` and `buyer`
+    // were in this enum for the whole of the live stripe.com run and nothing said what they were
+    // for; that run recorded four nodes and all four were companies. Being in the enum is not
+    // enough — the prose the model reads has to name the kind too.
+    const field = kindField()
+    const described = `${makeTools(ctx()).remember.description ?? ""} ${field.description ?? ""}`
+    for (const kind of NODE_KINDS) {
+      expect(field.enum, `"${kind}" is a node kind the model is never offered`).toContain(kind)
+      expect(described, `"${kind}" is offered but nothing says what to put in it`).toContain(kind)
+    }
+  })
+
+  it("records a node of every kind, with evidence, exactly as it records a company", async () => {
+    const c = ctx()
+    const t = makeTools(c)
+    const f = await t.fetch.execute!({ urls: ["https://rival.com"], mode: "direct", why: "x" }, {} as never)
+    const handle = f.results[0]!.handle!
+
+    const out = await t.remember.execute!(
+      {
+        nodes: NODE_KINDS.map((kind) => ({
+          kind,
+          name: `${kind} one`,
+          what: "what it is, and who it is for",
+          whyHere: "recorded against the anchor, one node per kind the map supports",
+          howFound: "anti-bot bypass api",
+          evidence: [{ handle, quote: "anti-bot bypass API for developers" }],
+        })),
+        edges: [],
+      },
+      {} as never,
+    )
+
+    expect(out.rejected).toHaveLength(0)
+    expect(out.written.nodes).toBe(NODE_KINDS.length)
+    expect(c.graph.nodes.size).toBe(NODE_KINDS.length)
+    for (const kind of NODE_KINDS) {
+      const node = c.graph.nodes.get(nodeId(kind, `${kind} one`))
+      expect(node, `no ${kind} node reached the graph`).toBeDefined()
+      expect(node!.kind).toBe(kind)
+      expect(node!.evidence).toHaveLength(1)
+      expect(node!.evidence[0]!.url).toBe("https://rival.com")
+      expect(node!.isAnchor).toBeUndefined()
+    }
   })
 })
 

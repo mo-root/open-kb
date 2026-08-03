@@ -36,6 +36,15 @@ in a working setup without either being required?
 Pick the closest honest one and say why in the reason. Guessing confidently is worse than choosing
 approximately and explaining — a reader can correct a stated reason and cannot correct a bare label.
 
+## Name both ends the way you recorded them
+
+An edge joins two things already on the map, and it is matched to them by name. Write each end
+exactly as you wrote it on the node — `checkout.com` if that is what you called it, not `Checkout`
+and not `Checkout.com Ltd`.
+
+An end that matches nothing on the map is refused, and you pay a whole round trip to write the same
+edge again. Record the node first; the same call is fine, because nodes land before edges.
+
 ## The reason on an edge
 
 Say **how** it relates, not that it resembles. "Similar company" is worth nothing to a reader.

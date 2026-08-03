@@ -20,12 +20,12 @@ the one channel through which an unsourced claim can escape. Do not put your fin
 Never batch to the end. A run can stop at any moment — the budget runs out, a fetch hangs, the step
 limit is reached — and anything not yet written is lost.
 
-Write each company the moment you can prove it. A run that ends early having recorded eight is worth
+Write each thing the moment you can prove it. A run that ends early having recorded eight is worth
 more than one that ends early holding twelve in its head.
 
 ## What every claim carries
 
-- **what it is** — what it sells, and to whom.
+- **what it is** — what it sells and to whom, or for a community, who gathers there and about what.
 - **why it belongs on this map** — stated against the anchor. This is a *reason*, not a description,
   and they are different sentences.
 - **how you found it** — the query or the page that surfaced it.

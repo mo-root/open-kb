@@ -20,8 +20,31 @@ export interface RunContext {
 export const RELATIONS = ["competitor", "substitute", "dependency", "integration", "shaper"] as const
 export type Relation = (typeof RELATIONS)[number]
 
-export const NODE_KINDS = ["company", "capability", "buyer"] as const
+export const NODE_KINDS = ["company", "product", "capability", "buyer", "community"] as const
 export type NodeKind = (typeof NODE_KINDS)[number]
+
+/**
+ * What each kind is for, in the words the model reads.
+ *
+ * This is not documentation for us. It is spliced into the `remember` tool's schema, because a
+ * kind the model is never told about is a kind that stays empty: `capability` and `buyer` were
+ * in the enum for the whole of the first live run against a payments company, nothing anywhere
+ * said what they were for, and that run recorded four nodes — all of them `company`.
+ *
+ * Keyed by `NodeKind`, so a kind cannot be added to `NODE_KINDS` without the compiler demanding
+ * the sentence that tells the model what to put in it.
+ */
+export const NODE_KIND_GUIDE: Record<NodeKind, string> = {
+  company: "a firm — the vendor itself, not the thing it sells",
+  product:
+    "one named thing a company sells, recorded apart from its vendor, because a company can compete " +
+    "with the anchor on one product and be irrelevant on the rest",
+  capability: "the job being done, in brand-free words — what a buyer is actually trying to get done",
+  buyer: "who spends the money: the role, team or kind of business, not a named customer",
+  community:
+    "where this market's buyers gather and talk — a subreddit, forum, Slack or Discord, conference, " +
+    "trade body, newsletter or trade publication. Record the place, not a post in it",
+}
 
 export interface StoredNode {
   id: string
@@ -396,17 +419,21 @@ export function makeTools(ctx: RunContext): Tools {
 
   const remember = tool({
     description:
-      "Write what you found onto the map. Every node and edge needs a reason it belongs here and a quote " +
-      "from a page you actually fetched. Anything you cannot prove is rejected and told back to you. " +
-      "An edge may only join companies that are already on the map, so record a company as a node " +
-      "before you draw an edge to it — the same call is fine, nodes are written first.",
+      "Write what you found onto the map. A map is an ecosystem, not a shortlist of rivals: it holds " +
+      `${NODE_KINDS.join(", ")} — see the "kind" field for what each one is for, and use all of them. ` +
+      "Every node and edge needs a reason it belongs here and a quote from a page you actually fetched. " +
+      "Anything you cannot prove is rejected and told back to you. An edge may only join things that are " +
+      "already on the map, so record something as a node before you draw an edge to it — the same call is " +
+      "fine, nodes are written first.",
     inputSchema: z.object({
       nodes: z
         .array(
           z.object({
-            kind: z.enum(NODE_KINDS),
+            kind: z.enum(NODE_KINDS).describe(NODE_KINDS.map((k) => `${k} — ${NODE_KIND_GUIDE[k]}`).join(". ")),
             name: z.string(),
-            what: z.string().describe("what it sells, and to whom"),
+            what: z
+              .string()
+              .describe("what it is: for a company or product, what it sells and to whom; for a community, who gathers there and what about"),
             whyHere: z.string().describe("why it belongs on THIS map, stated against the company we started from"),
             howFound: z.string().describe("the query or page that surfaced it"),
             evidence: z.array(evidenceRef).min(1),
@@ -416,8 +443,8 @@ export function makeTools(ctx: RunContext): Tools {
       edges: z
         .array(
           z.object({
-            from: z.string().describe("a company already on the map, by the name you recorded it under"),
-            to: z.string().describe("a company already on the map, by the name you recorded it under"),
+            from: z.string().describe("something already on the map, written by the exact name you recorded it under"),
+            to: z.string().describe("something already on the map, written by the exact name you recorded it under"),
             relation: z.enum(RELATIONS),
             whyHere: z.string(),
             howFound: z.string(),

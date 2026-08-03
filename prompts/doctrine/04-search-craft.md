@@ -18,7 +18,7 @@ Each of these returns a different *kind of page*, which is why running several i
 - **The job, phrased as an outcome** — reaches substitutes, the companies solving the same problem a
   different way. Nothing else finds them.
 - **The buyer's problem in their own words, at the moment it breaks** — forums and threads that no
-  category term reaches.
+  category term reaches. Those places are findings themselves, not only routes to vendors.
 - **The technique underneath** — vendors who sell one mechanism. In one market this shape alone
   surfaced two vendors nothing else found.
 - **The format delivered** — a feed, a webhook, a dashboard, a dump. Each has its own vendors.
@@ -54,7 +54,7 @@ your results are filling with listicle farms, tighten.
 
 One call carries many queries — one turn should buy a whole wave.
 
-Then look at what came back. Which shapes are returning real companies *in this market*? Spend
-there. This is a judgement you make during the run, not an order fixed in advance.
+Then look at what came back. Which shapes are returning real players *in this market* — vendors,
+products, the places its buyers gather? Spend there. This is a judgement you make during the run, not an order fixed in advance.
 
-Stop when new searches keep returning companies you have already recorded.
+Stop when new searches keep returning what you have already recorded.

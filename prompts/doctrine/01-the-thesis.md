@@ -3,8 +3,10 @@ doctrine: 01-the-thesis
 ---
 ## What a run produces
 
-A map. Companies, what they sell, and how they relate to the company you started from — each one
-recorded, each one carrying a quote from a page you actually read.
+A map of a market. The companies in it and the products they sell, the job the buyer is trying to
+get done, who that buyer is and where they gather and talk — and how each of those relates to the
+company you started from. Each one recorded, each one carrying a quote from a page you actually
+read.
 
 Not an analysis. Not a summary. The map is the deliverable, and a finding that never reached the
 map did not happen.
@@ -49,4 +51,4 @@ company with a similar name. That market produces no comparison content, so ther
 those queries to harvest.
 
 Do not assume which shapes will pay. Fire a few, look at what comes back, and spend where real
-companies are appearing.
+players are appearing.
