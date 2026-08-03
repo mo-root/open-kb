@@ -231,6 +231,16 @@ const PlannedQuery = z.object({
   // and never why, and a reason reconstructed later from the query text is a
   // guess about our own plan rather than a record of it.
   why: z.string().describe("one short line: what this query is expected to surface that the others will not"),
+  /**
+   * Which of the anchor's markets this query is for.
+   *
+   * Taken from v1, whose hand-written catalog tagged every one of its 602
+   * queries with the products it served. Without it, "cover every market" is a
+   * sentence in a prompt that nothing checks: a run can spend its whole budget
+   * on one market and report only that it asked forty questions. With it the
+   * gap is countable before a single search is paid for.
+   */
+  market: z.string().describe("the capability name this query is aimed at, copied exactly from the list above"),
 })
 
 const Entity = z.object({
@@ -669,6 +679,23 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   // work with than it was asked for.
   const planned = cat.queries
   const queries = planned.slice(0, target)
+
+  // Coverage, stated rather than assumed. A market with no query cannot put a
+  // single competitor on the map, and until now that failed silently: on one
+  // measured run three of nine products drew zero queries and nothing said so.
+  {
+    const asked = new Map<string, number>()
+    for (const q of queries) asked.set(q.market.trim().toLowerCase(), (asked.get(q.market.trim().toLowerCase()) ?? 0) + 1)
+    const missed = decomp.capabilities.filter((c) => !asked.get(c.name.trim().toLowerCase()))
+    for (const c of decomp.capabilities) {
+      think("plan", `${c.name}: ${asked.get(c.name.trim().toLowerCase()) ?? 0} queries`)
+    }
+    if (missed.length) {
+      say("plan", `no queries for ${missed.length} of ${decomp.capabilities.length} markets: ${missed.map((c) => c.name).join(", ")}`)
+    } else {
+      say("plan", `every one of the ${decomp.capabilities.length} markets got at least one query`)
+    }
+  }
   if (planned.length > target) {
     say("plan", `catalog: model wrote ${planned.length} for a budget of ${target} — using the first ${target}`)
   } else if (planned.length < target) {

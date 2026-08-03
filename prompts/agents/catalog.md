@@ -34,5 +34,8 @@ Absolute rules:
   budget is smaller than the list, spend it on the markets furthest apart.
 - Spread across platforms. For a platform query, use a site: operator or name the platform in the text.
 - Give every query a one-line `why`: what it is expected to surface that the others will not.
+- Set `market` to the market the query is for, copied exactly from the list above. It is checked:
+  a market with no query cannot put a single one of its competitors on the map, and the run counts
+  the gaps before it spends anything.
 
 Return exactly the queries, nothing else.
