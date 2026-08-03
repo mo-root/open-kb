@@ -62,6 +62,24 @@ export const ENTITY_KINDS = [
   "noise",
 ] as const
 
+/**
+ * How an entity stands to the anchor.
+ *
+ * The first seven describe a COMMERCIAL stance — they answer "does this thing
+ * compete for the anchor's budget, sit under it, sit beside it, or buy it".
+ *
+ * The last three exist because that question has no answer for most of a market.
+ * A trade publication does not compete with the anchor, substitute for it or
+ * integrate with it; it WRITES ABOUT IT, and given only commercial words the
+ * classifier had to reach for `none`. That was measured, not guessed: of 438
+ * hosts on one run, 144 came back `none` — 85 publishers, 37 directories, 15
+ * communities — and every one of them dropped off the map unconnected, because
+ * a node with no relation gets no edge. Thirty-seven percent of a market map
+ * floating away for lack of a word for "covers it".
+ *
+ * These are the channels a GTM reader is here for, so they need saying out loud:
+ * where the market is written about, indexed, and argued over.
+ */
 export const RELATIONS = [
   "competitor",
   "substitute",
@@ -70,6 +88,9 @@ export const RELATIONS = [
   "shaper",
   "buyer",
   "target",
+  "covers",
+  "lists",
+  "discusses",
   "none",
 ] as const
 
@@ -713,6 +734,13 @@ Everything here is SOME kind of player — classify, do not filter. A host that 
 the market is a publisher; a host that lists vendors is a directory; a forum or subreddit is a
 community; a research lab or a company consuming this is a buyer. Mark something noise only when it
 is genuinely unrelated to this market.
+
+\`relation\` says how it stands to the anchor, and NOT COMPETING IS NOT THE SAME AS NOT RELATING.
+A publication that covers this market \`covers\` it. A directory or comparison page that indexes
+vendors \`lists\` them. A forum, subreddit or Q&A site where the buyer argues about this
+\`discusses\` it. Those three are how a reader finds the channels to listen to, so reach for them
+before \`none\` — \`none\` is for something you kept but genuinely cannot place, and it costs the
+entity its edge on the map.
 
 One entry per host. \`seenIn\` is how many different queries surfaced it, and \`intents\` is what kinds
 of question found it — use both as evidence, not as a verdict.

@@ -93,6 +93,12 @@ const RELATION_WEIGHT: Record<string, number> = {
   shaper: 55,
   buyer: 45,
   target: 40,
+  // The channel relations. Ranked under every commercial one — a competitor
+  // matters more to a reader than a blog that covered it — but far above `none`,
+  // because a publication that covers this market is placed, not unplaced.
+  lists: 38,
+  covers: 35,
+  discusses: 32,
   none: 15,
 }
 
