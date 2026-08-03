@@ -1,11 +1,16 @@
 import React from "react";
+import { TYPE_COLOR, type NodeType } from "@/lib/nodeTypes";
 
 /* The shared chip vocabulary, ported from v1's components/ui.tsx.
-   Trimmed to what the map surface actually uses: `Chip` for a neutral tag and
-   `KindChip` for a classified entity. v1's `TypeChip`, `SectionHead`,
-   `MicroHead` and `RelevanceBadge` belonged to the KB-browsing pages, which are
-   not part of this app — a component nothing renders is a component nobody
-   maintains. */
+   `Chip` for a neutral tag, `KindChip` for a classified entity, and — since the
+   KB-browsing pages landed — v1's `SectionHead`, `MicroHead`, `TypeChip` and
+   `RelevanceBadge` alongside them.
+
+   PORT NOTE. v1's copy of this file carried a LOCAL `TYPE_COLOR` map with a
+   "reconcile when lib/nodeTypes.ts lands" note on it. It has landed, so the
+   palette is imported rather than copied: `ui.tsx`, `icons/NodeGlyph.tsx` and
+   the graph all read the one map, and the hexes in it stay identical to
+   globals.css's `--type-*` tokens. */
 
 // Entity-kind -> chip tone. The same kind wears the same hue everywhere:
 // companies and products take the blue action ramp, communities the lavender,
@@ -51,6 +56,138 @@ export function Chip({
       className={`tnum inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] ${tones[tone]}`}
     >
       {children}
+    </span>
+  );
+}
+
+/**
+ * Console section header (level A): the top rank inside a KB tab —
+ * "Products" / "Ecosystem".
+ */
+export function SectionHead({
+  title,
+  count,
+  blurb,
+}: {
+  title: string;
+  count?: number;
+  blurb?: string;
+}) {
+  return (
+    <div>
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-200">
+        {title}
+        {count !== undefined && (
+          <span className="tnum ml-2 font-normal text-slate-500">{count}</span>
+        )}
+      </h2>
+      {blurb && <p className="mt-0.5 text-[11px] text-slate-500">{blurb}</p>}
+    </div>
+  );
+}
+
+/**
+ * Console micro header (level B): platform / day / group labels inside a
+ * section — one rank, one style, everywhere.
+ */
+export function MicroHead({ title, count }: { title: string; count?: number }) {
+  return (
+    <h3 className="mb-1.5 font-mono text-[11px] uppercase tracking-wider text-slate-500">
+      {title}
+      {count !== undefined && (
+        <span className="tnum ml-2 text-slate-500">{count}</span>
+      )}
+    </h3>
+  );
+}
+
+/**
+ * A related entity rendered as a chip tinted by its node type. `dead` marks a
+ * target with nothing behind it (rendered muted, non-interactive) — in v1 an
+ * unresolved wikilink, here an entity the map named but never placed.
+ */
+export function TypeChip({
+  type,
+  label,
+  onClick,
+  dead,
+  title,
+}: {
+  type: NodeType;
+  label: string;
+  onClick?: () => void;
+  dead?: boolean;
+  title?: string;
+}) {
+  const color = TYPE_COLOR[type];
+  const style: React.CSSProperties = dead
+    ? {}
+    : {
+        color,
+        borderColor: `color-mix(in srgb, ${color} 40%, transparent)`,
+        backgroundColor: `color-mix(in srgb, ${color} 12%, transparent)`,
+      };
+  const cls =
+    "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium transition";
+  if (dead || !onClick) {
+    return (
+      <span
+        className={`${cls} border-slate-700 bg-slate-800/40 text-slate-500`}
+        title={title ?? (dead ? "unresolved link" : undefined)}
+      >
+        {label}
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      className={`${cls} hover:brightness-125`}
+      style={style}
+    >
+      <span
+        aria-hidden
+        className="inline-block h-1.5 w-1.5 rounded-full"
+        style={{ backgroundColor: color }}
+      />
+      {label}
+    </button>
+  );
+}
+
+export function relevanceTone(n: number): string {
+  // Blue-only tiers: cyan (emerald ramp) is reserved for data-flow and both the
+  // old -400 steps failed AA on paper. sky-300 is the tuned paper link tone
+  // (~5:1 light / legible on navy dark); high vs mid read apart via border/fill
+  // strength, not an unsanctioned hue.
+  if (n >= 85) return "text-sky-300 border-sky-500/40 bg-sky-500/15";
+  if (n >= 60) return "text-sky-300 border-sky-500/25 bg-sky-500/10";
+  return "text-slate-400 border-slate-600/40 bg-slate-700/20";
+}
+
+/**
+ * PORT NOTE — v1 called this "rel", short for relevance, and its number was
+ * measured during the build. This engine measures no such thing: the number is
+ * a PLACEMENT rank derived from the relation the classifier assigned (see
+ * lib/kb-from-run.ts's RELATION_WEIGHT). The badge therefore says "place", and
+ * the tooltip says what it is. The component name and the `relevance` field
+ * keep v1's spelling because they are the contract every KB surface is written
+ * against; the word a reader sees does not.
+ */
+export function RelevanceBadge({ value }: { value: number }) {
+  return (
+    <span
+      className={`tnum inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-medium ${relevanceTone(
+        value,
+      )}`}
+      title={`placement ${Math.round(
+        value,
+      )} — how firmly the classifier placed this against the anchor, not a measured relevance`}
+    >
+      <span className="opacity-60">place</span>
+      {Math.round(value)}
     </span>
   );
 }

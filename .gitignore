@@ -31,6 +31,10 @@ coverage/
 # --- runtime artifacts --------------------------------------------------------
 *.log
 .DS_Store
-runs/
+# ANCHORED. A bare `runs/` matches a directory of that name at ANY depth, which
+# silently swallowed `packages/web/app/runs/` — the route that lists runs — so
+# the pages existed on disk, served fine, and could never be committed. The
+# artifact directory is at the repo root and nowhere else.
+/runs/
 .next/
 *.tsbuildinfo

@@ -10,16 +10,25 @@ import { ThemeToggle } from "@/components/ThemeToggle";
    layout.tsx stays a server component (it owns metadata + fonts); this is the
    only interactive sliver of the chrome.
 
-   PORT NOTE. v1 had three items — Build, Knowledge bases, Runs. The other two
-   pointed at the KB-browsing pages, which are not part of this app; a nav item
-   that 404s is worse than no nav item. One route, kept because the underbar and
-   the glyph are the chrome's only sense of place. */
+   PORT NOTE. This carried one item for a while — a nav item that 404s is worse
+   than no nav item, and the KB-browsing pages had not landed. They have, so the
+   other two are back. v1's spelling of the first was "Build"; a run here buys a
+   market map rather than building a note store, so it is "Map". */
 const ITEMS: {
   href: string;
   label: string;
   glyph: GlyphKind;
   active: (p: string) => boolean;
-}[] = [{ href: "/", label: "Map", glyph: "signal", active: (p) => p === "/" }];
+}[] = [
+  { href: "/", label: "Map", glyph: "signal", active: (p) => p === "/" },
+  {
+    href: "/kb",
+    label: "Knowledge bases",
+    glyph: "company",
+    active: (p) => p.startsWith("/kb"),
+  },
+  { href: "/runs", label: "Runs", glyph: "docs", active: (p) => p.startsWith("/runs") },
+];
 
 export function HeaderNav() {
   const pathname = usePathname() ?? "/";

@@ -41,6 +41,19 @@ function loadRepoEnv(): void {
 loadRepoEnv()
 
 /**
+ * Where finished runs are written (lib/runs.ts).
+ *
+ * Set here for the same reason `.env` is read here: this config is evaluated in
+ * the Node process that then serves every route, so it is the one place that
+ * reliably knows where the repo root is. A route resolving it from
+ * `process.cwd()` would be resolving from `packages/web` under `next dev` and
+ * from somewhere else again under a different launcher.
+ *
+ * `??=` so an explicit environment variable still wins.
+ */
+process.env.OPENKB_RUNS_DIR ??= path.join(repoRoot, "runs")
+
+/**
  * NO WORKFLOW WRAPPER. The v1 app wrapped this config in `withWorkflow()` and
  * started runs with `start(buildWorkflow)`. That `"use step"` sandbox is what
  * this rewrite exists to escape: a run here is a plain async function writing
