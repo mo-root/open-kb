@@ -388,7 +388,25 @@ Write ${target} queries. Absolute rules:
 Return exactly the queries, nothing else.`,
   )
 
-  const queries = cat.queries
+  // The requested count is a sentence in a prompt, and a prompt is a request.
+  // Gemini rejects array-length constraints in a structured-output schema, so
+  // nothing in the schema holds the model to it either — meaning the number a
+  // caller typed, the number they are billed for, and the number the model felt
+  // like writing were three independent quantities.
+  //
+  // Clamped here instead. Over the ask is truncated, because the caller set a
+  // budget and a run that quietly spends 2.5x it has broken a promise. Under the
+  // ask is kept and SAID: a short catalog is a real outcome worth seeing, and
+  // silently topping it up would hide that the market gave the model less to
+  // work with than it was asked for.
+  const planned = cat.queries
+  const queries = planned.slice(0, target)
+  if (planned.length > target) {
+    say("plan", `catalog: model wrote ${planned.length} for a budget of ${target} — using the first ${target}`)
+  } else if (planned.length < target) {
+    say("plan", `catalog: model wrote ${planned.length} of the ${target} asked for`)
+  }
+
   const forbidden = [anchor.split(".")[0], ...decomp.coinages].filter(Boolean) as string[]
   const named = forbidden.length
     ? queries.filter((x) =>
@@ -406,6 +424,8 @@ Return exactly the queries, nothing else.`,
     // Priced from Bright Data's SERP rate, which is the only part of the bill
     // that is knowable before the run — the model half depends on how much text
     // comes back.
+    requested: target,
+    written: planned.length,
     estimatedUsd: queries.length * 0.0015,
     budgetUsd: 0,
     uncapped: false,
