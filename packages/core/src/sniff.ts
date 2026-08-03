@@ -33,6 +33,19 @@ function expectsPlainText(url: string): boolean {
   return /\.(txt|md|json)(\?|$)/i.test(url)
 }
 
+/**
+ * Is this body HTML?
+ *
+ * Exported because callers need it for a question `sniff` cannot answer: whether
+ * the server returned the KIND of file that was asked for. A `.txt` URL that
+ * answers with HTML did not have the file, however healthy the response looks,
+ * and one measured case returns 200, `text/html`, and 608KB of another
+ * company's "Page not found" page.
+ */
+export function isHtml(body: string, contentType?: string): boolean {
+  return isHtmlContentType(contentType) || looksLikeHtml(body) || countHtmlSignals(body) >= 2
+}
+
 function isHtmlContentType(contentType: string | undefined): boolean {
   if (!contentType) return false
   return /^(text\/html|application\/(xhtml\+xml|xml))/i.test(contentType)
@@ -123,8 +136,7 @@ export function sniff(r: RawResponse): SniffResult {
   // The cost is a known gap: a lone attribute-free pair, `<p>text</p>`, has one
   // signal and is stored raw. That failure is visible (two tags in the text)
   // rather than silent, and real fragments nest or carry attributes.
-  const shouldExtract =
-    isHtmlContentType(r.contentType) || looksLikeHtml(r.body) || countHtmlSignals(r.body) >= 2
+  const shouldExtract = isHtml(r.body, r.contentType)
 
   const text = shouldExtract ? extractText(r.body) : r.body
 

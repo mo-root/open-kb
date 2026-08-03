@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { sniff, extractText } from "../src/sniff.js"
+import { sniff, extractText, isHtml } from "../src/sniff.js"
 
 describe("sniff", () => {
   it("calls a 200 with an empty body blocked", () => {
@@ -248,5 +248,22 @@ describe("extractText", () => {
   it("strips script and style content, not just tags", () => {
     const html = "<html><style>.a{color:red}</style><script>var x=1</script><p>hello world</p></html>"
     expect(extractText(html)).toBe("hello world")
+  })
+})
+
+describe("isHtml", () => {
+  it("recognises html by content type even when the body is unremarkable", () => {
+    expect(isHtml("Page not found", "text/html;charset=utf-8")).toBe(true)
+  })
+
+  it("does not call a plain text catalog html", () => {
+    // A real llms.txt: markdown link rows, no markup.
+    const txt = "# Docs\n\n- [Proxies](https://x.com/proxies)\n- [Datasets](https://x.com/datasets)\n"
+    expect(isHtml(txt, "text/plain")).toBe(false)
+    expect(isHtml(txt, undefined)).toBe(false)
+  })
+
+  it("catches an html error page served without a content type", () => {
+    expect(isHtml("<!DOCTYPE HTML>\n<html lang=\"en\"><head><title>Page not found</title></head></html>")).toBe(true)
   })
 })

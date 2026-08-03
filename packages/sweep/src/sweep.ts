@@ -21,7 +21,7 @@
 import { generateObject } from "ai"
 import type { LanguageModel } from "ai"
 import { z } from "zod"
-import { sniff, condense, type SpanStream } from "@open-kb/core"
+import { sniff, condense, isHtml, type SpanStream } from "@open-kb/core"
 import {
   brightDataSearch,
   brightDataFetch,
@@ -425,7 +425,18 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     const raw = await fetcher.get(url, mode)
     if (mode === "unlocked") unlockerCalls += 1
     const s = sniff(raw)
-    const found = s.status === "found" && s.text.length > 300
+    // A `.txt` URL that answers with HTML did not have the file.
+    //
+    // Measured: one company's /llms.txt returns 200, content-type text/html, and
+    // 608KB whose title is "Page not found" for a DIFFERENT company that acquired
+    // it. The sniffer sees valid HTML with plenty of text and calls it found, so
+    // that whole error page would be absorbed as the company's catalog. Status
+    // codes lie, content-type lies, and length says nothing; the file extension
+    // is the one thing here that states what the body was supposed to be.
+    const wantedText = /\.(txt|md|xml)$/i.test(new URL(url).pathname)
+    const gotHtml = isHtml(raw.body, raw.contentType)
+    const wrongShape = wantedText && gotHtml
+    const found = s.status === "found" && s.text.length > 300 && !wrongShape
     bill(mode === "unlocked" ? "unlocker" : "fetch", "understand", raw.usd, raw.ms, found)
     spans.emit({
       runId,
@@ -436,7 +447,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       argsDigest: url,
       ms: raw.ms,
       ok: found,
-      error: found ? undefined : s.status,
+      error: found ? undefined : wrongShape ? "html-for-text-url" : s.status,
       usd: raw.usd,
     })
     if (found) {
