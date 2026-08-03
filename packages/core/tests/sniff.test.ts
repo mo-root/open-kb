@@ -47,6 +47,38 @@ describe("sniff", () => {
     expect(sniff({ url: "https://a.com/x", httpStatus: 404, body: "nope" }).status).toBe("not_found")
     expect(sniff({ url: "https://a.com/x", httpStatus: 503, body: "" }).status).toBe("blocked")
   })
+
+  it("preserves markdown with generics like Array<string> and arrows", () => {
+    // Regression: old regex corrupted code samples with < and > operators.
+    // This markdown should survive byte-for-byte.
+    const markdown = "# TypeScript\nUse `Array<string>` for typed arrays.\n" + "The flow is A -> B -> C.\n".repeat(20)
+    const r = sniff({ url: "https://example.com/docs.md", httpStatus: 200, body: markdown })
+    expect(r.status).toBe("found")
+    expect(r.text).toBe(markdown) // preserved as-is, not extracted
+    expect(r.text).toContain("Array<string>")
+    expect(r.text).toContain("A -> B")
+  })
+
+  it("preserves code with comparison operators and sufficient length", () => {
+    // Regression: `if (a < b) { return x > y }` should not be corrupted.
+    // Make it long enough to pass the 200-char threshold.
+    const code = "function compare(a, b) {\n" + "  if (a < b) { return x > y }\n".repeat(8) + "}\n"
+    const r = sniff({ url: "https://example.com/code.txt", httpStatus: 200, body: code })
+    expect(r.status).toBe("found")
+    expect(r.text).toContain("if (a < b)")
+    expect(r.text).toContain("return x > y")
+  })
+
+  it("marks thin-render when extracted text is under 200 chars despite large raw body", () => {
+    // Distinguish "measures extracted text" from "measures raw bytes".
+    // Large HTML body with minimal extractable content.
+    const largeMarkup = "<html><body>" + "<div class='unused'>x</div>".repeat(40) + "<p>hi</p></body></html>"
+    const r = sniff({ url: "https://example.com", httpStatus: 200, body: largeMarkup })
+    expect(r.status).toBe("blocked")
+    expect(r.reason).toBe("thin-render")
+    expect(r.text).toContain("hi")
+    expect(r.text.length).toBeLessThan(200)
+  })
 })
 
 describe("extractText", () => {
