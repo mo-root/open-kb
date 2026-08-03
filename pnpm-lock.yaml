@@ -31,6 +31,16 @@ importers:
         specifier: ^22.10.0
         version: 22.20.1
 
+  packages/providers:
+    dependencies:
+      '@open-kb/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.1
+
 packages:
 
   '@ai-sdk/gateway@4.0.37':
