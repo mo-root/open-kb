@@ -1401,7 +1401,18 @@ tsconfig deliberately omits `"DOM"` from `lib`, so without it these are compile 
 
 ```json
 // packages/providers/tsconfig.json
-{ "extends": "../../tsconfig.base.json", "compilerOptions": { "lib": ["ES2023"], "outDir": "dist" }, "include": ["src"] }
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "lib": ["ES2023"], "outDir": "dist", "composite": true },
+  "include": ["src"],
+  "references": [{ "path": "../core" }]
+}
+```
+
+Also add this package to the root `tsconfig.json` references so `pnpm check` builds it:
+
+```json
+{ "files": [], "references": [{ "path": "./packages/core" }, { "path": "./packages/providers" }] }
 ```
 
 ```ts
