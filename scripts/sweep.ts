@@ -48,6 +48,12 @@ console.log(`$${stats.usd.toFixed(4)} · ${stats.seconds.toFixed(0)}s`)
 
 const { writeFileSync, mkdirSync } = await import("node:fs")
 mkdirSync("runs", { recursive: true })
-const path = `runs/sweep-${anchor.replace(/\W+/g, "-")}.json`
+// Stamped, because the filename used to be the domain alone and a second run of
+// the same company silently destroyed the first. A 771-second, $1.26, 388-entity
+// map of brightdata.com was overwritten by a 10-query smoke test that happened to
+// name the same domain. Maps are expensive and slow; nothing that costs a dollar
+// and thirteen minutes should be deleted by a command that does not say "delete".
+const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "")
+const path = `runs/sweep-${anchor.replace(/\W+/g, "-")}-${stamp}.json`
 writeFileSync(path, JSON.stringify(out, null, 2))
 console.log(`\nwrote ${path}`)

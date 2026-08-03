@@ -181,11 +181,16 @@ function adoptCliRun(filename: string, parsed: unknown): StoredRun | null {
 
   const id = filename.slice(CLI_PREFIX.length, -".json".length)
   const seconds = r.stats?.seconds ?? 0
-  // The CLI records duration, not wall-clock instants. Anchor the run to the file's
-  // own name-derived identity and treat "now minus duration" as its start: the
-  // gallery orders by end time, and an undated run would sort to the beginning of
-  // time and read as the oldest thing here.
-  const endedAt = Date.now()
+  // The CLI stamps its filenames `<domain>-YYYYMMDDHHMM`, so the run's real end
+  // time is recoverable from the id and the gallery can order CLI runs against
+  // each other honestly. Files written before the stamp existed fall back to
+  // `Date.now()`: the CLI records a duration, not wall-clock instants, and an
+  // undated run left at zero would sort to the beginning of time and read as the
+  // oldest thing here.
+  const stamped = /-(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})$/.exec(id)
+  const endedAt = stamped
+    ? Date.parse(`${stamped[1]}-${stamped[2]}-${stamped[3]}T${stamped[4]}:${stamped[5]}:00Z`)
+    : Date.now()
   return {
     id,
     domain: r.anchor,
