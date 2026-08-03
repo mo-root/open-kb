@@ -1,0 +1,79 @@
+# Overnight brief
+
+What each loop iteration does, so the work is the same whether it runs at 2am or 5am.
+
+## The question being answered
+
+Every measurement in this repo comes from `brightdata.com` and `resend.com`. Both publish an
+`llms.txt` and both sell developer tools. The tool is supposed to map an industrial pump
+manufacturer just as well, and nobody has ever checked.
+
+So: **which markets does it fail on, and how.**
+
+## Budget
+
+`$15`, self-imposed, on top of the harness's own guard. `scripts/overnight.ts` re-reads the
+OpenRouter key limit before every run and stops while `$3` of headroom remains, because a sweep cut
+off by a 402 mid-classification has bought every search and kept none of them.
+
+If the key reports less than `$3`, stop the loop and say so. Do not work around it.
+
+## One iteration
+
+1. **Check the budget.** Read the key's headroom. Under `$3`, stop.
+2. **Run the next unmapped target.** `pnpm sweep <domain> 30`. One at a time, so a failure is
+   attributable.
+3. **Record the row.** Append to `runs/overnight/results.jsonl`: domain, entities, hosts, products,
+   markets, uncovered markets, cost, seconds, and the error if it failed.
+4. **Read the map, not the numbers.** Open the run's entities. Are they real companies in that
+   market? Is the relation right read from the anchor outward? Is the `why` line specific enough to
+   act on? A run that produced 200 entities of the wrong market is a failure with a healthy count.
+5. **If something broke, decide what kind of break it is** (below), fix that class, commit, and
+   re-run that one target to verify.
+6. **Write the finding down** in `runs/overnight/FINDINGS.md` whether or not it was fixed.
+
+## What counts as worth fixing overnight
+
+Fix, commit and re-run:
+
+- A crash, hang or unhandled error.
+- A stage that silently produced nothing: no products, no capabilities, no queries for a core
+  market.
+- A prompt rule that measurably misfires, the way equal-per-market coverage sent a third of a small
+  budget to an MCP integration.
+- Anything where the code and a comment disagree about what happens.
+
+Write down, do not fix:
+
+- Anything needing a judgement about what the product should be.
+- Anything where the fix is a guess and the run cost more than $2 to reproduce.
+- Ranking, weighting or scoring changes with no measurement behind them.
+- Anything touching `packages/core/src/evidence.ts`. The mint is the guarantee.
+
+## Rules
+
+- **Never raise the budget**, in the script or on the key.
+- **Never delete a run file.** They are the evidence.
+- `pnpm check` and `pnpm vitest run` must both pass before any commit.
+- One fix per commit, with the measurement that justified it in the message.
+- The branch is `feat/foundation-and-investigator`. Do not merge, do not touch `main`, do not push.
+- A failing target is a result. Record it and move on rather than fighting one domain all night.
+
+## Stopping
+
+Stop and write the summary when any of these is true:
+
+- The key has under `$3` of headroom.
+- `$15` has been spent.
+- Every target in `scripts/overnight.ts` has a row.
+- The same fix has failed to hold twice. Something is wrong with the diagnosis, and a third attempt
+  is spending money to confirm it.
+
+## The morning report
+
+`runs/overnight/FINDINGS.md`, in this order:
+
+1. Which markets mapped well, which failed, and the failure mode for each.
+2. What was fixed, with the before and after.
+3. What was found and left alone, and why.
+4. The one thing most worth doing next, with the evidence for it.
