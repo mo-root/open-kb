@@ -395,6 +395,30 @@ function expectsPlainText(url: string): boolean {
   return /\.(txt|md|json)(\?|$)/i.test(url)
 }
 
+/** Element names real HTML uses. Markdown generics like `<string>` are not among them. */
+const KNOWN_TAG =
+  /<\/?(?:html|head|body|div|p|span|a|ul|ol|li|table|tr|td|th|h[1-6]|script|style|meta|link|br|img|section|article|nav|header|footer|form|input|button|strong|em|blockquote|pre|code)\b[^>]*>/gi
+
+/**
+ * Is this body actually HTML?
+ *
+ * Two failures to avoid, and they pull in opposite directions:
+ *  - Over-detecting corrupts plain text. A greedy pattern like /<[a-z][\s\S]*>/ fires on prose
+ *    containing "a < b … >" and extractText then deletes the span between them.
+ *  - Under-detecting stores raw tag soup as evidence. HTML arrives as fragments without a doctype,
+ *    and origins mislabel it as text/plain.
+ *
+ * Tag SHAPE cannot separate them — `<string>` is a perfectly well-formed tag shape. Tag
+ * VOCABULARY can. Two or more known elements is HTML; fewer is prose that happens to contain
+ * angle brackets. A declared content type is a hint, never a veto: a body full of <div> is HTML
+ * whatever the header claims.
+ */
+function isHtml(r: RawResponse): boolean {
+  if (/html/i.test(r.contentType ?? "")) return true
+  if (looksLikeHtml(r.body)) return true
+  return (r.body.match(KNOWN_TAG) ?? []).length >= 2
+}
+
 /**
  * Decide what actually happened, ignoring what the status line claims.
  * Three measured failures this exists to catch:
@@ -412,7 +436,11 @@ export function sniff(r: RawResponse): SniffResult {
     return { status: "not_found", reason: "soft-404", text: "" }
   }
 
-  const text = looksLikeHtml(r.body) || /<[a-z][\s\S]*>/i.test(r.body) ? extractText(r.body) : r.body
+  // Prefer the declared content type; fall back to a STRICT tag check.
+  // A greedy detector like /<[a-z][\s\S]*>/ fires on plain text containing "a < b ... >" and
+  // then extractText deletes the span between them — verified to destroy real prose in
+  // markdown containing generics or arrows, which is exactly what our cheapest read path returns.
+  const text = isHtml(r) ? extractText(r.body) : r.body
 
   if (text.length < THIN_TEXT) {
     return { status: "blocked", reason: "thin-render", text }

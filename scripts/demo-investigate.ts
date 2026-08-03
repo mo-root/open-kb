@@ -51,7 +51,7 @@ const out = await investigate({
     `different ways rather than naming it, cover as much ground sideways as you can, and record everything ` +
     `you can prove.`,
   ctx,
-  model: openrouter(process.env.OPENKB_MODEL ?? "google/gemini-3-flash-preview"),
+  model: openrouter(process.env.OPENKB_MODEL ?? "google/gemini-3.5-flash"),
   maxSteps: 20,
 })
 ctx.spans.close()

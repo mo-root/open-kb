@@ -34,7 +34,7 @@ describe.skipIf(!live)("investigator, live", () => {
         "Find companies selling the same capability: an API developers call to send transactional email from an application. " +
         "Describe that capability to the search engine several different ways rather than naming the anchor.",
       ctx,
-      model: openrouter(process.env.OPENKB_MODEL ?? "google/gemini-3-flash-preview"),
+      model: openrouter(process.env.OPENKB_MODEL ?? "google/gemini-3.5-flash"),
       maxSteps: 20,
     })
 

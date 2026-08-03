@@ -31,3 +31,4 @@ coverage/
 # --- runtime artifacts --------------------------------------------------------
 *.log
 .DS_Store
+runs/
