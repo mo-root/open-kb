@@ -161,6 +161,43 @@ function runsDir(): string {
 const FILE_PREFIX = "run-"
 
 /**
+ * `scripts/sweep.ts` writes a bare `SweepResult` to `runs/sweep-<domain>.json` —
+ * no envelope, no id, no timestamps, because a terminal does not need them.
+ *
+ * A run costing real money and half an hour of waiting should not be invisible in
+ * the browser purely because of where it was started from, so the gallery adopts
+ * those files too: the filename supplies the id, and the timings come from the
+ * result the sweep already records. The two shapes stay distinct on disk — this
+ * reads one as the other deliberately, rather than by accident.
+ */
+const CLI_PREFIX = "sweep-"
+
+function adoptCliRun(filename: string, parsed: unknown): StoredRun | null {
+  if (!parsed || typeof parsed !== "object") return null
+  const r = parsed as Partial<SweepResult> & { stats?: Partial<SweepResult["stats"]> }
+  // `anchor`, not `domain` — the sweep names the company it started from, and the
+  // registry names the thing a run was asked about. Same value, different word.
+  if (typeof r.anchor !== "string" || !Array.isArray(r.entities)) return null
+
+  const id = filename.slice(CLI_PREFIX.length, -".json".length)
+  const seconds = r.stats?.seconds ?? 0
+  // The CLI records duration, not wall-clock instants. Anchor the run to the file's
+  // own name-derived identity and treat "now minus duration" as its start: the
+  // gallery orders by end time, and an undated run would sort to the beginning of
+  // time and read as the oldest thing here.
+  const endedAt = Date.now()
+  return {
+    id,
+    domain: r.anchor,
+    queries: r.stats?.queries ?? r.queries?.length ?? 0,
+    startedAt: endedAt - Math.round(seconds * 1000),
+    endedAt,
+    status: "complete",
+    result: r as SweepResult,
+  }
+}
+
+/**
  * An id has to look like the `crypto.randomUUID()` that minted it.
  *
  * It reaches the read side as a URL path segment, so anything outside the UUID
@@ -242,10 +279,12 @@ export async function listStoredRuns(): Promise<StoredRun[]> {
     names = [] // no runs/ yet — that is an empty gallery, not an error
   }
   for (const name of names) {
-    if (!name.startsWith(FILE_PREFIX) || !name.endsWith(".json")) continue
+    if (!name.endsWith(".json")) continue
+    if (!name.startsWith(FILE_PREFIX) && !name.startsWith(CLI_PREFIX)) continue
     try {
       const parsed: unknown = JSON.parse(await readFile(path.join(runsDir(), name), "utf8"))
-      if (isStoredRun(parsed)) byId.set(parsed.id, parsed)
+      const stored = isStoredRun(parsed) ? parsed : adoptCliRun(name, parsed)
+      if (stored) byId.set(stored.id, stored)
     } catch (e) {
       console.error(`[runs] skipping unreadable ${name}:`, e)
     }
@@ -268,7 +307,14 @@ export async function getStoredRun(id: string): Promise<StoredRun | null> {
   }
   try {
     const parsed: unknown = JSON.parse(await readFile(fileFor(id), "utf8"))
-    return isStoredRun(parsed) ? parsed : null
+    if (isStoredRun(parsed)) return parsed
+  } catch {
+    // not a browser-started run — fall through and try the CLI's shape
+  }
+  const name = `${CLI_PREFIX}${id}.json`
+  try {
+    const parsed: unknown = JSON.parse(await readFile(path.join(runsDir(), name), "utf8"))
+    return adoptCliRun(name, parsed)
   } catch {
     return null
   }
