@@ -1,5 +1,7 @@
 import { adapterFor, isNamespace, type Namespace } from "@/lib/stream-adapter"
 import { getRun } from "@/lib/runs"
+import * as db from "@/lib/store/supabase"
+import type { Span } from "@open-kb/core"
 
 /**
  * Live view of a run, one namespace at a time: ?ns=progress | agent | cost |
@@ -26,6 +28,41 @@ import { getRun } from "@/lib/runs"
  * namespaces and nothing in others.
  */
 
+/**
+ * Serve a finished or foreign run out of the spans table.
+ *
+ * Identical framing to the live path so a client cannot tell them apart: same
+ * adapter, same `delivered` counting before the skip, same NDJSON.
+ */
+function replay(req: Request, spans: readonly Span[]): Response {
+  const url = new URL(req.url)
+  const nsParam = url.searchParams.get("ns")
+  if (nsParam !== null && !isNamespace(nsParam)) {
+    return Response.json({ error: `unknown namespace "${nsParam}"` }, { status: 400 })
+  }
+  const toFrame = adapterFor(nsParam ?? "results")
+  const parsed = Number(url.searchParams.get("startIndex"))
+  const skip = Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0
+
+  const encoder = new TextEncoder()
+  let delivered = 0
+  const lines: string[] = []
+  for (const span of spans) {
+    const frame = toFrame(span)
+    if (frame === null) continue
+    delivered += 1
+    if (delivered <= skip) continue
+    lines.push(`${JSON.stringify(frame)}\n`)
+  }
+  return new Response(encoder.encode(lines.join("")), {
+    headers: {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-store, no-transform",
+      "X-Accel-Buffering": "no",
+    },
+  })
+}
+
 export const runtime = "nodejs"
 /** Never prerender or cache: the body is the run, live. */
 export const dynamic = "force-dynamic"
@@ -33,7 +70,21 @@ export const dynamic = "force-dynamic"
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const run = getRun(id)
-  if (!run) return Response.json({ error: "no such run" }, { status: 404 })
+
+  // Not in this process. Before Postgres that was the end of it: a server
+  // restart, or a run older than the 20 the registry keeps, left the browser
+  // reconnecting to a 404 forever while its map sat finished on disk. The spans
+  // are a table now, so replay them and finish.
+  //
+  // A replay is a snapshot, not a subscription. The client reconnects with its
+  // cursor and picks up whatever has landed since, which is what it already
+  // does across every other kind of disconnect.
+  if (!run) {
+    if (!db.configured()) return Response.json({ error: "no such run" }, { status: 404 })
+    const stored = await db.getSpans(id)
+    if (!stored.length) return Response.json({ error: "no such run" }, { status: 404 })
+    return replay(req, stored)
+  }
 
   const url = new URL(req.url)
   const nsParam = url.searchParams.get("ns")

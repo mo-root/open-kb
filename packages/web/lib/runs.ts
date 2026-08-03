@@ -1,7 +1,8 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises"
 import { existsSync } from "node:fs"
 import path from "node:path"
-import { SpanStream } from "@open-kb/core"
+import { SpanStream, type Span } from "@open-kb/core"
+import * as db from "./store/supabase"
 import type { SweepResult } from "@open-kb/sweep"
 
 /**
@@ -78,7 +79,58 @@ export function createRun(domain: string, queries: number): RunRecord {
   }
   runs.set(record.id, record)
   evict()
+
+  if (db.configured()) {
+    void db.upsertRun({
+      id: record.id,
+      domain,
+      queries,
+      status: "running",
+      started_at: new Date(record.startedAt).toISOString(),
+    })
+    void pump(record)
+  }
   return record
+}
+
+/**
+ * Write spans to Postgres while the run is still going.
+ *
+ * The whole reason this exists: a run's output lived only in this process until
+ * the pipeline's last instruction, so a server that died at minute 11 of 12
+ * discarded every search and model call already paid for. Spans land as they
+ * are emitted, so a dead run is a readable one.
+ *
+ * Batched on both count and time. One HTTP call per span would add a round trip
+ * to every SERP result; waiting for a full batch would lose the tail of a run
+ * that crashes mid-batch, which is the case this is for.
+ */
+const FLUSH_SPANS = 25
+const FLUSH_MS = 3_000
+
+async function pump(record: RunRecord): Promise<void> {
+  let batch: Span[] = []
+  let last = Date.now()
+
+  const flush = async () => {
+    if (!batch.length) return
+    const sending = batch
+    batch = []
+    last = Date.now()
+    await db.appendSpans(record.id, sending)
+  }
+
+  try {
+    for await (const span of record.spans.stream()) {
+      batch.push(span)
+      if (batch.length >= FLUSH_SPANS || Date.now() - last >= FLUSH_MS) await flush()
+    }
+  } catch (e) {
+    console.error(`[runs] span pump for ${record.id} stopped:`, e)
+  }
+  // The stream closed, so `finishRun` or `failRun` has already run. Whatever is
+  // still in hand is the tail of the run and is the most interesting part of it.
+  await flush()
 }
 
 export function getRun(id: string): RunRecord | undefined {
@@ -102,6 +154,17 @@ export function finishRun(id: string, result: SweepResult): void {
   void persist(r).catch((e) => {
     console.error(`[runs] could not persist ${id}:`, e)
   })
+  if (db.configured()) {
+    void db.upsertRun({
+      id: r.id,
+      domain: r.domain,
+      queries: r.queries,
+      status: "complete",
+      started_at: new Date(r.startedAt).toISOString(),
+      ended_at: new Date(r.endedAt).toISOString(),
+      result,
+    })
+  }
 }
 
 export function failRun(id: string, error: unknown): void {
@@ -111,6 +174,19 @@ export function failRun(id: string, error: unknown): void {
   r.status = "failed"
   r.endedAt = Date.now()
   r.spans.close()
+  // A failed run is recorded, unlike the file path which drops it entirely.
+  // It cost real money and its spans say exactly where it stopped.
+  if (db.configured()) {
+    void db.upsertRun({
+      id: r.id,
+      domain: r.domain,
+      queries: r.queries,
+      status: "failed",
+      started_at: new Date(r.startedAt).toISOString(),
+      ended_at: new Date(r.endedAt).toISOString(),
+      error: r.error,
+    })
+  }
 }
 
 function evict(): void {
@@ -282,6 +358,7 @@ export async function listStoredRuns(): Promise<StoredRun[]> {
       console.error(`[runs] skipping unreadable ${name}:`, e)
     }
   }
+  for (const stored of await db.listRuns()) byId.set(stored.id, stored)
   for (const r of runs.values()) {
     const s = storedFrom(r)
     if (s) byId.set(s.id, s)
@@ -309,6 +386,7 @@ export async function getStoredRun(id: string): Promise<StoredRun | null> {
     const parsed: unknown = JSON.parse(await readFile(path.join(runsDir(), name), "utf8"))
     return adoptCliRun(name, parsed)
   } catch {
-    return null
+    // not on disk either
   }
+  return db.getRunRow(id)
 }
