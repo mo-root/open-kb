@@ -66,6 +66,15 @@ describe("core purity", () => {
       const { status } = runChecker()
       expect(status).toBe(0)
     })
+
+    it("catches process.env split across lines, where no single line contains the full match", () => {
+      // A line-by-line scan would miss this: neither "process" nor ".env" nor ".API_KEY"
+      // alone matches process.env — only the joined text does.
+      writeFileSync(PROBE_FILE, `export const a = process\n  .env\n  .API_KEY\n`)
+      const { status, output } = runChecker()
+      expect(status).not.toBe(0)
+      expect(output).toContain("process.env — credentials are a parameter")
+    })
   })
 
   describe("HTTP framing", () => {
@@ -112,6 +121,28 @@ describe("core purity", () => {
       writeFileSync(
         PROBE_FILE,
         `export interface X { fetchedAt: string }\nexport const hasFetched = (x: X) => Boolean(x.fetchedAt)\n`,
+      )
+      const { status } = runChecker()
+      expect(status).toBe(0)
+    })
+
+    it("does not false-positive on a 'fetch' property declaration or a fetch-prefixed method call", () => {
+      // A port declared on an interface (`fetch: FetchPort`) is exactly the pattern core is
+      // supposed to use — a provider injects the implementation. Calling through an injected
+      // port (`ctx.fetch.get(url)`) is core using that port, not core making the HTTP call
+      // itself. Neither should trip the HTTP-framing rule; if a future regex change makes them
+      // trip it, this gate would start crying wolf and get disabled.
+      writeFileSync(
+        PROBE_FILE,
+        [
+          "export interface Port {",
+          "  fetch: FetchPort",
+          "}",
+          "export function useIt(ctx: { fetch: { get: (u: string) => Promise<string> } }) {",
+          '  return ctx.fetch.get("https://example.com")',
+          "}",
+          "",
+        ].join("\n"),
       )
       const { status } = runChecker()
       expect(status).toBe(0)

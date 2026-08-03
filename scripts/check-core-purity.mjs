@@ -21,14 +21,23 @@ function walk(dir) {
   return out
 }
 
+// Scan whole-file text, not line by line — a line-by-line scan lets a forbidden expression
+// hide by wrapping across lines (e.g. `process\n  .env\n  .API_KEY`), where no single line
+// contains the full match. Matching against the full text closes that gap; the line number for
+// reporting is recovered by counting newlines before the match's start index.
 const violations = []
 for (const file of walk("packages/core/src")) {
   const text = readFileSync(file, "utf8")
-  text.split("\n").forEach((line, i) => {
-    for (const [re, why] of FORBIDDEN) {
-      if (re.test(line)) violations.push(`${file}:${i + 1}  ${why}\n    ${line.trim()}`)
+  for (const [re, why] of FORBIDDEN) {
+    const global = new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g")
+    let m
+    while ((m = global.exec(text)) !== null) {
+      const line = text.slice(0, m.index).split("\n").length
+      const snippet = m[0].replace(/\s+/g, " ").trim()
+      violations.push(`${file}:${line}  ${why}\n    ${snippet}`)
+      if (m[0].length === 0) global.lastIndex++ // guard against a hypothetical zero-length match
     }
-  })
+  }
 }
 
 if (violations.length) {
