@@ -1,0 +1,11 @@
+{
+  "name": "open-kb",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "vitest run",
+    "check": "node scripts/check-core-purity.mjs && tsc -b"
+  },
+  "devDependencies": { "typescript": "^5.7.2", "vitest": "^3.0.0", "@types/node": "^22.10.0" }
+}
