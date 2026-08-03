@@ -1,1 +1,1 @@
-{ "extends": "../../tsconfig.base.json", "compilerOptions": { "lib": ["ES2023"], "outDir": "dist" }, "include": ["src"] }
+{ "extends": "../../tsconfig.base.json", "compilerOptions": { "lib": ["ES2023"], "outDir": "dist", "composite": true }, "include": ["src"] }
