@@ -338,7 +338,12 @@ export function makeTools(ctx: RunContext): Tools {
   const search = tool({
     description:
       "Run several web searches at once. Cheap and fast — this is how you find out what exists. " +
-      "Batch every query you want in one call; one call buys a whole wave.",
+      "Batch every query you want in one call; one call buys a whole wave. " +
+      "EVERY HIT COMES BACK WITH A HANDLE, so you can record what a result tells you without " +
+      "opening the page. Quote the title or description you were given. Opening the page is " +
+      "stronger evidence and worth it when a result matters, but a search result is real " +
+      "evidence and recording from it is how a run covers a whole market rather than the " +
+      "handful of pages it had time to read.",
     inputSchema: z.object({
       queries: z.array(z.string()).min(1).max(12),
       why: z.string().describe("what you expect these queries to buy, and why it is worth it"),
@@ -353,7 +358,20 @@ export function makeTools(ctx: RunContext): Tools {
           query: r.query,
           ok: r.ok,
           error: r.error,
-          hits: r.hits.map((h) => ({ url: h.url, title: h.title, description: h.description })),
+          hits: r.hits.map((h) => {
+            // A search result IS a retrieval this run performed: the engine returned this title
+            // and description for this URL. Recording it makes the whole result bag citable
+            // instead of only the few pages a run has time to open — measured at 91 domains seen
+            // against 14 recorded, because nothing but a fetched page could be cited.
+            // Tiered `snippet` so a reader can tell it from a page the run actually read.
+            const rec = ctx.evidence.record({
+              url: h.url,
+              text: `${h.title}\n${h.description}`,
+              status: "found",
+              tier: "snippet",
+            })
+            return { url: h.url, title: h.title, description: h.description, handle: rec.handle }
+          }),
         })),
       }
     },

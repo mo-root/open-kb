@@ -39,6 +39,19 @@ The reason is the field most often wasted. Compare:
 
 A reader can act on the second.
 
+## A search result is evidence
+
+Every hit a search returns comes back with a handle. You can record from it directly — quote the
+title or the description you were given — without opening the page.
+
+Do this constantly. It is how a run covers a market instead of covering the handful of pages it had
+time to read. One run searched thirty-six times, saw **ninety-one distinct companies** in its
+results, and recorded **fourteen** — because it believed only a page it had opened could be cited,
+and it only had budget to open thirteen. Seventy-seven real companies were found and thrown away.
+
+Opening the page is stronger, and worth it when something matters enough to describe properly. But
+a result you leave unrecorded is a company the map does not contain.
+
 ## The quote rule
 
 Quotes are checked as literal substrings of the bytes fetched in this run. Not paraphrased, not

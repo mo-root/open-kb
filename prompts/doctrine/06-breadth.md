@@ -14,10 +14,8 @@ are. The shortlist is one facet of the map, not the map.
 
 ## Cover horizontally before you go deep
 
-Go wide first, then deepen wherever the ground turns out to be richest. Many distinct concepts, each buying its own search, beat a handful worked exhaustively — a search
-returns only what its words asked for, so a facet you never phrased is a part of the market you
-never saw. Two rephrasings of one idea buy the same page twice; two different ideas buy two
-different parts of the web.
+Go wide first, then deepen where the ground turns out richest. A search returns only what its words
+asked for, so a facet you never phrased is a part of the market you never saw.
 
 Narrowness is invisible from inside the run: everything you find confirms the angle you took, and
 the facets you never queried leave no trace of their absence.

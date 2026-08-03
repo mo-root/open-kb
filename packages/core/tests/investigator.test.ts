@@ -133,6 +133,19 @@ describe("investigate", () => {
         const system = prompt.find((m) => m.role === "system")
         if (system) systemPrompt = String(system.content)
         const turn = prompt.filter((m) => m.role === "tool").length
+
+        // Read the handle out of the transcript rather than hardcoding one. A real model cites
+        // what it was just handed. Hardcoding `ev1` made this test depend on which tool happened
+        // to record first — and when `search` began recording every hit so the whole result bag
+        // is citable, the numbering shifted and the test broke on an implementation detail
+        // rather than on a behaviour. Prefer a fetched page (it reports `bytes`); fall back to
+        // the last handle seen.
+        const toolMsgs = JSON.stringify(prompt.filter((m) => m.role === "tool"))
+        const pageHandle =
+          toolMsgs.match(/"handle":"(ev\d+)"[^}]*"bytes"/)?.[1] ??
+          toolMsgs.match(/"handle":"(ev\d+)"/g)?.slice(-1)[0]?.match(/ev\d+/)?.[0] ??
+          "ev1"
+
         const content =
           turn === 0
             ? call("1", "search", { queries: ["anti-bot bypass api"], why: "find rivals by capability" })
@@ -151,7 +164,7 @@ describe("investigate", () => {
                         what: "anti-bot bypass API",
                         whyHere: "sells the same capability to the same buyer",
                         howFound: "anti-bot bypass api",
-                        evidence: [{ handle: "ev1", quote: "Rival sells an anti-bot bypass API" }],
+                        evidence: [{ handle: pageHandle, quote: "Rival sells an anti-bot bypass API" }],
                       },
                     ],
                     edges: [
@@ -161,7 +174,7 @@ describe("investigate", () => {
                         relation: "competitor",
                         whyHere: "sells the anchor's capability to the anchor's buyer",
                         howFound: "anti-bot bypass api",
-                        evidence: [{ handle: "ev1", quote: "anti-bot bypass API to developers" }],
+                        evidence: [{ handle: pageHandle, quote: "anti-bot bypass API to developers" }],
                       },
                     ],
                   })
@@ -244,6 +257,19 @@ describe("investigate", () => {
     const model = new MockLanguageModelV4({
       doGenerate: async ({ prompt }) => {
         const turn = prompt.filter((m) => m.role === "tool").length
+
+        // Read the handle out of the transcript rather than hardcoding one. A real model cites
+        // what it was just handed. Hardcoding `ev1` made this test depend on which tool happened
+        // to record first — and when `search` began recording every hit so the whole result bag
+        // is citable, the numbering shifted and the test broke on an implementation detail
+        // rather than on a behaviour. Prefer a fetched page (it reports `bytes`); fall back to
+        // the last handle seen.
+        const toolMsgs = JSON.stringify(prompt.filter((m) => m.role === "tool"))
+        const pageHandle =
+          toolMsgs.match(/"handle":"(ev\d+)"[^}]*"bytes"/)?.[1] ??
+          toolMsgs.match(/"handle":"(ev\d+)"/g)?.slice(-1)[0]?.match(/ev\d+/)?.[0] ??
+          "ev1"
+
         const content =
           turn === 0
             ? call("1", "fetch", { urls: ["https://rival.com"], mode: "direct", why: "confirm what this host is" })
@@ -256,7 +282,7 @@ describe("investigate", () => {
                       what: "anti-bot bypass API",
                       whyHere: "sells the same capability to the same buyer",
                       howFound: "anti-bot bypass api",
-                      evidence: [{ handle: "ev1", quote: "Rival sells an anti-bot bypass API" }],
+                      evidence: [{ handle: pageHandle, quote: "Rival sells an anti-bot bypass API" }],
                     },
                   ],
                   edges: [
@@ -266,7 +292,7 @@ describe("investigate", () => {
                       relation: "competitor",
                       whyHere: "takes the anchor's buyer with the anchor's capability",
                       howFound: "anti-bot bypass api",
-                      evidence: [{ handle: "ev1", quote: "anti-bot bypass API to developers" }],
+                      evidence: [{ handle: pageHandle, quote: "anti-bot bypass API to developers" }],
                     },
                   ],
                 })

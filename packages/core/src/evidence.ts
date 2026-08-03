@@ -1,11 +1,27 @@
 import { canonicalUrl } from "./url.js"
 import type { FetchStatus } from "./sniff.js"
 
+/**
+ * How the bytes behind a citation were obtained.
+ *
+ * `page` — the run fetched that URL and read its content.
+ * `snippet` — the run ran a search and the engine returned this title and description for that
+ *   URL. Weaker: it is somebody else's summary, and the page itself was never opened. But it is
+ *   a real retrieval this run performed, and refusing to record it was measured throwing away
+ *   85% of what a run found — 91 domains seen, 14 recorded, because only fetched pages were
+ *   citable and the fetch budget was 13 pages.
+ *
+ * The tier travels with the evidence so a reader, and the confidence calculation, can tell a
+ * claim backed by a page apart from one backed by a search result. It is never used to reject.
+ */
+export type EvidenceTier = "page" | "snippet"
+
 export interface Evidence {
   url: string
   quote: string
   fetchedAt: string
   status: FetchStatus
+  tier: EvidenceTier
 }
 
 export interface FetchRecord {
@@ -15,6 +31,7 @@ export interface FetchRecord {
   text: string
   fetchedAt: string
   status: FetchStatus
+  tier: EvidenceTier
   reason?: string
 }
 
@@ -52,7 +69,14 @@ export class EvidenceStore {
     this.#now = now
   }
 
-  record(input: { url: string; text: string; status: FetchStatus; reason?: string }): FetchRecord {
+  record(input: {
+    url: string
+    text: string
+    status: FetchStatus
+    reason?: string
+    /** Defaults to `page`: a record with no stated tier came from opening the URL. */
+    tier?: EvidenceTier
+  }): FetchRecord {
     const handle = `ev${++this.#n}`
     const canonical = canonicalUrl(input.url)
     const rec: FetchRecord = {
@@ -62,6 +86,7 @@ export class EvidenceStore {
       text: input.text,
       fetchedAt: this.#now(),
       status: input.status,
+      tier: input.tier ?? "page",
       reason: input.reason,
     }
     Object.freeze(rec)
@@ -95,6 +120,6 @@ export class EvidenceStore {
     if (!squash(rec.text).includes(squashedQuote)) {
       throw new CitationError(`quote not present in ${rec.url}`)
     }
-    return { url: rec.url, quote, fetchedAt: rec.fetchedAt, status: rec.status }
+    return { url: rec.url, quote, fetchedAt: rec.fetchedAt, status: rec.status, tier: rec.tier }
   }
 }

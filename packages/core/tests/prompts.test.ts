@@ -89,6 +89,11 @@ describe("prompt files", () => {
     // Every line competes with every other for attention. Length IS emphasis: the live
     // failure happened partly because search guidance was long and recording was one line.
     expect(composed.length).toBeGreaterThan(4_000)
-    expect(composed.length).toBeLessThan(20_000)
+    // Raised from 20,000 once, deliberately, to admit the section telling the agent a search
+    // result is citable evidence. That one passage is worth its length: without it a measured
+    // run saw 91 companies and recorded 14, because it believed only a page it had opened could
+    // be cited and it had budget to open thirteen. Redundancy in the breadth file was trimmed
+    // first; this is what remained. Raise it again only for something that earns as much.
+    expect(composed.length).toBeLessThan(22_000)
   })
 })
