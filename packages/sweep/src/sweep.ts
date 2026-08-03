@@ -21,7 +21,7 @@
 import { generateObject } from "ai"
 import type { LanguageModel } from "ai"
 import { z } from "zod"
-import { sniff, condense, isHtml, type SpanStream } from "@open-kb/core"
+import { sniff, condense, isHtml, type SearchResult, type SpanStream } from "@open-kb/core"
 import {
   brightDataSearch,
   brightDataFetch,
@@ -609,12 +609,26 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   // proving what is already known.
   const hits: Array<{ url: string; title: string; description: string; q: string; intent: string }> = []
 
+  /**
+   * Fire a wave, keeping the pipe full.
+   *
+   * This used to chunk the queries into groups of CONC and await each group, so
+   * a group cost as much as its slowest member and nothing new started until
+   * every one of them landed. Measured on an 80-query wave: four groups taking
+   * 62s, 112s, 61s and 71s for 306s total. During the 112s group, nineteen
+   * queries were finished and twenty more were waiting on one straggler.
+   *
+   * A pool instead. Each worker takes the next query the moment it frees up, so
+   * one slow query delays only itself. Same concurrency, no barrier.
+   */
   const fire = async (batchQueries: PlannedQuery[]) => {
-  for (let i = 0; i < batchQueries.length; i += CONC) {
-    if (signal?.aborted) throw new Error("aborted")
-    const batch = batchQueries.slice(i, i + CONC)
-    const res = await search.search(batch.map((b) => b.q))
-    res.forEach((r, j) => {
+    let next = 0
+    let done = 0
+
+    const handleOne = (r: SearchResult, planned: PlannedQuery) => {
+      const res = [r]
+      const batch = [planned]
+      res.forEach((r, j) => {
       serpCalls += PAGES
       bill("serp", "sweep", r.usd, r.ms, r.ok)
       // One span per SERP call, carrying the query text, the only place a
@@ -657,8 +671,26 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         })),
       })
     })
-    say("sweep", `  ${Math.min(i + CONC, batchQueries.length)}/${batchQueries.length} — ${hits.length} results so far`)
-  }
+    }
+
+    const worker = async () => {
+      while (true) {
+        if (signal?.aborted) throw new Error("aborted")
+        const i = next++
+        if (i >= batchQueries.length) return
+        const planned = batchQueries[i]!
+        const [r] = await search.search([planned.q])
+        if (r) handleOne(r, planned)
+        done += 1
+        // Every tenth, and the last, so a long wave still reports progress
+        // without a line per query.
+        if (done % 10 === 0 || done === batchQueries.length) {
+          say("sweep", `  ${done}/${batchQueries.length} — ${hits.length} results so far`)
+        }
+      }
+    }
+
+    await Promise.all(Array.from({ length: Math.min(CONC, batchQueries.length) }, worker))
   }
 
   const distinctHosts = () => {

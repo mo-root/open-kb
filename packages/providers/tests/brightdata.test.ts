@@ -128,3 +128,50 @@ describe("brightDataFetch", () => {
     expect(r.usd).toBe(0)
   })
 })
+
+describe("brightDataSearch timeouts", () => {
+  it("abandons a page that will not answer, and charges nothing for it", async () => {
+    // Measured: in a worker pool, thirty of forty queries finished in 43s and
+    // the last ten took 133s. A page that hangs holds a worker for minutes and
+    // returns nothing its siblings did not already return.
+    const fetchImpl = vi.fn((_u: unknown, init: unknown) => {
+      const signal = (init as RequestInit).signal
+      return new Promise<Response>((_res, rej) => {
+        signal?.addEventListener("abort", () => {
+          const e = new Error("timed out")
+          e.name = "TimeoutError"
+          rej(e)
+        })
+      })
+    })
+    const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 1, timeoutMs: 1_000 })
+    const [r] = await s.search(["slow one"])
+    expect(r!.ok).toBe(false)
+    expect(r!.error).toContain("gave up")
+    expect(r!.usd).toBe(0)
+  })
+
+  it("keeps the pages that did answer when one of them times out", async () => {
+    let n = 0
+    const fetchImpl = vi.fn((_u: unknown, init: unknown) => {
+      n += 1
+      if (n === 2) {
+        const signal = (init as RequestInit).signal
+        return new Promise<Response>((_res, rej) => {
+          signal?.addEventListener("abort", () => {
+            const e = new Error("timed out")
+            e.name = "TimeoutError"
+            rej(e)
+          })
+        })
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({ organic: [{ link: `https://a${n}.com`, title: "t", description: "" }] }), { status: 200 }),
+      )
+    })
+    const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 3, timeoutMs: 1_000 })
+    const [r] = await s.search(["x"])
+    expect(r!.ok).toBe(true)
+    expect(r!.hits).toHaveLength(2)
+  })
+})

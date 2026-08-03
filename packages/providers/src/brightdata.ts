@@ -13,6 +13,20 @@ interface Opts {
   unlockUsd?: number
   /** Result pages read per query. Each page is its own billable call. */
   pages?: number
+  /**
+   * How long one call may take before it is abandoned.
+   *
+   * Measured: with queries running in a pool rather than fixed chunks, thirty of
+   * forty finished in 43 seconds and the last ten took 133. A few calls sit for
+   * minutes. Chunking used to hide them inside an already-slow batch; a pool
+   * exposes them as the tail, and the tail was most of the wave.
+   *
+   * A page that has not answered in this long is not about to answer with
+   * anything the other pages did not already give us, and its nine siblings are
+   * done. Abandoning it costs one page of one query and returns the worker to
+   * the queue.
+   */
+  timeoutMs?: number
 }
 
 const API = "https://api.brightdata.com/request"
@@ -20,6 +34,7 @@ const API = "https://api.brightdata.com/request"
 export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}): SearchPort {
   const f = opts.fetchImpl ?? fetch
   const price = opts.serpUsd ?? 0.0015
+  const timeoutMs = Math.max(1_000, Math.floor(opts.timeoutMs ?? 30_000))
 
   /**
    * How many result pages to read per query.
@@ -58,6 +73,7 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
               method: "POST",
               headers: { Authorization: `Bearer ${creds.token}`, "Content-Type": "application/json" },
               body: JSON.stringify({ zone: creds.serpZone, url: target, format: "raw" }),
+              signal: AbortSignal.timeout(timeoutMs),
             })
             const ms = Date.now() - started
             if (!res.ok) return { query, hits: [], ok: false, error: `serp http ${res.status}`, usd: price, ms }
@@ -73,7 +89,17 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
               .map((h) => ({ url: h.link!, title: h.title ?? "", description: h.description ?? "" }))
             return { query, hits, ok: true, usd: price, ms }
           } catch (e) {
-            return { query, hits: [], ok: false, error: `serp failed: ${(e as Error).message}`, usd: 0, ms: Date.now() - started }
+            const timedOut = (e as Error).name === "TimeoutError" || (e as Error).name === "AbortError"
+            return {
+              query,
+              hits: [],
+              ok: false,
+              error: timedOut ? `serp gave up after ${timeoutMs}ms` : `serp failed: ${(e as Error).message}`,
+              // Nothing came back, so Bright Data has nothing to bill, exactly as
+              // for a connection that never opened.
+              usd: 0,
+              ms: Date.now() - started,
+            }
           }
         }),
       )
