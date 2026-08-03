@@ -1034,7 +1034,39 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     planner(),
   ])
 
+  /**
+   * One entry per COMPANY, not per hostname.
+   *
+   * A docs or blog subdomain is the same company as its parent, and classifying
+   * it separately produced a map where `docs.apify.com` was a competitor while
+   * `apify.com` sat eleven rows above it. Measured on one map: three of the four
+   * subdomain entities were exact duplicates of a parent in the same slice, and
+   * the fourth was a blog whose actual vendor had never been captured at all.
+   *
+   * So a subdomain folds into its parent, and its rows come along: they are the
+   * same company's evidence and the parent is the thing a reader can act on. A
+   * parent nobody searched up still gets created, which is how the blog case
+   * recovers the vendor rather than losing it.
+   *
+   * Only a documentation-shaped first label folds. Stripping every subdomain
+   * would turn `news.ycombinator.com` into `ycombinator.com`, and Hacker News is
+   * a community while Y Combinator is an accelerator: that is one company
+   * swallowing a completely different entity. These labels name a section of a
+   * site rather than a thing in its own right.
+   */
+  const SECTION = new Set([
+    "docs", "doc", "documentation", "blog", "help", "support", "developer",
+    "developers", "dev", "api", "learn", "kb", "guides", "changelog", "status",
+  ])
+  const parentOf = (host: string): string => {
+    const parts = host.split(".")
+    if (parts.length <= 2) return host
+    if (!SECTION.has(parts[0]!)) return host
+    return parts.slice(1).join(".")
+  }
+
   const byHost = new Map<string, typeof hits>()
+  let folded = 0
   for (const h of hits) {
     let host: string
     try {
@@ -1042,10 +1074,12 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     } catch {
       continue
     }
-    if (!byHost.has(host)) byHost.set(host, [])
-    byHost.get(host)!.push(h)
+    const parent = parentOf(host)
+    if (parent !== host) folded += 1
+    if (!byHost.has(parent)) byHost.set(parent, [])
+    byHost.get(parent)!.push(h)
   }
-  say("sweep", `${hits.length} results, ${byHost.size} distinct hosts`)
+  say("sweep", `${hits.length} results, ${byHost.size} distinct hosts${folded ? ` (${folded} rows folded into a parent domain)` : ""}`)
 
   // ── 4. extract in bulk ────────────────────────────────────────────────────
   const hostList = [...byHost.entries()].map(([host, hs]) => ({
