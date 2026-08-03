@@ -3,9 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --webpack --port 3210",
+    "dev": "NODE_OPTIONS=--max-http-header-size=65536 next dev --webpack --port 3210",
     "build": "next build --webpack",
-    "start": "next start --port 3210",
+    "start": "NODE_OPTIONS=--max-http-header-size=65536 next start --port 3210",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
