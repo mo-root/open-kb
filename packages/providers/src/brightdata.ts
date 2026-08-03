@@ -82,7 +82,11 @@ export function brightDataFetch(creds: BrightDataCredentials, opts: Opts = {}): 
         // and it is the sniffer's job to call it — not ours to hide.
         return { url, httpStatus: res.status, body, contentType: res.headers.get("content-type") ?? undefined, ms: Date.now() - started, usd: price }
       } catch (e) {
-        return { url, httpStatus: 0, body: "", ms: Date.now() - started, usd: price, contentType: undefined }
+        // The request never completed (DNS failure, connection reset, timeout before any
+        // response) — Bright Data has nothing to bill, so this must not carry a price.
+        // Compare the completed-but-error-status branch above, which keeps `usd: price`
+        // because a response that came back (even a 500) was a request Bright Data serviced.
+        return { url, httpStatus: 0, body: "", ms: Date.now() - started, usd: 0, contentType: undefined }
       }
     },
   }

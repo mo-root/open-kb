@@ -59,4 +59,27 @@ describe("brightDataFetch", () => {
     expect(r.httpStatus).toBe(200)
     expect(r.body).toBe("")
   })
+
+  it("does not throw and charges nothing when direct mode never gets a response", async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new Error("getaddrinfo ENOTFOUND a.com")
+    })
+    const f = brightDataFetch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch })
+    const r = await f.get("https://a.com", "direct")
+    expect(r.httpStatus).toBe(0)
+    expect(r.usd).toBe(0)
+  })
+
+  it("does not throw and charges nothing when the unlocked request never reaches Bright Data", async () => {
+    // A connection that never opens (DNS failure, reset, timeout before any response) is a
+    // call Bright Data never billed — unlike a completed request that comes back as a 500,
+    // which stays priced. Charging for this would corrupt the run's cost accounting.
+    const fetchImpl = vi.fn(async () => {
+      throw new Error("fetch failed: connection reset")
+    })
+    const f = brightDataFetch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch })
+    const r = await f.get("https://a.com", "unlocked")
+    expect(r.httpStatus).toBe(0)
+    expect(r.usd).toBe(0)
+  })
 })
