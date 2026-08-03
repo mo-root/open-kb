@@ -1,6 +1,6 @@
 ---
 agent: assess
-includes: [06-breadth]
+includes: [04-search-craft, 06-breadth]
 ---
 A market map is being built for {{anchor}} — {{sells}}
 Its buyer: {{buyer}}

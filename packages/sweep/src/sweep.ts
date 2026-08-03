@@ -113,6 +113,43 @@ export const RELATIONS = [
   "none",
 ] as const
 
+/**
+ * The three lenses the catalog is written through, in parallel.
+ *
+ * One model call writing the whole catalog took 51 seconds and had to hold
+ * every intent at once, which is how a prompt ends up covering all of them
+ * thinly. Three calls run concurrently, so the stage costs the slowest rather
+ * than the sum, and each prompt argues for one thing.
+ *
+ * Split by WHO is searching, not by market: a market's competitors, its
+ * substitutes and its communities are found by different people typing
+ * different things, and one lens cannot reach all three. Every lens still
+ * covers every market.
+ */
+const LENSES = [
+  {
+    name: "the buyer in trouble",
+    detail: `Someone using something today and unhappy with it. What just broke, what they are
+switching away from, what they are comparing against what. This lens finds head-on competitors and
+the substitutes that solve the same problem a different way. Phrase things the way someone types at
+2am when the thing is down, and the way someone types when they are drawing up a shortlist.`,
+  },
+  {
+    name: "the practitioner building it",
+    detail: `Someone assembling this themselves or wiring it into a stack. What it is built on, what
+plugs into it, what the do-it-yourself route looks like, which technique underlies it. This lens
+finds dependencies, integrations, open-source alternatives, and the vendors who sell one mechanism
+rather than a whole platform.`,
+  },
+  {
+    name: "where the market gathers",
+    detail: `The places this market talks about itself and lists itself: subreddits, forums, Q&A
+sites, newsletters, conferences, trade bodies, directories, comparison sites, and who is hiring for
+these skills. This lens finds communities, publishers and directories, which no vendor query
+returns, and a single directory can name a hundred players.`,
+  },
+] as const
+
 const Decomposition = z.object({
   sells: z.string().describe("what this company sells, in one plain sentence, no marketing words"),
   buyer: z.string().describe("who buys it and what has just gone wrong for them"),
@@ -537,21 +574,41 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
 
   // ── 2. write the catalog, knowing no company names ────────────────────────
   say("plan", `writing a catalog of ${target} queries that never name the company`)
-  const cat = await call(
-    "plan",
-    `catalog ${target} queries for ${anchor}'s market`,
-    z.object({ queries: z.array(PlannedQuery) }),
-    prompt("catalog", {
-      anchor,
-      target,
-      sells: decomp.sells,
-      buyer: decomp.buyer,
-      capabilities: decomp.capabilities
-        .map((c) => `${c.name} — ${c.does}${c.covers.length > 1 ? `  (covers ${c.covers.join(", ")})` : ""}`)
-        .join("\n  "),
-      coinages: decomp.coinages.join(", "),
-    }),
+  const per = Math.max(1, Math.ceil(target / LENSES.length))
+  const catalogs = await Promise.all(
+    LENSES.map((lens) =>
+      call(
+        "plan",
+        `catalog: ${lens.name}`,
+        z.object({ queries: z.array(PlannedQuery) }),
+        prompt("catalog", {
+          anchor,
+          target: per,
+          lens: lens.name,
+          lensDetail: lens.detail,
+          sells: decomp.sells,
+          buyer: decomp.buyer,
+          capabilities: decomp.capabilities
+            .map((c) => `${c.name} — ${c.does}${c.covers.length > 1 ? `  (covers ${c.covers.join(", ")})` : ""}`)
+            .join("\n  "),
+          coinages: decomp.coinages.join(", "),
+        }),
+      ),
+    ),
   )
+
+  // Deduplicated across lenses: they were told to stay in their own lane, but
+  // "best X alternatives" is reachable from two of the three, and a repeat is a
+  // query bought twice.
+  const seenQ = new Set<string>()
+  const cat = {
+    queries: catalogs.flatMap((c) => c.queries).filter((q) => {
+      const k = q.q.trim().toLowerCase()
+      if (seenQ.has(k)) return false
+      seenQ.add(k)
+      return true
+    }),
+  }
 
   // The requested count is a sentence in a prompt, and a prompt is a request.
   // Gemini rejects array-length constraints in a structured-output schema, so
@@ -621,14 +678,15 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    * A pool instead. Each worker takes the next query the moment it frees up, so
    * one slow query delays only itself. Same concurrency, no barrier.
    */
-  const fire = async (batchQueries: PlannedQuery[]) => {
-    let next = 0
-    let done = 0
-
-    const handleOne = (r: SearchResult, planned: PlannedQuery) => {
-      const res = [r]
+  /** Search one query and record everything it produced. The pool below calls
+   *  this; nothing here knows about batches or waves. */
+  const runOne = async (planned: PlannedQuery) => {
+    const [r] = await search.search([planned.q])
+    if (!r) return
+    {
       const batch = [planned]
-      res.forEach((r, j) => {
+      const j = 0
+      {
       serpCalls += PAGES
       bill("serp", "sweep", r.usd, r.ms, r.ok)
       // One span per SERP call, carrying the query text, the only place a
@@ -670,27 +728,8 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           description: (h.description ?? "").slice(0, 200),
         })),
       })
-    })
-    }
-
-    const worker = async () => {
-      while (true) {
-        if (signal?.aborted) throw new Error("aborted")
-        const i = next++
-        if (i >= batchQueries.length) return
-        const planned = batchQueries[i]!
-        const [r] = await search.search([planned.q])
-        if (r) handleOne(r, planned)
-        done += 1
-        // Every tenth, and the last, so a long wave still reports progress
-        // without a line per query.
-        if (done % 10 === 0 || done === batchQueries.length) {
-          say("sweep", `  ${done}/${batchQueries.length} — ${hits.length} results so far`)
-        }
       }
     }
-
-    await Promise.all(Array.from({ length: Math.min(CONC, batchQueries.length) }, worker))
   }
 
   const distinctHosts = () => {
@@ -706,61 +745,131 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   }
 
   const asked: PlannedQuery[] = [...queries]
-  let wave = 1
-  say("sweep", `wave 1 — ${queries.length} queries × ${PAGES} pages`)
-  await fire(queries)
+  /**
+   * One queue, drained continuously, refilled while it drains.
+   *
+   * This used to run in waves: fire a batch, wait for all of it, ask the model
+   * what is missing, fire the next batch. Two costs, both measured on one run.
+   * The assess call is a serial stall, about 15 seconds each with every worker
+   * idle. And a follow-up wave is small, so waves 2 to 4 spent 239 seconds
+   * putting eleven queries through a twenty-wide pool.
+   *
+   * Here the workers never stop. The planner runs beside them and tops the queue
+   * up when it drops below half the pool width, so by the time a worker wants
+   * another query there is usually one waiting. Assessment overlaps searching
+   * instead of interrupting it.
+   */
+  const queue: PlannedQuery[] = [...queries]
+  let taken = 0
+  let sealed = false
+  let rounds = 0
 
-  while (wave < MAX_WAVES) {
-    if (signal?.aborted) throw new Error("aborted")
-    const before = distinctHosts().size
+  let ran = 0
+  const take = (): PlannedQuery | null => (taken < queue.length ? queue[taken++]! : null)
+  const pending = () => queue.length - taken
+  const idle = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-    // Ask, rather than assume. The model sees how big the map is, what the last
-    // wave added, and which angles have been worked, and decides whether this
-    // is a map worth showing or one with an obvious hole in it. `enough` is its
-    // call; the yield floor below is the harness's backstop for when it keeps
-    // saying no while learning nothing.
-    const verdict = await call(
-      "plan",
-      "assess",
-      z.object({
-        enough: z.boolean().describe("is this a map worth showing, or is something obviously missing?"),
-        missing: z.string().describe("what is thin or absent — one line. Empty if nothing is."),
-        queries: z.array(PlannedQuery).describe("queries aimed at what is missing. Empty if enough."),
-      }),
-      prompt("assess", {
-        anchor,
-        sells: decomp.sells,
-        buyer: decomp.buyer,
-        waves: `${wave} wave${wave === 1 ? "" : "s"}`,
-        hosts: before,
-        asked: asked.length,
-        angles: asked.map((q) => `  ${q.intent} · ${q.platform} — ${q.q}`).join("\n"),
-        sample: [...distinctHosts()].slice(0, 60).join(", "),
-      }),
-    )
+  say("sweep", `${queries.length} queries × ${PAGES} pages, ${CONC} at a time, topping up as it goes`)
 
-    if (verdict.enough || verdict.queries.length === 0) {
-      say("plan", `wave ${wave}: enough — ${before} hosts${verdict.missing ? ` (noted gap: ${verdict.missing})` : ""}`)
-      break
-    }
-
-    wave += 1
-    const next = verdict.queries.slice(0, Math.max(1, Math.floor(target / 2)))
-    say("plan", `wave ${wave}: ${verdict.missing || "widening"} — ${next.length} more queries`)
-    think("plan", `after ${before} hosts the model wants more: ${verdict.missing}`)
-    asked.push(...next)
-    await fire(next)
-
-    const gained = distinctHosts().size - before
-    say("sweep", `wave ${wave} added ${gained} new hosts (${distinctHosts().size} total)`)
-    if (gained < MIN_NEW_HOSTS) {
-      // The backstop. A wave that adds almost nothing means the queries are
-      // reaching ground already covered, and another wave would spend money to
-      // confirm what is already known.
-      say("plan", `wave ${wave} added only ${gained} — stopping, further queries are buying corroboration`)
-      break
+  const worker = async () => {
+    while (true) {
+      if (signal?.aborted) throw new Error("aborted")
+      const planned = take()
+      if (!planned) {
+        // Nothing queued. Either the planner is about to add more, or it has
+        // decided the map is done and this worker is finished.
+        if (sealed) return
+        await idle(200)
+        continue
+      }
+      await runOne(planned)
+      ran += 1
+      // Every tenth, and the last. Not "whenever the queue is empty": with more
+      // workers than queued queries that is true on every completion, and the
+      // log becomes one line per query.
+      if (ran % 10 === 0 || (sealed && ran === queue.length)) {
+        say("sweep", `  ${ran}/${queue.length} queries — ${hits.length} results so far`)
+      }
     }
   }
+
+  const planner = async () => {
+    while (rounds < MAX_WAVES) {
+      // Wait for the queue to run low rather than empty: a refill that lands
+      // while workers are still busy is a refill nobody waited for.
+      while (!sealed && pending() > Math.floor(CONC / 2)) {
+        if (signal?.aborted) return
+        await idle(250)
+      }
+      if (sealed || signal?.aborted) return
+
+      const before = distinctHosts().size
+      const verdict = await call(
+        "plan",
+        "assess",
+        z.object({
+          enough: z.boolean().describe("is this a map worth showing, or is something obviously missing?"),
+          missing: z.string().describe("what is thin or absent, one line. Empty if nothing is."),
+          queries: z.array(PlannedQuery).describe("queries aimed at what is missing. Empty if enough."),
+        }),
+        prompt("assess", {
+          anchor,
+          sells: decomp.sells,
+          buyer: decomp.buyer,
+          waves: `${rounds + 1} round${rounds === 0 ? "" : "s"}`,
+          hosts: before,
+          asked: asked.length,
+          angles: asked.map((q) => `  ${q.intent} · ${q.platform} — ${q.q}`).join("\n"),
+          sample: [...distinctHosts()].slice(0, 60).join(", "),
+        }),
+      )
+
+      if (verdict.enough || verdict.queries.length === 0) {
+        say("plan", `enough — ${before} hosts${verdict.missing ? ` (noted gap: ${verdict.missing})` : ""}`)
+        sealed = true
+        return
+      }
+
+      // Never ask the same thing twice. The planner sees what has been asked,
+      // but it is writing under time pressure against a moving map and a repeat
+      // is a query bought for nothing.
+      const seen = new Set(asked.map((q) => q.q.trim().toLowerCase()))
+      const fresh = verdict.queries
+        .filter((q) => !seen.has(q.q.trim().toLowerCase()))
+        .slice(0, Math.max(1, Math.floor(target / 2)))
+
+      if (!fresh.length) {
+        say("plan", `round ${rounds + 1}: every suggested query had already been asked — stopping`)
+        sealed = true
+        return
+      }
+
+      rounds += 1
+      say("plan", `round ${rounds}: ${verdict.missing || "widening"} — ${fresh.length} more queries queued`)
+      think("plan", `after ${before} hosts the model wants more: ${verdict.missing}`)
+      asked.push(...fresh)
+      queue.push(...fresh)
+
+      // Yield floor, measured once the round's queries have actually landed.
+      // A round that adds almost nothing means the queries are reaching ground
+      // already covered, and the next one would buy corroboration.
+      const mine = queue.length
+      while (!sealed && taken < mine && !signal?.aborted) await idle(250)
+      const gained = distinctHosts().size - before
+      say("sweep", `round ${rounds} added ${gained} new hosts (${distinctHosts().size} total)`)
+      if (gained < MIN_NEW_HOSTS) {
+        say("plan", `round ${rounds} added only ${gained} — stopping, further queries are buying corroboration`)
+        sealed = true
+        return
+      }
+    }
+    sealed = true
+  }
+
+  await Promise.all([
+    ...Array.from({ length: CONC }, worker),
+    planner(),
+  ])
 
   const byHost = new Map<string, typeof hits>()
   for (const h of hits) {
