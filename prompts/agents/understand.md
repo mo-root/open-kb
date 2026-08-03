@@ -32,8 +32,15 @@ different teams for different reasons are TWO, however similar the words look. G
 a name in the market's words — no brand, no product name, nothing a buyer would have to already know
 this company to type — and say plainly what job it does.
 
+Mark each capability `core` or `adjacent`. Core is what buyers come to this company for. Adjacent is
+a side line, an integration or an add-on they would not switch vendor over. Be strict: most
+companies have one to three core capabilities and everything else is adjacent.
+
 This grouping is what the run's search budget is divided across, so it decides what gets mapped. Too
 coarse and distinct markets get merged and never searched for; too fine and one market takes several
-shares of the budget while another takes none.
+shares of the budget while another takes none. And an adjacent line marked core is worse than either:
+a transactional email company that listed an AI-protocol integration alongside its email API spent a
+third of a small budget on the integration and got back eight pages about AI protocols and nothing
+about email.
 
 {{pages}}

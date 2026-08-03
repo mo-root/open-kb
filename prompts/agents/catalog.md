@@ -42,12 +42,16 @@ Absolute rules:
 - **Keep them short.** Three to six words, at most one operator. Every term is ANDed, so each one
   multiplies the constraint — a sentence describing one person's problem matches only the pages
   where someone wrote that sentence. If a query wants to say two things, write two queries.
-- **Cover every market listed above.** Each line is a separate market with its own rivals — already
-  grouped, so there is no double-counting: a search-results API and a proxy network are bought by
-  different teams and share almost no competitors. Give every one at least one query of its own
-  before giving any one a second. Measured on a run without this rule: three of nine products drew
-  zero queries, and the competitors of the biggest miss could not appear on the map at all. If the
-  budget is smaller than the list, spend it on the markets furthest apart.
+- **Cover every `[core]` market before spending on any `[adjacent]` one.** Each line is a separate
+  market with its own rivals — already grouped, so there is no double-counting: a search-results API
+  and a proxy network are bought by different teams and share almost no competitors. Measured on a
+  run without this rule: three of nine products drew zero queries, and the competitors of the
+  biggest miss could not appear on the map at all.
+
+  `[adjacent]` markets get whatever is left, and often that is nothing. An integration or add-on is
+  a real market and it is not what this company is bought for, so a small budget spent there buys a
+  map of somebody else's market. If the budget is smaller than the core list, spend it on the core
+  markets furthest apart.
 - Spread across platforms. For a platform query, use a site: operator or name the platform in the text.
 - Give every query a one-line `why`: what it is expected to surface that the others will not.
 - Set `market` to the market the query is for, copied exactly from the list above. It is checked:

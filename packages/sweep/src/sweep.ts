@@ -220,6 +220,21 @@ const Decomposition = z.object({
         name: z.string().describe("the capability in the market's words, no brand, no product name"),
         does: z.string().describe("the job it does for the buyer, one line"),
         covers: z.array(z.string()).describe("which of the products above this groups"),
+        /**
+         * Core or adjacent, because equal coverage misfires.
+         *
+         * Measured: a transactional email company lists an MCP server among its
+         * products. Grouping made it a market, "give every market a query" gave
+         * it a third of a three-query budget, and it returned eight hosts about
+         * AI protocols and nothing about email. A side integration is a real
+         * product and a real market; it is not worth the same share as the thing
+         * the company is bought for.
+         */
+        centrality: z
+          .enum(["core", "adjacent"])
+          .describe(
+            "core = what buyers come to this company for. adjacent = a side line, integration or add-on they would not switch vendor over.",
+          ),
       }),
     )
     .describe("the products grouped into distinct markets — the unit the search budget is split across"),
@@ -699,8 +714,12 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           lensDetail: lens.detail,
           sells: decomp.sells,
           buyer: decomp.buyer,
-          capabilities: decomp.capabilities
-            .map((c) => `${c.name} — ${c.does}${c.covers.length > 1 ? `  (covers ${c.covers.join(", ")})` : ""}`)
+          capabilities: [...decomp.capabilities]
+            .sort((a, b) => (a.centrality === b.centrality ? 0 : a.centrality === "core" ? -1 : 1))
+            .map(
+              (c) =>
+                `[${c.centrality}] ${c.name} — ${c.does}${c.covers.length > 1 ? `  (covers ${c.covers.join(", ")})` : ""}`,
+            )
             .join("\n  "),
           coinages: decomp.coinages.join(", "),
         }),
@@ -743,14 +762,15 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   {
     const asked = new Map<string, number>()
     for (const q of queries) asked.set(q.market.trim().toLowerCase(), (asked.get(q.market.trim().toLowerCase()) ?? 0) + 1)
-    const missed = decomp.capabilities.filter((c) => !asked.get(c.name.trim().toLowerCase()))
+    const core = decomp.capabilities.filter((c) => c.centrality === "core")
+    const missed = core.filter((c) => !asked.get(c.name.trim().toLowerCase()))
     for (const c of decomp.capabilities) {
-      think("plan", `${c.name}: ${asked.get(c.name.trim().toLowerCase()) ?? 0} queries`)
+      think("plan", `${c.centrality} · ${c.name}: ${asked.get(c.name.trim().toLowerCase()) ?? 0} queries`)
     }
     if (missed.length) {
-      say("plan", `no queries for ${missed.length} of ${decomp.capabilities.length} markets: ${missed.map((c) => c.name).join(", ")}`)
+      say("plan", `no queries for ${missed.length} of ${core.length} core markets: ${missed.map((c) => c.name).join(", ")}`)
     } else {
-      say("plan", `every one of the ${decomp.capabilities.length} markets got at least one query`)
+      say("plan", `every one of the ${core.length} core markets got at least one query`)
     }
   }
   if (planned.length > target) {
