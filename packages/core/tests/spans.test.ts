@@ -69,4 +69,63 @@ describe("SpanStream", () => {
     await consumer
     expect(got).toEqual([1, 2, 3])
   })
+
+  it("fans out every span to two consumers started before any emit, in the same order", async () => {
+    // A web view, a CLI renderer, and a cost tracker all tap the same run. Each must see the
+    // whole log — a shared waiter queue that hands each span to only one consumer would silently
+    // split the audit trail, which is the same failure shape as a non-finite cost reading $0.00.
+    const s = new SpanStream()
+    const got1: number[] = []
+    const got2: number[] = []
+    const c1 = (async () => {
+      for await (const sp of s.stream()) got1.push(sp.seq)
+    })()
+    const c2 = (async () => {
+      for await (const sp of s.stream()) got2.push(sp.seq)
+    })()
+    s.emit({ ...base, kind: "search", name: "serp", argsDigest: "a" })
+    s.emit({ ...base, kind: "search", name: "serp", argsDigest: "b" })
+    s.close()
+    await Promise.all([c1, c2])
+    expect(got1).toEqual([1, 2])
+    expect(got2).toEqual([1, 2])
+  })
+
+  it("terminates every attached consumer cleanly when close() fires", async () => {
+    const s = new SpanStream()
+    const got1: number[] = []
+    const got2: number[] = []
+    const c1 = (async () => {
+      for await (const sp of s.stream()) got1.push(sp.seq)
+    })()
+    const c2 = (async () => {
+      for await (const sp of s.stream()) got2.push(sp.seq)
+    })()
+    s.close()
+    // Both consumers must resolve — neither may be left parked on a waiter nobody wakes.
+    await Promise.all([c1, c2])
+    expect(got1).toEqual([])
+    expect(got2).toEqual([])
+  })
+
+  it("a consumer that breaks out early stops accumulating while the other keeps receiving", async () => {
+    const s = new SpanStream()
+    const got1: number[] = []
+    const got2: number[] = []
+    const c1 = (async () => {
+      for await (const sp of s.stream()) {
+        got1.push(sp.seq)
+        if (got1.length === 1) break
+      }
+    })()
+    const c2 = (async () => {
+      for await (const sp of s.stream()) got2.push(sp.seq)
+    })()
+    s.emit({ ...base, kind: "search", name: "serp", argsDigest: "a" })
+    s.emit({ ...base, kind: "search", name: "serp", argsDigest: "b" })
+    s.close()
+    await Promise.all([c1, c2])
+    expect(got1).toEqual([1])
+    expect(got2).toEqual([1, 2])
+  })
 })
