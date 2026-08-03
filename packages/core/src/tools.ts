@@ -100,6 +100,8 @@ export interface FetchFoundResult {
   bytes: number
   truncated: boolean
   slice: string
+  /** Present when truncated: the offset `read` should resume from to continue past this slice. */
+  nextOffset?: number
 }
 export interface FetchBlockedResult {
   url: string
@@ -216,13 +218,15 @@ export function makeTools(ctx: RunContext): Tools {
                     : "nothing usable came back",
             }
           }
+          const truncated = s.text.length > SLICE
           return {
             url,
             status: s.status,
             handle: rec.handle,
             bytes: s.text.length,
-            truncated: s.text.length > SLICE,
+            truncated,
             slice: s.text.slice(0, SLICE),
+            ...(truncated ? { nextOffset: SLICE } : {}),
           }
         }),
       )
@@ -231,7 +235,9 @@ export function makeTools(ctx: RunContext): Tools {
   })
 
   const read = tool({
-    description: "FREE. Re-read a page you already fetched, from a given offset. Costs nothing — use it instead of re-fetching.",
+    description:
+      "FREE. Re-read a page you already fetched, from a given offset. When a fetch comes back truncated, pass its " +
+      "nextOffset here to continue exactly where that slice cut off. Costs nothing — use it instead of re-fetching.",
     inputSchema: z.object({
       handle: z.string(),
       offset: z.number().int().min(0).default(0),
