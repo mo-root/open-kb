@@ -32,3 +32,5 @@ coverage/
 *.log
 .DS_Store
 runs/
+.next/
+*.tsbuildinfo

@@ -1,4 +1,8 @@
 {
   "files": [],
-  "references": [{ "path": "./packages/core" }, { "path": "./packages/providers" }]
+  "references": [
+    { "path": "./packages/core" },
+    { "path": "./packages/providers" },
+    { "path": "./packages/sweep" }
+  ]
 }
