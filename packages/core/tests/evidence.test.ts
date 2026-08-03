@@ -44,4 +44,30 @@ describe("EvidenceStore", () => {
     expect(s.hasFetched("https://a.com/p")).toBe(true)
     expect(s.hasFetched("https://a.com/other")).toBe(false)
   })
+
+  it("refuses a quote that is empty after whitespace normalisation", () => {
+    const s = new EvidenceStore(NOW)
+    const rec = s.record({ url: "https://a.com/p", text: "Acme sells anti-bot bypass APIs.", status: "found" })
+    expect(() => s.cite(rec.handle, "")).toThrow(CitationError)
+  })
+
+  it("refuses a quote that is only whitespace", () => {
+    const s = new EvidenceStore(NOW)
+    const rec = s.record({ url: "https://a.com/p", text: "Acme sells anti-bot bypass APIs.", status: "found" })
+    expect(() => s.cite(rec.handle, "   \n  ")).toThrow(CitationError)
+  })
+
+  it("refuses a quote just under the minimum length, even when it is a genuine substring", () => {
+    const s = new EvidenceStore(NOW)
+    const rec = s.record({ url: "https://a.com/p", text: "Acme sells anti-bot bypass APIs.", status: "found" })
+    // "Acme se" is 7 characters and is a real substring of the stored text — length alone must refuse it.
+    expect(() => s.cite(rec.handle, "Acme se")).toThrow(CitationError)
+  })
+
+  it("accepts a quote at exactly the minimum length", () => {
+    const s = new EvidenceStore(NOW)
+    const rec = s.record({ url: "https://a.com/p", text: "Acme sells anti-bot bypass APIs.", status: "found" })
+    // "Acme sel" is 8 characters and is a real substring of the stored text.
+    expect(() => s.cite(rec.handle, "Acme sel")).not.toThrow()
+  })
 })

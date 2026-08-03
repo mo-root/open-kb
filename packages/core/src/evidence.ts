@@ -23,6 +23,13 @@ export class CitationError extends Error {}
 const squash = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase()
 
 /**
+ * Below this, a "quote" proves nothing — it matches too much of the page to mean anything.
+ * Matches the `quote: z.string().min(8)` the `remember` tool schema enforces one layer up,
+ * so the two checks agree instead of drifting.
+ */
+const MIN_QUOTE_LENGTH = 8
+
+/**
  * Every byte the run fetched, and the ONLY way to turn those bytes into a citation.
  *
  * `cite` is the single mint. It has no fallback branch on purpose: if a quote cannot be
@@ -75,7 +82,11 @@ export class EvidenceStore {
     if (rec.status !== "found") {
       throw new CitationError(`cannot cite ${handle}: page was ${rec.status}${rec.reason ? ` (${rec.reason})` : ""}`)
     }
-    if (!squash(rec.text).includes(squash(quote))) {
+    const squashedQuote = squash(quote)
+    if (squashedQuote.length < MIN_QUOTE_LENGTH) {
+      throw new CitationError(`quote too short to prove anything (minimum ${MIN_QUOTE_LENGTH} characters)`)
+    }
+    if (!squash(rec.text).includes(squashedQuote)) {
       throw new CitationError(`quote not present in ${rec.url}`)
     }
     return { url: rec.url, quote, fetchedAt: rec.fetchedAt, status: rec.status }
