@@ -506,10 +506,19 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         schema,
         prompt,
         abortSignal: signal,
-        maxOutputTokens: opts.maxOutputTokens ?? 8_192,
+        // Floored well above the answer's own size. Reasoning is mandatory on
+        // this model and is spent out of the SAME output budget, so a cap sized
+        // only for the answer starves it: a 1,680-token catalog call thought
+        // until the connection timed out without emitting anything. The point of
+        // the cap was never to be tight, only to stop reserving 65,536 tokens of
+        // credit on every call.
+        maxOutputTokens: Math.max(6_000, opts.maxOutputTokens ?? 8_192),
         providerOptions: {
           openrouter: {
-            reasoning: opts.think === "none" ? { enabled: false } : { effort: opts.think ?? "low" },
+            // `enabled: false` is refused by some models: "Reasoning is
+            // mandatory for this endpoint and cannot be disabled." Turning it
+            // down is the most that is on offer, so `none` means the floor.
+            reasoning: { effort: opts.think === "none" ? "minimal" : (opts.think ?? "low") },
           },
         },
       })
@@ -652,7 +661,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     Decomposition,
     prompt("understand", { pages: pages.join("\n\n") }),
     // Worth thinking about: everything downstream descends from these sentences.
-    { think: "medium", maxOutputTokens: 4_000 },
+    { think: "medium", maxOutputTokens: 8_000 },
   )
 
   say("understand", `sells: ${decomp.sells}`)
@@ -695,7 +704,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
             .join("\n  "),
           coinages: decomp.coinages.join(", "),
         }),
-        { think: "low", maxOutputTokens: 180 * per + 1_500 },
+        { think: "low", maxOutputTokens: 180 * per + 6_000 },
       ),
     ),
   )
@@ -955,7 +964,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           sample: [...distinctHosts()].slice(0, 60).join(", "),
         }),
         // A judgement about whether to spend more money. Cheap, and rare.
-        { think: "medium", maxOutputTokens: 4_000 },
+        { think: "medium", maxOutputTokens: 8_000 },
       )
 
       if (verdict.enough || verdict.queries.length === 0) {
@@ -1059,7 +1068,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       }),
       // A label per host from a fixed vocabulary. Nothing to reason about, and
       // this stage is three quarters of the bill.
-      { think: "none", maxOutputTokens: 220 * slice.length + 1_000 },
+      { think: "none", maxOutputTokens: 220 * slice.length + 6_000 },
     )
     entities.push(...out.entities)
     done += slice.length
@@ -1192,7 +1201,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
               .map((p) => `${describe(p.a)}\n   ${describe(p.b)}\n   co-occurred in ${p.seen} different searches`)
               .join("\n\n"),
           }),
-          { think: "none", maxOutputTokens: 200 * batch.length + 1_000 },
+          { think: "none", maxOutputTokens: 200 * batch.length + 6_000 },
         )
         // Only edges whose ends are both on the map. A model naming something it
         // remembers rather than something the run found is a dangling edge, and
