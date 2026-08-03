@@ -83,12 +83,17 @@ export async function POST(req: Request) {
         model: provider()(modelId),
         modelId,
         runId: record.id,
+        signal: record.abort.signal,
         onLog: (line) => console.log(`[${record.id.slice(0, 8)}] ${line}`),
       })
       finishRun(record.id, result)
     } catch (e) {
+      // A cancellation is not a crash. The sweep throws "aborted" from its next
+      // checkpoint, and everything it had already found is in the span table,
+      // so the reader is told the run was stopped rather than that it broke.
+      const cancelled = record.abort.signal.aborted
       // Emitted onto the stream as well as recorded, so a browser that is
-      // watching sees the failure rather than a stream that simply stops.
+      // watching sees the outcome rather than a stream that simply stops.
       record.spans.emit({
         runId: record.id,
         agentId: "write",
@@ -97,7 +102,11 @@ export async function POST(req: Request) {
         name: "ui:results",
         argsDigest: JSON.stringify({
           kind: "error",
-          message: e instanceof Error ? e.message : String(e),
+          message: cancelled
+            ? "Stopped. Everything found before you stopped it is kept."
+            : e instanceof Error
+              ? e.message
+              : String(e),
         }),
         ms: 0,
         ok: false,

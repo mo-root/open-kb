@@ -41,6 +41,15 @@ export interface StoredRun {
 
 export interface RunRecord {
   id: string
+  /**
+   * How to stop this run.
+   *
+   * The sweep has honoured an AbortSignal at four checkpoints and on every
+   * model call since it was written, and nothing ever passed one. So the only
+   * way to stop a run was to kill the process, which is also the only way to
+   * lose everything it had paid for: cancel and destroy were the same button.
+   */
+  abort: AbortController
   domain: string
   queries: number
   startedAt: number
@@ -76,6 +85,7 @@ export function createRun(domain: string, queries: number): RunRecord {
     startedAt: Date.now(),
     status: "running",
     spans: new SpanStream(),
+    abort: new AbortController(),
   }
   runs.set(record.id, record)
   evict()
@@ -135,6 +145,20 @@ async function pump(record: RunRecord): Promise<void> {
 
 export function getRun(id: string): RunRecord | undefined {
   return runs.get(id)
+}
+
+/**
+ * Stop a run, keeping what it has already found.
+ *
+ * The sweep throws on its next checkpoint, the catch in the map route records
+ * it, and everything already streamed is already in Postgres. A cancelled run
+ * is a short run, not a lost one.
+ */
+export function cancelRun(id: string): boolean {
+  const r = runs.get(id)
+  if (!r || r.status !== "running") return false
+  r.abort.abort()
+  return true
 }
 
 export function finishRun(id: string, result: SweepResult): void {

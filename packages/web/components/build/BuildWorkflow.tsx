@@ -488,6 +488,21 @@ export function BuildWorkflow() {
           >
             {running ? "Mapping…" : "Map"}
           </button>
+          {/* Shown only while a run is live. Until this existed the only way to
+              stop a sweep was to close the tab, which does not stop it, or to
+              kill the server, which loses everything it had paid for. */}
+          {running && runId && (
+            <button
+              type="button"
+              onClick={() => {
+                void fetch(`/api/run/${runId}/cancel`, { method: "POST" }).catch(() => {})
+              }}
+              className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-400 transition hover:border-rose-600/60 hover:text-rose-400"
+              title="Stop the run. Everything found so far is kept."
+            >
+              Stop
+            </button>
+          )}
         </div>
 
         {/* What it costs is stated rather than discovered. $0.0015 is Bright
