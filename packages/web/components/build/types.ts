@@ -25,7 +25,7 @@
  *  and `stageOf` is that mapping. It matters because when it silently misses a
  *  name the rail freezes on the stage before and the run looks hung while it is
  *  in fact working. */
-export const STAGES = ["understand", "plan", "sweep", "rank", "write"] as const;
+export const STAGES = ["understand", "plan", "sweep", "rank", "link", "write"] as const;
 
 export type Stage = (typeof STAGES)[number];
 export type StageState = "pending" | "active" | "done";
@@ -35,6 +35,7 @@ export const STAGE_LABELS: Record<Stage, string> = {
   plan: "Plan",
   sweep: "Sweep",
   rank: "Classify",
+  link: "Connect",
   write: "Map",
 };
 
@@ -45,6 +46,7 @@ export const STAGE_BLURB: Record<Stage, string> = {
   plan: "write the query catalog knowing no company names, so a look-up query is impossible",
   sweep: "fire every query at once and keep the hosts that come back",
   rank: "classify the whole host bag in batches — player, community, publisher, noise",
+  link: "ask how the players relate to each other, not just to the anchor",
   write: "assemble the map and settle the bill",
 };
 
@@ -60,6 +62,7 @@ const AGENT_STAGE: Record<string, Stage> = {
   sweep: "sweep",
   search: "sweep",
   rank: "rank",
+  link: "link",
   classify: "rank",
   extract: "rank",
   write: "write",

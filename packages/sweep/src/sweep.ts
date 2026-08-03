@@ -150,6 +150,46 @@ returns, and a single directory can name a hundred players.`,
   },
 ] as const
 
+/**
+ * How two found entities stand to EACH OTHER.
+ *
+ * The map was a star: on one run all 367 edges touched the anchor and none
+ * joined two other companies. That is a list with a centre, not a market. A
+ * reader wants to know that two vendors compete with each other, that a forum
+ * argues about a specific one, that a directory lists a set.
+ *
+ * Same words as the anchor vocabulary, read from `from` to `to`. Direction is
+ * load-bearing and is not symmetric for the channel relations: a publisher
+ * covers a vendor, never the reverse.
+ */
+const PEER_RELATIONS = [
+  "competitor",
+  "substitute",
+  "dependency",
+  "integration",
+  "covers",
+  "lists",
+  "discusses",
+] as const
+
+const EntityEdge = z.object({
+  from: z.string().describe("the domain doing the relating, exactly as given"),
+  to: z.string().describe("the domain being related to, exactly as given"),
+  relation: z.enum(PEER_RELATIONS),
+  why: z.string().describe("how they relate, in one line. Not that they resemble."),
+  /**
+   * Borrowed from the graphify extraction spec, which requires a confidence on
+   * every edge and forbids a lazy default. `measured` means a page we retrieved
+   * put these two together; `inferred` means the model reasoned it from what
+   * each one does. A reader can discount the second and not the first.
+   */
+  confidence: z
+    .enum(["measured", "inferred"])
+    .describe("measured = a retrieved page named both; inferred = reasoned from what each does"),
+})
+
+export type EntityEdge = z.infer<typeof EntityEdge>
+
 const Decomposition = z.object({
   sells: z.string().describe("what this company sells, in one plain sentence, no marketing words"),
   buyer: z.string().describe("who buys it and what has just gone wrong for them"),
@@ -236,6 +276,8 @@ export interface SweepResult {
   decomposition: Decomposition
   queries: PlannedQuery[]
   entities: Entity[]
+  /** How the entities relate to each other, not to the anchor. */
+  edges?: EntityEdge[]
   stats: SweepStats
   /**
    * The run's own summary, in exactly the shape the `complete` frame carries.
@@ -284,6 +326,8 @@ export interface SweepOptions {
   batchSize?: number
   /** Classification batches in flight at once. */
   rankConcurrency?: number
+  /** How many co-occurring entity pairs to ask about. 0 disables linking. */
+  maxPairs?: number
   /** The CLI's console. Left unset in the browser, where the span stream is the
    *  only output. */
   onLog?: (line: string) => void
@@ -294,7 +338,7 @@ const DEFAULT_PRICING: ModelPricing = { inUsdPerM: 1.5, outUsdPerM: 9.0 }
 
 /** The five stage names the UI's rail knows. Emitting anything else freezes it
  *  on the stage before, so the mapping is a name, not a free-text label. */
-export type Phase = "understand" | "plan" | "sweep" | "rank" | "write"
+export type Phase = "understand" | "plan" | "sweep" | "rank" | "link" | "write"
 
 
 /** Does this name exist at all? A DNS lookup is free, instant, and definitive —
@@ -351,6 +395,8 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   /** Classification batches in flight at once. They have no dependency on each
    *  other; the only reason not to run all of them is the provider's patience. */
   const RANK_CONC = Math.max(1, Math.floor(opts.rankConcurrency ?? 6))
+  /** How many co-occurring pairs to ask about. Bounds the linking stage's cost. */
+  const MAX_PAIRS = Math.max(0, Math.floor(opts.maxPairs ?? 600))
   const search = brightDataSearch(creds, { pages: PAGES })
   const fetcher = brightDataFetch(creds)
 
@@ -955,6 +1001,8 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
 
   // ── report ────────────────────────────────────────────────────────────────
   const keep = entities.filter((e) => e.kind !== "noise")
+  // The hosts that reached the map, for the co-occurrence pass below.
+  const keptHosts = new Set(keep.map((e) => e.domain.toLowerCase().replace(/^www\./, "")))
   // Summed from what was actually billed, not re-derived from the counters: a
   // SERP call that never reached Bright Data carries usd 0 and re-deriving from
   // `serpCalls * price` would charge the run for it.
@@ -973,6 +1021,101 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     unlockerCalls,
     usd,
     seconds,
+  }
+
+  /**
+   * How the entities relate to each other.
+   *
+   * 387 entities is 74,691 possible pairs, so the pairs have to be SELECTED
+   * before anything is asked. The selector is free and already measured: two
+   * hosts returned by the same query co-occurred in a real retrieval. A search
+   * engine putting two vendors on one results page is the search engine saying
+   * they answer the same question, which is what competing looks like.
+   *
+   * A pair needs two different queries to qualify. One shared query is what any
+   * two pages of a broad search have in common; corroboration across differently
+   * worded questions is the signal that separated real findings from noise
+   * everywhere else in this run.
+   */
+  const coPairs = (() => {
+    const byQuery = new Map<string, Set<string>>()
+    for (const h of hits) {
+      let host: string
+      try {
+        host = new URL(h.url).hostname.toLowerCase().replace(/^www\./, "")
+      } catch {
+        continue
+      }
+      if (!keptHosts.has(host)) continue
+      if (!byQuery.has(h.q)) byQuery.set(h.q, new Set())
+      byQuery.get(h.q)!.add(host)
+    }
+    const score = new Map<string, number>()
+    for (const hosts of byQuery.values()) {
+      // A query that returned almost everything says nothing about any pair in
+      // it. Skip it rather than let it inflate every score it touches.
+      const list = [...hosts]
+      if (list.length > 40) continue
+      for (let i = 0; i < list.length; i++) {
+        for (let j = i + 1; j < list.length; j++) {
+          const key = [list[i]!, list[j]!].sort().join("|")
+          score.set(key, (score.get(key) ?? 0) + 1)
+        }
+      }
+    }
+    return [...score.entries()]
+      .filter(([, n]) => n >= 2)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, MAX_PAIRS)
+      .map(([k, n]) => {
+        const [a, b] = k.split("|") as [string, string]
+        return { a, b, seen: n }
+      })
+  })()
+
+  const edges: EntityEdge[] = []
+  if (coPairs.length) {
+    say("link", `${coPairs.length} pairs co-occurred in 2+ searches — asking how they relate`)
+    const byDomain = new Map(keep.map((e) => [e.domain.toLowerCase().replace(/^www\./, ""), e]))
+    const describe = (d: string) => {
+      const e = byDomain.get(d)
+      return e ? `${d} (${e.kind}) — ${e.what}` : d
+    }
+
+    const pairBatches: (typeof coPairs)[] = []
+    for (let i = 0; i < coPairs.length; i += BATCH) pairBatches.push(coPairs.slice(i, i + BATCH))
+
+    let linked = 0
+    await Promise.all(
+      pairBatches.map(async (batch, n) => {
+        if (signal?.aborted) throw new Error("aborted")
+        const out = await call(
+          "link",
+          `link batch ${n + 1} of ${pairBatches.length}`,
+          z.object({ edges: z.array(EntityEdge) }),
+          prompt("link", {
+            anchor,
+            sells: decomp.sells,
+            pairs: batch
+              .map((p) => `${describe(p.a)}\n   ${describe(p.b)}\n   co-occurred in ${p.seen} different searches`)
+              .join("\n\n"),
+          }),
+        )
+        // Only edges whose ends are both on the map. A model naming something it
+        // remembers rather than something the run found is a dangling edge, and
+        // v1 shipped sixteen of them before anyone noticed.
+        for (const e of out.edges) {
+          const from = e.from.toLowerCase().replace(/^www\./, "")
+          const to = e.to.toLowerCase().replace(/^www\./, "")
+          if (from === to) continue
+          if (!byDomain.has(from) || !byDomain.has(to)) continue
+          edges.push({ ...e, from, to })
+        }
+        linked += batch.length
+        say("link", `  ${linked}/${coPairs.length} pairs`)
+      }),
+    )
+    say("link", `${edges.length} edges between entities`)
   }
 
   say("write", `${keep.length} on the map from ${byHost.size} hosts`)
@@ -1006,5 +1149,5 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
 
   emitResult("write", { kind: "complete", result: report })
 
-  return { anchor, decomposition: decomp, queries, entities, stats, report }
+  return { anchor, decomposition: decomp, queries, entities, edges, stats, report }
 }

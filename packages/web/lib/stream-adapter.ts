@@ -17,7 +17,7 @@ import { readUi } from "@open-kb/sweep"
  *
  * `agent` on a progress frame must be a key `AGENT_STAGE` knows, or the rail
  * freezes on the previous stage while the run continues behind it. The sweep
- * emits the five that map: understand, plan, sweep, rank, write.
+ * emits the six that map: understand, plan, sweep, rank, link, write.
  *
  * A missing number is never defaulted to zero. `readCost` drops a frame whose
  * `usd` is not finite so a broken meter shows nothing rather than $0.00.

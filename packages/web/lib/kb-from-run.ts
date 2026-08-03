@@ -352,6 +352,23 @@ export function graphOf(run: StoredRun): GraphView {
       label: p.entity.relation,
     }))
 
+  // Edges between two entities, which is what makes this a map rather than a
+  // star. Both ends must be on the map: an end the run never recorded is the
+  // model naming something it remembers, and a dangling edge is worse than a
+  // missing one. Deduplicated in both directions, since a pair can be reported
+  // twice by two batches that saw it from opposite sides.
+  const byDomain = new Map(kept.map((p) => [p.entity.domain.toLowerCase().replace(/^www\./, ""), p.path]))
+  const seen = new Set<string>()
+  for (const e of run.result.edges ?? []) {
+    const from = byDomain.get(e.from.toLowerCase().replace(/^www\./, ""))
+    const to = byDomain.get(e.to.toLowerCase().replace(/^www\./, ""))
+    if (!from || !to || from === to) continue
+    const key = [from, to].sort().join("|") + e.relation
+    if (seen.has(key)) continue
+    seen.add(key)
+    edges.push({ source: from, target: to, label: e.relation })
+  }
+
   return {
     slug: run.id,
     nodes,
@@ -360,6 +377,12 @@ export function graphOf(run: StoredRun): GraphView {
       from: ANCHOR_PATH,
       target: e.domain || e.name,
     })),
-    orphans: kept.filter((p) => p.entity.relation === "none").map((p) => p.path),
+    // Unplaced means no edge at all, not "no relation to the anchor". An entity
+    // the classifier declined to place against the anchor but that a link edge
+    // joins to another player is on the map, and calling it unplaced would
+    // report a gap that is not there.
+    orphans: kept
+      .filter((p) => !edges.some((e) => e.source === p.path || e.target === p.path))
+      .map((p) => p.path),
   }
 }
