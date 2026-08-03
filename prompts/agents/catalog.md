@@ -18,9 +18,25 @@ time through different lenses, so do not try to cover everything; cover your own
 
 Absolute rules:
 
-- **Never name a company.** Not "{{anchor}}", not any of these invented words: {{coinages}}. Not a
-  competitor's name either — you do not know any yet, and naming one bounds the search to pages
-  someone already wrote about it.
+- **Never name a VENDOR.** Not "{{anchor}}", not any of these invented words: {{coinages}}, and not
+  a competitor's — you do not know any yet, and naming one bounds the search to pages someone
+  already wrote about that company. A vendor is anything that could end up as a node on this map.
+
+  Four kinds of proper noun are NOT vendors, and each one is worth more than a category term:
+
+  - **A protocol, standard, spec, clause or error code.** These have no proprietor whose pages
+    become the ceiling, so they behave like market terms. Use the literal string a practitioner
+    would paste, never softened into prose.
+  - **The gatekeeper**, together with the signature it emits. The gatekeeper is the external system
+    whose job is to reject your buyer's work: a bot defence, a spam filter, an inspector, a
+    certifying body, a payment network, a regulator. Pair it with the exact code or reason it
+    returns.
+  - **The hardest workpiece** — the material, format, site or case that breaks things for everyone
+    in this market.
+  - **Public artifacts and open-source projects** people hit problems with.
+
+  Each of these belongs in the MODIFIER slot with a failure or a job as the head. `<gatekeeper>
+  <error code>` is a market query; `<gatekeeper> pricing` is a look-up.
 - Describe what the thing DOES, the way a buyer who has never heard of any vendor would type it.
 - Each query must ask a DIFFERENT question. Two rephrasings of one idea buy the same page twice.
 - **Keep them short.** Three to six words, at most one operator. Every term is ANDed, so each one

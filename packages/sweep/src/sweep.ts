@@ -132,7 +132,13 @@ const LENSES = [
     detail: `Someone using something today and unhappy with it. What just broke, what they are
 switching away from, what they are comparing against what. This lens finds head-on competitors and
 the substitutes that solve the same problem a different way. Phrase things the way someone types at
-2am when the thing is down, and the way someone types when they are drawing up a shortlist.`,
+2am when the thing is down, and the way someone types when they are drawing up a shortlist.
+
+Spend part of this lens on the obstacle with the use case DELETED — what every buyer in this market
+hits regardless of what they were building. Name the gatekeeper whose job is to reject their work
+and the literal string it emits, and name the hardest workpiece everyone struggles with. These are
+the shortest queries you will write, two to four words: every qualifier you add slices the results
+down to one cohort, which is the opposite of what this shape is for.`,
   },
   {
     name: "the practitioner building it",
@@ -721,6 +727,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   const planned = cat.queries
   const queries = planned.slice(0, target)
 
+
   // Coverage, stated rather than assumed. A market with no query cannot put a
   // single competitor on the map, and until now that failed silently: on one
   // measured run three of nine products drew zero queries and nothing said so.
@@ -749,8 +756,19 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         new RegExp(`\\b(${forbidden.map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\b`, "i").test(x.q),
       )
     : []
-  say("plan", `catalog: ${queries.length} queries, ${named.length} accidentally name the company`)
-  think("plan", `${queries.length} queries planned; ${named.length} slipped a company name through`)
+  // Dropped, not counted. This only ever tested the anchor's own name and its
+  // coinages, which is the one case the model cannot argue with, and it reported
+  // "0 accidentally name the company" on catalogs where a quarter of the queries
+  // named a third party. A query that looks the anchor up is bought for nothing,
+  // so it does not get bought.
+  if (named.length) {
+    const drop = new Set(named.map((q) => q.q))
+    for (let i = queries.length - 1; i >= 0; i--) if (drop.has(queries[i]!.q)) queries.splice(i, 1)
+    say("plan", `catalog: ${queries.length} queries (dropped ${named.length} that named the anchor)`)
+    for (const q of named) think("plan", `dropped, names the anchor: ${q.q}`)
+  } else {
+    say("plan", `catalog: ${queries.length} queries, none name the anchor`)
+  }
 
   emitResult("plan", {
     kind: "planned",
