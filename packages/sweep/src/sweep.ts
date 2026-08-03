@@ -275,6 +275,9 @@ export interface SweepStats {
   kept: number
   tokIn: number
   tokOut: number
+  /** Output tokens the model spent thinking. Billed at the output rate and
+   *  never shown to anyone, so it is worth being able to see. */
+  tokReasoning: number
   serpCalls: number
   unlockerCalls: number
   usd: number
@@ -415,6 +418,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   const el = () => String(sec()).padStart(3)
   let tokIn = 0
   let tokOut = 0
+  let tokReasoning = 0
   let serpCalls = 0
   let unlockerCalls = 0
 
@@ -461,20 +465,54 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   const usdFor = (inTok: number, outTok: number) =>
     (inTok / 1e6) * pricing.inUsdPerM + (outTok / 1e6) * pricing.outUsdPerM
 
-  /** One model call, accounted and traced. `usage` is optional on the AI SDK's
-   *  result, and a missing count must read as zero tokens rather than as a
-   *  non-finite price the stream then flags as a failure. */
+  /**
+   * One model call, accounted and traced.
+   *
+   * `think` controls reasoning, and it is the single biggest lever on the bill.
+   * Output is priced six times input and is 90% of the model cost, and on one
+   * 642-entity run the classification stage emitted about 160,000 output tokens
+   * while the entities it produced account for roughly 35,000. The rest is the
+   * model thinking out loud, billed at the output rate, thrown away unread.
+   *
+   * Thinking earns that on the stages where the answer is a judgement: what a
+   * company sells, which markets its products fall into, whether a map is done.
+   * It earns nothing on the stages where the answer is a label drawn from a
+   * fixed vocabulary, which is what classification and linking are.
+   *
+   * `maxOutputTokens` is set for a second reason. The default is 65,536 and
+   * OpenRouter reserves credit for the full amount up front, so a key with a
+   * dollar of headroom is refused a call that would have cost two cents.
+   *
+   * `usage` is optional on the AI SDK's result, and a missing count must read as
+   * zero tokens rather than as a non-finite price the stream flags as a failure.
+   */
   async function call<T extends z.ZodType>(
     agent: Phase,
     label: string,
     schema: T,
     prompt: string,
+    opts: { think?: "none" | "low" | "medium"; maxOutputTokens?: number } = {},
   ): Promise<z.infer<T>> {
     const started = Date.now()
     try {
-      const out = await generateObject({ model, schema, prompt, abortSignal: signal })
+      const out = await generateObject({
+        model,
+        schema,
+        prompt,
+        abortSignal: signal,
+        maxOutputTokens: opts.maxOutputTokens ?? 8_192,
+        providerOptions: {
+          openrouter: {
+            reasoning: opts.think === "none" ? { enabled: false } : { effort: opts.think ?? "low" },
+          },
+        },
+      })
       const inTok = out.usage?.inputTokens ?? 0
       const outTok = out.usage?.outputTokens ?? 0
+      // Recorded so the reasoning share stops being inferred from arithmetic.
+      const reasoning =
+        (out.usage as { reasoningTokens?: number } | undefined)?.reasoningTokens ?? 0
+      if (reasoning) tokReasoning += reasoning
       tokIn += inTok
       tokOut += outTok
       bill("llm", agent, usdFor(inTok, outTok), Date.now() - started, true)
@@ -607,6 +645,8 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     `read ${anchor} — ${pages.length} page${pages.length === 1 ? "" : "s"}`,
     Decomposition,
     prompt("understand", { pages: pages.join("\n\n") }),
+    // Worth thinking about: everything downstream descends from these sentences.
+    { think: "medium", maxOutputTokens: 4_000 },
   )
 
   say("understand", `sells: ${decomp.sells}`)
@@ -649,6 +689,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
             .join("\n  "),
           coinages: decomp.coinages.join(", "),
         }),
+        { think: "low", maxOutputTokens: 180 * per + 1_500 },
       ),
     ),
   )
@@ -895,6 +936,8 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           angles: asked.map((q) => `  ${q.intent} · ${q.platform} — ${q.q}`).join("\n"),
           sample: [...distinctHosts()].slice(0, 60).join(", "),
         }),
+        // A judgement about whether to spend more money. Cheap, and rare.
+        { think: "medium", maxOutputTokens: 4_000 },
       )
 
       if (verdict.enough || verdict.queries.length === 0) {
@@ -996,6 +1039,9 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           .map((h) => `${h.host}  seenIn=${h.seenIn}  intents=${h.intents.join(",")}\n   ${h.titles.join(" | ")}\n   ${h.desc}`)
           .join("\n\n"),
       }),
+      // A label per host from a fixed vocabulary. Nothing to reason about, and
+      // this stage is three quarters of the bill.
+      { think: "none", maxOutputTokens: 220 * slice.length + 1_000 },
     )
     entities.push(...out.entities)
     done += slice.length
@@ -1044,6 +1090,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     kept: keep.length,
     tokIn,
     tokOut,
+    tokReasoning,
     serpCalls,
     unlockerCalls,
     usd,
@@ -1127,6 +1174,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
               .map((p) => `${describe(p.a)}\n   ${describe(p.b)}\n   co-occurred in ${p.seen} different searches`)
               .join("\n\n"),
           }),
+          { think: "none", maxOutputTokens: 200 * batch.length + 1_000 },
         )
         // Only edges whose ends are both on the map. A model naming something it
         // remembers rather than something the run found is a dangling edge, and
