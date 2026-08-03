@@ -38,12 +38,13 @@ function isHtmlContentType(contentType: string | undefined): boolean {
   return /^(text\/html|application\/(xhtml\+xml|xml))/i.test(contentType)
 }
 
-function countKnownHtmlTags(body: string): number {
-  // Count occurrences of known HTML element names.
-  // Use a strict pattern that requires the tag name to be a known HTML element.
-  // Deliberately excludes custom elements and pseudo-tags like <string>.
-  const htmlTagPattern = /<\/?(?:html|head|body|div|p|span|a|ul|ol|li|table|tr|td|th|h[1-6]|script|style|meta|link|br|img|section|article|nav|header|footer|form|input|button|strong|em|blockquote|pre|code)\b[^>]*>/gi
-  const matches = body.match(htmlTagPattern)
+function countClosingHtmlTags(body: string): number {
+  // Count occurrences of known HTML element closing tags only.
+  // Closing tags are the reliable signal: generics never produce `</a>` or `</p>`.
+  // This avoids false positives from short type parameters like `Pair<a, b>` which
+  // looks like `<a ... >` followed by `, b` but never has a closing tag.
+  const closingTagPattern = /<\/(?:html|head|body|div|p|span|a|ul|ol|li|table|tr|td|th|h[1-6]|script|style|section|article|nav|header|footer|form|button|strong|em|blockquote|pre|code)\s*>/gi
+  const matches = body.match(closingTagPattern)
   return matches ? matches.length : 0
 }
 
@@ -54,9 +55,11 @@ function countKnownHtmlTags(body: string): number {
  *   - 200 with an app shell and no text (a JS-rendered page)
  *   - 200 with HTML where a text file was requested (a soft 404)
  *
- * Detects HTML by tag vocabulary, not shape. Known HTML element names are the signal;
- * contentType is a hint but the body is the evidence. This prevents both:
- *   - Corrupting code/markdown with generics (Array<T>) or comparison operators (a<b)
+ * Detects HTML by counting closing tags of known HTML elements. Closing tags are
+ * the reliable signal: generics and other prose never produce `</div>` or `</p>`.
+ * This prevents both:
+ *   - Corrupting code/markdown with generics (Array<T>), type params (Foo<a, b>),
+ *     or comparison operators (a<b)
  *   - Failing to extract HTML fragments or mislabeled content served as text/plain
  */
 export function sniff(r: RawResponse): SniffResult {
@@ -70,9 +73,8 @@ export function sniff(r: RawResponse): SniffResult {
   }
 
   // Decide whether to extract HTML or keep as-is.
-  // Strategy: contentType is a hint, but tag vocabulary is the evidence.
-  // Extract if: contentType says HTML, OR body contains 2+ known HTML element names.
-  // This prevents corruption while catching HTML fragments and mislabeled content.
+  // Strategy: contentType is a hint, but structure is the evidence.
+  // Extract if: contentType says HTML, OR body has DOCTYPE/html prefix, OR contains 2+ closing tags
   let shouldExtract = false
 
   if (isHtmlContentType(r.contentType)) {
@@ -81,9 +83,10 @@ export function sniff(r: RawResponse): SniffResult {
   } else if (looksLikeHtml(r.body)) {
     // Fast path: body starts with DOCTYPE or <html> tag
     shouldExtract = true
-  } else if (countKnownHtmlTags(r.body) >= 2) {
-    // Body contains 2+ known HTML elements: almost certainly HTML
-    // (one tag could be a lone markdown code span; two tags is the real signal)
+  } else if (countClosingHtmlTags(r.body) >= 2) {
+    // Body contains 2+ closing tags of known HTML elements: almost certainly HTML.
+    // Generics, type parameters, and comparison operators never produce closing tags.
+    // (one closing tag could be a lone markdown code span; two is structural signal)
     shouldExtract = true
   }
 

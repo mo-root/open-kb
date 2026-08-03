@@ -120,6 +120,46 @@ describe("sniff", () => {
     expect(r.text).toBe(markdown) // preserved as-is, not extracted
     expect(r.text).toContain("<code>") // the HTML entity should survive
   })
+
+  it("does not corrupt TypeScript with multiple type parameters and generics", () => {
+    // REGRESSION FIX 3: Critical defect with opening-tag matching.
+    // Old pattern /<\/?[tag]\b[^>]*>/ matches `<a, b>` in `Pair<a, b>` because:
+    //   - `<a` matches
+    //   - `, b` matches `[^>]*`
+    //   - `>` closes it
+    // With 2+ "type parameters" matching as tags, extraction runs and mangles everything.
+    // Closing-tag approach: `</a>` never appears, so type params don't trigger extraction.
+    const typeScript =
+      "type Pair<a, b> = [a, b]\n" +
+      "type Other<a, b> = [a, b]\n" +
+      "Array<string> types work fine. ".repeat(5) +
+      "if(x<y) { return z>w }\n" +
+      "The flow is A -> B. ".repeat(5)
+    const r = sniff({ url: "https://example.com/types.ts", httpStatus: 200, body: typeScript })
+    expect(r.status).toBe("found")
+    expect(r.text).toBe(typeScript) // preserved byte-for-byte, not extracted
+    expect(r.text).toContain("type Pair<a, b>")
+    expect(r.text).toContain("type Other<a, b>")
+    expect(r.text).toContain("Array<string>")
+    expect(r.text).toContain("if(x<y)")
+  })
+
+  it("preserves short generic type parameters that never close", () => {
+    // REGRESSION FIX 3: Closing-tag guarantee.
+    // `type Foo<a> = a` contains `<a` but no `</a>`.
+    // `type Bar<p> = p` contains `<p` but no `</p>`.
+    // Opening-tag approach: both could match as tags (2+ matches threshold).
+    // Closing-tag approach: no closing tags, so they don't trigger extraction.
+    const types =
+      "type Foo<a> = a\n" +
+      "type Bar<p> = p\n" +
+      "Both generic type parameters are safe. ".repeat(6)
+    const r = sniff({ url: "https://example.com/types.ts", httpStatus: 200, body: types })
+    expect(r.status).toBe("found")
+    expect(r.text).toBe(types) // preserved as-is, not extracted
+    expect(r.text).toContain("type Foo<a>")
+    expect(r.text).toContain("type Bar<p>")
+  })
 })
 
 describe("extractText", () => {
