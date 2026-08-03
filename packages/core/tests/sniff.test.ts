@@ -160,6 +160,88 @@ describe("sniff", () => {
     expect(r.text).toContain("type Foo<a>")
     expect(r.text).toContain("type Bar<p>")
   })
+
+  it("extracts a void-element-heavy fragment with only one closing tag", () => {
+    // REGRESSION FIX 4: counting closing tags alone under-detects.
+    // A gallery is mostly void elements, which have no closing form at all,
+    // so round 3 saw a single `</div>` — below the threshold of two — and
+    // stored the raw markup as evidence text.
+    // An opening tag carrying a real attribute (`<img src="...">`) is as
+    // unambiguous as a closing tag: a generic parameter never has attributes.
+    const gallery =
+      '<div class="gallery">' +
+      '<img src="/line-1.jpg" alt="assembly line"><br>Assembly line at the plant. '.repeat(12) +
+      "</div>"
+    const r = sniff({ url: "https://example.com/gallery", httpStatus: 200, body: gallery })
+    expect(r.status).toBe("found")
+    expect(r.text).toContain("Assembly line at the plant.")
+    expect(r.text).not.toContain("<img") // tags stripped, not stored raw
+    expect(r.text).not.toContain("src=")
+    expect(r.text).not.toContain("<div")
+  })
+
+  it("extracts an XHTML fragment whose tags all self-close", () => {
+    // REGRESSION FIX 4: XHTML self-closes everything, so a fragment can contain
+    // zero true closing tags and still be markup. Round 3 stored `<br/>` soup
+    // as evidence text. A trailing `/` before `>` is another shape a generic
+    // parameter can never produce.
+    const xhtml =
+      "<div/>" + "Warehouse closed for scheduled maintenance. <br/>".repeat(12) + "<div/>"
+    const r = sniff({ url: "https://example.com/notice", httpStatus: 200, body: xhtml })
+    expect(r.status).toBe("found")
+    expect(r.text).toContain("Warehouse closed for scheduled maintenance.")
+    expect(r.text).not.toContain("<br/>")
+    expect(r.text).not.toContain("<div/>")
+  })
+
+  it("extracts a lone paragraph that carries an attribute", () => {
+    // REGRESSION FIX 4: one closing tag was below the threshold, so a
+    // single-element fragment was stored with its tags visible in the evidence.
+    // The attributed opener supplies the second independent signal.
+    const paragraph =
+      '<p class="intro">' + "The company builds industrial cable assemblies. ".repeat(6) + "</p>"
+    const r = sniff({ url: "https://example.com/intro", httpStatus: 200, body: paragraph })
+    expect(r.status).toBe("found")
+    expect(r.text).toContain("The company builds industrial cable assemblies.")
+    expect(r.text).not.toContain("<p")
+    expect(r.text).not.toContain("</p>")
+  })
+
+  it("leaves a bare lone paired element unextracted (known limitation)", () => {
+    // KNOWN LIMITATION, deliberately locked in.
+    // `<p>...</p>` with no attributes yields exactly one unambiguous signal,
+    // and the threshold is two. Lowering it to one would mean any prose that
+    // mentions a single closing tag — an HTML tutorial, a changelog — gets
+    // tag-stripped wholesale. Over-detection silently corrupts the whole body;
+    // under-detection here leaves two visible tags around otherwise intact text.
+    // The cheaper failure wins. Real fragments carry attributes or nest, and
+    // both of those are detected.
+    const bare = "<p>" + "The company builds industrial cable assemblies. ".repeat(6) + "</p>"
+    const r = sniff({ url: "https://example.com/bare", httpStatus: 200, body: bare })
+    expect(r.status).toBe("found")
+    expect(r.text).toBe(bare) // stored raw: the documented gap
+  })
+
+  it("preserves generic type parameters with spaces, bounds, and defaults", () => {
+    // GUARD on the attribute rule added in round 4. Round 3's defect was
+    // `[^>]*` after the element name swallowing `, b` in `Pair<a, b>`.
+    // The attribute rule must therefore demand: whitespace, then a real
+    // attribute name, then `=`, then a value. Each line below defeats a
+    // looser boundary — a comma after a space, a bound with no `=`, and a
+    // default whose `=` is not preceded by an attribute name.
+    const generics =
+      "type Pair<a , b> = [a, b]\n" +
+      "type Bounded<p extends Base> = p\n" +
+      "type Other<a extends Base> = a\n" +
+      "type WithDefault<a = string> = a\n" +
+      "Spaced, bounded and defaulted parameters stay intact. ".repeat(6)
+    const r = sniff({ url: "https://example.com/types.ts", httpStatus: 200, body: generics })
+    expect(r.status).toBe("found")
+    expect(r.text).toBe(generics) // preserved byte-for-byte, not extracted
+    expect(r.text).toContain("type Pair<a , b>")
+    expect(r.text).toContain("type Bounded<p extends Base>")
+    expect(r.text).toContain("type WithDefault<a = string>")
+  })
 })
 
 describe("extractText", () => {
