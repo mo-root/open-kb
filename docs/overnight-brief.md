@@ -32,6 +32,28 @@ If the key reports less than `$3`, stop the loop and say so. Do not work around 
    re-run that one target to verify.
 6. **Write the finding down** in `runs/overnight/FINDINGS.md` whether or not it was fixed.
 
+## Optimisation is half the job
+
+Fixing breaks is the floor. The other half is finding cheaper and faster ways to do what already
+works, and every run is an experiment that costs money whether or not anything is learned from it.
+
+The measurements to keep taking, because each one has already moved a number today:
+
+- **Where the wall clock goes**, per stage, per run. Classification was 63% of it before the batches
+  ran concurrently. Search was next, until the chunk barrier came out. Look at the phase log of every
+  run rather than the total.
+- **Output tokens against the answer's own size.** Output is 90% of the model bill at six times the
+  input price. A stage emitting far more than its answer needs is thinking, and thinking is worth
+  paying for on judgement and worthless on labelling.
+- **Yield per query.** New hosts each round buys, and where it drops off. A round returning almost
+  nothing new is money spent on corroboration.
+- **Yield per page.** Pages two through four of a query against page one.
+- **What each stage would cost on a smaller model.** Classification with reasoning at minimum is a
+  labelling task against a fixed vocabulary, which is the workload a cheaper model exists for.
+
+Try things. A change with a measurement behind it is worth committing even if the gain is small, and
+a change without one is not worth committing even if it feels obvious.
+
 ## What counts as worth fixing overnight
 
 Fix, commit and re-run:
@@ -56,7 +78,9 @@ Write down, do not fix:
 - **Never delete a run file.** They are the evidence.
 - `pnpm check` and `pnpm vitest run` must both pass before any commit.
 - One fix per commit, with the measurement that justified it in the message.
-- The branch is `feat/foundation-and-investigator`. Do not merge, do not touch `main`, do not push.
+- The branch is `overnight/2026-08-03`, cut from `feat/foundation-and-investigator`. Everything lands
+  there. Do not merge, do not rebase, do not touch `main` or the parent branch, do not push. The
+  point of a separate branch is that a bad night is one `git branch -D` away.
 - A failing target is a result. Record it and move on rather than fighting one domain all night.
 
 ## Stopping
@@ -76,4 +100,7 @@ Stop and write the summary when any of these is true:
 1. Which markets mapped well, which failed, and the failure mode for each.
 2. What was fixed, with the before and after.
 3. What was found and left alone, and why.
-4. The one thing most worth doing next, with the evidence for it.
+4. Every optimisation tried, the measurement before and after, and the ones that did not work.
+   A change that was tried and abandoned is worth as much as one that landed, because otherwise it
+   gets tried again.
+5. The one thing most worth doing next, with the evidence for it.
