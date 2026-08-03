@@ -175,6 +175,8 @@ export interface SweepOptions {
   concurrency?: number
   /** Hosts per classification batch. */
   batchSize?: number
+  /** Classification batches in flight at once. */
+  rankConcurrency?: number
   /** The CLI's console. Left unset in the browser, where the span stream is the
    *  only output. */
   onLog?: (line: string) => void
@@ -239,6 +241,9 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   /** A wave adding fewer new hosts than this is reaching ground already covered.
    *  The harness's backstop for a model that keeps asking while learning nothing. */
   const MIN_NEW_HOSTS = Math.max(1, Math.floor(opts.minNewHosts ?? 8))
+  /** Classification batches in flight at once. They have no dependency on each
+   *  other; the only reason not to run all of them is the provider's patience. */
+  const RANK_CONC = Math.max(1, Math.floor(opts.rankConcurrency ?? 6))
   const search = brightDataSearch(creds, { pages: PAGES })
   const fetcher = brightDataFetch(creds)
 
@@ -678,14 +683,27 @@ things do, and each query must ask something the others do not.`,
     desc: hs[0]!.description?.slice(0, 190) ?? "",
   }))
 
-  say("rank", `classifying ${hostList.length} hosts in batches of ${BATCH}`)
+  const batches: typeof hostList[] = []
+  for (let i = 0; i < hostList.length; i += BATCH) batches.push(hostList.slice(i, i + BATCH))
+
+  // In parallel, because these batches never needed to wait for each other.
+  //
+  // Each one classifies its own hosts against the anchor and reads nothing from
+  // any other, yet they ran one after another — eleven calls at ~44s each on one
+  // measured run, which was 485 of that run's 771 seconds. Sixty-three percent of
+  // the wall clock spent queueing behind work that had no dependency on it.
+  //
+  // Capped rather than unleashed: forty batches at once is a rate-limit waiting to
+  // happen, and a 429 costs more than the queueing did.
+  say("rank", `classifying ${hostList.length} hosts in ${batches.length} batches, ${RANK_CONC} at a time`)
   const entities: Entity[] = []
-  for (let i = 0; i < hostList.length; i += BATCH) {
+  let done = 0
+
+  const classify = async (slice: typeof hostList, n: number) => {
     if (signal?.aborted) throw new Error("aborted")
-    const slice = hostList.slice(i, i + BATCH)
     const out = await call(
       "rank",
-      `classify hosts ${i + 1}-${Math.min(i + BATCH, hostList.length)} of ${hostList.length}`,
+      `classify batch ${n + 1} of ${batches.length}`,
       z.object({ entities: z.array(Entity) }),
       `Classify every one of these hosts. They came back from searches about this market:
   the anchor: ${anchor} — ${decomp.sells}
@@ -702,7 +720,8 @@ of question found it — use both as evidence, not as a verdict.
 ${slice.map((h) => `${h.host}  seenIn=${h.seenIn}  intents=${h.intents.join(",")}\n   ${h.titles.join(" | ")}\n   ${h.desc}`).join("\n\n")}`,
     )
     entities.push(...out.entities)
-    say("rank", `  classified ${Math.min(i + BATCH, hostList.length)}/${hostList.length}`)
+    done += slice.length
+    say("rank", `  classified ${done}/${hostList.length}`)
 
     // Streamed per batch rather than held to the end: the findings table fills
     // while the run is still working, which is the difference between a live
@@ -723,6 +742,10 @@ ${slice.map((h) => `${h.host}  seenIn=${h.seenIn}  intents=${h.intents.join(",")
       })
       think("rank", kept.map((e) => `${e.domain} — ${e.kind}/${e.relation}: ${e.why}`).join("\n"))
     }
+  }
+
+  for (let i = 0; i < batches.length; i += RANK_CONC) {
+    await Promise.all(batches.slice(i, i + RANK_CONC).map((b, k) => classify(b, i + k)))
   }
 
   // ── report ────────────────────────────────────────────────────────────────
