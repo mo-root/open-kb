@@ -7,13 +7,15 @@
   },
   "scripts": {
     "test": "vitest run",
-    "check": "node scripts/check-core-purity.mjs && tsc -b"
+    "check": "node scripts/check-core-purity.mjs && tsc -b",
+    "sweep": "tsx scripts/sweep.ts"
   },
   "devDependencies": {
     "@openrouter/ai-sdk-provider": "^3.0.0",
     "@types/node": "^22.10.0",
     "typescript": "^5.7.2",
-    "vitest": "^3.0.0"
+    "vitest": "^3.0.0",
+    "tsx": "^4.19.2"
   },
   "dependencies": {
     "ai": "^7.0.48",

@@ -27,6 +27,35 @@ import {
   brightDataFetch,
   type BrightDataCredentials,
 } from "@open-kb/providers"
+import { existsSync } from "node:fs"
+import { dirname, join } from "node:path"
+import { fileURLToPath } from "node:url"
+import { composePrompt, render } from "@open-kb/core"
+
+/**
+ * Where `prompts/` lives.
+ *
+ * Walked up from this file rather than taken from `cwd`, because the same
+ * pipeline runs from the repo root (the CLI) and from `packages/web` (the Next
+ * server), and a cwd-relative path is correct in exactly one of those.
+ */
+function promptsRoot(): string {
+  let dir = dirname(fileURLToPath(import.meta.url))
+  for (let i = 0; i < 8; i++) {
+    if (existsSync(join(dir, "prompts", "doctrine"))) return join(dir, "prompts")
+    const up = dirname(dir)
+    if (up === dir) break
+    dir = up
+  }
+  throw new Error("cannot find prompts/ — the agents have no instructions to load")
+}
+
+/** An agent's full instruction: its own file, with the doctrine it declares. */
+function prompt(agent: string, vars: Record<string, string | number>): string {
+  const root = promptsRoot()
+  return render(composePrompt(agent, join(root, "agents"), join(root, "doctrine")), vars)
+}
+
 import { emitUi } from "./ui.js"
 
 // ── the shapes ────────────────────────────────────────────────────────────────
@@ -449,7 +478,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     "understand",
     `read ${anchor} — ${pages.length} page${pages.length === 1 ? "" : "s"}`,
     Decomposition,
-    `Read this company's own material and work out what it sells.\n\n${pages.join("\n\n")}`,
+    prompt("understand", { pages: pages.join("\n\n") }),
   )
 
   say("understand", `sells: ${decomp.sells}`)
@@ -476,24 +505,14 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     "plan",
     `catalog ${target} queries for ${anchor}'s market`,
     z.object({ queries: z.array(PlannedQuery) }),
-    `You are writing search queries that will find every company in a market.
-
-The market is defined by what this company does — NOT by its name:
-  sells:    ${decomp.sells}
-  buyer:    ${decomp.buyer}
-  products: ${decomp.products.map((p) => `${p.does}`).join(" | ")}
-
-Write ${target} queries. Absolute rules:
-
-- **Never name a company.** Not "${anchor}", not any of these invented words: ${decomp.coinages.join(", ")}. Not a competitor's name either — you do not know any yet, and naming one bounds the search to pages someone already wrote about it.
-- Describe what the thing DOES, the way a buyer who has never heard of any vendor would type it.
-- Each query must ask a DIFFERENT question. Two rephrasings of one idea buy the same page twice.
-- Spread across intents: what breaks and hurts, people switching away from something, people comparing options, people building, people discovering, integrations, hiring, and where this market gathers.
-- Spread across platforms. For a platform query, use a site: operator or name the platform in the text.
-- For the community intent, look for where these buyers actually talk — subreddits, forums, conferences, newsletters.
-- Give every query a one-line \`why\`: what it is expected to surface that the others will not.
-
-Return exactly the queries, nothing else.`,
+    prompt("catalog", {
+      anchor,
+      target,
+      sells: decomp.sells,
+      buyer: decomp.buyer,
+      products: decomp.products.map((p) => p.does).join(" | "),
+      coinages: decomp.coinages.join(", "),
+    }),
   )
 
   // The requested count is a sentence in a prompt, and a prompt is a request.
@@ -638,25 +657,16 @@ Return exactly the queries, nothing else.`,
         missing: z.string().describe("what is thin or absent — one line. Empty if nothing is."),
         queries: z.array(PlannedQuery).describe("queries aimed at what is missing. Empty if enough."),
       }),
-      `A market map is being built for ${anchor} — ${decomp.sells}
-Its buyer: ${decomp.buyer}
-
-So far, after ${wave} wave${wave === 1 ? "" : "s"}: **${before} distinct hosts** from ${asked.length} queries.
-
-Angles already worked (intent · platform):
-${asked.map((q) => `  ${q.intent} · ${q.platform} — ${q.q}`).join("\n")}
-
-A sample of what came back:
-${[...distinctHosts()].slice(0, 60).join(", ")}
-
-Is this enough to show someone as a map of this market, or is something obviously
-missing? Think about the facets a complete map holds: companies going head-on,
-things that solve the same problem a different way, what this is built on and what
-plugs into it, and where these buyers actually gather and talk.
-
-If something is missing, write queries aimed at THAT — not more of what has already
-been asked. Every rule from before still binds: never name a company, describe what
-things do, and each query must ask something the others do not.`,
+      prompt("assess", {
+        anchor,
+        sells: decomp.sells,
+        buyer: decomp.buyer,
+        waves: `${wave} wave${wave === 1 ? "" : "s"}`,
+        hosts: before,
+        asked: asked.length,
+        angles: asked.map((q) => `  ${q.intent} · ${q.platform} — ${q.q}`).join("\n"),
+        sample: [...distinctHosts()].slice(0, 60).join(", "),
+      }),
     )
 
     if (verdict.enough || verdict.queries.length === 0) {
@@ -726,26 +736,14 @@ things do, and each query must ask something the others do not.`,
       "rank",
       `classify batch ${n + 1} of ${batches.length}`,
       z.object({ entities: z.array(Entity) }),
-      `Classify every one of these hosts. They came back from searches about this market:
-  the anchor: ${anchor} — ${decomp.sells}
-  its buyer:  ${decomp.buyer}
-
-Everything here is SOME kind of player — classify, do not filter. A host that merely writes about
-the market is a publisher; a host that lists vendors is a directory; a forum or subreddit is a
-community; a research lab or a company consuming this is a buyer. Mark something noise only when it
-is genuinely unrelated to this market.
-
-\`relation\` says how it stands to the anchor, and NOT COMPETING IS NOT THE SAME AS NOT RELATING.
-A publication that covers this market \`covers\` it. A directory or comparison page that indexes
-vendors \`lists\` them. A forum, subreddit or Q&A site where the buyer argues about this
-\`discusses\` it. Those three are how a reader finds the channels to listen to, so reach for them
-before \`none\` — \`none\` is for something you kept but genuinely cannot place, and it costs the
-entity its edge on the map.
-
-One entry per host. \`seenIn\` is how many different queries surfaced it, and \`intents\` is what kinds
-of question found it — use both as evidence, not as a verdict.
-
-${slice.map((h) => `${h.host}  seenIn=${h.seenIn}  intents=${h.intents.join(",")}\n   ${h.titles.join(" | ")}\n   ${h.desc}`).join("\n\n")}`,
+      prompt("classify", {
+        anchor,
+        sells: decomp.sells,
+        buyer: decomp.buyer,
+        hosts: slice
+          .map((h) => `${h.host}  seenIn=${h.seenIn}  intents=${h.intents.join(",")}\n   ${h.titles.join(" | ")}\n   ${h.desc}`)
+          .join("\n\n"),
+      }),
     )
     entities.push(...out.entities)
     done += slice.length

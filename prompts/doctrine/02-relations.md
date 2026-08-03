@@ -1,9 +1,17 @@
 ---
 doctrine: 02-relations
 ---
-## The five relations
+## The relations
 
-Every edge is stated **from the anchor outward** and is one of these.
+Every edge is stated **from the anchor outward** and is exactly one of these.
+
+They come in two groups: the first seven say how something stands to the anchor *commercially*, the
+last three say where the market is *talked about*. A map needs both. Ask only the commercial
+question and of 438 hosts on one run **144 came back unplaceable** — every publication, directory
+and forum — and all 144 dropped off the map, because a node with no relation gets no edge. They were
+not unclassifiable. There was no word for what they do.
+
+### Commercial — how it stands to the anchor
 
 **competitor** — head-on. A buyer evaluating the anchor would put this on the same shortlist and
 pick one. Test: do they sell the same capability to the same buyer?
@@ -28,13 +36,38 @@ Without this relation a map keeps answering *who competes* when the question was
 **integration** — what the anchor plugs into, or what plugs into it. Test: do they appear together
 in a working setup without either being required?
 
+**buyer** — buys this category. Not a vendor at all: the demand side, on the map because a map of a
+market that shows only sellers is half a market.
+
+**target** — who the anchor is trying to sell to and has not yet. A buyer that is still an opening.
+
+### Channel — where the market is discussed
+
+Not competing is not the same as not relating. A trade publication has no commercial stance toward
+the anchor; it writes about it. For a reader trying to find the channels to listen to, that is often
+the most actionable edge on the map.
+
+**covers** — writes about this market. Trade press, analyst blogs, newsletters, review sites.
+Test: would someone tracking this market read it?
+
+**lists** — indexes the vendors. Directories, comparison pages, awesome-lists, marketplaces.
+Test: does it enumerate players rather than argue about them?
+
+**discusses** — where the buyer argues about this. Subreddits, forums, Q&A sites, Discords, HN
+threads. Test: is the conversation *by* the buyer rather than *at* them?
+
 ## Choosing
 
 `dependency` and `integration` are the pair most often confused: built **on** versus plugged **into**.
 `competitor` and `substitute` are the other: same kind of thing versus same outcome.
+`covers` and `discusses` are the third: written *at* the buyer versus written *by* them.
 
 Pick the closest honest one and say why in the reason. Guessing confidently is worse than choosing
 approximately and explaining — a reader can correct a stated reason and cannot correct a bare label.
+
+**none** is the last resort and it costs the entity its place on the map — a node kept but unplaced
+is one a reader sees floating, unexplained. If you reach for it often, the missing word is a gap in
+this document, not a property of the market.
 
 ## Name both ends the way you recorded them
 

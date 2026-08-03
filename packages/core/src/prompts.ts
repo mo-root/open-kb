@@ -36,3 +36,29 @@ export function composePrompt(agent: string, agentsDir: string, doctrineDir: str
   const parts = includes.map((d) => loadPrompt(d, doctrineDir).body)
   return [...parts, a.body].join("\n\n---\n\n")
 }
+
+/**
+ * Fill `{{name}}` placeholders in a prompt body.
+ *
+ * Deliberately strict: a placeholder with no value THROWS rather than rendering
+ * as an empty string or as the literal `{{name}}`. A prompt is the instruction a
+ * paid model run receives, and silently sending it with a hole where the buyer
+ * description should be produces a plausible, expensive, wrong answer that looks
+ * exactly like a right one. Failing here costs nothing.
+ *
+ * The reverse — a value with no placeholder — throws too. It means the caller
+ * believes it is saying something the model never sees, which is the same class
+ * of bug read from the other end.
+ */
+export function render(body: string, vars: Record<string, string | number>): string {
+  const wanted = new Set([...body.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]!))
+  const given = new Set(Object.keys(vars))
+
+  const missing = [...wanted].filter((k) => !given.has(k))
+  if (missing.length) throw new Error(`prompt is missing values for: ${missing.join(", ")}`)
+
+  const unused = [...given].filter((k) => !wanted.has(k))
+  if (unused.length) throw new Error(`prompt has no placeholder for: ${unused.join(", ")}`)
+
+  return body.replace(/\{\{(\w+)\}\}/g, (_, k: string) => String(vars[k]))
+}
