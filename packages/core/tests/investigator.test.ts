@@ -27,7 +27,7 @@ describe("loadPrompt", () => {
   it("reads frontmatter and body", () => {
     const p = loadPrompt("investigator", AGENTS_DIR)
     expect(p.frontmatter.agent).toBe("investigator")
-    expect(p.frontmatter.includes).toContain("00-minimum")
+    expect(p.frontmatter.includes).toContain("03-evidence")
     expect(p.body.length).toBeGreaterThan(200)
     expect(p.body.startsWith("---")).toBe(false)
   })
@@ -48,7 +48,7 @@ describe("loadPrompt", () => {
 describe("composePrompt", () => {
   it("prepends every doctrine the agent declares", () => {
     const agentOnly = loadPrompt("investigator", AGENTS_DIR).body
-    const doctrine = loadPrompt("00-minimum", DOCTRINE_DIR).body
+    const doctrine = loadPrompt("03-evidence", DOCTRINE_DIR).body
     const composed = composePrompt("investigator", AGENTS_DIR, DOCTRINE_DIR)
 
     expect(composed).toContain(agentOnly)
@@ -183,9 +183,9 @@ describe("investigate", () => {
 
     // The doctrine is what makes this agent an investigator rather than a chat model with
     // four tools. If it never reached the model, nothing else in this test would notice.
-    expect(systemPrompt).toContain("the anchor is the ceiling, not")
-    expect(systemPrompt).toContain("Quotes are checked against the bytes")
-    expect(systemPrompt).toContain("Work the mission you were given")
+    expect(systemPrompt).toContain("The anchor is the ceiling, not the count")
+    expect(systemPrompt).toContain("A finding you did not record did not happen")
+    expect(systemPrompt).toContain("Work that mission")
 
     // One node and one edge written by THIS run, on a graph that already held someone
     // else's one of each. Absolute counts would read 2 and 2 here.

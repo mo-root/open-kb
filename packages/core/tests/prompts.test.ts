@@ -1,0 +1,83 @@
+import { describe, it, expect } from "vitest"
+import { readdirSync } from "node:fs"
+import { loadPrompt, composePrompt } from "../src/prompts.js"
+
+const DOCTRINE = "prompts/doctrine"
+const AGENTS = "prompts/agents"
+
+/** Distinctive text from each doctrine file. If an include is silently dropped, one of these vanishes. */
+const FINGERPRINTS: Record<string, string> = {
+  "01-the-thesis": "The anchor is the ceiling, not the count",
+  "02-relations": "shaper",
+  "03-evidence": "A finding you did not record did not happen",
+  "04-search-craft": "would a buyer who had never heard of this company type this",
+  "05-reading-the-web": "Cost and success do not move together",
+}
+
+/**
+ * The composed prompt is the agent's whole world. It is loaded at runtime from markdown, so
+ * nothing in the type system stops a file from being renamed, mis-declared, or quietly dropped
+ * from the includes list — the failure would surface as an agent behaving oddly in production,
+ * which is exactly how a previous run researched twelve competitors and recorded none.
+ */
+describe("prompt files", () => {
+  const doctrineFiles = readdirSync(DOCTRINE)
+    .filter((f) => f.endsWith(".md"))
+    .map((f) => f.replace(/\.md$/, ""))
+
+  it("has doctrine files on disk", () => {
+    expect(doctrineFiles.length).toBeGreaterThan(0)
+  })
+
+  it("every doctrine file declares the identity its filename claims", () => {
+    for (const name of doctrineFiles) {
+      const p = loadPrompt(name, DOCTRINE)
+      expect(p.frontmatter.doctrine, `${name}.md frontmatter`).toBe(name)
+      expect(p.body.length, `${name}.md body`).toBeGreaterThan(200)
+    }
+  })
+
+  it("throws rather than silently loading a prompt whose declared name disagrees", () => {
+    // The identity guard is the only thing standing between a rename and an agent
+    // running a prompt nobody thinks it runs.
+    expect(() => loadPrompt("01-the-thesis", AGENTS)).toThrow()
+  })
+
+  it("every name in the investigator's includes resolves to a real doctrine file", () => {
+    const agent = loadPrompt("investigator", AGENTS)
+    const includes = (agent.frontmatter.includes ?? "")
+      .replace(/[[\]]/g, "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+
+    expect(includes.length).toBeGreaterThan(0)
+    for (const name of includes) {
+      expect(doctrineFiles, `includes names "${name}"`).toContain(name)
+    }
+  })
+
+  it("the composed prompt carries text from every file it includes", () => {
+    const composed = composePrompt("investigator", AGENTS, DOCTRINE)
+    for (const [file, fingerprint] of Object.entries(FINGERPRINTS)) {
+      expect(composed, `${file} missing from composed prompt`).toContain(fingerprint)
+    }
+  })
+
+  it("the composed prompt states that recording is the job", () => {
+    // This assertion exists because of a live failure: the agent researched twelve real
+    // competitors, recorded none, and returned an essay. Emphasis is the fix, and this
+    // pins the sentence that carries it.
+    const composed = composePrompt("investigator", AGENTS, DOCTRINE)
+    expect(composed).toContain("A finding you did not record did not happen")
+    expect(composed).toContain("Recording is the job")
+  })
+
+  it("stays within a size a model will actually read", () => {
+    const composed = composePrompt("investigator", AGENTS, DOCTRINE)
+    // Every line competes with every other for attention. Length IS emphasis: the live
+    // failure happened partly because search guidance was long and recording was one line.
+    expect(composed.length).toBeGreaterThan(4_000)
+    expect(composed.length).toBeLessThan(20_000)
+  })
+})
