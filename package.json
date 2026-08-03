@@ -8,7 +8,8 @@
   "scripts": {
     "test": "vitest run",
     "check": "node scripts/check-core-purity.mjs && tsc -b",
-    "sweep": "tsx scripts/sweep.ts"
+    "sweep": "tsx scripts/sweep.ts",
+    "overnight": "tsx scripts/overnight.ts"
   },
   "devDependencies": {
     "@openrouter/ai-sdk-provider": "^3.0.0",
