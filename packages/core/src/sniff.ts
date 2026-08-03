@@ -38,9 +38,13 @@ function isHtmlContentType(contentType: string | undefined): boolean {
   return /^(text\/html|application\/(xhtml\+xml|xml))/i.test(contentType)
 }
 
-function isPlainTextContentType(contentType: string | undefined): boolean {
-  if (!contentType) return false
-  return /^(text\/(plain|markdown|x-markdown)|application\/(json|javascript|xml))/i.test(contentType)
+function countKnownHtmlTags(body: string): number {
+  // Count occurrences of known HTML element names.
+  // Use a strict pattern that requires the tag name to be a known HTML element.
+  // Deliberately excludes custom elements and pseudo-tags like <string>.
+  const htmlTagPattern = /<\/?(?:html|head|body|div|p|span|a|ul|ol|li|table|tr|td|th|h[1-6]|script|style|meta|link|br|img|section|article|nav|header|footer|form|input|button|strong|em|blockquote|pre|code)\b[^>]*>/gi
+  const matches = body.match(htmlTagPattern)
+  return matches ? matches.length : 0
 }
 
 /**
@@ -50,9 +54,10 @@ function isPlainTextContentType(contentType: string | undefined): boolean {
  *   - 200 with an app shell and no text (a JS-rendered page)
  *   - 200 with HTML where a text file was requested (a soft 404)
  *
- * Prefers contentType to detect HTML vs. plain text; falls back to structural
- * inspection only when contentType is absent or ambiguous. This prevents
- * corrupting code samples containing generics, arrows, and comparison operators.
+ * Detects HTML by tag vocabulary, not shape. Known HTML element names are the signal;
+ * contentType is a hint but the body is the evidence. This prevents both:
+ *   - Corrupting code/markdown with generics (Array<T>) or comparison operators (a<b)
+ *   - Failing to extract HTML fragments or mislabeled content served as text/plain
  */
 export function sniff(r: RawResponse): SniffResult {
   if (r.httpStatus >= 500) return { status: "blocked", reason: "server-error", text: "" }
@@ -65,13 +70,20 @@ export function sniff(r: RawResponse): SniffResult {
   }
 
   // Decide whether to extract HTML or keep as-is.
-  // Prefer contentType; fall back to structural inspection only when ambiguous.
+  // Strategy: contentType is a hint, but tag vocabulary is the evidence.
+  // Extract if: contentType says HTML, OR body contains 2+ known HTML element names.
+  // This prevents corruption while catching HTML fragments and mislabeled content.
   let shouldExtract = false
 
   if (isHtmlContentType(r.contentType)) {
+    // contentType explicitly says HTML
     shouldExtract = true
-  } else if (!isPlainTextContentType(r.contentType) && looksLikeHtml(r.body)) {
-    // contentType is absent or unknown, and body looks like HTML
+  } else if (looksLikeHtml(r.body)) {
+    // Fast path: body starts with DOCTYPE or <html> tag
+    shouldExtract = true
+  } else if (countKnownHtmlTags(r.body) >= 2) {
+    // Body contains 2+ known HTML elements: almost certainly HTML
+    // (one tag could be a lone markdown code span; two tags is the real signal)
     shouldExtract = true
   }
 

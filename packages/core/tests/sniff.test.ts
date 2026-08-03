@@ -59,14 +59,15 @@ describe("sniff", () => {
     expect(r.text).toContain("A -> B")
   })
 
-  it("preserves code with comparison operators and sufficient length", () => {
-    // Regression: `if (a < b) { return x > y }` should not be corrupted.
-    // Make it long enough to pass the 200-char threshold.
-    const code = "function compare(a, b) {\n" + "  if (a < b) { return x > y }\n".repeat(8) + "}\n"
+  it("preserves code with comparison operators (no spaces) and sufficient length", () => {
+    // Regression: spaces around operators masked the old bug.
+    // Without spaces: if(a<b) truly triggers the old greedy regex.
+    // Old pattern /<[a-z][\s\S]*>/ would match from <b to the next >, corrupting the code.
+    const code = "function compare(a,b){" + "if(a<b){return x>y}\n".repeat(15) + "}"
     const r = sniff({ url: "https://example.com/code.txt", httpStatus: 200, body: code })
     expect(r.status).toBe("found")
-    expect(r.text).toContain("if (a < b)")
-    expect(r.text).toContain("return x > y")
+    expect(r.text).toContain("if(a<b)")
+    expect(r.text).toContain("return x>y")
   })
 
   it("marks thin-render when extracted text is under 200 chars despite large raw body", () => {
@@ -78,6 +79,46 @@ describe("sniff", () => {
     expect(r.reason).toBe("thin-render")
     expect(r.text).toContain("hi")
     expect(r.text.length).toBeLessThan(200)
+  })
+
+  it("extracts HTML fragment without contentType (no DOCTYPE, no <html> prefix)", () => {
+    // REGRESSION FIX 2: HTML fragments without DOCTYPE often appear from WAF interstitials
+    // and server-side-rendered components. Without contentType hint, old code skipped extraction
+    // if body didn't start with <!doctype or <html>.
+    const fragment = "<!-- generated --><div><h1>Real Company</h1><p>" + "we make things. ".repeat(30) + "</p></div>"
+    const r = sniff({ url: "https://example.com", httpStatus: 200, body: fragment })
+    expect(r.status).toBe("found")
+    expect(r.text).toContain("Real Company")
+    expect(r.text).not.toContain("<div>") // tags should be stripped
+    expect(r.text).not.toContain("<!--") // comments should be gone
+  })
+
+  it("extracts HTML served with text/plain contentType", () => {
+    // REGRESSION FIX 2: Genuine HTML served with wrong Content-Type (e.g., legacy servers,
+    // WAF interstitials) should still be recognized and extracted as HTML.
+    // Vocabulary check catches 2+ known tags regardless of contentType header.
+    const html = "<html><head><title>x</title></head><body>" + "<h1>content</h1><p>more prose. ".repeat(20) + "</p></body></html>"
+    const r = sniff({
+      url: "https://example.com/page",
+      httpStatus: 200,
+      body: html,
+      contentType: "text/plain; charset=utf-8",
+    })
+    expect(r.status).toBe("found")
+    expect(r.text).toContain("content")
+    expect(r.text).not.toContain("<html>") // tags should be stripped
+    expect(r.text).not.toContain("<h1>")
+  })
+
+  it("preserves markdown with a single <code> inline span", () => {
+    // Markdown files can have `<code>` or `<a>` HTML entities.
+    // A single occurrence is not enough to trigger HTML extraction (threshold is 2).
+    // This prevents false positives from occasional HTML entities in prose.
+    const markdown = "# JavaScript\nUse the `<code>` HTML tag carefully.\n" + "Learn more at the library.\n".repeat(25)
+    const r = sniff({ url: "https://example.com/guide.md", httpStatus: 200, body: markdown })
+    expect(r.status).toBe("found")
+    expect(r.text).toBe(markdown) // preserved as-is, not extracted
+    expect(r.text).toContain("<code>") // the HTML entity should survive
   })
 })
 
