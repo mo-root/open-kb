@@ -103,9 +103,13 @@ packages:
   "type": "module",
   "main": "./src/index.ts",
   "exports": { ".": "./src/index.ts" },
-  "dependencies": { "zod": "^4.0.0" }
+  "dependencies": { "zod": "^4.0.0" },
+  "devDependencies": { "@types/node": "^22.10.0" }
 }
 ```
+
+`@types/node` is required in the package, not just at the root: pnpm does not hoist by default, and
+`packages/core/src/prompts.ts` (Task 9) imports `node:fs` and `node:path`.
 
 ```json
 // packages/core/tsconfig.json
@@ -1387,9 +1391,13 @@ Expected: FAIL — package does not exist.
   "type": "module",
   "main": "./src/index.ts",
   "exports": { ".": "./src/index.ts" },
-  "dependencies": { "@open-kb/core": "workspace:*" }
+  "dependencies": { "@open-kb/core": "workspace:*" },
+  "devDependencies": { "@types/node": "^22.10.0" }
 }
 ```
+
+`@types/node` supplies the global `fetch`, `Response`, and `RequestInit` types this file uses. The
+tsconfig deliberately omits `"DOM"` from `lib`, so without it these are compile errors.
 
 ```json
 // packages/providers/tsconfig.json
