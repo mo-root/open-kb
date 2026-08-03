@@ -15,7 +15,12 @@ one is not. `coinages` is where you put the words that fail that test: invented 
 trademarked category labels, anything a buyer who had never heard of this company would not type.
 Those words are banned from every query this run makes, so listing one is an instruction, not a note.
 
-Then group those products into `capabilities` — the markets they actually sit in.
+Name each product exactly as the company's own pages name it, in full. Four runs over these same
+pages produced "Web Unlocker" and "Web Unlocker API", "Datasets" and "Datasets Marketplace",
+"Browser API" and "Scraping Browser" for three products, which reads as six. Copy the name, do not
+paraphrase it. The de-branding happens in `capabilities` below, not here.
+
+Then group those products into `capabilities`, the markets they actually sit in.
 
 A company's product list is a sales artifact. It splits one job into several SKUs because that is how
 it prices, and it bundles several jobs into one SKU because that is how it packages. Neither split
