@@ -1,5 +1,23 @@
 @import "tailwindcss";
 
+/* Sources declared, not detected.
+   ------------------------------------------------------------------------
+   Tailwind v4 finds its sources automatically and SKIPS anything .gitignore
+   matches. .gitignore carried a bare `build/`, which matches a directory of
+   that name at any depth, so it matched `components/build/` — the entire
+   live-run UI. Every class used only by those components was silently absent
+   from this stylesheet: no `lg:grid-cols-[…]`, so the two-column layout never
+   applied and the model-output panel rendered straight on top of the pipeline
+   rail. The UI looked broken and the CSS was simply never generated for it.
+
+   The gitignore rule is fixed, but the coupling is the real defect: a rule
+   about what to COMMIT should not decide what gets STYLED. Declaring the
+   directories explicitly severs it, so a future ignore rule cannot delete a
+   component's styling again. */
+@source "../app";
+@source "../components";
+@source "../lib";
+
 /* ---- public-kb: Bright Data brand — LIGHT default + DARK toggle ----------
    Brand law (docs/brand-brightdata.md): 65% surface · 20% primary blue #3D7FFC
    (action) · 15% pink #EB368C (highlight/badge). Cyan #00E0FF reserved for
