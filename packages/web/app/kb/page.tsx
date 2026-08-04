@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { KbCard } from "@/components/KbCard";
+import { KbGallery } from "@/components/KbGallery";
 import { listStoredRuns } from "@/lib/runs";
 import { summaryOf } from "@/lib/kb-from-run";
 import type { KbSummary } from "@/lib/viewTypes";
@@ -28,9 +28,9 @@ export default async function KbIndex() {
         <h1 className="font-display text-2xl font-semibold tracking-tight text-slate-100">
           Knowledge bases
         </h1>
-        <span className="tnum font-mono text-xs text-slate-500">
-          {kbs.length} total
-        </span>
+        {/* The count lives on the gallery's own toolbar, where it tracks the
+            filter. Two counts in one header — one live, one frozen at the full
+            set — read as a discrepancy rather than as two facts. */}
       </div>
       {error ? (
         <div className="rounded-lg border border-dashed border-slate-800 p-10 text-center text-sm text-rose-300">
@@ -45,11 +45,7 @@ export default async function KbIndex() {
           </Link>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {kbs.map((kb) => (
-            <KbCard key={kb.slug} kb={kb} />
-          ))}
-        </div>
+        <KbGallery kbs={kbs} />
       )}
 
       <p className="mt-6 max-w-2xl text-xs leading-relaxed text-slate-500">

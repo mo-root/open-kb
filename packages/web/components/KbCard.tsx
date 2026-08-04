@@ -69,7 +69,19 @@ export function KbCard({ kb }: { kb: KbSummary }) {
   // here is a run UUID, which names nothing a reader recognises, so the two
   // swap: the domain leads and the run id is the fine print.
   const title = manifestStr(m, "brand", "root", "input") ?? kb.slug;
-  const subtitle = `run ${kb.slug.slice(0, 8)}`;
+  /* The run id, cut where it still says something.
+     `slug.slice(0, 8)` was written for UUID runs, where the first eight
+     characters are the only part anyone can quote. Named runs are shaped
+     `clerk-com-202608041037`, and eight characters of that is "clerk-co" — so
+     three different maps of the same domain all wore the same subtitle and the
+     one line meant to tell them apart told the reader nothing. A named slug
+     keeps the part a UUID does not have: the timestamp that distinguishes it. */
+  const stamp = /^\d{8,}$/.test(kb.slug.slice(kb.slug.lastIndexOf("-") + 1))
+    ? kb.slug.slice(kb.slug.lastIndexOf("-") + 1)
+    : null;
+  const subtitle = stamp
+    ? `run ${stamp.slice(0, 8)}·${stamp.slice(8)}`
+    : `run ${kb.slug.slice(0, 8)}`;
 
   return (
     <Link

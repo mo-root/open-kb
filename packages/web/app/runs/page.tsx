@@ -97,7 +97,11 @@ export default async function RunsPage() {
                   return (
                     <tr
                       key={run.id}
-                      className="border-b border-slate-800/70 last:border-0"
+                      /* Row hover. Nine columns of tabular numbers is a lot of
+                         horizontal distance to track with the eye — the tint
+                         is what keeps "Cost" tied to the domain that spent it
+                         while the cursor is out at the right-hand edge. */
+                      className="border-b border-slate-800/70 transition-colors duration-100 last:border-0 hover:bg-slate-800/30"
                     >
                       <Cell>
                         {/* To the REPORT, not straight into the map: this page

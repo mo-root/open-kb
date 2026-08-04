@@ -29,6 +29,9 @@ export interface AgentChunk {
   toolName?: string;
   input?: unknown;
   output?: unknown;
+  /** Who produced it. Restored by lib/stream-adapter.ts off `span.agentId`,
+   *  which `readUi` was discarding. Absent on a frame from an older run. */
+  agent?: string;
   [k: string]: unknown;
 }
 
@@ -37,7 +40,12 @@ interface Entry {
   kind: "text" | "tool" | "result";
   body: string;
   tool?: string;
+  agent: string;
 }
+
+/** Unattributed frames keep working, under a name that says what they are
+ *  rather than guessing which agent they came from. */
+const UNKNOWN = "run";
 
 /** One short line for a tool call, because the full input is routinely a whole
  *  document and the point here is to follow the agent, not to re-read the

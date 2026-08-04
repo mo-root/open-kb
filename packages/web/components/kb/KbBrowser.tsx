@@ -1,16 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useState } from "react";
-import { NodeGlyph, type GlyphKind } from "@/components/icons";
+import { useCallback, useMemo } from "react";
+import { NodeGlyph } from "@/components/icons";
 import { normalizeDomain } from "@/components/SiteIcon";
 import { TYPE_CSS } from "@/lib/nodeTypes";
+import { useUrlView } from "@/lib/useUrlView";
+import { usePaletteCommands, type Command } from "@/components/CommandPalette";
 import type { KbManifest, NoteRef, TypeCounts } from "@/lib/viewTypes";
 import { builtAtOf, manifestNum, manifestStr } from "./layerMeta";
 import { GraphCanvas } from "./GraphCanvas";
 import { KbOverview } from "./KbOverview";
 import { NotesTab } from "./NotesTab";
 import { ProductsTab } from "./ProductsTab";
+import { TabBar, type TabDef } from "./TabBar";
 
 type Tab = "overview" | "notes" | "products" | "graph";
 
@@ -22,12 +25,14 @@ type Tab = "overview" | "notes" | "products" | "graph";
 // engine runs none of those stages, so their tabs are not drawn: an empty tab
 // is a promise the product cannot keep, and the house rule is to name a surface
 // only once something writes to it.
-const TABS: { id: Tab; label: string; glyph: GlyphKind }[] = [
+const TABS: TabDef<Tab>[] = [
   { id: "overview", label: "Overview", glyph: "company" },
   { id: "notes", label: "Entities", glyph: "docs" },
   { id: "products", label: "Products & Ecosystem", glyph: "product" },
   { id: "graph", label: "Graph", glyph: "community" },
 ];
+
+const TAB_IDS = new Set<string>(TABS.map((t) => t.id));
 
 /* Tabs that opt into the full pane width. Everything else stays at content
    width, so this cannot regress a surface that was not designed for it. */
@@ -58,20 +63,33 @@ export function KbBrowser({
   noise: number;
   initialNote?: string;
 }) {
-  const [tab, setTab] = useState<Tab>("overview");
-  const [selected, setSelected] = useState<string | null>(() => {
+  // The entity a bare KB URL opens on: the anchor, the one page that explains
+  // what every other page is measured against.
+  const defaultNote = useMemo(
+    () => notes.find((n) => n.path === "company.md")?.path ?? notes[0]?.path ?? null,
+    [notes],
+  );
+
+  const [view, go] = useUrlView({
+    tab: "overview",
     // ?note= deep links land here; unknown paths fall back to the anchor rather
     // than a dead view.
-    if (initialNote && notes.some((n) => n.path === initialNote))
-      return initialNote;
-    const home = notes.find((n) => n.path === "company.md");
-    return home?.path ?? notes[0]?.path ?? null;
+    note: initialNote && notes.some((n) => n.path === initialNote) ? initialNote : null,
   });
 
-  const openNote = useCallback((path: string) => {
-    setSelected(path);
-    setTab("notes");
-  }, []);
+  // A hand-typed ?tab= is untrusted input: an unknown one falls back to
+  // Overview rather than rendering a page with no panel in it.
+  const tab: Tab = (TAB_IDS.has(view.tab) ? view.tab : "overview") as Tab;
+  const selected =
+    view.note && notes.some((n) => n.path === view.note) ? view.note : defaultNote;
+
+  const setTab = useCallback((id: Tab) => go({ tab: id }), [go]);
+  const setSelected = useCallback((path: string) => go({ note: path }, "push"), [go]);
+
+  const openNote = useCallback(
+    (path: string) => go({ tab: "notes", note: path }, "push"),
+    [go],
+  );
 
   const brand = manifestStr(manifest, "brand", "input") ?? slug;
   const root = normalizeDomain(manifestStr(manifest, "root", "input"));
@@ -88,6 +106,47 @@ export function KbBrowser({
      one number here and the reader computes it off the run itself, so the two
      cannot disagree. */
   const playerCount = counts.player;
+
+  /* Counts on the tabs. A tab that says how much is behind it is the cheapest
+     navigation aid there is — the reader decides whether Products is worth a
+     click before spending one. Graph carries none: its "size" is the same
+     entity set the Entities tab already counted, and repeating a number in two
+     places invites a reader to look for the difference. */
+  const tabsWithCounts = useMemo<TabDef<Tab>[]>(
+    () =>
+      TABS.map((t) =>
+        t.id === "notes"
+          ? { ...t, count: notes.length }
+          : t.id === "products"
+            ? { ...t, count: (catalog?.length ?? 0) + counts.product }
+            : t,
+      ),
+    [notes.length, catalog?.length, counts.product],
+  );
+
+  /* Every entity on this map, offered to ⌘K. The palette is the fastest route
+     to a named thing — faster than the sidebar once a map runs past a screen —
+     and registering here means it always describes the KB actually open. */
+  const commands = useMemo<Command[]>(() => {
+    const tabCmds: Command[] = TABS.map((t) => ({
+      id: `tab:${t.id}`,
+      title: t.label,
+      group: "Go to",
+      glyph: t.glyph,
+      run: () => setTab(t.id),
+    }));
+    const noteCmds: Command[] = notes.map((n) => ({
+      id: `note:${n.path}`,
+      title: n.title,
+      hint: n.relation === "none" ? "unplaced" : n.relation,
+      group: "Entities",
+      glyph: "docs",
+      run: () => openNote(n.path),
+    }));
+    return [...tabCmds, ...noteCmds];
+  }, [notes, setTab, openNote]);
+
+  usePaletteCommands(commands);
 
   return (
     <div className="w-pane mx-auto px-5 py-6">
@@ -178,30 +237,21 @@ export function KbBrowser({
         </div>
       </div>
 
-      <div className="w-content mx-auto mb-5 flex gap-1 overflow-x-auto border-b border-slate-800">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`-mb-px inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 font-mono text-xs uppercase tracking-[0.08em] transition ${
-              tab === t.id
-                ? "border-sky-400 text-slate-100"
-                : "border-transparent text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            {/* Active nav intent = --accent, matching HeaderNav's active glyph
-                so header and tab bar can never drift to two different blues. */}
-            <NodeGlyph
-              kind={t.glyph}
-              size={13}
-              className={`shrink-0 ${tab === t.id ? "text-[var(--accent)]" : "text-slate-500"}`}
-            />
-            {t.label}
-          </button>
-        ))}
+      <div className="w-content mx-auto mb-5">
+        <TabBar tabs={tabsWithCounts} active={tab} onChange={setTab} />
       </div>
 
-      <div className={PANE_TABS.has(tab) ? "" : "w-content mx-auto"}>
+      {/* key={tab}: remounting the panel wrapper is what makes `.panel-in` play
+          once per switch, and it is also what tells the reader the view under
+          the bar changed rather than merely re-rendered. */}
+      <div
+        key={tab}
+        role="tabpanel"
+        id={`kb-panel-${tab}`}
+        aria-labelledby={`kb-tab-${tab}`}
+        tabIndex={-1}
+        className={`panel-in ${PANE_TABS.has(tab) ? "" : "w-content mx-auto"}`}
+      >
         {/* key={slug}: the dashboard fetches its own envelope, and remounting
             on a slug change is how it starts fresh without a reset-setState in
             its effect body (see the note there). */}

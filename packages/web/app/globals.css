@@ -286,6 +286,106 @@ body::before {
   }
 }
 
+/* ---- stagger: a list that arrives in reading order ------------------------
+   Put `.stagger` on a grid/list and every direct child rises in, 45ms apart,
+   so the eye is handed the cards one at a time instead of all at once. Capped
+   at 12 children: past that the last card would wait half a second for no
+   reason, and an unfinished-looking page is worse than a plain one. Delay-only
+   staggering — the animation itself is `reveal-rise`, the same curve the
+   masthead uses, so nothing on the page moves in two different ways. */
+@media (prefers-reduced-motion: no-preference) {
+  .stagger > * {
+    opacity: 0;
+    animation: reveal-rise 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  .stagger > *:nth-child(1)  { animation-delay: 0ms; }
+  .stagger > *:nth-child(2)  { animation-delay: 45ms; }
+  .stagger > *:nth-child(3)  { animation-delay: 90ms; }
+  .stagger > *:nth-child(4)  { animation-delay: 135ms; }
+  .stagger > *:nth-child(5)  { animation-delay: 180ms; }
+  .stagger > *:nth-child(6)  { animation-delay: 225ms; }
+  .stagger > *:nth-child(7)  { animation-delay: 270ms; }
+  .stagger > *:nth-child(8)  { animation-delay: 315ms; }
+  .stagger > *:nth-child(9)  { animation-delay: 360ms; }
+  .stagger > *:nth-child(10) { animation-delay: 405ms; }
+  .stagger > *:nth-child(11) { animation-delay: 450ms; }
+  .stagger > *:nth-child(n + 12) { animation-delay: 495ms; }
+}
+
+/* ---- panel swap: the tab that just became visible -------------------------
+   A tab panel is remounted on change (React `key`), so a plain entry animation
+   plays exactly once per switch. Shorter and shallower than the page-load
+   reveal: this is a change of view inside a page the reader is already in, and
+   a big movement here reads as a page load that did not happen. */
+@media (prefers-reduced-motion: no-preference) {
+  .panel-in {
+    animation: panel-enter 0.26s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes panel-enter {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+  }
+}
+
+/* ---- command palette: arrives fast, from where it will sit ----------------
+   The scrim fades and the panel drops a few pixels into place. Both are quick
+   (140ms / 180ms) because ⌘K is pressed by someone in a hurry, and a dialog
+   that keeps them waiting for its entrance is a dialog they will stop opening.
+   The panel scales from 0.98 rather than sliding a long distance: it should
+   read as the surface coming forward, not as a sheet flying in. */
+@media (prefers-reduced-motion: no-preference) {
+  .palette-scrim {
+    animation: palette-fade 0.14s ease-out;
+  }
+  .palette-panel {
+    animation: palette-rise 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes palette-fade {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes palette-rise {
+    from {
+      opacity: 0;
+      transform: translateY(-8px) scale(0.98);
+    }
+  }
+}
+
+/* ---- skeleton: a shape that says "a number is coming" ---------------------
+   Used wherever a panel awaits its fetch. It draws the block the content will
+   occupy, so the layout does not jump when the data lands, and a slow sheen
+   crosses it so a stalled request still looks alive. */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--border) 55%, transparent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in srgb, var(--accent) 16%, transparent),
+      transparent
+    );
+    animation: skeleton-sheen 1.5s ease-in-out infinite;
+  }
+  @keyframes skeleton-sheen {
+    to {
+      transform: translateX(100%);
+    }
+  }
+}
+
 /* ---- landing: radar-scan backdrop ----------------------------------------
    A slow sweep over faint concentric range-rings — the product quietly scanning
    the public web. The tint (--scan-rgb) is cyan in dark, soft blue on paper, so

@@ -11,7 +11,8 @@
     "sweep": "tsx scripts/sweep.ts",
     "overnight": "tsx scripts/overnight.ts",
     "read": "tsx scripts/read.ts",
-    "experiment": "tsx scripts/experiment.ts"
+    "experiment": "tsx scripts/experiment.ts",
+    "discover": "tsx scripts/discover.ts"
   },
   "devDependencies": {
     "@openrouter/ai-sdk-provider": "^3.0.0",

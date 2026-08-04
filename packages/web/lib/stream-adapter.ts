@@ -73,7 +73,21 @@ export function adapterFor(ns: Namespace): (span: Span) => unknown | null {
       // Narration. Verbatim to its own namespace, invisible everywhere else —
       // in particular it must not reach `cost` or `trace`, where it would
       // inflate the call count with things that were never called.
-      return ui.ns === ns ? ui.frame : null
+      if (ui.ns !== ns) return null
+
+      /* WHO said it, restored.
+         `emitUi(spans, runId, ns, agent, frame)` takes the agent name and writes
+         it to `span.agentId` — but `readUi` returns `{ns, frame}` and drops the
+         span, so the identity died one layer above this line. It cost nothing
+         while the run was a single file of stages. It costs everything to a
+         swarm: N agents streaming into one namespace with no way to tell them
+         apart is one interleaved monologue, and `AgentPanel` was concatenating
+         concurrent model outputs into the same paragraph because of it.
+         The frame's own `agent` wins where it has one — `progress` frames carry
+         it explicitly and that is the field `stageOf` reads. */
+      return typeof ui.frame.agent === "string"
+        ? ui.frame
+        : { ...ui.frame, agent: span.agentId }
     }
 
     // Real work. Counted first, so the cost frame this span produces already

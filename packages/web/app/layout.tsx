@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Mono, IBM_Plex_Sans, IBM_Plex_Serif } from "next/font/google";
 import Link from "next/link";
+import { CommandPaletteProvider } from "@/components/CommandPalette";
 import { HeaderNav } from "@/components/HeaderNav";
+import { SkipLink } from "@/components/SkipLink";
 import "./globals.css";
 
 // The bureau family: Plex Sans works, Plex Mono measures, Plex Serif speaks.
@@ -60,29 +62,34 @@ export default function RootLayout({
       {/* suppressHydrationWarning: extensions inject body attributes before
           React hydrates — attribute-only, children still checked */}
       <body className="flex min-h-full flex-col" suppressHydrationWarning>
-        <header className="sticky top-0 z-30 border-b border-slate-800/80 bg-slate-950/85 backdrop-blur">
-          {/* brand hairline — the blue action accent, edge to edge */}
-          <div className="h-px bg-gradient-to-r from-transparent via-sky-400/60 to-transparent" />
-          <div className="mx-auto flex h-14 max-w-6xl items-center gap-8 px-5">
-            <Link
-              href="/"
-              className="group inline-flex items-center gap-2 font-display text-[17px] font-semibold tracking-tight text-slate-100"
-            >
-              <span
-                aria-hidden
-                className="inline-block h-1.5 w-1.5 rounded-full bg-sky-400 transition-transform group-hover:scale-125"
-                style={{
-                  boxShadow: "0 0 8px 1px color-mix(in srgb, var(--accent) 45%, transparent)",
-                }}
-              />
-              <span className="group-hover:text-sky-300">
-                open<span className="text-sky-400">·</span>kb
-              </span>
-            </Link>
-            <HeaderNav />
-          </div>
-        </header>
-        <main className="flex-1">{children}</main>
+        <CommandPaletteProvider>
+          <SkipLink />
+          <header className="sticky top-0 z-30 border-b border-slate-800/80 bg-slate-950/85 backdrop-blur">
+            {/* brand hairline — the blue action accent, edge to edge */}
+            <div className="h-px bg-gradient-to-r from-transparent via-sky-400/60 to-transparent" />
+            <div className="mx-auto flex h-14 max-w-6xl items-center gap-4 px-4 sm:gap-8 sm:px-5">
+              <Link
+                href="/"
+                className="group inline-flex items-center gap-2 font-display text-[17px] font-semibold tracking-tight text-slate-100"
+              >
+                <span
+                  aria-hidden
+                  className="inline-block h-1.5 w-1.5 rounded-full bg-sky-400 transition-transform group-hover:scale-125"
+                  style={{
+                    boxShadow: "0 0 8px 1px color-mix(in srgb, var(--accent) 45%, transparent)",
+                  }}
+                />
+                <span className="group-hover:text-sky-300">
+                  open<span className="text-sky-400">·</span>kb
+                </span>
+              </Link>
+              <HeaderNav />
+            </div>
+          </header>
+          <main id="main" className="flex-1" tabIndex={-1}>
+            {children}
+          </main>
+        </CommandPaletteProvider>
       </body>
     </html>
   );

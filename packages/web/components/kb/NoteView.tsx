@@ -46,6 +46,36 @@ function hostOf(url: string): string {
   }
 }
 
+/* The shape of an entity, drawn before the entity arrives.
+   The line "Loading entity…" that stood here was one line tall, so the reading
+   column collapsed and then sprang back on every click — arrowing down the
+   sidebar made the whole page jump once per keystroke. The skeleton occupies
+   the header, the evidence box and the first lines of prose, which is where
+   they will actually be, so the fetch lands into a page that has not moved. */
+function EntitySkeleton() {
+  return (
+    <div aria-busy="true" aria-label="Loading entity">
+      <div className="mb-5 border-b border-slate-800 pb-4">
+        <div className="mb-3 flex gap-2">
+          <div className="skeleton h-[18px] w-16" />
+          <div className="skeleton h-[18px] w-20" />
+          <div className="skeleton h-[18px] w-24" />
+        </div>
+        <div className="flex items-center gap-2.5">
+          <div className="skeleton h-6 w-6 rounded" />
+          <div className="skeleton h-7 w-64 max-w-full" />
+        </div>
+        <div className="skeleton mt-3 h-16 w-full rounded-md" />
+      </div>
+      <div className="space-y-2">
+        <div className="skeleton h-4 w-full" />
+        <div className="skeleton h-4 w-11/12" />
+        <div className="skeleton h-4 w-2/3" />
+      </div>
+    </div>
+  );
+}
+
 export function NoteView({
   slug,
   path,
@@ -112,9 +142,7 @@ export function NoteView({
     return notes.filter((n) => n.path !== "company.md" && n.relation !== "none").slice(0, 12);
   }, [note, notes]);
 
-  if (loading) {
-    return <div className="p-6 text-sm text-slate-500">Loading entity…</div>;
-  }
+  if (loading) return <EntitySkeleton />;
   if (error || !note) {
     return (
       <div className="p-6 text-sm text-rose-300">{error ?? "Entity unavailable"}</div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { StatTile } from "@/components/viz";
 import { AgentPanel, type AgentChunk } from "./AgentPanel";
 import { EventFeed } from "./EventFeed";
@@ -159,6 +160,30 @@ type DepthKey = (typeof DEPTHS)[number]["key"];
 const DEFAULT_DEPTH: DepthKey = "standard";
 
 export function BuildWorkflow() {
+  const router = useRouter();
+  /**
+   * Send the reader to the finished map.
+   *
+   * `prefetch` first so the navigation is instant on arrival rather than a
+   * cold render of a page that has to derive a 300-node graph. The delay is
+   * for the eye, not the machine: the completion line in the feed should be
+   * read before the view changes under it.
+   */
+  // Both completion paths call this — the `complete` frame and the fallback
+  // fetch that learns a closed stream succeeded — and either may arrive first.
+  // Without the guard a run navigates twice, and the second push lands while
+  // the first is still resolving.
+  const navigated = useRef(false);
+  const goToMap = useCallback(
+    (runId: string) => {
+      if (navigated.current) return;
+      navigated.current = true;
+      const href = `/kb/${runId}`;
+      router.prefetch(href);
+      window.setTimeout(() => router.push(href), 1200);
+    },
+    [router],
+  );
   const [input, setInput] = useState("");
   const [depth, setDepth] = useState<DepthKey>(DEFAULT_DEPTH);
 
@@ -225,6 +250,7 @@ export function BuildWorkflow() {
       setSearches([]);
     setFeed([]);
     setResult(null);
+    navigated.current = false;
     setErrorText(null);
     setRunId(null);
     startedAt.current = Date.now();
@@ -313,6 +339,11 @@ export function BuildWorkflow() {
           setStates(allDone);
           setRunning(false);
           addFeed("green", `complete: ${r.kept ?? 0} on the map · ${formatUsd(r.usd)}`);
+          // Straight to the map. A run that just spent two minutes and real money
+          // ending on a summary card, with the thing it produced one more click
+          // away, makes the reader do the last step themselves for no reason.
+          // Short pause so the final feed line is seen rather than flashed past.
+          goToMap(started.runId);
           break;
         }
       }
@@ -351,6 +382,11 @@ export function BuildWorkflow() {
             // is the same value, and re-setting it would churn the panel.
             setResult((prev) => prev ?? body.result!);
             setStates(allDone);
+            // The other way a run finishes: the stream closed and this fetch is
+            // what learned it succeeded. `goToMap` is idempotent enough that
+            // arriving here after a `complete` frame already fired is harmless,
+            // and a run whose frame never arrived still lands on its map.
+            goToMap(started.runId);
           } else if (body.error) {
             setErrorText((prev) => prev ?? body.error!);
           }

@@ -1,0 +1,216 @@
+import { ToolLoopAgent, stepCountIs, tool, type LanguageModel } from "ai"
+import { z } from "zod"
+import type { FetchPort, SpanStream } from "./index.js"
+import { sniff } from "./sniff.js"
+import { candidatesFromSitemap, candidatesFromLinks, isSitemapIndex, readPageFacts } from "./catalog.js"
+import { loadPrompt } from "./prompts.js"
+
+/**
+ * Discovery: an agent that reads a company's own site and finds everything it sells.
+ *
+ * This is phase one, and the thing today's engine is weakest at. A single model
+ * call handed pre-fetched pages read three products off a company with dozens of
+ * product lines. An agent that PULLS the corpus itself — asks for the product
+ * pages, reads the ones it judges worth reading, follows a lead, and submits
+ * each product as it finds it — is how v1 reached three hundred where this
+ * reached five.
+ *
+ * There is no product cap and no step where the run is sealed for looking full.
+ * The agent decides when it has found everything. Cost is held down by running
+ * discovery ALONE and cheaply, not by throttling it: `scripts/discover.ts` runs
+ * exactly this and nothing else, so its quality can be judged without paying for
+ * a whole map.
+ *
+ * The mechanical page-finder is a TOOL, not a replacement. `mapProductPages`
+ * wraps the measured `catalog.ts` sitemap/nav discovery and hands the agent
+ * candidate urls; the agent chooses which to read. Mechanical leaf, agentic
+ * decision.
+ */
+
+export interface DiscoveredProduct {
+  name: string
+  does: string
+  /** The url that established this product, so a reader can check it. */
+  foundAt: string
+}
+
+export interface DiscoveryResult {
+  sells: string
+  buyer: string
+  products: DiscoveredProduct[]
+  /** Brand words that must never appear in a de-branded query. */
+  coinages: string[]
+  /** The agent's own account of how it read the company. */
+  summary: string
+  usd: number
+  steps: number
+  pagesRead: number
+  /** raw per-turn steps, for cost breakdown */
+  _steps?: unknown
+}
+
+export interface DiscoverOptions {
+  anchor: string
+  model: LanguageModel
+  fetch: FetchPort
+  spans?: SpanStream
+  /** Priced from the caller so core stays vendor-blind. */
+  pricing?: { inputPerMTok: number; outputPerMTok: number }
+  modelName?: string
+  /** A ceiling on turns, high by default: the point is to find everything, and
+   *  the agent stops on its own when the site is exhausted. */
+  maxSteps?: number
+  agentsDir?: string
+}
+
+export async function discover(opts: DiscoverOptions): Promise<DiscoveryResult> {
+  const { anchor, model, fetch: fetcher } = opts
+  const products: DiscoveredProduct[] = []
+  const readUrls = new Set<string>()
+  let sells = ""
+  let buyer = ""
+  let coinages: string[] = []
+  let finished = false
+
+  const origin = `https://${anchor.replace(/^https?:\/\//, "").replace(/\/.*$/, "")}`
+
+  const raw = async (url: string): Promise<string> => {
+    const r = await fetcher.get(url, "direct")
+    return r.httpStatus >= 200 && r.httpStatus < 300 ? r.body : ""
+  }
+
+  const agent = new ToolLoopAgent({
+    model,
+    instructions: loadPrompt("discover", opts.agentsDir ?? "prompts/agents").body,
+    stopWhen: stepCountIs(opts.maxSteps ?? 40),
+    tools: {
+      mapProductPages: tool({
+        description:
+          "List the company's own product-page urls, from its sitemap and homepage nav. Cheap and " +
+          "free. Call this first to see what pages exist, then read the ones that look like products.",
+        inputSchema: z.object({}),
+        execute: async () => {
+          let xml = await raw(`${origin}/sitemap.xml`)
+          if (xml && isSitemapIndex(xml)) {
+            const first = /<loc>([^<]+)<\/loc>/.exec(xml)?.[1]
+            xml = first ? await raw(first) : ""
+          }
+          let cands = xml ? candidatesFromSitemap(xml, 60) : []
+          const home = await raw(`${origin}/`)
+          const seen = new Set(cands.map((c) => c.url.replace(/\/+$/, "")))
+          cands = [...cands, ...candidatesFromLinks(home, `${origin}/`, 60).filter((c) => !seen.has(c.url.replace(/\/+$/, "")))]
+          return { urls: cands.map((c) => c.url).slice(0, 60) }
+        },
+      }),
+
+      readPage: tool({
+        description:
+          "Fetch one of the company's pages and read what it says about itself: its title, heading " +
+          "and description, plus the first of its text. Use this to decide what a page sells. Free.",
+        inputSchema: z.object({ url: z.string() }),
+        execute: async ({ url }) => {
+          const body = await raw(url)
+          readUrls.add(url)
+          if (!body) return { ok: false, reason: "the page returned nothing (blocked or empty)" }
+          const facts = readPageFacts(url, body)
+          const text = sniff({ url, httpStatus: 200, body }).text.slice(0, 4_000)
+          return {
+            ok: true,
+            title: facts?.title ?? "",
+            heading: facts?.heading ?? "",
+            description: facts?.description ?? "",
+            text,
+          }
+        },
+      }),
+
+      submitProduct: tool({
+        description:
+          "Record one product the company sells. A product is something a buyer can choose, pay for " +
+          "and use on its own. Not a pricing tier, a docs section, a blog post, or a SKU variant of a " +
+          "product you already submitted. Submit as many as the company genuinely sells — there is no " +
+          "limit and a missed product is a whole market this map will never see.",
+        inputSchema: z.object({
+          name: z.string().describe("the product's name, exactly as the company writes it"),
+          does: z.string().describe("what it does for the buyer, one line"),
+          foundAt: z.string().describe("the url of the page that establishes it"),
+        }),
+        execute: async ({ name, does, foundAt }) => {
+          const key = name.trim().toLowerCase()
+          if (products.some((p) => p.name.trim().toLowerCase() === key)) {
+            return { ok: false, reason: `already submitted: ${name}` }
+          }
+          products.push({ name: name.trim(), does: does.trim(), foundAt })
+          return { ok: true, total: products.length }
+        },
+      }),
+
+      finish: tool({
+        description:
+          "Call this once, when you have found every product the company sells. Give the company's " +
+          "one-line pitch in the buyer's words, who buys it, and the brand words a search must never " +
+          "use. This ends the investigation.",
+        inputSchema: z.object({
+          sells: z.string().describe("what the company sells, one plain sentence, no marketing words"),
+          buyer: z.string().describe("who buys it and what has just gone wrong for them"),
+          coinages: z.array(z.string()).describe("invented product and brand words a de-branded query must never contain"),
+        }),
+        execute: async (args) => {
+          sells = args.sells
+          buyer = args.buyer
+          coinages = args.coinages
+          finished = true
+          return { ok: true, productsFound: products.length }
+        },
+      }),
+    },
+  })
+
+  const started = Date.now()
+  const result = await agent.generate({
+    prompt: `Discover everything ${anchor} sells, by reading its own site.\n\nStart by mapping its product pages, then read and submit. When you are certain you have them all, call finish.\n\nGO.`,
+  })
+
+  // Price the turns, if a rate was supplied.
+  const steps = result.steps ?? []
+  let usd = 0
+  if (opts.pricing && opts.spans) {
+    const perMs = steps.length ? Math.round((Date.now() - started) / steps.length) : 0
+    let turn = 0
+    for (const step of steps) {
+      turn++
+      const inTok = step.usage?.inputTokens ?? 0
+      const outTok = step.usage?.outputTokens ?? 0
+      const cost = (inTok / 1e6) * opts.pricing.inputPerMTok + (outTok / 1e6) * opts.pricing.outputPerMTok
+      usd += cost
+      opts.spans.emit({
+        runId: anchor,
+        agentId: "discover",
+        parentId: null,
+        kind: "model",
+        name: opts.modelName ?? "model",
+        argsDigest: `discover turn ${turn}/${steps.length}`,
+        ms: perMs,
+        ok: true,
+        tokensIn: inTok,
+        tokensOut: outTok,
+        usd: cost,
+      })
+    }
+  }
+
+  // The agent should call finish; if it stopped without one, keep what it found
+  // rather than losing the whole discovery over a missing final call.
+  return {
+    sells: sells || `(the agent did not summarise; ${products.length} products found)`,
+    buyer,
+    products,
+    coinages,
+    summary: result.text,
+    usd,
+    steps: steps.length,
+    pagesRead: readUrls.size,
+    _steps: steps as unknown,
+    ...(finished ? {} : {}),
+  }
+}

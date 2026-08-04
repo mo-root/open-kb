@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { NoteRef } from "@/lib/viewTypes";
 import { groupLabel, nodeTypeOf, TYPE_CSS } from "@/lib/nodeTypes";
 import { NodeGlyph, glyphForNotePath } from "@/components/icons";
@@ -31,9 +31,29 @@ export function NotesTab({
   onSelect: (p: string) => void;
   openNote: (p: string) => void;
 }) {
+  /* The sidebar filter.
+     A map with two hundred entities in it is a list you scroll, not a list you
+     read, and the group headings only help once you already know which group a
+     company is in. The filter matches the entity's NAME, its DOMAIN and its
+     RELATION together, so "competitor" narrows to the rivals and "postmark"
+     goes straight to one host — the two ways a reader actually arrives.
+
+     Groups with nothing left in them disappear rather than sitting empty: a
+     heading over no rows reads as a loading state that never finished. */
+  const [filter, setFilter] = useState("");
+  const boxRef = useRef<HTMLInputElement>(null);
+
+  const matches = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    if (!q) return notes;
+    return notes.filter((n) =>
+      `${n.title} ${n.domain} ${n.relation}`.toLowerCase().includes(q),
+    );
+  }, [notes, filter]);
+
   const groups = useMemo(() => {
     const map = new Map<string, NoteRef[]>();
-    for (const n of notes) {
+    for (const n of matches) {
       const g = groupOf(n.path);
       if (!map.has(g)) map.set(g, []);
       map.get(g)!.push(n);
@@ -50,12 +70,74 @@ export function NotesTab({
         .slice()
         .sort((x, y) => y.relevance - x.relevance || x.title.localeCompare(y.title)),
     }));
-  }, [notes]);
+  }, [matches]);
+
+  /* Up/Down walk the visible list, wherever the reader's hands already are —
+     inside the filter box or on a row. The list is flattened in the order it
+     is drawn, so "next" always means the row below the one that is lit. */
+  const flat = useMemo(() => groups.flatMap((g) => g.items), [groups]);
+
+  const step = (dir: 1 | -1) => {
+    if (flat.length === 0) return;
+    const i = flat.findIndex((n) => n.path === selected);
+    const next = i < 0 ? (dir === 1 ? 0 : flat.length - 1) : (i + dir + flat.length) % flat.length;
+    onSelect(flat[next].path);
+  };
+
+  const onNavKey = (e: React.KeyboardEvent) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      step(1);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      step(-1);
+    } else if (e.key === "Escape" && filter) {
+      e.preventDefault();
+      setFilter("");
+    }
+  };
+
+  // Follow the selection into view — arrow-stepping past the fold, or landing
+  // here from ⌘K or a graph click, should never leave the lit row off screen.
+  useEffect(() => {
+    boxRef.current
+      ?.closest("aside")
+      ?.querySelector<HTMLElement>('[data-selected="true"]')
+      ?.scrollIntoView({ block: "nearest" });
+  }, [selected]);
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,260px)_minmax(0,1fr)]">
-      <aside className="lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:self-start lg:overflow-y-auto">
-        <nav className="space-y-4">
+      <aside
+        onKeyDown={onNavKey}
+        className="lg:sticky lg:top-20 lg:flex lg:max-h-[calc(100vh-6rem)] lg:flex-col lg:self-start"
+      >
+        <div className="relative mb-3 shrink-0">
+          <input
+            ref={boxRef}
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Filter entities…"
+            aria-label="Filter entities by name, domain or relation"
+            className="w-full rounded-md border border-slate-800 bg-slate-900/50 py-1.5 pl-2.5 pr-16 text-sm text-slate-200 outline-none transition-colors placeholder:text-slate-500 focus:border-sky-500/50"
+          />
+          <span className="tnum pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 font-mono text-[10px] text-slate-500">
+            {filter ? `${matches.length}/${notes.length}` : notes.length}
+          </span>
+        </div>
+        <nav className="space-y-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+          {flat.length === 0 && (
+            <p className="px-2 py-6 text-xs text-slate-500">
+              No entity matches “{filter}”.{" "}
+              <button
+                onClick={() => setFilter("")}
+                className="text-sky-400 hover:text-sky-300"
+              >
+                Clear the filter
+              </button>
+              .
+            </p>
+          )}
           {groups.map((g) => (
             <div key={g.name}>
               <div className="mb-1 flex items-center gap-1.5 px-2 font-mono text-[11px] uppercase tracking-wider text-slate-500">
@@ -86,10 +168,15 @@ export function NotesTab({
                     <li key={n.path}>
                       <button
                         onClick={() => onSelect(n.path)}
-                        className={`flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-sm transition ${
+                        data-selected={active}
+                        aria-current={active ? "true" : undefined}
+                        /* The lit row grows a left edge in the accent rather
+                           than only changing fill: at a glance down a long
+                           list, an edge is findable and a tint is not. */
+                        className={`flex w-full items-center justify-between gap-2 rounded border-l-2 px-2 py-1.5 text-left text-sm transition-colors duration-150 ${
                           active
-                            ? "bg-sky-500/10 text-sky-300"
-                            : "text-slate-300 hover:bg-slate-800/50"
+                            ? "border-sky-400 bg-sky-500/10 text-sky-300"
+                            : "border-transparent text-slate-300 hover:border-slate-700 hover:bg-slate-800/50"
                         }`}
                       >
                         <span className="truncate">{n.title}</span>
@@ -108,6 +195,13 @@ export function NotesTab({
             </div>
           ))}
         </nav>
+        {/* A shortcut nobody is told about does not exist. One line, at the
+            bottom of the list where it is out of the way of the reading. */}
+        {flat.length > 1 && (
+          <p className="mt-3 hidden shrink-0 border-t border-slate-800/60 pt-2 font-mono text-[10px] uppercase tracking-wider text-slate-500 lg:block">
+            ↑↓ step · ⌘K jump
+          </p>
+        )}
       </aside>
 
       <div className="min-w-0">
