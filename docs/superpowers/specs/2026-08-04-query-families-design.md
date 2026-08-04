@@ -112,8 +112,11 @@ Asked and answered before implementation; these override anything above that dis
   genericness. The company-level branded set covers the gap.
 - **Section labels are plain sentences.** "What <company> sells" / "What the market sells" /
   "Who's in this market" — the tab reads like an answer, not a taxonomy.
-- **Spend ceiling $5 per run while invite-gated** (`OPENKB_CEILING_USD=5`), the only brake now
-  that query quotas are gone.
+- **Spend ceiling $5 while invite-gated** (`OPENKB_CEILING_USD=5`) — not per run. It is cumulative
+  across the whole deployment since `OPENKB_CEILING_BASE_USD`, counts model spend only (the
+  provider's own usage figure, which does not see SERP or Unlocker calls), and is checked once at
+  run START against the provider's usage reading, not enforced mid-run. The only brake now that
+  query quotas are gone.
 
 ## The bar
 
@@ -177,7 +180,9 @@ only evidence for this half of the check, not anything observed in this task.
 
 "true cost" is the running total read from span accounting at the run's last billed action, not the
 persisted `stats.usd`/`report.usd` — those undercount, see below. Total measured spend across all
-four runs: **~$8.04 true** (the pipeline's own self-reported totals sum to $6.85). The old baseline
+four runs: **~$8.04 true** (the pipeline's own self-reported totals sum to $6.85 — composed of the
+probe's $1.68 *true* figure, whose reported/true gap was not separately measured, plus the three full
+runs' understated *reported* totals: brightdata $2.41, grundfos $1.19, resend $1.57). The old baseline
 for brightdata was ~160 entities at 40 capped queries; this pass's uncapped brightdata run found 910
 kept entities from 123 fired queries — 5.7x the entities for ~3x the queries.
 
@@ -192,13 +197,14 @@ figure as a shortfall against the true one:
 |---|---|---|---|---|
 | brightdata | $2.4099 / 644s | $2.801 / 702s | 14.0% | 8.3% |
 | grundfos | $1.1934 / 267s | $1.561 / 289s | 23.5% | 7.6% |
-| resend | $1.5683 / 313s | $2.000 / 615s | 21.6% | 49.2% |
+| resend | $1.5683 / 313s | $2.000 / 615s | 21.6% | 49.1% |
 
 Cost is undercounted by roughly 14-24% on every run. Duration is a different story: brightdata and
-grundfos are only off by 7-8%, but resend's reported duration is barely half the true one (49.2%) —
-resend's 599-pair linking phase alone ran from 313s to 615s, longer than the classification-plus-search
-work the snapshot did capture, so the pre-linking snapshot missed a much larger fraction of the true
-wall clock than it did on the other two runs. Left unfixed here — out of
+grundfos are only off by 7-8%, but resend's reported duration is barely half the true one (49.1%) —
+resend's 599-pair linking phase alone ran from 313s to 615s, 302 seconds, nearly as long as the
+313-second classification-plus-search work the snapshot did capture (not longer, as first drafted —
+302s is shorter than 313s), so the pre-linking snapshot missed nearly half the true wall clock on this
+run, a far larger fraction than on the other two. Left unfixed here — out of
 this task's scope (spec + `scripts/sweep.ts` only) — and flagged for a follow-up task: move the
 `usd`/`seconds` capture to after the linking phase, or drop the pre-linking snapshot and read `spans`
 directly the way this validation's `scripts/sweep.ts` change now does.
@@ -216,3 +222,6 @@ the CLI script itself was silently defeating the redesign it exists to validate 
 it, and the pipeline's own cost self-report is measurably wrong by 14-24% on every run (duration worse
 still on one of the three, off by half) — large enough to mislead anyone reading it to decide whether a
 run is affordable.
+
+The bar itself is judged across five companies (resend, clerk, brightdata, flexport, grundfos); this
+pass ran three of them. The five-company bar remains formally unmet pending clerk.com and flexport.com.
