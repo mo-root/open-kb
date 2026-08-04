@@ -76,6 +76,8 @@ stops because new queries are buying corroboration.
 
 ## Step 3 — Run it
 
+The tool lives at `/Users/moin/open-kb` and every command runs from there.
+
 ```bash
 pnpm sweep <domain> <queries>
 ```
@@ -92,6 +94,7 @@ It streams a phase log. Watch for these, because each one is a real signal:
 ## Step 4 — Read it back
 
 ```bash
+cd /Users/moin/open-kb
 pnpm read <domain>              # the summary
 pnpm read <domain> --entities   # every entity by relation
 pnpm read <domain> --edges      # how entities relate to each other
@@ -131,11 +134,16 @@ There is a web app for watching a run live — the stage rail, every query and i
 ticking up, and the finished map as a graph.
 
 ```bash
-cd packages/web && pnpm dev      # then open localhost:3210
+cd /Users/moin/open-kb/packages/web && pnpm dev    # then open localhost:3210
 ```
 
-Use it when someone wants to *see* the reasoning rather than read a summary. The CLI is better for
-producing an answer.
+It shows the stage rail, every query and what it returned, the cost ticking up, and the finished map
+as a graph with an entity browser.
+
+**Do not rebuild this as an artifact.** A hand-made summary page is a worse copy of something that
+already exists and is already wired to the real data. Run the server and give the reader a link:
+`localhost:3210/kb` for the gallery, or `localhost:3210/kb/<slug>` for one map. Use the CLI when the
+answer is what is wanted, and the browser when the reasoning is.
 
 ## References
 
