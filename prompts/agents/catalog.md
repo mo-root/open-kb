@@ -1,6 +1,6 @@
 ---
 agent: catalog
-includes: [04-search-craft, 06-breadth]
+includes: [04-search-craft, 06-breadth, 07-query-families]
 ---
 You are writing search queries that will find everyone competing with ONE product.
 
@@ -54,48 +54,29 @@ of any vendor that does it.
 - Set `market` to exactly `{{market}}`, character for character. Every host your queries find hangs
   on that market in the final graph, so any other string detaches everything you found.
 
-## Spend your queries across these shapes
+## First: strip the product
 
-You have very few, so do not spend two on one shape. Roughly in order of what each returns:
+Before any query, strip {{product}} to the 1–3 terms a buyer with no vendor in mind would actually
+type when shopping for this job — ordered, closest first. `Web Scraper API` strips to
+`web scraper`, then perhaps `web scraping api`. A term is a category a stranger searches, not a
+description: three words or fewer, no brand, no coinage. Return them in `terms`. Code expands the
+plain and branded families from your terms; you never write those queries.
 
-1. **The job, as an outcome.** What the buyer is trying to achieve, naming no product category at
-   all. This is the shape that finds SUBSTITUTES — the things solving the same problem a completely
-   different way, which no comparison article lists beside this product.
+## Then: write ONLY the debranded family
+
+Write up to {{target}} debranded queries. The plain center and the branded ecosystem are already
+bought from your terms, so every query you write must earn its place by finding what those cannot:
+
+1. **The job, as an outcome.** What the buyer is trying to achieve, naming no product category.
+   Finds the substitutes solving the same problem a different way.
 2. **The moment it breaks.** The gatekeeper and its signature, or the failure everyone in this
-   market hits. Two to four words, use case deleted: every qualifier slices the results down to one
-   cohort, which is the opposite of what this shape is for.
-3. **The shortlist.** How someone types when comparing options for this job, naming none of them.
-4. **The DIY route.** The open-source or hand-rolled way people do this before they buy, plus the
-   word that means it stopped working. Finds the tool and the population outgrowing it.
-5. **Where this product's buyers argue.** A subreddit, forum, Q&A site or newsletter for this job
-   specifically. One directory or thread can name a dozen players.
+   market hits. Two to four words.
+3. **The DIY route.** The open-source or hand-rolled way, plus the word meaning it stopped working.
+4. **Where this product's buyers argue.** The forum, Q&A tag or newsletter for this job.
 
-## If a new class of buyer has arrived for THIS product
-
-Markets split by persona, and they also split by TIME. A cohort that did not exist three years ago
-may need this exact product for a new reason, reach it through a new socket, and break in a new
-place. Its players have no search footprint yet, so an ordinary query returns the previous cohort.
-
-Only when you can name all three:
-
-  1. the new consumer — who started buying this recently
-  2. the new socket   — the standard, protocol, plug format or marketplace they consume it through
-  3. the new failure  — the word meaning it broke, which did not exist before
-
-If you cannot fill all three, skip it. Forcing a wave onto a product that has none produces queries
-that sound plausible and return nothing, which is worse than none because it spends the budget
-invisibly.
-
-For a developer tool, the common case: the consumer is an autonomous agent or the team building one;
-the socket is a tool-call protocol, an agent framework's plugin format, a model-context server or a
-retrieval pipeline; the failure is the agent's own run breaking rather than a human's script — the
-tool call that returned nothing, the context that went stale, the harness step that timed out. Those
-are illustrations of the SHAPES, not a list to match against: a logistics platform fills the same
-three slots with entirely different words, and a pump manufacturer cannot fill them at all.
-
-When it does apply, the shape worth most is **the harness the new consumer is assembled inside**. It
-returns a distribution channel rather than a rival, and whoever owns the harness owns the default
-integration slot.
+Apply the agent-demand lens from the doctrine: if this product's buyer can be an AI agent or the
+team building one, at least one of your queries comes from that world — and if you cannot name the
+consumer, the socket and the failure, the lens does not apply and no query should pretend it does.
 
 Give every query a one-line `why`: what it is expected to surface that the others will not.
 

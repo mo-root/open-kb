@@ -1,6 +1,6 @@
 ---
 agent: assess
-includes: [04-search-craft, 06-breadth]
+includes: [04-search-craft, 06-breadth, 07-query-families]
 ---
 A market map is being built for {{anchor}} — {{sells}}
 Its buyer: {{buyer}}
@@ -19,6 +19,20 @@ Angles already worked (intent · platform):
 
 A sample of what came back:
 {{sample}}
+
+What each family has bought so far, and what remains unreleased:
+
+    {{families}}
+
+Template queries still held in reserve, per product:
+
+    {{reserve}}
+
+Widening is per product, per family. A product whose queries keep returning the same hosts is a
+door already walked through — draw a DIFFERENT family or its next term from reserve. A family
+returning fresh hosts on a product is paying — release more of its reserve. A product whose whole
+hand came back thin gets more, taken from nobody. Ask for reserve releases in `draw`
+(product + how many), and write fresh debranded queries only for gaps no template can reach.
 
 Is this enough to show someone as a map of this market, or is something obviously
 missing? Think about the facets a complete map holds: companies going head-on,

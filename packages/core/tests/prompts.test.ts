@@ -103,3 +103,21 @@ describe("prompt files", () => {
     expect(composed.length).toBeLessThan(23_000)
   })
 })
+
+describe("query-families doctrine", () => {
+  it("catalog includes the families doctrine and keeps its placeholder set", () => {
+    const p = loadPrompt("catalog", "prompts/agents")
+    expect(p.body).toContain("plain")
+    expect(p.body).toContain("debranded")
+    expect(p.body).toContain("branded")
+    // the catalog call's render keys, unchanged — sweep.ts passes exactly these
+    for (const k of ["anchor", "target", "product", "productDoes", "market", "centrality", "sells", "buyer", "siblings", "coinages"]) {
+      expect(p.body).toContain(`{{${k}}}`)
+    }
+  })
+  it("assess gained the family table placeholders", () => {
+    const p = loadPrompt("assess", "prompts/agents")
+    expect(p.body).toContain("{{families}}")
+    expect(p.body).toContain("{{reserve}}")
+  })
+})
