@@ -158,6 +158,10 @@ export async function POST(req: Request) {
         model: provider()(modelId),
         modelId,
         runId: record.id,
+        // The same figure the guard above checked at request time. 0 means
+        // unset (see `ceilingUsd()`'s own convention), which is honestly "no
+        // ceiling" rather than a ceiling of zero dollars.
+        ceilingUsd: ceiling > 0 ? ceiling : null,
         signal: record.abort.signal,
         onLog: (line) => console.log(`[${record.id.slice(0, 8)}] ${line}`),
       })

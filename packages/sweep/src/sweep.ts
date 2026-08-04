@@ -33,6 +33,7 @@ import {
   dedupeFacts,
   openingHand,
   companyHand,
+  banned,
   type PageFacts,
   type SearchResult,
   type SpanStream,
@@ -389,8 +390,17 @@ export interface SweepOptions {
   skipModelLinking?: boolean
   /** How many of the company's own product pages to read. 0 uses the index only. */
   productPages?: number
-  /** Most queries any single product may take. */
+  /** Bounds the model's per-product debranded ask (clamped to 2-3 regardless of
+   *  a larger value here; the floor of 2 is not configurable). Templates cover
+   *  plain and branded and are not affected — this only trims how many
+   *  model-written debranded queries a product's opening hand carries. */
   perProduct?: number
+  /** What this deployment may spend, in total, cumulative since deploy — not a
+   *  per-run figure. Read by the caller (the web route) from the provider's own
+   *  usage and passed through so `report.cost.ceilingUsd` can say honestly
+   *  whether a ceiling was in force, rather than always claiming there is none.
+   *  Left unset on the CLI, which has no deployment-wide ceiling to report. */
+  ceilingUsd?: number | null
   /** The CLI's console. Left unset in the browser, where the span stream is the
    *  only output. */
   onLog?: (line: string) => void
@@ -850,11 +860,12 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     usd: usdFor(tokIn, tokOut),
   })
 
-  // ── 2. write the catalog, knowing no company names ────────────────────────
+  // ── 2. write the catalog: the model writes debranded blind to the anchor's
+  //      own name; branded templates name it on purpose (the exemption below) ──
   say(
     "plan",
     opts.queries !== undefined
-      ? `writing a catalog of up to ${target} queries that never name the company`
+      ? `writing a catalog of up to ${target} queries — the model's own writing stays anchor-blind, branded templates name it on purpose`
       : `dealing every product an opening hand — no fixed count, the templates and the strip decide`,
   )
   /**
@@ -912,7 +923,12 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   // the center, so the model's few are spent where templates cannot go.
   const debrandedAsk = Math.max(2, Math.min(PER_PRODUCT, 3))
 
-  const strips: { product: string; terms: string[] }[] = []
+  // The strip artifact (spec section "Strip"): per product, the terms it was
+  // stripped to, whether the catalog call judged the name generic, and the
+  // page that established it. Persisted so the audit trail the spec promises
+  // ("the strip is a visible artifact on the map") actually exists — this used
+  // to carry only `product`/`terms` and was never rendered anywhere.
+  const strips: { product: string; terms: string[]; generic: boolean; foundAt: string }[] = []
   const reserve = new Map<string, FamilyQuery[]>()
 
   // Bounded, not unleashed. The funding contest this change removes was the
@@ -957,7 +973,12 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           { think: "low", maxOutputTokens: 180 * debrandedAsk + 6_000 },
         ).then((out) => {
           const terms = out.terms.map((t) => t.trim()).filter(Boolean).slice(0, 3)
-          strips.push({ product, terms })
+          strips.push({
+            product,
+            terms,
+            generic: out.generic,
+            foundAt: decomp.products.find((p) => p.name === product)?.foundAt ?? "",
+          })
           const hand = openingHand(product, terms, { branded: !out.generic })
           reserve.set(product, hand.reserve)
           const asFired = (fq: FamilyQuery): SweptQuery => ({
@@ -1059,18 +1080,13 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     say("plan", `catalog: model wrote ${planned.length} of the ${target} asked for`)
   }
 
-  const forbidden = [anchor.split(".")[0], ...decomp.coinages].filter(Boolean) as string[]
-  // Branded is exempt: naming the anchor is that family's entire point — its
-  // queries are "{anchor} alternatives" / "{anchor} vs", written by
-  // companyHand and openingHand, never by the model. Everything else that
-  // named the anchor got there by accident and is bought for nothing.
-  const named = forbidden.length
-    ? queries.filter(
-        (x) =>
-          x.family !== "branded" &&
-          new RegExp(`\\b(${forbidden.map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\b`, "i").test(x.q),
-      )
-    : []
+  // `banned` (packages/core/src/families.ts) is the one implementation of this
+  // check — the widening loop below runs the identical predicate on
+  // reserve-released and freshly-invented queries, so a strip term or coinage
+  // dropped here cannot fire unfiltered later just because it arrived through
+  // a different code path.
+  const anchorName = anchor.split(".")[0] ?? ""
+  const named = queries.filter((x) => banned(x.q, x.family, anchorName, decomp.coinages))
   // Dropped, not counted. This only ever tested the anchor's own name and its
   // coinages, which is the one case the model cannot argue with, and it reported
   // "0 accidentally name the company" on catalogs where a quarter of the queries
@@ -1387,7 +1403,34 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         .slice(0, 20)
         .map((q) => ({ ...q, family: "debranded" as const }))
 
-      const widened = [...released, ...fresh]
+      // Both the dedupe set and the anchor-naming filter, applied to
+      // EVERYTHING this round wants to fire — reserve releases included. The
+      // opening batch got both checks (`named`/`banned` above); before this
+      // fix the widening loop gave reserve releases NEITHER (a strip term or
+      // coinage whose opening query got dropped could still fire once its
+      // reserve template was drawn later) and gave `fresh` only the dedupe,
+      // checked once against a `seen` that never grew as items were accepted.
+      // Two products drawing reserve text that collides ("best <term>" on a
+      // shared term) could both land in `asked`, silently reassigning the
+      // `byQ`/`marketOf`/`familyOf` last-write-wins maps built from it further
+      // down. `seen` grows as each candidate is accepted, so a collision
+      // between two released queries — not just between released and
+      // already-asked — is caught too.
+      const proposed = [...released, ...fresh]
+      const widened: SweptQuery[] = []
+      for (const q of proposed) {
+        const k = q.q.trim().toLowerCase()
+        if (seen.has(k)) continue
+        if (banned(q.q, q.family, anchorName, decomp.coinages)) continue
+        seen.add(k)
+        widened.push(q)
+      }
+      if (widened.length < proposed.length) {
+        think(
+          "plan",
+          `round ${rounds + 1}: dropped ${proposed.length - widened.length} widened queries — duplicate or named the anchor`,
+        )
+      }
       if (!widened.length) {
         say("plan", `round ${rounds + 1}: every suggested query had already been asked — stopping`)
         sealed = true
@@ -1592,26 +1635,6 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   const keep = entities.filter((e) => e.kind !== "noise")
   // The hosts that reached the map, for the co-occurrence pass below.
   const keptHosts = new Set(keep.map((e) => e.domain.toLowerCase().replace(/^www\./, "")))
-  // Summed from what was actually billed, not re-derived from the counters: a
-  // SERP call that never reached Bright Data carries usd 0 and re-deriving from
-  // `serpCalls * price` would charge the run for it.
-  const usd = lines(byKind).reduce((n, l) => n + l.usd, 0)
-  const seconds = (Date.now() - t0) / 1000
-  const count = (arr: string[]) => arr.reduce<Record<string, number>>((a, k) => ((a[k] = (a[k] ?? 0) + 1), a), {})
-
-  const stats: SweepStats = {
-    queries: queries.length,
-    results: hits.length,
-    hosts: byHost.size,
-    kept: keep.length,
-    tokIn,
-    tokOut,
-    tokReasoning,
-    serpCalls,
-    unlockerCalls,
-    usd,
-    seconds,
-  }
 
   /**
    * How the entities relate to each other.
@@ -1788,6 +1811,34 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     say("link", `${edges.length} edges between entities`)
   }
 
+  // Summed from what was actually billed, not re-derived from the counters: a
+  // SERP call that never reached Bright Data carries usd 0 and re-deriving from
+  // `serpCalls * price` would charge the run for it.
+  //
+  // Taken HERE, after the paid model-linking phase above, not before it. A
+  // snapshot taken before linking undercounted every run's cost by 14-24% and
+  // its duration by up to 49% — linking is real spend and real wall clock, and
+  // a reader comparing `report.usd`/`report.seconds` against `report.cost.usd`
+  // (assembled from the same `byKind`/`byAgent` lines, always fresh) deserves
+  // numbers that do not contradict each other.
+  const usd = lines(byKind).reduce((n, l) => n + l.usd, 0)
+  const seconds = (Date.now() - t0) / 1000
+  const count = (arr: string[]) => arr.reduce<Record<string, number>>((a, k) => ((a[k] = (a[k] ?? 0) + 1), a), {})
+
+  const stats: SweepStats = {
+    queries: queries.length,
+    results: hits.length,
+    hosts: byHost.size,
+    kept: keep.length,
+    tokIn,
+    tokOut,
+    tokReasoning,
+    serpCalls,
+    unlockerCalls,
+    usd,
+    seconds,
+  }
+
   say("write", `${keep.length} on the map from ${byHost.size} hosts`)
 
   // A family contributing nothing must be reported, not absorbed: the doctrine
@@ -1802,7 +1853,14 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   const report: Record<string, unknown> = {
     domain: anchor,
     sells: decomp.sells,
-    queries: queries.length,
+    // Everything actually fired, opening hand plus every widening round —
+    // matches the sum of `families` below. `stats.queries` (unchanged,
+    // read by the run registry and the older surfaces) stays the opening
+    // count alone; `opening` here is that same number, named, so the two
+    // can no longer be mistaken for the same quantity. Measured gap on one
+    // run: 63 opening vs 123 fired.
+    queries: asked.length,
+    opening: queries.length,
     results: hits.length,
     hosts: byHost.size,
     entities: entities.length,
@@ -1820,9 +1878,10 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       elapsedMs: Date.now() - t0,
       calls: lines(byKind).reduce((n, l) => n + l.calls, 0),
       tokens: tokIn + tokOut,
-      // Explicitly null, not absent: this engine has no per-run dollar ceiling,
-      // and an absent field would read as "we never learned it".
-      ceilingUsd: null,
+      // Null when the caller supplied none (CLI runs). The web route passes
+      // its real per-deployment ceiling; a hardcoded null here used to claim
+      // this engine has no ceiling at all, when the deployment enforces one.
+      ceilingUsd: opts.ceilingUsd ?? null,
       byKind: lines(byKind),
       byAgent: lines(byAgent),
       partial: false,

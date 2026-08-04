@@ -74,6 +74,28 @@ export function companyHand(company: string): FamilyQuery[] {
   ]
 }
 
+/**
+ * Does this query accidentally name the anchor?
+ *
+ * Branded is exempt: naming the anchor is that family's entire point — its
+ * queries are `{anchor} alternatives` / `{anchor} vs`, written by
+ * `companyHand` and `openingHand`, never by the model. Everything else that
+ * names the anchor's own name or one of its coinages got there by accident
+ * and is bought for nothing.
+ *
+ * Pulled out of the sweep's opening-batch filter so the widening loop can run
+ * the identical check on reserve-released and freshly-invented queries —
+ * before, only the opening batch was filtered, so a strip term or coinage
+ * that got a query dropped at the open still fired unfiltered once the
+ * reserve template holding it was released later in the run.
+ */
+export function banned(q: string, family: QueryFamily, anchorName: string, coinages: string[]): boolean {
+  if (family === "branded") return false
+  const forbidden = [anchorName, ...coinages].filter(Boolean)
+  if (!forbidden.length) return false
+  return new RegExp(`\\b(${forbidden.map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\b`, "i").test(q)
+}
+
 const plain = (product: string, q: string, term: string, why: string): FamilyQuery => ({
   q, family: "plain", product, term, why,
 })

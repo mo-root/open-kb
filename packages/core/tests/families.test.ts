@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { openingHand, companyHand } from "../src/families.js"
+import { openingHand, companyHand, banned } from "../src/families.js"
 
 describe("openingHand", () => {
   it("opens with the bare term, its alternatives, and the branded alternatives", () => {
@@ -47,6 +47,20 @@ describe("openingHand", () => {
     const all = [...open, ...reserve]
     expect(all.some((q) => q.family === "branded")).toBe(false)
     expect(open.map((q) => q.q)).toEqual(["web dataset marketplace", "web dataset marketplace alternatives"])
+  })
+})
+
+describe("banned", () => {
+  it("bans a plain query that names the anchor", () => {
+    expect(banned("resend alternatives to email", "plain", "resend", [])).toBe(true)
+  })
+
+  it("keeps a branded query that names the anchor — that is the family's entire point", () => {
+    expect(banned("resend alternatives", "branded", "resend", [])).toBe(false)
+  })
+
+  it("bans a debranded query that contains a coinage, even with no anchor match", () => {
+    expect(banned("how does broadcastify work", "debranded", "resend", ["broadcastify"])).toBe(true)
   })
 })
 
