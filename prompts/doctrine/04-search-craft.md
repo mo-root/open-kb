@@ -48,10 +48,14 @@ to catch it is to ask whether what came back actually does the job the anchor do
 `HTTP 403 Forbidden on python requests but works in browser` is a sentence, not a query: it matches
 only the pages where someone wrote that sentence, and a market is not in those pages.
 
-Three to six words, at most one operator. A `site:` plus three quoted phrases is four simultaneous
-demands and the pages meeting all four are a rounding error; spend quotes on the one phrase carrying
-the meaning. A query that wants to say two things is two queries — splitting is free, over-
-constraining is not.
+Three to six words, at most one operator, and **at most one quoted phrase**. Quotes are the hardest
+constraint there is: they demand an exact string, so a quoted phrase that few people write returns
+the few pages that wrote it. Measured, after this file first asked for literal strings: a catalog of
+twenty queries came back full of `"cf-challenge-running"`, `"HTTP 403"` and `"403 Forbidden"`, and
+the run returned 1.6 results per search where seven is normal. Quote a phrase only when thousands of
+people would write it that way; otherwise say it unquoted and let the engine match loosely.
+
+A query that wants to say two things is two queries. Splitting is free, over-constraining is not.
 
 ## Looseness brings publishers
 

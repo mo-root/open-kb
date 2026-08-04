@@ -39,9 +39,13 @@ Absolute rules:
   <error code>` is a market query; `<gatekeeper> pricing` is a look-up.
 - Describe what the thing DOES, the way a buyer who has never heard of any vendor would type it.
 - Each query must ask a DIFFERENT question. Two rephrasings of one idea buy the same page twice.
-- **Keep them short.** Three to six words, at most one operator. Every term is ANDed, so each one
-  multiplies the constraint — a sentence describing one person's problem matches only the pages
-  where someone wrote that sentence. If a query wants to say two things, write two queries.
+- **Keep them short and loose.** Three to six words, at most one operator, at most one quoted
+  phrase. Every term is ANDed, so each one multiplies the constraint, and a quoted phrase is the
+  hardest constraint of all. A catalog written without this rule came back full of
+  `"cf-challenge-running"` and `"HTTP 403"` and returned 1.6 results per search where seven is
+  normal. If a query wants to say two things, write two queries.
+- **A `site:` operator takes a real hostname.** `site:hackernews` matches nothing;
+  `site:news.ycombinator.com` is the domain. Use the platform's actual host or drop the operator.
 - **Cover every `[core]` market before spending on any `[adjacent]` one.** Each line is a separate
   market with its own rivals — already grouped, so there is no double-counting: a search-results API
   and a proxy network are bought by different teams and share almost no competitors. Measured on a
