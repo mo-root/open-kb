@@ -10,7 +10,7 @@
  * Order of judgement, fixed: quality, then time, then cost. A cheaper arm that
  * maps the wrong market has not won anything.
  */
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs"
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs"
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 
@@ -84,7 +84,6 @@ async function headroom(): Promise<number> {
 function measure(anchor: string): Record<string, unknown> {
   const dir = "runs"
   const slug = anchor.replace(/\W+/g, "-")
-  const { readdirSync } = require("node:fs") as typeof import("node:fs")
   const f = readdirSync(dir)
     .filter((x) => x.startsWith(`sweep-${slug}-`) && x.endsWith(".json"))
     .sort()

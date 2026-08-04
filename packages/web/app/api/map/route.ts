@@ -23,6 +23,34 @@ interface Body {
 
 const MAX_QUERIES = 120
 
+/**
+ * What this deployment may spend, in total, ever.
+ *
+ * Auth decides WHO can start a run. This decides HOW MUCH, and the two are
+ * independent: a password shared with ten people is ten people who can each
+ * run two hundred maps against the same account.
+ *
+ * Read from the provider rather than counted here, because a counter in this
+ * process resets on every restart and forgets every run started by another
+ * instance. The provider's own usage figure is the only number that is true
+ * across both.
+ */
+const CEILING_USD = Number(process.env.OPENKB_CEILING_USD ?? 0)
+
+async function spentSoFar(): Promise<number | null> {
+  try {
+    const res = await fetch("https://openrouter.ai/api/v1/key", {
+      headers: { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}` },
+      cache: "no-store",
+    })
+    if (!res.ok) return null
+    const { data } = (await res.json()) as { data: { usage: number } }
+    return data.usage
+  } catch {
+    return null
+  }
+}
+
 export async function POST(req: Request) {
   let body: Body
   try {
@@ -61,6 +89,29 @@ export async function POST(req: Request) {
       { error: `not configured: ${missing.join(", ")} — set them in the repo-root .env` },
       { status: 503 },
     )
+  }
+
+  // Checked before a run exists, so a refused request costs nothing. A null
+  // reading means the provider did not answer: that is not a licence to spend,
+  // so it refuses too. Failing closed on the one guard that protects the
+  // balance is the only defensible direction.
+  if (CEILING_USD > 0) {
+    const spent = await spentSoFar()
+    if (spent === null) {
+      return Response.json(
+        { error: "cannot reach the model provider to check the spend ceiling, so not starting a run" },
+        { status: 503 },
+      )
+    }
+    const base = Number(process.env.OPENKB_CEILING_BASE_USD ?? 0)
+    if (spent - base >= CEILING_USD) {
+      return Response.json(
+        {
+          error: `this deployment has spent its $${CEILING_USD} ceiling. Nothing is broken; the limit is deliberate.`,
+        },
+        { status: 429 },
+      )
+    }
   }
 
   const modelId = process.env.OPENKB_MODEL ?? "google/gemini-3.5-flash"
