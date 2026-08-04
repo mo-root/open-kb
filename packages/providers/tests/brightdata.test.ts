@@ -189,7 +189,7 @@ describe("brightDataSearch error reporting", () => {
           headers: { "x-brd-error": "response body was rejected", "x-brd-status-code": "502" },
         }),
     )
-    const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 1 })
+    const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 1, retryMs: 0 })
     const [r] = await s.search(["anything"])
     expect(r!.ok).toBe(false)
     expect(r!.error).toContain("response body was rejected")
@@ -198,7 +198,7 @@ describe("brightDataSearch error reporting", () => {
 
   it("says the body was empty when there is no header to explain it", async () => {
     const fetchImpl = vi.fn(async () => new Response("", { status: 200 }))
-    const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 1 })
+    const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 1, retryMs: 0 })
     const [r] = await s.search(["anything"])
     expect(r!.error).toContain("empty body")
   })
@@ -207,8 +207,72 @@ describe("brightDataSearch error reporting", () => {
     const fetchImpl = vi.fn(
       async () => new Response("nope", { status: 429, headers: { "x-brd-error": "cooldown, retry after 15 seconds" } }),
     )
-    const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 1 })
+    const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 1, retryMs: 0 })
     const [r] = await s.search(["anything"])
     expect(r!.error).toContain("cooldown")
+  })
+})
+
+describe("brightDataSearch retries", () => {
+  /**
+   * Measured: 42 of 44 searches came back "response body was rejected" with an
+   * upstream 502, and the same query twenty seconds later returned eight
+   * results. The zone was throttling, not broken.
+   */
+  it("retries a refusal that names its own retry interval", async () => {
+    let n = 0
+    const fetchImpl = vi.fn(async () => {
+      n += 1
+      return n === 1
+        ? new Response("", { status: 200, headers: { "x-brd-error": "response body was rejected", "x-brd-status-code": "502" } })
+        : new Response(JSON.stringify({ organic: [{ link: "https://a.com", title: "A", description: "" }] }), { status: 200 })
+    })
+    const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 1, retryMs: 0 })
+    const [r] = await s.search(["x"])
+    expect(r!.ok).toBe(true)
+    expect(r!.hits).toHaveLength(1)
+    // Both requests were serviced, so both are billed.
+    expect(r!.usd).toBeCloseTo(0.003)
+  })
+
+  it("does not retry a failure that will not fix itself", async () => {
+    const fetchImpl = vi.fn(async () => new Response("nope", { status: 401 }))
+    const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 1, retryMs: 0 })
+    await s.search(["x"])
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
+  it("gives up after one retry rather than hammering a dead zone", async () => {
+    const fetchImpl = vi.fn(
+      async () => new Response("", { status: 200, headers: { "x-brd-error": "response body was rejected" } }),
+    )
+    const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 1, retryMs: 0 })
+    const [r] = await s.search(["x"])
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+    expect(r!.ok).toBe(false)
+  })
+})
+
+describe("serp zone rotation", () => {
+  it("spreads calls across every zone it was given", async () => {
+    const zones: string[] = []
+    const fetchImpl = vi.fn(async (_u: unknown, init: unknown) => {
+      zones.push((JSON.parse((init as RequestInit).body as string) as { zone: string }).zone)
+      return new Response(JSON.stringify({ organic: [] }), { status: 200 })
+    })
+    const s = brightDataSearch(
+      { ...creds, serpZone: "one, two" },
+      { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 1 },
+    )
+    await s.search(["a", "b", "c", "d"])
+    expect(new Set(zones)).toEqual(new Set(["one", "two"]))
+    expect(zones.filter((z) => z === "one")).toHaveLength(2)
+  })
+
+  it("still works with a single zone, unchanged", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ organic: [] }), { status: 200 }))
+    const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 1 })
+    const [r] = await s.search(["a"])
+    expect(r!.ok).toBe(true)
   })
 })

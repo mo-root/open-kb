@@ -2,6 +2,15 @@ import type { SearchPort, SearchResult, FetchPort, FetchMode, FetchResponse } fr
 
 export interface BrightDataCredentials {
   token: string
+  /**
+   * One zone, or several separated by commas.
+   *
+   * A wave fires twenty searches at once and several hundred over a run, and a
+   * single zone throttles under that: one measured run had 42 of 44 searches
+   * refused with "response body was rejected", while the same queries succeeded
+   * twenty seconds later. Spreading the calls across the zones an account
+   * already has divides the load without asking anyone for anything.
+   */
   serpZone: string
   unlockerZone: string
 }
@@ -27,14 +36,42 @@ interface Opts {
    * the queue.
    */
   timeoutMs?: number
+  /** Pause before the single retry of a retryable failure. */
+  retryMs?: number
 }
 
 const API = "https://api.brightdata.com/request"
+
+/**
+ * Failures this provider recovers from on its own, given a moment.
+ *
+ * Measured: a run fired 44 searches and 42 came back "response body was
+ * rejected" with an upstream 502. The same query twenty seconds later returned
+ * eight results. The zone was throttling under the day's volume, not broken,
+ * and the provider says so itself: "this query recently failed and cannot be
+ * attempted at this time. Please try again later, after a minimum of 15
+ * seconds."
+ *
+ * A refusal that names its own retry interval is not a result. Giving up on the
+ * first one turned a working run into a 95% failure.
+ */
+const RETRYABLE = /rejected|recently failed|try again|temporarily|expect_body|\b(502|503|429)\b/i
 
 export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}): SearchPort {
   const f = opts.fetchImpl ?? fetch
   const price = opts.serpUsd ?? 0.0015
   const timeoutMs = Math.max(1_000, Math.floor(opts.timeoutMs ?? 30_000))
+  /** How long to wait before the one retry. The provider asks for 15 seconds. */
+  const retryMs = Math.max(0, Math.floor(opts.retryMs ?? 16_000))
+
+  const zones = creds.serpZone
+    .split(",")
+    .map((z) => z.trim())
+    .filter(Boolean)
+  // Round-robin rather than random: an even split is the point, and a random
+  // pick over a small number of zones is lumpy.
+  let cursor = 0
+  const nextZone = () => zones[cursor++ % zones.length]!
 
   /**
    * How many result pages to read per query.
@@ -63,72 +100,81 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
 
       const raw = await Promise.all(
         tasks.map(async ({ query, page }): Promise<SearchResult> => {
-          const started = Date.now()
           const start = page * 10
           const target =
             `https://www.google.com/search?q=${encodeURIComponent(query)}` +
             `${start ? `&start=${start}` : ""}&brd_json=1`
-          try {
-            const res = await f(API, {
-              method: "POST",
-              headers: { Authorization: `Bearer ${creds.token}`, "Content-Type": "application/json" },
-              body: JSON.stringify({ zone: creds.serpZone, url: target, format: "raw" }),
-              signal: AbortSignal.timeout(timeoutMs),
-            })
-            const ms = Date.now() - started
 
-            /**
-             * The reason lives in a header, not in the status.
-             *
-             * Bright Data answers 200 and puts the real outcome in `x-brd-error`
-             * with the upstream's own code in `x-brd-status-code`. A run once
-             * reported "42 failed" and nothing else while every response carried
-             * "response body was rejected" and an upstream 502, or "this query
-             * recently failed and cannot be attempted at this time". Both are
-             * actionable and neither reached the reader.
-             */
-            const brdError = res.headers.get("x-brd-error")
-            const brdStatus = res.headers.get("x-brd-status-code")
-            const reason = brdError
-              ? `${brdError}${brdStatus ? ` (upstream ${brdStatus})` : ""}`
-              : undefined
-
-            if (!res.ok) {
-              return { query, hits: [], ok: false, error: reason ?? `serp http ${res.status}`, usd: price, ms }
-            }
-            const text = await res.text()
-            let parsed: { organic?: Array<{ link?: string; title?: string; description?: string }> }
+          const once = async (zone: string): Promise<SearchResult> => {
+            const started = Date.now()
             try {
-              parsed = JSON.parse(text)
-            } catch {
+              const res = await f(API, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${creds.token}`, "Content-Type": "application/json" },
+                body: JSON.stringify({ zone, url: target, format: "raw" }),
+                signal: AbortSignal.timeout(timeoutMs),
+              })
+              const ms = Date.now() - started
+
+              // The reason lives in a header, not in the status. Bright Data
+              // answers 200 and puts the outcome in `x-brd-error` with the
+              // upstream's own code in `x-brd-status-code`, so a 200 with an
+              // empty body is this provider's shape for a refusal and the header
+              // is the only place the cause exists.
+              const brdError = res.headers.get("x-brd-error")
+              const brdStatus = res.headers.get("x-brd-status-code")
+              const reason = brdError
+                ? `${brdError}${brdStatus ? ` (upstream ${brdStatus})` : ""}`
+                : undefined
+
+              if (!res.ok) {
+                return { query, hits: [], ok: false, error: reason ?? `serp http ${res.status}`, usd: price, ms }
+              }
+              const text = await res.text()
+              let parsed: { organic?: Array<{ link?: string; title?: string; description?: string }> }
+              try {
+                parsed = JSON.parse(text)
+              } catch {
+                return {
+                  query,
+                  hits: [],
+                  ok: false,
+                  error:
+                    reason ?? (text.length === 0 ? "serp returned an empty body" : "serp returned unparseable body"),
+                  usd: price,
+                  ms,
+                }
+              }
+              const hits = (parsed.organic ?? [])
+                .filter((h) => typeof h.link === "string")
+                .map((h) => ({ url: h.link!, title: h.title ?? "", description: h.description ?? "" }))
+              return { query, hits, ok: true, usd: price, ms }
+            } catch (e) {
+              const timedOut = (e as Error).name === "TimeoutError" || (e as Error).name === "AbortError"
               return {
                 query,
                 hits: [],
                 ok: false,
-                // A 200 with no body is the shape this provider uses for a
-                // refusal, so the header is the only place the cause exists.
-                error: reason ?? (text.length === 0 ? "serp returned an empty body" : "serp returned unparseable body"),
-                usd: price,
-                ms,
+                error: timedOut ? `serp gave up after ${timeoutMs}ms` : `serp failed: ${(e as Error).message}`,
+                // Nothing came back, so Bright Data has nothing to bill.
+                usd: 0,
+                ms: Date.now() - started,
               }
             }
-            const hits = (parsed.organic ?? [])
-              .filter((h) => typeof h.link === "string")
-              .map((h) => ({ url: h.link!, title: h.title ?? "", description: h.description ?? "" }))
-            return { query, hits, ok: true, usd: price, ms }
-          } catch (e) {
-            const timedOut = (e as Error).name === "TimeoutError" || (e as Error).name === "AbortError"
-            return {
-              query,
-              hits: [],
-              ok: false,
-              error: timedOut ? `serp gave up after ${timeoutMs}ms` : `serp failed: ${(e as Error).message}`,
-              // Nothing came back, so Bright Data has nothing to bill, exactly as
-              // for a connection that never opened.
-              usd: 0,
-              ms: Date.now() - started,
-            }
           }
+
+          let out = await once(nextZone())
+          // One retry, past the interval the provider names. Workers run
+          // concurrently, so this costs one worker's time rather than the wave's.
+          if (!out.ok && RETRYABLE.test(out.error ?? "")) {
+            await new Promise((r) => setTimeout(r, retryMs))
+            // A different zone on the retry where one exists: if the first is
+            // throttling, waiting is only half the answer.
+            const second = await once(nextZone())
+            // Bill both: each was a request the provider serviced.
+            out = second.ok ? { ...second, usd: second.usd + out.usd } : { ...second, usd: second.usd + out.usd }
+          }
+          return out
         }),
       )
 
