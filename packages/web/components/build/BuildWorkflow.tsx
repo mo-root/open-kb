@@ -134,41 +134,6 @@ async function readOnce(
 }
 
 /**
- * How thorough, not how many.
- *
- * A query count is an implementation detail, and asking a reader for one asks
- * them to already know that 50 queries is about $0.35 and three minutes. v1 asked
- * for a dollar budget for exactly this reason. Depth goes one step further: the
- * reader picks an intent and sees what it costs, rather than picking a number and
- * discovering what it bought.
- *
- * The numbers are anchored on runs we paid for, and they are ranges because the
- * count below is a starting budget rather than a total: the agent assesses the
- * map after each wave and fires more queries at whatever looks thin, so a run
- * that finds a market with an obvious hole in it costs more than one that does
- * not. Measured anchors, 12 queries → 4½ min and $0.35; 50 queries → $1.26.
- *
- * These were badly stale once. They were written when a query meant one SERP
- * call and a run meant one wave, and they survived both changes unchanged,
- * quietly promising a third of the real bill.
- */
-/**
- * Depth, priced from runs rather than from guesswork.
- *
- * These were three times too slow and twice too expensive: they were written
- * before the worker pool, the SERP timeout, the reasoning cut and the
- * per-product budget, and each of those made a run cheaper and faster while the
- * numbers stayed put. A reader was told twelve minutes and $1.60 and got three
- * minutes and $0.67.
- *
- * Medians over 33 measured runs, and stated as ranges because the spread is the
- * honest part: sixteen queries produced 170 entities against one company and 10
- * against another. What a run returns is set by how many products the company
- * sells and whether its market is written about, not by the number bought here.
- * So the count is described as what it buys — questions asked — and the entity
- * count is not promised at all.
- */
-/**
  * Is this progress line the run deciding whether to spend more?
  *
  * The planner narrates two different kinds of thing under the same agent name.
@@ -187,31 +152,20 @@ function isSpendDecision(agent: string, message: string): boolean {
   return /^enough\b/i.test(m) || /^round\s+\d+/i.test(m);
 }
 
-const DEPTHS = [
-  {
-    key: "quick",
-    label: "Quick look",
-    queries: 10,
-    about: "~1 min · ~$0.15",
-    note: "the shape of a market, and whether it is worth a real run",
-  },
-  {
-    key: "standard",
-    label: "Standard",
-    queries: 16,
-    about: "~2 min · ~$0.50",
-    note: "the one to reach for: every core market gets its own questions",
-  },
-  {
-    key: "deep",
-    label: "Deep",
-    queries: 40,
-    about: "~3-11 min · ~$0.70-2.00",
-    note: "widest spread of any setting, because the planner keeps going while it is still finding",
-  },
-] as const;
-type DepthKey = (typeof DEPTHS)[number]["key"];
-const DEFAULT_DEPTH: DepthKey = "standard";
+/**
+ * There is one run, and it is the thorough one.
+ *
+ * This was three buttons — quick, standard, deep — which asked a reader to
+ * price a map before they had ever seen one. The dial is gone because it was
+ * never really what sealed the run: the planner stops when it stops finding,
+ * so a quiet market costs less on its own without being told to.
+ *
+ * This is the OPENING catalog, not a ceiling on the run. It divides across the
+ * anchor's products, and each later round may add up to half of it again, so
+ * the true bound is nearer 120. The run's real brake is the planner calling
+ * enough, and the spend ceiling underneath it.
+ */
+const OPENING_QUERIES = 40;
 
 export function BuildWorkflow() {
   const router = useRouter();
@@ -239,7 +193,6 @@ export function BuildWorkflow() {
     [router],
   );
   const [input, setInput] = useState("");
-  const [depth, setDepth] = useState<DepthKey>(DEFAULT_DEPTH);
 
   const [runId, setRunId] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
@@ -318,17 +271,12 @@ export function BuildWorkflow() {
     setElapsed(0);
     setRunning(true);
 
-    // `Number("")` is 0, and a sweep of zero queries returns an empty map that
-    // reads as a quiet market rather than as an empty field. The API refuses it
-    // too; falling back here means the user never has to see that refusal.
-    const n = (DEPTHS.find((d) => d.key === depth) ?? DEPTHS[1]).queries;
-
     let started: { runId: string };
     try {
       const res = await fetch("/api/map", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ domain: target, queries: n }),
+        body: JSON.stringify({ domain: target, queries: OPENING_QUERIES }),
         signal: ctrl.signal,
       });
       const body = (await res.json().catch(() => null)) as
@@ -350,7 +298,7 @@ export function BuildWorkflow() {
     }
 
     setRunId(started.runId);
-    addFeed("accent", `▶ map ${target} — ${n} queries`);
+    addFeed("accent", `▶ map ${target}`);
 
     const onResult = (v: unknown) => {
       const frame = readResult(v);
@@ -532,7 +480,7 @@ export function BuildWorkflow() {
       ctrl.signal,
       runIsOver,
     ).catch(() => {});
-  }, [input, depth, addFeed]);
+  }, [input, addFeed]);
 
   const messages: Partial<Record<Stage, string>> = {};
   const chips: Partial<Record<Stage, string[]>> = {};
@@ -572,31 +520,6 @@ export function BuildWorkflow() {
               className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 font-mono text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-sky-400"
             />
           </label>
-          <div role="radiogroup" aria-label="How thorough" className="flex gap-1.5">
-            {DEPTHS.map((d) => {
-              const on = d.key === depth;
-              return (
-                <button
-                  key={d.key}
-                  type="button"
-                  role="radio"
-                  aria-checked={on}
-                  onClick={() => setDepth(d.key)}
-                  title={d.note}
-                  className={`rounded-lg border px-3 py-2 text-left transition ${
-                    on
-                      ? "border-sky-400 bg-sky-500/10"
-                      : "border-slate-700 bg-slate-900 hover:border-slate-600"
-                  }`}
-                >
-                  <span className={`block text-sm ${on ? "text-slate-100" : "text-slate-300"}`}>
-                    {d.label}
-                  </span>
-                  <span className="tnum block font-mono text-[10px] text-slate-500">{d.about}</span>
-                </button>
-              );
-            })}
-          </div>
           <button
             type="button"
             onClick={startRun}
