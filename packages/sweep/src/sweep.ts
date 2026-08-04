@@ -535,6 +535,33 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     opts: { think?: "none" | "low" | "medium"; maxOutputTokens?: number } = {},
   ): Promise<z.infer<T>> {
     const started = Date.now()
+
+    /**
+     * One retry, with room to think and less thinking to do.
+     *
+     * A model can spend its whole output budget reasoning and return nothing:
+     * finishReason "other", no object, and the AI SDK throws
+     * AI_NoObjectGeneratedError. That killed a run at its third assess call,
+     * discarding 71 hosts and everything already paid for to reach them.
+     *
+     * A run that has spent money is not something to end over one bad response.
+     * The retry doubles the ceiling and drops the effort, which attacks the
+     * cause from both sides, and it happens once: a second failure is a real
+     * one and should surface.
+     */
+    const attempt = async (maxOut: number, effort: string) =>
+      generateObject({
+        model,
+        schema,
+        prompt,
+        abortSignal: signal,
+        maxOutputTokens: maxOut,
+        providerOptions: { openrouter: { reasoning: { effort } } },
+      })
+
+    const ceiling = Math.max(6_000, opts.maxOutputTokens ?? 8_192)
+    const effort = opts.think === "none" ? "minimal" : (opts.think ?? "low")
+
     try {
       const out = await generateObject({
         model,
@@ -581,6 +608,34 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       })
       return out.object as z.infer<T>
     } catch (e) {
+      const empty = (e as Error).name === "AI_NoObjectGeneratedError"
+      if (empty) {
+        say(agent, `  ${label}: the model returned nothing, retrying with more room`)
+        try {
+          const out = await attempt(ceiling * 2, "minimal")
+          const inTok = out.usage?.inputTokens ?? 0
+          const outTok = out.usage?.outputTokens ?? 0
+          tokIn += inTok
+          tokOut += outTok
+          bill("llm", agent, usdFor(inTok, outTok), Date.now() - started, true)
+          spans.emit({
+            runId,
+            agentId: agent,
+            parentId: null,
+            kind: "model",
+            name: modelId,
+            argsDigest: `${label} (retried)`,
+            ms: Date.now() - started,
+            ok: true,
+            tokensIn: inTok,
+            tokensOut: outTok,
+            usd: usdFor(inTok, outTok),
+          })
+          return out.object as z.infer<T>
+        } catch {
+          // fall through and report the original
+        }
+      }
       bill("llm", agent, 0, Date.now() - started, false)
       spans.emit({
         runId,
@@ -1066,7 +1121,10 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           sample: [...distinctHosts()].slice(0, 60).join(", "),
         }),
         // A judgement about whether to spend more money. Cheap, and rare.
-        { think: "medium", maxOutputTokens: 8_000 },
+        // 20,000 because 8,000 was not enough: medium effort against a prompt
+        // carrying sixty host names and every query already asked spent the
+        // whole budget thinking and returned nothing.
+        { think: "medium", maxOutputTokens: 20_000 },
       )
 
       if (verdict.enough || verdict.queries.length === 0) {
