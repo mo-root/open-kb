@@ -248,6 +248,7 @@ export function viewOf(run: StoredRun): KbView {
         domain: p.entity.domain,
         what: p.entity.what,
         why: p.entity.why,
+        foundBy: p.entity.foundBy,
       }),
     ),
   ].sort((a, b) => b.relevance - a.relevance || a.path.localeCompare(b.path))

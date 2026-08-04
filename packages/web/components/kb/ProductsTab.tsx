@@ -80,6 +80,36 @@ function Stat({
  *  surrounding ecosystem. */
 const IS_RIVAL = /^(competitor|substitute)$/i;
 
+/**
+ * Group findings by the market whose queries surfaced them.
+ *
+ * `foundBy` is strongest-first, so the first name that matches a declared
+ * market wins. Anything unattributed lands in one bucket at the end rather than
+ * being dropped: a finding with no market is still a finding, and hiding it
+ * would make the tab quietly disagree with the entity count.
+ *
+ * Markets keep the order the decomposition gave them, which is core before
+ * adjacent, so the reader meets the company's main business first.
+ */
+function groupByMarket(
+  rows: NoteRef[],
+  markets: { name: string }[],
+): [string, NoteRef[]][] {
+  const key = (s: string) => s.trim().toLowerCase()
+  const declared = new Map(markets.map((m) => [key(m.name), m.name]))
+  const buckets = new Map<string, NoteRef[]>()
+  for (const m of markets) buckets.set(m.name, [])
+  const UNPLACED = "not attributed to a market"
+
+  for (const r of rows) {
+    const hit = (r.foundBy ?? []).map((m) => declared.get(key(m))).find(Boolean)
+    const bucket = hit ?? UNPLACED
+    if (!buckets.has(bucket)) buckets.set(bucket, [])
+    buckets.get(bucket)!.push(r)
+  }
+  return [...buckets.entries()].filter(([, v]) => v.length > 0)
+}
+
 export function ProductsTab({
   notes,
   catalog = [],
@@ -131,7 +161,7 @@ export function ProductsTab({
               className="shrink-0"
               style={{ color: TYPE_CSS.product }}
             />
-            <SectionHead title="Products found in this market" count={products.length} />
+            <SectionHead title="What this company sells" count={catalog.length} />
           </div>
         </div>
         {catalog.length > 0 && (
@@ -173,6 +203,16 @@ export function ProductsTab({
           </div>
         )}
 
+        {products.length > 0 && (
+          <div className="mb-4 mt-10 border-t border-slate-800 pt-6">
+            <SectionHead title="Products found out in the market" count={products.length} />
+            <p className="mt-2 max-w-[70ch] text-[13px] text-slate-500">
+              Other companies&rsquo; products, grouped by which of the markets above was being
+              searched when each one turned up.
+            </p>
+          </div>
+        )}
+
         {products.length === 0 ? (
           <p className="text-sm text-slate-500">
             The classifier tagged nothing on this map as a standalone product —
@@ -180,8 +220,17 @@ export function ProductsTab({
             directory.
           </p>
         ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {products.map((p) => (
+          <div className="flex flex-col gap-7">
+            {groupByMarket(products, markets).map(([marketName, rows]) => (
+              <div key={marketName}>
+                <div className="mb-2 flex items-baseline gap-2">
+                  <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-slate-400">
+                    {marketName}
+                  </span>
+                  <span className="font-mono text-[11px] tabular-nums text-slate-600">{rows.length}</span>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {rows.map((p) => (
               <button
                 key={p.path}
                 onClick={() => openNote(p.path)}
@@ -199,6 +248,9 @@ export function ProductsTab({
                 </div>
                 <p className="mt-2 text-sm text-slate-400">{p.what}</p>
               </button>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
         )}

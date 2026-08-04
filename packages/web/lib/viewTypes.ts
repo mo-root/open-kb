@@ -90,6 +90,10 @@ export interface KbSummary {
 /** An entity as it appears in a list: enough to sort, group and label it
  *  without paying to load every body. */
 export interface NoteRef {
+  /** The anchor's markets whose queries surfaced this, strongest first. The
+   *  products tab groups by it, so a reader sees which market each finding
+   *  belongs to rather than one undifferentiated grid. */
+  foundBy?: string[]
   /** The node id, shaped like a v1 note path, "players/postmarkapp.com.md".
    *  Keeping the path shape is what lets `nodeTypeOf`, `groupLabel`,
    *  `glyphForNotePath` and the canvas's domain reconstruction all carry over
