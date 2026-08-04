@@ -47,6 +47,7 @@ export default async function KbPage({
       catalog={view.catalog}
       markets={view.markets}
       readPages={view.readPages}
+      strips={view.strips}
       initialNote={typeof note === "string" ? note : undefined}
     />
   );

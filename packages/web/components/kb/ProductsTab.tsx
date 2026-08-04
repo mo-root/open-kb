@@ -115,6 +115,7 @@ export function ProductsTab({
   catalog = [],
   markets = [],
   readPages = [],
+  strips = [],
   brand,
   openNote,
 }: {
@@ -124,6 +125,10 @@ export function ProductsTab({
    *  the "What <brand> sells" explainer so a reader can follow the same
    *  links the model did. */
   readPages?: string[]
+  /** The strip artifact (spec section "Strip"): per product, the terms a
+   *  buyer would actually type, closest-first — the audit trail behind the
+   *  plain-family templates and the widening loop's reserve draws. */
+  strips?: { product: string; terms: string[]; generic: boolean; foundAt: string }[]
   /** The company's own name for itself (`decomposition.brand`). Falls back
    *  to "this company" when a run predates that field. */
   brand?: string
@@ -176,8 +181,8 @@ export function ProductsTab({
         {catalog.length > 0 && (
           <div className="mb-8">
             <p className="mb-3 max-w-[70ch] text-[13px] text-slate-500">
-              What this company sells, read from its own pages. Everything below this block is
-              somebody else&rsquo;s product, found out in the market.
+              What {brand ?? "this company"} sells, read from its own pages. Everything below this
+              block is somebody else&rsquo;s product, found out in the market.
             </p>
             {readPages.length > 0 && (
               <p className="mb-3 font-mono text-[10px] text-slate-600">
@@ -225,6 +230,46 @@ export function ProductsTab({
                       </span>
                       <span className="text-slate-200">{m.name}</span>
                       <span className="min-w-0 text-slate-500">{m.covers.join(", ")}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {strips.length > 0 && (
+              <div className="mt-5">
+                <p className="mb-2 font-mono text-[11px] uppercase tracking-[0.14em] text-slate-500">
+                  stripped to {strips.length} search term{strips.length === 1 ? "" : "s"} — the audit
+                  trail behind the plain-family queries
+                </p>
+                <ul className="flex flex-col gap-1.5">
+                  {strips.map((s) => (
+                    <li key={s.product} className="flex flex-wrap items-baseline gap-2 text-[13px]">
+                      <span className="text-slate-200">{s.product}</span>
+                      <span className="text-slate-600">→</span>
+                      {s.terms.map((t) => (
+                        <span
+                          key={t}
+                          className="rounded border border-slate-800 bg-slate-900/60 px-1.5 py-0.5 font-mono text-[10px] text-slate-400"
+                        >
+                          {t}
+                        </span>
+                      ))}
+                      {s.generic && (
+                        <span className="font-mono text-[10px] text-slate-600">
+                          generic — searched by category only
+                        </span>
+                      )}
+                      {s.foundAt && (
+                        <a
+                          href={s.foundAt}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-mono text-[10px] text-sky-500 hover:text-sky-400"
+                        >
+                          {(() => { try { return new URL(s.foundAt).pathname || "/" } catch { return s.foundAt } })()}
+                        </a>
+                      )}
                     </li>
                   ))}
                 </ul>

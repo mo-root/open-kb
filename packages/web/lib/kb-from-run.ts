@@ -274,6 +274,10 @@ export function viewOf(run: StoredRun): KbView {
     kinds: tally(kept.map((p) => p.entity.kind)),
     relations: tally(kept.map((p) => p.entity.relation)),
     readPages: (run.result.report?.readPages as string[] | undefined) ?? [],
+    strips:
+      (run.result.report?.strips as
+        | { product: string; terms: string[]; generic: boolean; foundAt: string }[]
+        | undefined) ?? [],
   }
 }
 

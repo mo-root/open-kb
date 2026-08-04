@@ -49,11 +49,14 @@ export function KbBrowser({
   catalog,
   markets,
   readPages,
+  strips,
   initialNote,
 }: {
   /** The anchor's own products, and the markets they group into. */
   catalog?: { name: string; does: string; foundAt?: string }[]
   markets?: { name: string; does: string; centrality?: string; covers: string[] }[]
+  /** The strip artifact: per product, the terms it was stripped to. */
+  strips?: { product: string; terms: string[]; generic: boolean; foundAt: string }[]
   slug: string;
   manifest: KbManifest | null;
   /** The company's own name for itself (`decomposition.brand`), for
@@ -282,6 +285,7 @@ export function KbBrowser({
             catalog={catalog}
             markets={markets}
             readPages={readPages}
+            strips={strips}
             brand={companyBrand}
             openNote={openNote}
           />

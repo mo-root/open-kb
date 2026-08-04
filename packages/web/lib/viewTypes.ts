@@ -175,6 +175,12 @@ export interface KbView {
    *  reader can follow the same links the model did rather than take the
    *  summary on faith. Empty on a run recorded before this was tracked. */
   readPages: string[]
+  /** The strip artifact (spec section "Strip"): per product, the terms a buyer
+   *  would actually type, ordered closest-first. Persisted by the sweep and
+   *  extracted every run, but never surfaced until now — this is the audit
+   *  trail behind the plain-family templates and the widening loop's reserve
+   *  draws. Empty on a run recorded before this was tracked. */
+  strips: { product: string; terms: string[]; generic: boolean; foundAt: string }[]
 }
 
 /** One entity, whole. v1's equivalent carried a markdown `body`; an entity has
