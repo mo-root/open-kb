@@ -192,3 +192,24 @@ describe("spending the budget", () => {
     expect(out).toHaveLength(2)
   })
 })
+
+describe("market names are snapped to the declared list", () => {
+  // The join the sweep does, extracted here so it is testable without a run.
+  const canonicalise = (declared: string[], m: string | undefined) => {
+    const d = new Map(declared.map((c) => [c.trim().toLowerCase(), c]))
+    return m ? d.get(m.trim().toLowerCase()) : undefined
+  }
+
+  it("matches a declared market whatever its casing", () => {
+    expect(canonicalise(["Proxy Infrastructure"], "proxy infrastructure")).toBe("Proxy Infrastructure")
+  })
+
+  /** A measured run tagged 25 entities with its LENS instead of a market. */
+  it("refuses a lens name", () => {
+    expect(canonicalise(["Proxy Infrastructure"], "Who solves it a different way")).toBeUndefined()
+  })
+
+  it("refuses a market the planner invented mid-run", () => {
+    expect(canonicalise(["Proxy Infrastructure"], "Headless browser rendering APIs")).toBeUndefined()
+  })
+})

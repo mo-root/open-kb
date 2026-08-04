@@ -5,6 +5,13 @@ includes: [04-search-craft, 06-breadth]
 A market map is being built for {{anchor}} — {{sells}}
 Its buyer: {{buyer}}
 
+The markets it sells into, which are the only legal values for a query's `market` field:
+{{capabilities}}
+
+Copy one of those strings character for character onto every query you write. A query tagged with a
+market that is not on that list detaches everything it finds, because the graph hangs each host on
+the market whose query surfaced it.
+
 So far, after {{waves}}: **{{hosts}} distinct hosts** from {{asked}} queries.
 
 Angles already worked (intent · platform):

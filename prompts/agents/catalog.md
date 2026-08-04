@@ -58,8 +58,10 @@ Absolute rules:
   markets furthest apart.
 - Spread across platforms. For a platform query, use a site: operator or name the platform in the text.
 - Give every query a one-line `why`: what it is expected to surface that the others will not.
-- Set `market` to the market the query is for, copied exactly from the list above. It is checked:
-  a market with no query cannot put a single one of its competitors on the map, and the run counts
-  the gaps before it spends anything.
+- Set `market` to one of the market names listed above, **copied character for character**. Not your
+  lens, not a description, not a market you thought of — one of those exact strings. Every host a
+  query finds is hung on that market in the final graph, so a name that is not on the list detaches
+  everything the query found and the reader loses which market it belonged to. One measured run put
+  its lens there instead, and forty entities came back attached to nothing.
 
 Return exactly the queries, nothing else.

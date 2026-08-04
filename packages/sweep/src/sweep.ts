@@ -1126,6 +1126,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           anchor,
           sells: decomp.sells,
           buyer: decomp.buyer,
+          capabilities: decomp.capabilities.map((c) => `  ${c.name}`).join("\n"),
           waves: `${rounds + 1} round${rounds === 0 ? "" : "s"}`,
           hosts: before,
           asked: asked.length,
@@ -1310,7 +1311,27 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   // Free: byHost already maps host -> hits, each hit carries its query, and
   // each query carries its market. The join was simply never done.
   {
-    const marketOf = new Map(asked.map((q) => [q.q, q.market]))
+    /**
+     * Snap each query's market onto a declared one, or drop it.
+     *
+     * The prompt asks for a character-for-character copy and a measured run
+     * still returned its LENS there ("Who solves it a different way", 25
+     * entities), a market the planner invented mid-round, and the same market
+     * in two casings. A rule the model can miss needs a check that cannot.
+     *
+     * Case-insensitive match against the declared list, and anything that does
+     * not match resolves to nothing: an entity with no market falls back to the
+     * anchor, which is honest, where a made-up market node is not.
+     */
+    const declared = new Map(decomp.capabilities.map((c) => [c.name.trim().toLowerCase(), c.name]))
+    const canonical = (m: string | undefined) => (m ? declared.get(m.trim().toLowerCase()) : undefined)
+    const marketOf = new Map(asked.map((q) => [q.q, canonical(q.market)]))
+
+    const stray = new Set(asked.map((q) => q.market).filter((m) => m && !canonical(m)))
+    if (stray.size) {
+      say("rank", `${stray.size} queries named a market that was never declared; their hosts fall back to the anchor`)
+      for (const m of stray) think("rank", `undeclared market on a query: ${m}`)
+    }
     for (const e of entities) {
       const rows = byHost.get(e.domain.toLowerCase().replace(/^www\./, "")) ?? []
       const counts = new Map<string, number>()
