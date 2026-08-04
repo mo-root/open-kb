@@ -7,7 +7,7 @@
   },
   "scripts": {
     "test": "vitest run",
-    "check": "node scripts/check-core-purity.mjs && tsc -b",
+    "check": "node scripts/check-core-purity.mjs && tsc -b && pnpm --filter @open-kb/web exec tsc --noEmit",
     "sweep": "tsx scripts/sweep.ts",
     "overnight": "tsx scripts/overnight.ts",
     "read": "tsx scripts/read.ts"

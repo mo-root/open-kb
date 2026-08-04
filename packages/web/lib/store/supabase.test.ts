@@ -89,7 +89,7 @@ describe("the supabase store", () => {
     vi.stubGlobal("fetch", f)
     await (await load()).appendSpans("r1", [span(0), span(1)])
 
-    const [url, init] = f.mock.calls[0]! as unknown as [string, RequestInit]
+    const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit]
     expect(url).toContain("/rest/v1/run_spans")
     expect((init.headers as Record<string, string>).Prefer).toContain("ignore-duplicates")
     const body = JSON.parse(init.body as string) as { run_id: string; seq: number }[]
@@ -104,7 +104,7 @@ describe("the supabase store", () => {
     vi.stubGlobal("fetch", f)
     const out = await (await load()).getSpans("r1", 7)
 
-    const url = f.mock.calls[0]![0] as string
+    const url = (f.mock.calls[0] as unknown as [string])[0]
     expect(url).toContain("seq=gt.7")
     expect(url).toContain("order=seq.asc")
     expect(out[0]!.seq).toBe(8)

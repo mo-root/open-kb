@@ -40,8 +40,13 @@ export function KbBrowser({
   counts,
   unplaced,
   noise,
+  catalog,
+  markets,
   initialNote,
 }: {
+  /** The anchor's own products, and the markets they group into. */
+  catalog?: { name: string; does: string }[]
+  markets?: { name: string; does: string; centrality?: string; covers: string[] }[]
   slug: string;
   manifest: KbManifest | null;
   notes: NoteRef[];
@@ -213,7 +218,7 @@ export function KbBrowser({
           />
         )}
         {tab === "products" && (
-          <ProductsTab notes={notes} catalog={kb.catalog} markets={kb.markets} openNote={openNote} />
+          <ProductsTab notes={notes} catalog={catalog} markets={markets} openNote={openNote} />
         )}
         {tab === "graph" && <GraphCanvas slug={slug} openNote={openNote} />}
       </div>

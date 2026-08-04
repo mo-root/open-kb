@@ -222,13 +222,6 @@ export function summaryOf(run: StoredRun): KbSummary {
   return {
     slug: run.id,
     manifest: manifestOf(run),
-    catalog: (run.result.decomposition?.products ?? []).map((p) => ({ name: p.name, does: p.does })),
-    markets: (run.result.decomposition?.capabilities ?? []).map((c) => ({
-      name: c.name,
-      does: c.does,
-      centrality: (c as { centrality?: string }).centrality,
-      covers: c.covers ?? [],
-    })),
     counts,
     notes: kept.length + 1,
     unplaced: kept.filter((p) => p.entity.relation === "none").length,
