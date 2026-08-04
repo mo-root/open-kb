@@ -308,18 +308,45 @@ export function noteOf(run: StoredRun, path: string): NoteView | null {
 /**
  * The map, as the canvas eats it.
  *
- * A star, honestly. The sweep classifies each host against the anchor and
- * nothing else, it never asks whether two competitors integrate with each
- * other, so the only edges it can substantiate run anchor -> entity. Drawing
- * cross-links would be drawing relationships nobody measured, so the topology
- * stays a star and the canvas's hub-heavy banner (which exists to explain
- * exactly this shape) is left to say so.
+ * Two rings, not a star. The anchor sells into a handful of markets, and each
+ * entity was surfaced by SOME market's queries — that attribution rides on the
+ * entity as `foundBy`, so an entity hangs off the market that found it, not
+ * off the anchor. Search for the unlocker's job, find Apify, and Apify sits in
+ * the unlocker's cluster: v1's shape, the one that read as a map.
+ *
+ * The star survives only as the fallback: a run written before `foundBy`
+ * existed, or an entity whose market the planner invented mid-run and the
+ * decomposition never named, still attaches to the anchor rather than being
+ * dropped.
  */
 export function graphOf(run: StoredRun): GraphView {
   const r = run.result
   const { kept, noise } = place(r)
 
+  const caps = r.decomposition?.capabilities ?? []
+  const marketKey = (s: string) => s.trim().toLowerCase()
+  const marketPath = (name: string) =>
+    `markets/${name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}.md`
+  const marketIds = new Map(caps.map((c) => [marketKey(c.name), marketPath(c.name)]))
+
   const nodes: GraphViewNode[] = [
+    // The anchor's markets, one node each. Typed `product` deliberately: the
+    // four canvas colours are fixed by brand law, and a market node is the
+    // product side of the anchor, not a rival and not a community.
+    ...caps.map(
+      (c): GraphViewNode => ({
+        id: marketPath(c.name),
+        type: "product",
+        relevance: 92,
+        title: c.name,
+        group: "products",
+        kind: "market",
+        relation: "sells",
+        what: c.does,
+        why: c.covers?.length ? `covers ${c.covers.join(", ")}` : "",
+        domain: "",
+      }),
+    ),
     {
       id: ANCHOR_PATH,
       type: "core",
@@ -348,16 +375,29 @@ export function graphOf(run: StoredRun): GraphView {
     ),
   ]
 
-  // `relation: none` is the classifier declining to place something. There is
-  // no edge to draw, so none is drawn, the node sits unconnected and is
-  // reported as an orphan rather than wired to the hub with a made-up label.
-  const edges: GraphEdge[] = kept
-    .filter((p) => p.entity.relation !== "none")
-    .map((p) => ({
-      source: ANCHOR_PATH,
-      target: p.path,
-      label: p.entity.relation,
-    }))
+  // The anchor sells into its markets.
+  const edges: GraphEdge[] = caps.map((c) => ({
+    source: ANCHOR_PATH,
+    target: marketPath(c.name),
+    label: "sells",
+  }))
+
+  // Each entity hangs off the market whose queries surfaced it. `foundBy` is
+  // strongest-first, so the first name that resolves to a real market wins; a
+  // market the planner invented mid-run resolves to nothing and the entity
+  // falls back to the anchor, exactly as every entity did before this existed.
+  //
+  // `relation: none` with a known market still gets an edge, labelled `found`:
+  // the classifier declining to place something against the anchor does not
+  // un-happen the retrieval that surfaced it.
+  for (const p of kept) {
+    const marketId = (p.entity.foundBy ?? []).map((m) => marketIds.get(marketKey(m))).find(Boolean)
+    if (marketId) {
+      edges.push({ source: marketId, target: p.path, label: p.entity.relation === "none" ? "found" : p.entity.relation })
+    } else if (p.entity.relation !== "none") {
+      edges.push({ source: ANCHOR_PATH, target: p.path, label: p.entity.relation })
+    }
+  }
 
   // Edges between two entities, which is what makes this a map rather than a
   // star. Both ends must be on the map: an end the run never recorded is the

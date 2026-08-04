@@ -107,3 +107,50 @@ describe("graphOf, entity-to-entity edges", () => {
     expect(graphOf(r).edges).toHaveLength(1)
   })
 })
+
+describe("graphOf, market clustering", () => {
+  const cap = (name: string) => ({ name, does: `does ${name}`, centrality: "core", covers: [] })
+  const withMarkets = (entities: unknown[], edges: unknown[] = []) => {
+    const r = run(entities, edges)
+    ;(r.result.decomposition as { capabilities?: unknown[] }).capabilities = [cap("proxy network"), cap("search api")]
+    return r
+  }
+
+  /** The v1 shape, restored: search for the unlocker's job, find Apify, and
+   *  Apify sits in the unlocker's cluster rather than on the anchor blob. */
+  it("hangs an entity off the market whose queries surfaced it", () => {
+    const g = graphOf(withMarkets([{ ...entity("apify.com", "competitor"), foundBy: ["proxy network"] }]))
+    expect(g.nodes.some((n) => n.kind === "market" && n.title === "proxy network")).toBe(true)
+    const e = g.edges.find((x) => x.target.includes("apify.com"))
+    expect(e!.source).toBe("markets/proxy-network.md")
+    expect(e!.label).toBe("competitor")
+    // and the anchor sells into its markets
+    expect(g.edges.some((x) => x.source === "company.md" && x.target === "markets/proxy-network.md" && x.label === "sells")).toBe(true)
+  })
+
+  it("falls back to the anchor when the planner invented the market mid-run", () => {
+    const g = graphOf(withMarkets([{ ...entity("a.com", "competitor"), foundBy: ["captcha solvers"] }]))
+    const e = g.edges.find((x) => x.target.includes("a.com"))
+    expect(e!.source).toBe("company.md")
+  })
+
+  /** Declining to place something against the anchor does not un-happen the
+   *  retrieval that surfaced it. */
+  it("keeps a relation-none entity in its market as found, not as an orphan", () => {
+    const g = graphOf(withMarkets([{ ...entity("lonely.com", "none"), foundBy: ["search api"] }]))
+    const e = g.edges.find((x) => x.target.includes("lonely.com"))
+    expect(e!.label).toBe("found")
+    expect(g.orphans).toEqual([])
+  })
+
+  it("draws the old star for a run written before foundBy existed", () => {
+    const g = graphOf(run([entity("a.com", "competitor")]))
+    expect(g.nodes.filter((n) => n.kind === "market")).toEqual([])
+    expect(g.edges.find((x) => x.target.includes("a.com"))!.source).toBe("company.md")
+  })
+
+  it("matches market names case-insensitively", () => {
+    const g = graphOf(withMarkets([{ ...entity("b.com", "substitute"), foundBy: ["  Proxy Network "] }]))
+    expect(g.edges.find((x) => x.target.includes("b.com"))!.source).toBe("markets/proxy-network.md")
+  })
+})

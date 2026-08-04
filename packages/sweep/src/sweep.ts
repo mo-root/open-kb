@@ -300,7 +300,19 @@ export interface QueryYield {
 
 export type Decomposition = z.infer<typeof Decomposition>
 export type PlannedQuery = z.infer<typeof PlannedQuery>
-export type Entity = z.infer<typeof Entity>
+/**
+ * `foundBy` is which of the anchor's markets' queries surfaced this host,
+ * strongest first. Filled mechanically after classification — every hit knows
+ * its query and every query knows its market — never by the model.
+ *
+ * This is the field that turns the graph from a star into a map. v1 attached
+ * every finding to the product whose search surfaced it: search for the
+ * unlocker's job, find Apify, and Apify hangs off the unlocker. That chain
+ * existed here too, and was dropped between the sweep and the result, so the
+ * reader got one hub with a hundred spokes and no way to see which market any
+ * of them belonged to.
+ */
+export type Entity = z.infer<typeof Entity> & { foundBy?: string[] }
 
 export interface SweepStats {
   queries: number
@@ -1294,6 +1306,24 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   }
 
   // ── report ────────────────────────────────────────────────────────────────
+  // ── attribute every entity to the markets whose queries surfaced it ───────
+  // Free: byHost already maps host -> hits, each hit carries its query, and
+  // each query carries its market. The join was simply never done.
+  {
+    const marketOf = new Map(asked.map((q) => [q.q, q.market]))
+    for (const e of entities) {
+      const rows = byHost.get(e.domain.toLowerCase().replace(/^www\./, "")) ?? []
+      const counts = new Map<string, number>()
+      for (const h of rows) {
+        const m = marketOf.get(h.q)
+        if (m) counts.set(m, (counts.get(m) ?? 0) + 1)
+      }
+      if (counts.size) {
+        e.foundBy = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([m]) => m)
+      }
+    }
+  }
+
   const keep = entities.filter((e) => e.kind !== "noise")
   // The hosts that reached the map, for the co-occurrence pass below.
   const keptHosts = new Set(keep.map((e) => e.domain.toLowerCase().replace(/^www\./, "")))
