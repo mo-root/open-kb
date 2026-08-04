@@ -53,6 +53,24 @@ const ARMS: Arm[] = [
   },
 ]
 
+/**
+ * A hard ceiling that does not depend on the key having one.
+ *
+ * The key in use is uncapped and draws straight on an account holding $124, so
+ * the key-level guard reads infinite headroom and stops nothing. Spend is
+ * measured instead as the DELTA in the key's own usage since this process
+ * started, which is the number that matters and is true whatever the key is
+ * configured to allow.
+ */
+async function keyUsage(): Promise<number> {
+  const res = await fetch("https://openrouter.ai/api/v1/key", {
+    headers: { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}` },
+  })
+  if (!res.ok) throw new Error(`could not read key usage: ${res.status}`)
+  const { data } = (await res.json()) as { data: { usage: number } }
+  return data.usage
+}
+
 async function headroom(): Promise<number> {
   const res = await fetch("https://openrouter.ai/api/v1/key", {
     headers: { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}` },
@@ -109,17 +127,21 @@ async function main() {
   const budget = Number(process.argv[4] ?? 12)
   if (!existsSync(OUT)) mkdirSync(OUT, { recursive: true })
 
-  console.log(`${ARMS.length} arms against ${anchor}, ${queries} queries each, budget $${budget}\n`)
+  const startUsage = await keyUsage()
+  console.log(`${ARMS.length} arms against ${anchor}, ${queries} queries each, hard ceiling $${budget}`)
+  console.log(`key has spent $${startUsage.toFixed(2)} before this run; nothing past $${budget} more\n`)
   let spent = 0
 
   for (const arm of ARMS) {
-    const left = await headroom()
-    if (left < 3) {
-      console.log(`stopping: $${left.toFixed(2)} of key headroom left`)
+    // Measured from the key itself rather than from the arms' own reports, so a
+    // run that under-reports its cost still counts against the ceiling.
+    const real = (await keyUsage()) - startUsage
+    if (real >= budget) {
+      console.log(`stopping: the key has spent $${real.toFixed(2)} of the $${budget} ceiling`)
       break
     }
     if (spent >= budget) {
-      console.log(`stopping: spent $${spent.toFixed(2)} of $${budget}`)
+      console.log(`stopping: arms reported $${spent.toFixed(2)} of $${budget}`)
       break
     }
 
@@ -148,7 +170,8 @@ async function main() {
     appendFileSync(LOG, `${JSON.stringify({ ...row, anchor, queries })}\n`)
   }
 
-  console.log(`\nspent $${spent.toFixed(2)}. rows in ${LOG}`)
+  const finalUsage = await keyUsage()
+  console.log(`\nspent $${(finalUsage - startUsage).toFixed(2)} by the key's own count. rows in ${LOG}`)
   console.log(`compare on QUALITY first (products, markets, substitutes, communities, unplaced),`)
   console.log(`then time, then cost. A cheap arm that mapped the wrong market has won nothing.`)
 }

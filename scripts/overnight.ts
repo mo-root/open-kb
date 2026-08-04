@@ -59,6 +59,24 @@ const LOG = `${OUT}/results.jsonl`
  *  mid-classification has bought every search and kept none of them. */
 const RESERVE_USD = 3
 
+/**
+ * A hard ceiling that does not depend on the key having one.
+ *
+ * The key in use is uncapped and draws straight on an account holding $124, so
+ * the key-level guard reads infinite headroom and stops nothing. Spend is
+ * measured instead as the DELTA in the key's own usage since this process
+ * started, which is the number that matters and is true whatever the key is
+ * configured to allow.
+ */
+async function keyUsage(): Promise<number> {
+  const res = await fetch("https://openrouter.ai/api/v1/key", {
+    headers: { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}` },
+  })
+  if (!res.ok) throw new Error(`could not read key usage: ${res.status}`)
+  const { data } = (await res.json()) as { data: { usage: number } }
+  return data.usage
+}
+
 async function headroom(): Promise<number> {
   const res = await fetch("https://openrouter.ai/api/v1/key", {
     headers: { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}` },
@@ -73,19 +91,25 @@ async function main() {
   const queries = Number(process.argv[3] ?? 30)
   if (!existsSync(OUT)) mkdirSync(OUT, { recursive: true })
 
-  const started = await headroom()
-  console.log(`key headroom $${started.toFixed(2)} · self-imposed budget $${budget} · ${queries} queries per map`)
-  console.log(`${TARGETS.length} targets\n`)
+  const startUsage = await keyUsage()
+  const left = await headroom()
+  console.log(`hard ceiling $${budget} · ${queries} queries per map · ${TARGETS.length} targets`)
+  if (Number.isFinite(left) && left < RESERVE_USD) {
+    console.log(`the key has $${left.toFixed(2)} of its own headroom, below the $${RESERVE_USD} reserve. stopping.`)
+    return
+  }
+  console.log(`key has spent $${startUsage.toFixed(2)} before this batch\n`)
 
   let spent = 0
   for (const t of TARGETS) {
-    const left = await headroom()
-    if (left < RESERVE_USD) {
-      console.log(`\nstopping: $${left.toFixed(2)} left on the key, below the $${RESERVE_USD} reserve`)
+    // The key's own count, so an under-reporting run still hits the ceiling.
+    const real = (await keyUsage()) - startUsage
+    if (real >= budget) {
+      console.log(`\nstopping: the key has spent $${real.toFixed(2)} of the $${budget} ceiling`)
       break
     }
-    if (spent >= budget) {
-      console.log(`\nstopping: spent $${spent.toFixed(2)} of the $${budget} budget`)
+    if (Number.isFinite(await headroom()) && (await headroom()) < RESERVE_USD) {
+      console.log(`\nstopping: below the $${RESERVE_USD} reserve on the key itself`)
       break
     }
 
@@ -117,7 +141,7 @@ async function main() {
     appendFileSync(LOG, `${JSON.stringify({ ...row, at: new Date().toISOString() })}\n`)
   }
 
-  console.log(`\nspent $${spent.toFixed(2)} across the batch. rows in ${LOG}`)
+  console.log(`\nspent $${((await keyUsage()) - startUsage).toFixed(2)} by the key's own count. rows in ${LOG}`)
 }
 
 main().catch((e) => {
