@@ -1,0 +1,63 @@
+import { describe, expect, it } from "vitest"
+import { openingHand, companyHand } from "../src/families.js"
+
+describe("openingHand", () => {
+  it("opens with the bare term, its alternatives, and the branded alternatives", () => {
+    const { open } = openingHand("Web Scraper API", ["web scraper", "web scraping api"])
+    expect(open.map((q) => q.q)).toEqual([
+      "web scraper",
+      "web scraper alternatives",
+      "Web Scraper API alternatives",
+    ])
+    expect(open[0]).toMatchObject({ family: "plain", product: "Web Scraper API", term: "web scraper" })
+    expect(open[2]).toMatchObject({ family: "branded", term: "" })
+  })
+
+  it("reserves the remaining plain shapes, the extra terms, and branded vs", () => {
+    const { reserve } = openingHand("Web Scraper API", ["web scraper", "web scraping api"])
+    expect(reserve.map((q) => q.q)).toEqual([
+      "best web scraper",
+      "web scraper vs",
+      "top web scraper companies",
+      "open source web scraper",
+      "web scraping api",
+      "Web Scraper API vs",
+    ])
+  })
+
+  it("drops case-insensitive duplicates: a product named exactly its term", () => {
+    const { open, reserve } = openingHand("web scraper", ["web scraper"])
+    const all = [...open, ...reserve].map((q) => q.q.toLowerCase())
+    expect(new Set(all).size).toBe(all.length)
+  })
+
+  it("every query carries a non-empty why", () => {
+    const { open, reserve } = openingHand("X", ["y"])
+    for (const q of [...open, ...reserve]) expect(q.why.length).toBeGreaterThan(0)
+  })
+
+  it("tolerates an empty terms list: branded only", () => {
+    const { open, reserve } = openingHand("Web Scraper API", [])
+    expect(open.map((q) => q.q)).toEqual(["Web Scraper API alternatives"])
+    expect(reserve.map((q) => q.q)).toEqual(["Web Scraper API vs"])
+  })
+
+  it("skips branded entirely for a generic-named product", () => {
+    const { open, reserve } = openingHand("Datasets", ["web dataset marketplace"], { branded: false })
+    const all = [...open, ...reserve]
+    expect(all.some((q) => q.family === "branded")).toBe(false)
+    expect(open.map((q) => q.q)).toEqual(["web dataset marketplace", "web dataset marketplace alternatives"])
+  })
+})
+
+describe("companyHand", () => {
+  it("fires the company-level branded set once", () => {
+    const qs = companyHand("Bright Data")
+    expect(qs.map((q) => q.q)).toEqual([
+      "Bright Data alternatives",
+      "Bright Data vs",
+      "Bright Data competitors",
+    ])
+    for (const q of qs) expect(q).toMatchObject({ family: "branded", product: "", term: "" })
+  })
+})
