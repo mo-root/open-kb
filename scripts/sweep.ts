@@ -21,6 +21,7 @@ const out = await sweep({
   domain: anchor,
   queries: TARGET,
   pages: Number(process.env.OPENKB_PAGES ?? 4),
+  skipModelLinking: process.env.OPENKB_SKIP_MODEL_LINKING === "1",
   spans,
   creds: {
     token: process.env.BRIGHTDATA_API_TOKEN!,

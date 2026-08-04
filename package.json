@@ -10,7 +10,8 @@
     "check": "node scripts/check-core-purity.mjs && tsc -b && pnpm --filter @open-kb/web exec tsc --noEmit",
     "sweep": "tsx scripts/sweep.ts",
     "overnight": "tsx scripts/overnight.ts",
-    "read": "tsx scripts/read.ts"
+    "read": "tsx scripts/read.ts",
+    "experiment": "tsx scripts/experiment.ts"
   },
   "devDependencies": {
     "@openrouter/ai-sdk-provider": "^3.0.0",
