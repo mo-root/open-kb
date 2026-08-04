@@ -175,6 +175,12 @@ export interface PlannedQueryView {
 
 export interface PlanView {
   domain: string;
+  /** Queries the reader's chosen depth asked for. */
+  requested?: number;
+  /** Queries the catalog actually wrote, before the cap and before the
+   *  anchor-name filter. Both ride on the `planned` frame and both were being
+   *  dropped on the floor here. */
+  written?: number;
   /** What the run says it planned. Can exceed `queries.length` when the frame
    *  carried only a count. */
   count: number;
@@ -213,8 +219,13 @@ export function readPlanned(v: unknown): PlanView | null {
   const raw = Array.isArray(o.plan) ? o.plan : list(o.queries);
   const queries = raw.map(readPlannedQuery).filter((q): q is PlannedQueryView => q !== null);
 
+  const numOrUndef = (v: unknown): number | undefined =>
+    typeof v === "number" && Number.isFinite(v) ? v : undefined;
+
   return {
     domain: str(o.slug) || str(o.brand) || str(o.domain),
+    requested: numOrUndef(o.requested),
+    written: numOrUndef(o.written),
     // `queries: 40` is the shape that carries only the count. It is still true
     // and still worth showing.
     count: typeof o.queries === "number" ? num(o.queries) : queries.length,
@@ -390,6 +401,8 @@ export interface TraceView {
   argsDigest: string;
   ms: number;
   ok: boolean;
+  /** The provider's own reason for a failed call. Empty when none travelled. */
+  error: string;
   usd: number;
   runningUsd: number;
 }
@@ -409,6 +422,7 @@ export function readTrace(v: unknown): TraceView | null {
     argsDigest: str(o.argsDigest),
     ms: num(o.ms),
     ok: o.ok !== false,
+    error: str(o.error),
     usd: num(o.usd),
     runningUsd: num(o.runningUsd),
   };

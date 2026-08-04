@@ -8,6 +8,7 @@ import { EventFeed } from "./EventFeed";
 import { FindingsPanel, type EntityData } from "./FindingsPanel";
 import { SearchesPanel, readSearched, type SearchView } from "./SearchesPanel";
 import { PlanCard, UnderstandingCard } from "./PlanCard";
+import { DecisionsStrip, type Decision } from "./DecisionsStrip";
 import { ResultPanel, type RunResult } from "./ResultPanel";
 import { StageTracker } from "./StageTracker";
 import {
@@ -167,6 +168,25 @@ async function readOnce(
  * So the count is described as what it buys — questions asked — and the entity
  * count is not promised at all.
  */
+/**
+ * Is this progress line the run deciding whether to spend more?
+ *
+ * The planner narrates two different kinds of thing under the same agent name.
+ * Setup ("catalog: 40 queries, none name the anchor") is a description of work
+ * already done. A verdict ("round 2 added only 3 — stopping, further queries
+ * are buying corroboration") is the run choosing, mid-flight, what to do with
+ * the rest of the budget. Only the second belongs above the fold.
+ *
+ * Matched on shape, and loosely: `enough` and `round N` are the two openings
+ * the assess loop writes, and an unmatched line still appears in the feed and
+ * the stage rail, so the cost of missing one is that it is merely not promoted.
+ */
+function isSpendDecision(agent: string, message: string): boolean {
+  if (agent.trim().toLowerCase() !== "plan") return false;
+  const m = message.trimStart();
+  return /^enough\b/i.test(m) || /^round\s+\d+/i.test(m);
+}
+
 const DEPTHS = [
   {
     key: "quick",
@@ -241,6 +261,8 @@ export function BuildWorkflow() {
   /** Set by the Stop button, cleared by the next run. Distinguishes the ending
    *  the reader chose from the one that happened to them. */
   const [stopped, setStopped] = useState(false);
+  const [decisions, setDecisions] = useState<Decision[]>([]);
+  const decisionId = useRef(0);
 
   const feedId = useRef(0);
   const abort = useRef<AbortController | null>(null);
@@ -290,6 +312,7 @@ export function BuildWorkflow() {
     navigated.current = false;
     setErrorText(null);
     setStopped(false);
+    setDecisions([]);
     setRunId(null);
     startedAt.current = Date.now();
     setElapsed(0);
@@ -441,6 +464,19 @@ export function BuildWorkflow() {
           setStates((s) => advance(s, stage));
           setStageLog((m) => ({ ...m, [stage]: [...(m[stage] ?? []), p.message] }));
         }
+        /* Lift the wave verdicts out of the rail.
+           Matched on the SHAPE of a spend decision, not on where it lands in the
+           run: `stageOf("plan")` is the Plan stage, and by the time these arrive
+           that stage is closed, so the rail files them as history of something
+           finished. Gating on arrival order instead would assume all setup
+           narration precedes the first search — true of today's fixed wave loop,
+           and not something an agent-driven phase has to honour. */
+        if (isSpendDecision(p.agent, p.message)) {
+          setDecisions((d) => [
+            ...d,
+            { id: decisionId.current++, text: p.message, atSec: p.atSec },
+          ]);
+        }
         // The elapsed marker is what makes a slow stage visible: two minutes
         // between two lines reads as a stall, and sometimes it is one.
         addFeed(
@@ -484,7 +520,14 @@ export function BuildWorkflow() {
         const t = readTrace(v);
         if (!t) return;
         setCalls((c) => (c.length > 400 ? [...c.slice(-400), t] : [...c, t]));
-        if (!t.ok) addFeed("amber", `${t.tool} failed: ${t.argsDigest}`);
+        // The reason, when one travelled. "serp failed: <query>" names what
+        // broke and says nothing about why; the provider's own message is the
+        // difference between a retryable throttle and a dead zone.
+        if (!t.ok)
+          addFeed(
+            "amber",
+            `${t.tool} failed: ${t.argsDigest}${t.error ? ` — ${t.error}` : ""}`,
+          );
       },
       ctrl.signal,
       runIsOver,
@@ -606,16 +649,22 @@ export function BuildWorkflow() {
               trend={spendHistory}
             />
             <StatTile label="elapsed" value={formatDuration(elapsed)} hint="wall clock" />
-            {/* "queries", not "serp calls". The adapter counts one per search
-                SPAN and the sweep bills PAGES — `serpCalls += PAGES` with
-                PAGES=3 — so this tile read a third of the number the finished
-                run reports under the same words, and the line directly above
-                it already tells the reader a query is three pages. The tile
-                now names what it actually counts. */}
+            {/* "questions asked", not "serp calls". Two different quantities
+                were wearing one name: lib/stream-adapter.ts counts one per
+                search SPAN — one per question — while the sweep bills
+                `serpCalls += PAGES`, a page count. So this tile showed a
+                fraction of the number the finished run reports under the same
+                words, on the same screen as a line saying a question reads
+                several pages.
+
+                The tile now names what it actually counts, and states no page
+                multiplier: PAGES is `opts.pages ?? 3`, set per run, so any
+                number written here would be a guess about a knob the caller
+                turns. */}
             <StatTile
-              label="queries fired"
+              label="questions asked"
               value={cost?.serpCalls ?? 0}
-              hint="×3 result pages each"
+              hint="one per planned query"
             />
             {/* Usually zero, and that is the truth rather than a dead tile: the
                 sweep reads a company's own pages with a free direct fetch and
@@ -632,6 +681,12 @@ export function BuildWorkflow() {
           </div>
         </div>
       )}
+
+      {/* Above the two-column grid on purpose: this is the run telling you it
+          is about to spend more of your money, and it does not belong in a
+          side rail under a stage that has already closed. Renders nothing
+          until the first wave verdict arrives. */}
+      <DecisionsStrip decisions={decisions} />
 
       {/* -------------------------------------------------- stages + panels -- */}
       {runId || errorText ? (

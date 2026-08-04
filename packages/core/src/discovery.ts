@@ -51,6 +51,9 @@ export interface DiscoveryResult {
 
 export interface DiscoverOptions {
   anchor: string
+  /** So a spawned discovery rolls up under the run and its dispatcher. */
+  runId?: string
+  parentId?: string | null
   model: LanguageModel
   fetch: FetchPort
   spans?: SpanStream
@@ -167,37 +170,51 @@ export async function discover(opts: DiscoverOptions): Promise<DiscoveryResult> 
   })
 
   const started = Date.now()
+  let lastTurnAt = started
+  let turn = 0
+  let usd = 0
+
+  /**
+   * Price each turn AT ITS BOUNDARY, not after the agent returns.
+   *
+   * The post-hoc loop meant nothing reached the stream until the whole agent
+   * finished — so for the minutes an agent is thinking and spending, the cost
+   * tiles sit frozen and the calls table is empty, which is exactly when a
+   * reader wants to see movement. `onStepFinish` also gives a real per-turn
+   * duration instead of the total divided by the step count.
+   */
+  const onStepFinish = (step: { usage?: { inputTokens?: number; outputTokens?: number } }) => {
+    turn += 1
+    const now = Date.now()
+    const inTok = step.usage?.inputTokens ?? 0
+    const outTok = step.usage?.outputTokens ?? 0
+    const cost = opts.pricing
+      ? (inTok / 1e6) * opts.pricing.inputPerMTok + (outTok / 1e6) * opts.pricing.outputPerMTok
+      : 0
+    usd += cost
+    opts.spans?.emit({
+      runId: opts.runId ?? anchor,
+      agentId: "discover",
+      parentId: opts.parentId ?? null,
+      kind: "model",
+      name: opts.modelName ?? "model",
+      argsDigest: `discover turn ${turn}`,
+      ms: now - lastTurnAt,
+      ok: true,
+      tokensIn: inTok,
+      tokensOut: outTok,
+      usd: cost,
+      error: opts.pricing ? undefined : "no model pricing supplied — token cost not counted",
+    })
+    lastTurnAt = now
+  }
+
   const result = await agent.generate({
+    onStepFinish,
     prompt: `Discover everything ${anchor} sells, by reading its own site.\n\nStart by mapping its product pages, then read and submit. When you are certain you have them all, call finish.\n\nGO.`,
   })
 
-  // Price the turns, if a rate was supplied.
   const steps = result.steps ?? []
-  let usd = 0
-  if (opts.pricing && opts.spans) {
-    const perMs = steps.length ? Math.round((Date.now() - started) / steps.length) : 0
-    let turn = 0
-    for (const step of steps) {
-      turn++
-      const inTok = step.usage?.inputTokens ?? 0
-      const outTok = step.usage?.outputTokens ?? 0
-      const cost = (inTok / 1e6) * opts.pricing.inputPerMTok + (outTok / 1e6) * opts.pricing.outputPerMTok
-      usd += cost
-      opts.spans.emit({
-        runId: anchor,
-        agentId: "discover",
-        parentId: null,
-        kind: "model",
-        name: opts.modelName ?? "model",
-        argsDigest: `discover turn ${turn}/${steps.length}`,
-        ms: perMs,
-        ok: true,
-        tokensIn: inTok,
-        tokensOut: outTok,
-        usd: cost,
-      })
-    }
-  }
 
   // The agent should call finish; if it stopped without one, keep what it found
   // rather than losing the whole discovery over a missing final call.

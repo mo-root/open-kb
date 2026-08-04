@@ -49,6 +49,10 @@ export interface TraceFrame {
   argsDigest: string
   ms: number
   ok: boolean
+  /** Why it failed. `SpanStream` already carries this and the sweep already
+   *  sets it (`error: r.error` on every SERP span); it was dropped here, so a
+   *  failed call reached the browser as a struck-through row with no reason. */
+  error?: string
   usd: number
   runningUsd: number
 }
@@ -122,6 +126,7 @@ export function adapterFor(ns: Namespace): (span: Span) => unknown | null {
           argsDigest: span.argsDigest,
           ms: span.ms,
           ok: span.ok,
+          ...(span.error ? { error: span.error } : {}),
           usd: span.usd,
           runningUsd: span.runningUsd,
         } satisfies TraceFrame

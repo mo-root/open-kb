@@ -190,9 +190,20 @@ export function PlanCard({ plan }: { plan: PlanView }) {
     (acc, g, i) => [...acc, (acc[i] ?? 0) + g.queries.length],
     [0],
   );
-  const named = plan.queries.filter((q) =>
-    plan.domain ? new RegExp(`\\b${escapeRe(plan.domain.split(".")[0] ?? "")}\\b`, "i").test(q.q) : false,
-  ).length;
+  /* THE CHIP THAT COULD ONLY EVER SAY YES.
+     This used to re-test the delivered queries for the anchor's name and report
+     "no query names the company" — a green pass on a test that cannot fail. The
+     engine splices leaking queries OUT before the frame is emitted, and it
+     splices on the anchor label AND every coinage (sweep.ts), so this check was
+     both a tautology and strictly weaker than the one that already ran.
+
+     The `planned` frame has carried the real numbers all along: `requested` is
+     what the depth asked for, `written` is what the catalog produced. The gap
+     between `written` and what arrived is the filter's actual yield, and unlike
+     the old chip it is a number that can come back bad. */
+  const delivered = plan.queries.length || plan.count;
+  const dropped =
+    plan.written !== undefined && plan.written > delivered ? plan.written - delivered : 0;
 
   return (
     <div className="rounded-lg border border-sky-500/30 bg-sky-500/[0.04] p-5">
@@ -216,13 +227,21 @@ export function PlanCard({ plan }: { plan: PlanView }) {
           that names the anchor is a LEAK, not a feature — it bounds the sweep to
           pages someone already wrote about them. Counted here rather than
           silently dropped, because the number is the measure of the prompt. */}
-      <div className="mt-3">
-        {named === 0 ? (
-          <Chip tone="emerald">no query names the company</Chip>
-        ) : (
-          <Chip tone="amber">
-            {named} quer{named === 1 ? "y" : "ies"} slipped the company name through
+      <div className="mt-3 flex flex-wrap gap-2">
+        {plan.requested !== undefined && (
+          <Chip tone="slate">
+            asked for {plan.requested}
           </Chip>
+        )}
+        {plan.written !== undefined && (
+          <Chip tone="slate">catalog wrote {plan.written}</Chip>
+        )}
+        {dropped > 0 ? (
+          <Chip tone="amber">
+            {dropped} dropped before buying — named the company or its coinages
+          </Chip>
+        ) : (
+          <Chip tone="emerald">every written query survived the name filter</Chip>
         )}
       </div>
 
@@ -241,8 +260,4 @@ export function PlanCard({ plan }: { plan: PlanView }) {
       )}
     </div>
   );
-}
-
-function escapeRe(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

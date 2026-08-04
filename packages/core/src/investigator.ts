@@ -75,20 +75,25 @@ export async function investigate(opts: InvestigateOptions): Promise<Investigate
   })
 
   const startedAt = Date.now()
-  const result = await agent.generate({
-    prompt: `The map is anchored on: ${anchor}\n\nYour mission: ${mission}\n\nGO.`,
-  })
-
-  // Emit one span per model turn. Without these the run's cost is provider-only, every SERP
-  // call and page fetch is accounted for and not a single token is, which makes a spend target
-  // unmeasurable rather than merely approximate. Priced from a rate the caller supplies, because
-  // the engine must not know which vendor or model it is talking to.
-  const rate = opts.pricing
-  const steps = result.steps ?? []
-  const perStepMs = steps.length ? Math.round((Date.now() - startedAt) / steps.length) : 0
+  let lastTurnAt = startedAt
   let turn = 0
-  for (const step of steps) {
-    turn++
+
+  /**
+   * One span per model turn, AT THE TURN BOUNDARY.
+   *
+   * These were emitted after `generate()` returned, which meant a run's cost
+   * was provider-only for the whole time the agent worked: every SERP call and
+   * page fetch accounted for and not a single token, during exactly the minutes
+   * a reader is watching the meter. It also gives a true per-turn duration
+   * rather than the total divided by the step count.
+   *
+   * Priced from a rate the caller supplies, because the engine must not know
+   * which vendor or model it is talking to.
+   */
+  const rate = opts.pricing
+  const onStepFinish = (step: { usage?: { inputTokens?: number; outputTokens?: number } }) => {
+    turn += 1
+    const now = Date.now()
     const inTok = step.usage?.inputTokens ?? 0
     const outTok = step.usage?.outputTokens ?? 0
     const usd = rate ? (inTok / 1e6) * rate.inputPerMTok + (outTok / 1e6) * rate.outputPerMTok : 0
@@ -98,16 +103,22 @@ export async function investigate(opts: InvestigateOptions): Promise<Investigate
       parentId: ctx.parentId,
       kind: "model",
       name: opts.modelName ?? "model",
-      argsDigest: `turn ${turn} of ${steps.length}`,
-      ms: perStepMs,
+      argsDigest: `turn ${turn}`,
+      ms: now - lastTurnAt,
       ok: true,
       tokensIn: inTok,
       tokensOut: outTok,
       usd,
-      // A run priced at zero because nobody supplied a rate must not look like a free run.
+      // A run priced at zero because nobody supplied a rate must not look free.
       error: rate ? undefined : "no model pricing supplied — token cost not counted",
     })
+    lastTurnAt = now
   }
+
+  const result = await agent.generate({
+    onStepFinish,
+    prompt: `The map is anchored on: ${anchor}\n\nYour mission: ${mission}\n\nGO.`,
+  })
 
   return {
     summary: result.text,

@@ -202,7 +202,11 @@ export default async function RunReport({
             hint="words the catalog was forbidden to search"
           />
           <Row label="Queries planned" value={String(r.queries.length)} />
-          <Row label="SERP calls" value={String(s.serpCalls)} />
+          {/* Result PAGES, not questions. The run bills `serpCalls += PAGES`
+              per query, so this is several times the live console's "questions
+              asked" — two true numbers that read as a contradiction while they
+              shared the name "SERP calls". */}
+          <Row label="SERP pages" value={String(s.serpCalls)} />
           <Row
             label="Unlocked fetches"
             value={String(s.unlockerCalls)}
