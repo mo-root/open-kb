@@ -139,82 +139,16 @@ export const RELATIONS = [
  * different things, and one lens cannot reach all three. Every lens still
  * covers every market.
  */
-const LENSES = [
-  {
-    name: "the buyer in trouble",
-    detail: `Someone using something today and unhappy with it. What just broke, what they are
-switching away from, what they are comparing against what. This lens finds head-on competitors and
-the substitutes that solve the same problem a different way. Phrase things the way someone types at
-2am when the thing is down, and the way someone types when they are drawing up a shortlist.
-
-Spend part of this lens on the obstacle with the use case DELETED — what every buyer in this market
-hits regardless of what they were building. Name the gatekeeper whose job is to reject their work
-and the literal string it emits, and name the hardest workpiece everyone struggles with. These are
-the shortest queries you will write, two to four words: every qualifier you add slices the results
-down to one cohort, which is the opposite of what this shape is for.`,
-  },
-  {
-    name: "the practitioner building it",
-    detail: `Someone assembling this themselves or wiring it into a stack. What it is built on, what
-plugs into it, what the do-it-yourself route looks like, which technique underlies it. This lens
-finds dependencies, integrations, open-source alternatives, and the vendors who sell one mechanism
-rather than a whole platform.`,
-  },
-  {
-    /**
-     * The wave gets a lens, not a bullet.
-     *
-     * It first shipped as one rule among nine at the bottom of a 98-line
-     * prompt, and a live catalog of eighteen queries spent one of them on it.
-     * A lens has its own call and its own share of the budget, so the rule
-     * competes with nothing.
-     *
-     * It is the one lens that can decline. The gate is three slots and a market
-     * with no wave fills none of them, so this lens is told to hand its budget
-     * back rather than invent one: queries that sound plausible and return
-     * nothing are worse than no queries, because they spend the budget
-     * invisibly.
-     */
-    name: "the new consumer",
-    detail: `A class of buyer that did not exist three years ago, needs what this company already
-sells for a new reason, reaches it through a NEW SOCKET, and breaks in a NEW PLACE. Its players
-have no search-engine footprint yet, so an ordinary ranked query returns the previous cohort and
-misses them entirely.
-
-Before writing anything, fill three slots from the markets above:
-  1. the new consumer  — who started buying this capability recently
-  2. the new socket    — the standard, protocol, plug format or marketplace they consume it through
-  3. the new failure   — the word that means it broke, which did not exist before
-
-FILL ALL THREE OR WRITE NOTHING. Return an empty list and let the other lenses have the budget. A
-market with no live wave is the normal case, not a failure.
-
-For a developer tool, the common case here: the consumer is an autonomous agent or the team
-building one; the socket is a tool-call protocol, an agent framework's plugin format, a
-model-context server or a retrieval pipeline; the failure is the agent's own run breaking rather
-than a human's script, the tool call that returned nothing, the context that went stale, the
-harness step that timed out. Illustrations of the shapes, not a list to match against: a logistics
-platform fills the same slots with entirely different words.
-
-Four shapes, and spend across them:
-  - the consumer's own deficiency, never the cure. Say what is wrong with the new consumer in its
-    own words and do not mention this company's category at all. It reaches a buyer who has the
-    problem and has not learned the name of the solution, which no vendor-shaped query can.
-  - the socket as a bare noun beside the capability. A standard has no proprietor whose pages
-    become the ceiling, so one query can surface a whole registry of implementations.
-  - the wave's do-it-yourself tool beside this market's signature failure: the cheap thing the
-    cohort reaches for first, plus the word that means it stopped working.
-  - the harness it assembles itself inside. The only shape that returns a DISTRIBUTION CHANNEL
-    rather than a rival, and whoever owns the harness owns the default integration slot.`,
-  },
-  {
-    name: "where the market gathers",
-    detail: `The places this market talks about itself and lists itself: subreddits, forums, Q&A
-sites, newsletters, conferences, trade bodies, directories, comparison sites, and who is hiring for
-these skills. This lens finds communities, publishers and directories, which no vendor query
-returns, and a single directory can name a hundred players.`,
-  },
-] as const
+/**
+ * The lenses are gone: the PRODUCT is the unit now.
+ *
+ * Splitting the catalog three ways by persona -- the buyer in trouble, the
+ * practitioner, where the market gathers -- meant a market covering three
+ * products got one share between them, and the shapes each lens knew are
+ * better expressed as shapes ONE product's call should spend across. Those
+ * moved into prompts/agents/catalog.md, where they are editable without a
+ * rebuild, and the demand-wave gate went with them.
+ */
 
 /**
  * How two found entities stand to EACH OTHER.
@@ -439,6 +373,8 @@ export interface SweepOptions {
   skipModelLinking?: boolean
   /** How many of the company's own product pages to read. 0 uses the index only. */
   productPages?: number
+  /** Most queries any single product may take. */
+  perProduct?: number
   /** The CLI's console. Left unset in the browser, where the span stream is the
    *  only output. */
   onLog?: (line: string) => void
@@ -508,6 +444,8 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   const RANK_CONC = Math.max(1, Math.floor(opts.rankConcurrency ?? 6))
   /** How many co-occurring pairs to ask about. Bounds the linking stage's cost. */
   const MAX_PAIRS = Math.max(0, Math.floor(opts.maxPairs ?? 600))
+  /** Most queries any single product may take. */
+  const PER_PRODUCT = Math.max(1, Math.floor(opts.perProduct ?? 5))
   /** How many of the company's own product pages to read. */
   const PRODUCT_PAGES = Math.max(0, Math.floor(opts.productPages ?? 25))
   const search = brightDataSearch(creds, { pages: PAGES })
@@ -896,30 +834,62 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
 
   // ── 2. write the catalog, knowing no company names ────────────────────────
   say("plan", `writing a catalog of ${target} queries that never name the company`)
-  const per = Math.max(1, Math.ceil(target / LENSES.length))
+  /**
+   * One call per PRODUCT, not one per lens.
+   *
+   * The unit of query generation is the thing a buyer chooses and pays for.
+   * Splitting by market gave a market covering three products one share between
+   * them, so a proxy network, a search API and a dataset marketplace competed
+   * for the same handful of queries and the smallest lost. v1 stripped each
+   * product and searched for THAT product's alternatives, which is why its
+   * findings hung off the product rather than off the company.
+   *
+   * Every product gets its own call and its own budget, so a query about the
+   * unlocker's job is written by a call that is thinking about nothing else.
+   * The calls run concurrently, so the stage costs the slowest product rather
+   * than the sum, exactly as the lens split did.
+   *
+   * Core products first: an adjacent line is a real market and is not what the
+   * company is bought for, so it gets whatever the budget has left.
+   */
+  const ranked = [...decomp.capabilities].sort((a, b) =>
+    a.centrality === b.centrality ? 0 : a.centrality === "core" ? -1 : 1,
+  )
+  const units = ranked.flatMap((c) =>
+    (c.covers.length ? c.covers : [c.name]).map((product) => ({ market: c, product })),
+  )
+
+  // Per-product budget, capped. A company with thirty SKUs must not turn a
+  // twenty-query request into a hundred and fifty.
+  const perProduct = Math.max(1, Math.min(PER_PRODUCT, Math.ceil(target / Math.max(units.length, 1))))
+  const funded = units.slice(0, Math.max(1, Math.ceil(target / perProduct)))
+
+  say(
+    "plan",
+    `${funded.length} products get up to ${perProduct} queries each` +
+      `${funded.length < units.length ? `, ${units.length - funded.length} left unfunded by the budget` : ""}`,
+  )
+
   const catalogs = await Promise.all(
-    LENSES.map((lens) =>
+    funded.map(({ market, product }) =>
       call(
         "plan",
-        `catalog: ${lens.name}`,
+        `catalog: ${product}`,
         z.object({ queries: z.array(PlannedQuery) }),
         prompt("catalog", {
           anchor,
-          target: per,
-          lens: lens.name,
-          lensDetail: lens.detail,
+          target: perProduct,
+          product,
+          productDoes: market.does,
+          market: market.name,
+          centrality: market.centrality,
           sells: decomp.sells,
           buyer: decomp.buyer,
-          capabilities: [...decomp.capabilities]
-            .sort((a, b) => (a.centrality === b.centrality ? 0 : a.centrality === "core" ? -1 : 1))
-            .map(
-              (c) =>
-                `[${c.centrality}] ${c.name} — ${c.does}${c.covers.length > 1 ? `  (covers ${c.covers.join(", ")})` : ""}`,
-            )
-            .join("\n  "),
+          siblings:
+            market.covers.filter((c) => c !== product).join(", ") || "(nothing else in this market)",
           coinages: decomp.coinages.join(", "),
         }),
-        { think: "low", maxOutputTokens: 180 * per + 6_000 },
+        { think: "low", maxOutputTokens: 180 * perProduct + 6_000 },
       ),
     ),
   )
