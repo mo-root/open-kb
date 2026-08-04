@@ -915,57 +915,73 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   const strips: { product: string; terms: string[] }[] = []
   const reserve = new Map<string, FamilyQuery[]>()
 
-  const catalogs = await Promise.all(
-    funded.map(({ market, product }) =>
-      call(
-        "plan",
-        `catalog: ${product}`,
-        z.object({
-          terms: z.array(z.string()).describe("1-3 terms a buyer types for this job, ordered, closest first"),
-          generic: z
-            .boolean()
-            .describe("true if this product's NAME alone reads as a common noun rather than this product — 'Datasets' is generic, 'Web Scraper API' is not"),
-          queries: z.array(PlannedQuery),
+  // Bounded, not unleashed. The funding contest this change removes was the
+  // thing that incidentally kept this fan-out small — `funded.length` used to
+  // top out around the room a fixed query budget bought. Now every product is
+  // funded, so `funded.length` is the company's whole product count, and a
+  // bare `Promise.all` here would fire that many concurrent model calls at
+  // once. A rate limiter does not know this is a planning stage: a 429 on any
+  // one of them exhausts `call()`'s single retry, and `Promise.all` is
+  // all-or-nothing, so one throttled product call kills a run that has
+  // already paid for everything `understand` read. Same shape of fix as the
+  // classification pool below (`RANK_CONC`): a small pool, not a wide one.
+  const CATALOG_CONC = 6
+
+  const catalogs: SweptQuery[][] = []
+  for (let i = 0; i < funded.length; i += CATALOG_CONC) {
+    const chunk = await Promise.all(
+      funded.slice(i, i + CATALOG_CONC).map(({ market, product }) =>
+        call(
+          "plan",
+          `catalog: ${product}`,
+          z.object({
+            terms: z.array(z.string()).describe("1-3 terms a buyer types for this job, ordered, closest first"),
+            generic: z
+              .boolean()
+              .describe("true if this product's NAME alone reads as a common noun rather than this product — 'Datasets' is generic, 'Web Scraper API' is not"),
+            queries: z.array(PlannedQuery),
+          }),
+          prompt("catalog", {
+            anchor,
+            target: debrandedAsk,
+            product,
+            productDoes: market.does,
+            market: market.name,
+            centrality: market.centrality,
+            sells: decomp.sells,
+            buyer: decomp.buyer,
+            siblings:
+              market.covers.filter((c) => c !== product).join(", ") || "(nothing else in this market)",
+            coinages: decomp.coinages.join(", "),
+          }),
+          { think: "low", maxOutputTokens: 180 * debrandedAsk + 6_000 },
+        ).then((out) => {
+          const terms = out.terms.map((t) => t.trim()).filter(Boolean).slice(0, 3)
+          strips.push({ product, terms })
+          const hand = openingHand(product, terms, { branded: !out.generic })
+          reserve.set(product, hand.reserve)
+          const asFired = (fq: FamilyQuery): SweptQuery => ({
+            q: fq.q,
+            intent: fq.family === "plain" ? "evaluation" : "switching",
+            platform: "web",
+            why: fq.why,
+            market: market.name,
+            family: fq.family,
+            product: fq.product,
+            term: fq.term,
+          })
+          const debranded: SweptQuery[] = out.queries.map((q) => ({
+            ...q,
+            market: market.name,
+            family: "debranded" as const,
+            product,
+          }))
+          return [...hand.open.map(asFired), ...debranded.slice(0, debrandedAsk)]
         }),
-        prompt("catalog", {
-          anchor,
-          target: debrandedAsk,
-          product,
-          productDoes: market.does,
-          market: market.name,
-          centrality: market.centrality,
-          sells: decomp.sells,
-          buyer: decomp.buyer,
-          siblings:
-            market.covers.filter((c) => c !== product).join(", ") || "(nothing else in this market)",
-          coinages: decomp.coinages.join(", "),
-        }),
-        { think: "low", maxOutputTokens: 180 * debrandedAsk + 6_000 },
-      ).then((out) => {
-        const terms = out.terms.map((t) => t.trim()).filter(Boolean).slice(0, 3)
-        strips.push({ product, terms })
-        const hand = openingHand(product, terms, { branded: !out.generic })
-        reserve.set(product, hand.reserve)
-        const asFired = (fq: FamilyQuery): SweptQuery => ({
-          q: fq.q,
-          intent: fq.family === "plain" ? "evaluation" : "switching",
-          platform: "web",
-          why: fq.why,
-          market: market.name,
-          family: fq.family,
-          product: fq.product,
-          term: fq.term,
-        })
-        const debranded: SweptQuery[] = out.queries.map((q) => ({
-          ...q,
-          market: market.name,
-          family: "debranded" as const,
-          product,
-        }))
-        return [...hand.open.map(asFired), ...debranded.slice(0, debrandedAsk)]
-      }),
-    ),
-  )
+      ),
+    )
+    catalogs.push(...chunk)
+  }
 
   // Deal the company-level hand once — the owner decision, and the densest
   // comparison pages a map has. Fired outside the per-product calls because it
@@ -1077,11 +1093,15 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     // Priced from Bright Data's SERP rate, which is the only part of the bill
     // that is knowable before the run, the model half depends on how much text
     // comes back.
-    requested: target,
+    //
+    // `target` is the 40-fallback used only when `opts.queries` clamps the
+    // catalog — reporting it as `requested` on the normal, uncapped path told
+    // the reader a run was capped at 40 when nothing capped it at all.
+    requested: opts.queries,
     written: planned.length,
     estimatedUsd: queries.length * PAGES * 0.0015,
     budgetUsd: 0,
-    uncapped: false,
+    uncapped: opts.queries === undefined,
   })
 
   // ── 3. fire, look, and decide whether to fire again ───────────────────────
