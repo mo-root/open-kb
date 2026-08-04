@@ -13,8 +13,11 @@ The market is defined by what this company does — NOT by its name:
 Your lens for this catalog: **{{lens}}**
 {{lensDetail}}
 
-Write {{target}} queries, all through that lens. Two other catalogs are being written at the same
+Write up to {{target}} queries, all through that lens. Other catalogs are being written at the same
 time through different lenses, so do not try to cover everything; cover your own lens properly.
+
+If your lens does not apply to this company, return an empty list. A lens that writes queries it
+does not believe in spends the budget on results nobody will use.
 
 Absolute rules:
 
@@ -56,48 +59,6 @@ Absolute rules:
   a real market and it is not what this company is bought for, so a small budget spent there buys a
   map of somebody else's market. If the budget is smaller than the core list, spend it on the core
   markets furthest apart.
-- **If a new class of buyer has recently arrived, hunt it.** Markets split by persona, which is what
-  your lens does, and they also split by TIME: a cohort that did not exist three years ago, needs
-  what this company already sells for a new reason, reaches it through a new socket, and breaks in a
-  new place. Its players have no search-engine footprint yet, so a ranked query returns the previous
-  cohort and misses them entirely.
-
-  This applies ONLY when you can name all three, from the company's own markets above:
-
-  1. **the new consumer** — who started buying this capability recently
-  2. **the new socket** — the standard, protocol, plug format or marketplace they consume it through
-  3. **the new failure** — the word that means it broke, which did not exist before
-
-  If you cannot fill all three, this anchor has no live wave: write nothing here and spend the
-  budget on the lenses. Forcing one produces queries that sound plausible and return nothing, which
-  is worse than no queries because it consumes budget invisibly.
-
-  Filling the three slots for a **developer tool**, since that is the common case here: the new
-  consumer is an autonomous agent or the team building one; the socket is a tool-call protocol, an
-  agent framework's plugin format, a model-context server or a retrieval pipeline; the failure is
-  the agent's own run breaking rather than a human's script — the tool call that returned nothing,
-  the context that went stale, the harness step that timed out. Its DIY tools are the open-source
-  crawlers, headless drivers and stealth plugins a team reaches for first, and its harnesses are
-  the agent frameworks and workflow builders it assembles itself inside.
-
-  Those are illustrations of the SHAPES, not a list to match against. For a logistics platform the
-  same three slots exist and are filled with entirely different words; for a pump manufacturer they
-  cannot be filled at all and the rule does not fire.
-
-  When it does apply, four shapes reach what a category query cannot:
-
-  - **the consumer's own deficiency, never the cure** — say what is wrong with the new consumer in
-    its own words and do not mention this company's category at all. It reaches a buyer who has the
-    problem and has not yet learned the name of the solution, which no vendor-shaped query can.
-  - **the socket as a bare noun, paired with the capability** — a standard has no proprietor whose
-    pages become the ceiling, so it behaves like a market term and one query can surface a whole
-    registry of implementations.
-  - **the wave's do-it-yourself tool next to this market's signature failure** — the cheap thing the
-    cohort tries first, plus the word that means it stopped working.
-  - **the harness it assembles itself in** — the framework, platform or controller the new consumer
-    is built inside. This is the only shape that returns a distribution channel rather than a rival,
-    and whoever owns the harness owns the default integration slot.
-
 - Spread across platforms. For a platform query, use a site: operator or name the platform in the text.
 - Give every query a one-line `why`: what it is expected to surface that the others will not.
 - Set `market` to one of the market names listed above, **copied character for character**. Not your

@@ -161,6 +161,53 @@ finds dependencies, integrations, open-source alternatives, and the vendors who 
 rather than a whole platform.`,
   },
   {
+    /**
+     * The wave gets a lens, not a bullet.
+     *
+     * It first shipped as one rule among nine at the bottom of a 98-line
+     * prompt, and a live catalog of eighteen queries spent one of them on it.
+     * A lens has its own call and its own share of the budget, so the rule
+     * competes with nothing.
+     *
+     * It is the one lens that can decline. The gate is three slots and a market
+     * with no wave fills none of them, so this lens is told to hand its budget
+     * back rather than invent one: queries that sound plausible and return
+     * nothing are worse than no queries, because they spend the budget
+     * invisibly.
+     */
+    name: "the new consumer",
+    detail: `A class of buyer that did not exist three years ago, needs what this company already
+sells for a new reason, reaches it through a NEW SOCKET, and breaks in a NEW PLACE. Its players
+have no search-engine footprint yet, so an ordinary ranked query returns the previous cohort and
+misses them entirely.
+
+Before writing anything, fill three slots from the markets above:
+  1. the new consumer  — who started buying this capability recently
+  2. the new socket    — the standard, protocol, plug format or marketplace they consume it through
+  3. the new failure   — the word that means it broke, which did not exist before
+
+FILL ALL THREE OR WRITE NOTHING. Return an empty list and let the other lenses have the budget. A
+market with no live wave is the normal case, not a failure.
+
+For a developer tool, the common case here: the consumer is an autonomous agent or the team
+building one; the socket is a tool-call protocol, an agent framework's plugin format, a
+model-context server or a retrieval pipeline; the failure is the agent's own run breaking rather
+than a human's script, the tool call that returned nothing, the context that went stale, the
+harness step that timed out. Illustrations of the shapes, not a list to match against: a logistics
+platform fills the same slots with entirely different words.
+
+Four shapes, and spend across them:
+  - the consumer's own deficiency, never the cure. Say what is wrong with the new consumer in its
+    own words and do not mention this company's category at all. It reaches a buyer who has the
+    problem and has not learned the name of the solution, which no vendor-shaped query can.
+  - the socket as a bare noun beside the capability. A standard has no proprietor whose pages
+    become the ceiling, so one query can surface a whole registry of implementations.
+  - the wave's do-it-yourself tool beside this market's signature failure: the cheap thing the
+    cohort reaches for first, plus the word that means it stopped working.
+  - the harness it assembles itself inside. The only shape that returns a DISTRIBUTION CHANNEL
+    rather than a rival, and whoever owns the harness owns the default integration slot.`,
+  },
+  {
     name: "where the market gathers",
     detail: `The places this market talks about itself and lists itself: subreddits, forums, Q&A
 sites, newsletters, conferences, trade bodies, directories, comparison sites, and who is hiring for
