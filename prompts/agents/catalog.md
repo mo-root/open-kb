@@ -9,6 +9,12 @@ You are writing search queries that will find everyone competing with ONE produc
     its market    {{market}}  [{{centrality}}]
     sold beside   {{siblings}}
 
+    the company sells   {{sells}}
+    to                  {{buyer}}
+
+The last two lines are context for disambiguating a product name, not the subject. A query written
+about the company finds the company's market; you are after this product's.
+
 The company also sells other things and other calls are covering those. Yours is this product and
 nothing else. A query that would find this product's rivals and the company's other rivals at the
 same time is a query about the company, and the company is not the subject.
