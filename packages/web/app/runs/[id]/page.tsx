@@ -68,11 +68,19 @@ export default async function RunReport({
   const kb = summaryOf(run);
   const r = run.result;
   const s = r.stats;
-  const cost = readRunCost((r.report as Record<string, unknown> | undefined)?.cost);
+  const reportObj = (r.report as Record<string, unknown> | undefined) ?? {};
+  const cost = readRunCost(reportObj.cost);
   const finishedAt = run.endedAt
     ? new Date(run.endedAt).toISOString().slice(0, 16).replace("T", " ")
     : "";
   const placed = s.kept - kb.unplaced;
+  // Two counts, not one. `s.queries` (`stats.queries`, unchanged) is the
+  // opening hand's size before the run saw a single result; `report.queries`
+  // is everything actually fired, opening plus every widening round — on a
+  // measured run, 63 vs 123. Runs recorded before `report.queries`/`opening`
+  // existed fall back to the one number they have, same value on both.
+  const totalAsked = typeof reportObj.queries === "number" ? reportObj.queries : s.queries;
+  const openingCount = typeof reportObj.opening === "number" ? reportObj.opening : s.queries;
 
   return (
     <main className="mx-auto w-full max-w-5xl px-5 py-10">
@@ -135,8 +143,8 @@ export default async function RunReport({
         />
         <StatTile
           label="queries"
-          value={String(s.queries)}
-          hint="searches bought"
+          value={String(totalAsked)}
+          hint="searches bought, incl. widening"
         />
         <StatTile
           label="per entity"
@@ -201,7 +209,12 @@ export default async function RunReport({
             value={String(r.decomposition.coinages.length)}
             hint="words the catalog was forbidden to search"
           />
-          <Row label="Queries planned" value={String(r.queries.length)} />
+          <Row label="Queries planned" value={String(openingCount)} hint="the opening hand" />
+          <Row
+            label="Queries asked"
+            value={String(totalAsked)}
+            hint={totalAsked > openingCount ? "opening hand plus widening" : undefined}
+          />
           {/* Result PAGES, not questions. The run bills `serpCalls += PAGES`
               per query, so this is several times the live console's "questions
               asked" — two true numbers that read as a contradiction while they
@@ -216,7 +229,11 @@ export default async function RunReport({
             label="Tokens"
             value={`${s.tokIn.toLocaleString()} in / ${s.tokOut.toLocaleString()} out`}
           />
-          <Row label="Requested" value={`${run.queries} queries`} />
+          {/* 0 means no override was requested (the normal, uncapped path —
+              see `createRun`'s own convention), not that zero queries were
+              asked. A "Requested: 0 queries" row read as a bug report about a
+              run that in fact asked `totalAsked` above. */}
+          {run.queries > 0 && <Row label="Requested" value={`${run.queries} queries`} />}
         </Panel>
       </div>
 

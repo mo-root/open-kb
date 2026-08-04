@@ -17,7 +17,14 @@ import { formatDuration, formatUsd, readRunCost } from "./types";
 export interface RunResult {
   domain?: string;
   sells?: string;
+  /** Every search fired: the opening hand plus every widening round. Distinct
+   *  from `opening`, which is the plan size before the run saw anything —
+   *  reading the two as the same number understates what a run actually
+   *  bought (63 opening vs 123 fired, measured). */
   queries?: number;
+  /** The opening hand's size, before the run looked at what came back and
+   *  decided whether to widen. */
+  opening?: number;
   results?: number;
   hosts?: number;
   entities?: number;
@@ -91,11 +98,16 @@ function Composition({ r }: { r: RunResult }) {
 function ResultStats({ r }: { r: RunResult }) {
   return (
     <>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
         <Stat label="on the map" value={r.kept ?? 0} />
         <Stat label="hosts seen" value={r.hosts ?? 0} />
         <Stat label="judged noise" value={r.noise ?? 0} />
-        <Stat label="queries" value={r.queries ?? 0} />
+        {/* Two counts, not one: "queries" is everything fired, opening hand
+            plus every widening round; "opening" is the plan size before the
+            run saw a single result. The two used to share one number and one
+            label. */}
+        <Stat label="queries asked" value={r.queries ?? 0} />
+        <Stat label="opening hand" value={r.opening ?? 0} />
         <Stat label="took" value={formatDuration((r.seconds ?? 0) * 1000)} />
         <Stat label="spent" value={formatUsd(r.usd)} />
       </div>

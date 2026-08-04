@@ -76,7 +76,9 @@ export default async function RunsPage() {
                   <th className="px-3 py-2.5 font-medium">Entities</th>
                   <th className="px-3 py-2.5 font-medium">Players</th>
                   <th className="px-3 py-2.5 font-medium">Unplaced</th>
-                  <th className="px-3 py-2.5 font-medium">Queries</th>
+                  <th className="px-3 py-2.5 font-medium" title="everything fired: the opening hand plus every widening round">
+                    Queries
+                  </th>
                   <th className="px-3 py-2.5 font-medium">Hosts</th>
                   <th className="px-3 py-2.5 font-medium">Took</th>
                   <th className="px-3 py-2.5 font-medium">Cost</th>
@@ -88,12 +90,18 @@ export default async function RunsPage() {
                   const built = run.endedAt
                     ? new Date(run.endedAt).toISOString().slice(0, 16).replace("T", " ")
                     : "—";
+                  const reportObj = (run.result.report as Record<string, unknown> | undefined) ?? {};
                   // The run's own itemised bill, when it carried one. Runs
                   // recorded before `report.cost` existed did not, and a dash is
                   // the honest answer for those.
-                  const cost = readRunCost(
-                    (run.result.report as Record<string, unknown> | undefined)?.cost,
-                  );
+                  const cost = readRunCost(reportObj.cost);
+                  // Everything actually fired, opening hand plus every
+                  // widening round — `stats.queries` alone is only the
+                  // opening hand and understates what a run bought (63 vs 123,
+                  // measured). Runs recorded before `report.queries` existed
+                  // fall back to the one number they have.
+                  const queriesAsked =
+                    typeof reportObj.queries === "number" ? reportObj.queries : s.queries;
                   return (
                     <tr
                       key={run.id}
@@ -146,7 +154,7 @@ export default async function RunsPage() {
                           </span>
                         )}
                       </Cell>
-                      <Cell>{s.queries}</Cell>
+                      <Cell>{queriesAsked}</Cell>
                       <Cell>{s.hosts}</Cell>
                       <Cell>
                         <span className="font-mono text-xs text-slate-400">
