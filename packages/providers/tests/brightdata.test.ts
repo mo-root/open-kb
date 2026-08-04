@@ -276,3 +276,56 @@ describe("serp zone rotation", () => {
     expect(r!.ok).toBe(true)
   })
 })
+
+describe("brightDataSearch obeys a stated rate limit", () => {
+  /**
+   * Measured: the account was auto-throttled with "please decrease your request
+   * rate to 10/min", and the client kept firing eighty concurrent requests into
+   * it — which holds the success rate down, which keeps the throttle on.
+   */
+  it("paces itself once the provider names a rate", async () => {
+    const at: number[] = []
+    let n = 0
+    const fetchImpl = vi.fn(async () => {
+      at.push(Date.now())
+      n += 1
+      return n === 1
+        ? new Response("", {
+            status: 200,
+            headers: { "x-brd-error": "The request was auto-throttled due to low success rate. Please decrease your request rate to 600/min." },
+          })
+        : new Response(JSON.stringify({ organic: [{ link: "https://a.com", title: "A", description: "" }] }), { status: 200 })
+    })
+    const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 1, retryMs: 0 })
+    await s.search(["a", "b", "c"])
+    // 600/min at 90% → a ~111ms gap. The later calls must not all land at once.
+    const gaps = at.slice(1).map((t, i) => t - at[i]!)
+    expect(Math.max(...gaps)).toBeGreaterThan(50)
+  })
+
+  it("does not pace at all until something reports a throttle", async () => {
+    const at: number[] = []
+    const fetchImpl = vi.fn(async () => {
+      at.push(Date.now())
+      return new Response(JSON.stringify({ organic: [] }), { status: 200 })
+    })
+    const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 1 })
+    const t0 = Date.now()
+    await s.search(["a", "b", "c", "d"])
+    // Healthy account: four calls concurrent, essentially instant.
+    expect(Date.now() - t0).toBeLessThan(300)
+  })
+
+  it("reports the throttle text rather than a generic failure", async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        // A fast stated rate so the pacing gap stays inside the test timeout.
+        // At "10/min" this correctly waits 6.7 seconds, which is the point.
+        new Response("", { status: 200, headers: { "x-brd-error": "auto-throttled, decrease your request rate to 6000/min" } }),
+    )
+    const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 1, retryMs: 0 })
+    const [r] = await s.search(["x"])
+    expect(r!.ok).toBe(false)
+    expect(r!.error).toContain("throttled")
+  })
+})

@@ -57,12 +57,56 @@ const API = "https://api.brightdata.com/request"
  */
 const RETRYABLE = /rejected|recently failed|try again|temporarily|expect_body|\b(502|503|429)\b/i
 
+/**
+ * The provider states its own limit; obey it rather than retry into the wall.
+ *
+ * Measured: the account was auto-throttled with "The request was auto-throttled
+ * due to low success rate. Please decrease your request rate to 10/min." Firing
+ * eighty concurrent requests into that keeps the success rate on the floor,
+ * which keeps the throttle on — a penalty that renews itself for as long as the
+ * client ignores the sentence explaining it.
+ *
+ * A throttle is ACCOUNT-wide, so spreading across more zones does not raise the
+ * ceiling. The only thing that lifts it is slowing down until the success rate
+ * recovers.
+ */
+const THROTTLED = /auto-throttled|rate limit|decrease your request rate|sr_rate_limit/i
+
+/** Read the rate the provider asked for, in requests per minute. */
+function statedRate(msg: string): number | null {
+  const m = /([\d.]+)\s*\/\s*min/i.exec(msg) ?? /rate\s+to\s+([\d.]+)/i.exec(msg)
+  const n = m ? Number(m[1]) : NaN
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
 export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}): SearchPort {
   const f = opts.fetchImpl ?? fetch
   const price = opts.serpUsd ?? 0.0015
   const timeoutMs = Math.max(1_000, Math.floor(opts.timeoutMs ?? 30_000))
   /** How long to wait before the one retry. The provider asks for 15 seconds. */
   const retryMs = Math.max(0, Math.floor(opts.retryMs ?? 16_000))
+
+  /**
+   * Shared across every call this port makes, because the limit is the
+   * account's and not one request's. The first response that reports a throttle
+   * sets the pace; everything already in flight starts queueing behind it.
+   */
+  let minGapMs = 0
+  let nextSlotAt = 0
+  const pace = async () => {
+    if (minGapMs <= 0) return
+    const now = Date.now()
+    const slot = Math.max(now, nextSlotAt)
+    nextSlotAt = slot + minGapMs
+    if (slot > now) await new Promise((r) => setTimeout(r, slot - now))
+  }
+  const noteThrottle = (msg: string) => {
+    const perMin = statedRate(msg)
+    // Ninety percent of the stated rate: sitting exactly on a limit is how you
+    // discover it was measured differently at the other end.
+    const gap = perMin ? Math.ceil(60_000 / (perMin * 0.9)) : 6_000
+    if (gap > minGapMs) minGapMs = gap
+  }
 
   const zones = creds.serpZone
     .split(",")
@@ -106,6 +150,7 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
             `${start ? `&start=${start}` : ""}&brd_json=1`
 
           const once = async (zone: string): Promise<SearchResult> => {
+            await pace()
             const started = Date.now()
             try {
               const res = await f(API, {
@@ -126,6 +171,7 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
               const reason = brdError
                 ? `${brdError}${brdStatus ? ` (upstream ${brdStatus})` : ""}`
                 : undefined
+              if (brdError && THROTTLED.test(brdError)) noteThrottle(brdError)
 
               if (!res.ok) {
                 return { query, hits: [], ok: false, error: reason ?? `serp http ${res.status}`, usd: price, ms }
@@ -166,8 +212,11 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
           let out = await once(nextZone())
           // One retry, past the interval the provider names. Workers run
           // concurrently, so this costs one worker's time rather than the wave's.
-          if (!out.ok && RETRYABLE.test(out.error ?? "")) {
-            await new Promise((r) => setTimeout(r, retryMs))
+          if (!out.ok && (RETRYABLE.test(out.error ?? "") || THROTTLED.test(out.error ?? ""))) {
+            // A throttled call waits a full pacing slot; anything else waits the
+            // interval the provider named for a transient failure.
+            const wait = THROTTLED.test(out.error ?? "") ? Math.max(retryMs, minGapMs) : retryMs
+            await new Promise((r) => setTimeout(r, wait))
             // A different zone on the retry where one exists: if the first is
             // throttling, waiting is only half the answer.
             const second = await once(nextZone())
