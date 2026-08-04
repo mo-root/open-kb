@@ -71,7 +71,7 @@ export function companyHand(company: string): FamilyQuery[] {
     branded("", `${c} alternatives`, "whole-company rivals, as switchers search them"),
     branded("", `${c} vs`, "the head-to-head pages reviewers write about the company"),
     branded("", `${c} competitors`, "the analyst and roundup view of the company's field"),
-  ].map((q) => ({ ...q, product: "" }))
+  ]
 }
 
 const plain = (product: string, q: string, term: string, why: string): FamilyQuery => ({
