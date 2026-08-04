@@ -41,6 +41,17 @@ the registry, and an agent that can justify a new family may use it.
   comparison posts, the migration threads, the review pages. The coinage ban is reversed for this
   family only, deliberately; it holds everywhere else.
 
+## The agent-demand lens (the one deliberate tilt)
+
+The map leans developer. For a product whose buyer can be an AI agent or the team building one, the
+hand MUST include queries from that world: the MCP server for this job, the agent harness it plugs
+into, the tool-call integration, the failure an agent run hits that a human script never did. This
+is not a fourth family — it is a lens the agent applies across families (`mcp server for web
+scraping` is plain; the agent-run failure is debranded). The existing three-slot gate holds: name
+the new consumer, the new socket and the new failure, or skip it — a pump manufacturer cannot fill
+the slots and no query should pretend it can. This tilt is the owner's chosen bias, stated here so
+nobody later mistakes it for drift.
+
 ## Strip
 
 Per product, a model step produces 1–3 terms a buyer would actually type, ordered by closeness:
@@ -90,11 +101,14 @@ Nothing on the map is unclickable, including what the anchor itself sells.
 
 ## The bar
 
-- **The screenshot test:** a brightdata run's plain family must surface the head-to-head scraping
-  field (Apify, Zyte, Oxylabs, ScraperAPI, Scrapy, Data Miner…) the way one manual `web scraper`
-  search does.
+- **The screenshot test, on ANY anchor:** the plain family must surface the head-to-head field that
+  one manual search of the product's bare term returns. `web scraper` → Apify, Oxylabs, Scrapy is
+  the illustration, not the benchmark; the bar is judged across the five-company spread (resend,
+  clerk, brightdata, flexport, grundfos), never against one company.
 - Debranded must still contribute entities the plain family missed — if it stops doing so on every
   product, its doctrine has rotted.
 - A family contributing nothing across an entire run is reported, not silently absorbed.
-- Cost: ~15 funded products × ~5 opening queries ≈ 75 queries before widening, roughly $1.00–1.20 a
-  run. Inside the swarm spec's $2–5 envelope.
+- For developer-facing products, the agent-demand lens must actually fire: at least one query per
+  such product from the agent/MCP/harness world.
+- Cost is not estimated here. Every call is billed through span accounting at runtime and the run
+  reports what it spent; estimates in a spec only go stale and mislead.
