@@ -40,9 +40,14 @@
     term: string      // the stripped term it expanded from; "" for branded
     why: string       // one line: what this shape buys
   }
-  export function openingHand(product: string, terms: string[]): { open: FamilyQuery[]; reserve: FamilyQuery[] }
+  export function openingHand(product: string, terms: string[], opts?: { branded?: boolean }): { open: FamilyQuery[]; reserve: FamilyQuery[] }
+  export function companyHand(company: string): FamilyQuery[]
   ```
-  Task 3 imports `openingHand`, `FamilyQuery`, `QueryFamily` from `@open-kb/core`.
+  Task 3 imports `openingHand`, `companyHand`, `FamilyQuery`, `QueryFamily` from `@open-kb/core`.
+  `opts.branded: false` (owner decision: a generic-named product skips branded) omits the branded
+  queries from both open and reserve. `companyHand` returns the once-per-run company-level branded
+  set: `<company> alternatives`, `<company> vs`, `<company> competitors`, each with
+  `product: ""` and `term: ""`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -91,6 +96,25 @@ describe("openingHand", () => {
     expect(open.map((q) => q.q)).toEqual(["Web Scraper API alternatives"])
     expect(reserve.map((q) => q.q)).toEqual(["Web Scraper API vs"])
   })
+
+  it("skips branded entirely for a generic-named product", () => {
+    const { open, reserve } = openingHand("Datasets", ["web dataset marketplace"], { branded: false })
+    const all = [...open, ...reserve]
+    expect(all.some((q) => q.family === "branded")).toBe(false)
+    expect(open.map((q) => q.q)).toEqual(["web dataset marketplace", "web dataset marketplace alternatives"])
+  })
+})
+
+describe("companyHand", () => {
+  it("fires the company-level branded set once", () => {
+    const qs = companyHand("Bright Data")
+    expect(qs.map((q) => q.q)).toEqual([
+      "Bright Data alternatives",
+      "Bright Data vs",
+      "Bright Data competitors",
+    ])
+    for (const q of qs) expect(q).toMatchObject({ family: "branded", product: "", term: "" })
+  })
 })
 ```
 
@@ -131,7 +155,11 @@ export interface FamilyQuery {
  * of the remaining templates for the widening loop to draw from. The opening
  * is an opening, not a cap — a run widens on yield, and nothing here seals it.
  */
-export function openingHand(product: string, terms: string[]): { open: FamilyQuery[]; reserve: FamilyQuery[] } {
+export function openingHand(
+  product: string,
+  terms: string[],
+  opts?: { branded?: boolean },
+): { open: FamilyQuery[]; reserve: FamilyQuery[] } {
   const [t0, ...rest] = terms.map((t) => t.trim()).filter(Boolean)
   const p = product.trim()
 
@@ -152,10 +180,27 @@ export function openingHand(product: string, terms: string[]): { open: FamilyQue
     for (const t of rest) reserve.push(plain(p, t, t, "the next strip term — a different door into the same market"))
   }
 
-  open.push(branded(p, `${p} alternatives`, "the ecosystem that forms around the name: migration threads, comparison posts"))
-  reserve.push(branded(p, `${p} vs`, "who reviewers weigh this product against"))
+  // A generic-named product skips branded (owner decision, 2026-08-04):
+  // `Datasets alternatives` buys noise about the concept, not the product. The
+  // company-level hand covers the comparison ecosystem those products lose.
+  if (opts?.branded !== false) {
+    open.push(branded(p, `${p} alternatives`, "the ecosystem that forms around the name: migration threads, comparison posts"))
+    reserve.push(branded(p, `${p} vs`, "who reviewers weigh this product against"))
+  }
 
   return dedupe(open, reserve)
+}
+
+/** The company-level branded set, fired once per run. The densest comparison
+ *  pages a map has — and the queries the anchor-naming filter must exempt,
+ *  because naming the anchor is their entire point. */
+export function companyHand(company: string): FamilyQuery[] {
+  const c = company.trim()
+  return [
+    branded("", `${c} alternatives`, "whole-company rivals, as switchers search them"),
+    branded("", `${c} vs`, "the head-to-head pages reviewers write about the company"),
+    branded("", `${c} competitors`, "the analyst and roundup view of the company's field"),
+  ].map((q) => ({ ...q, product: "" }))
 }
 
 const plain = (product: string, q: string, term: string, why: string): FamilyQuery => ({
@@ -368,7 +413,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 Below `export type PlannedQuery = z.infer<typeof PlannedQuery>` (sweep.ts:283) add:
 
 ```ts
-import type { FamilyQuery, QueryFamily } from "@open-kb/core"
+import { companyHand, openingHand, type FamilyQuery, type QueryFamily } from "@open-kb/core"
 
 /** A query as the sweep fires it: the model's PlannedQuery plus the mechanical
  *  tags. Family and product are stamped in code, never asked of the model —
@@ -382,9 +427,17 @@ Change `Entity`'s type extension (sweep.ts:296) to:
 export type Entity = z.infer<typeof Entity> & { foundBy?: string[]; families?: QueryFamily[] }
 ```
 
-- [ ] **Step 2: Product citations from the understand call**
+- [ ] **Step 2: Product citations and the brand name from the understand call**
 
-In the `Decomposition` zod (sweep.ts:196–201), extend products:
+In the `Decomposition` zod (sweep.ts:193–238), add a top-level field (the company-level branded
+queries need the name as people write it, and the domain is not it — `brightdata.com` vs
+"Bright Data"):
+
+```ts
+brand: z.string().describe("the company's name as it writes it, e.g. from its own header or footer"),
+```
+
+with a matching one-line mention in `prompts/agents/understand.md`. Then extend products:
 
 ```ts
 products: z.array(
@@ -458,6 +511,9 @@ Replace the funding block (sweep.ts:872–911, `queues` through the `missed` war
         `catalog: ${product}`,
         z.object({
           terms: z.array(z.string()).describe("1-3 terms a buyer types for this job, ordered, closest first"),
+          generic: z
+            .boolean()
+            .describe("true if this product's NAME alone reads as a common noun rather than this product — 'Datasets' is generic, 'Web Scraper API' is not"),
           queries: z.array(PlannedQuery),
         }),
         prompt("catalog", {
@@ -477,7 +533,7 @@ Replace the funding block (sweep.ts:872–911, `queues` through the `missed` war
       ).then((out) => {
         const terms = out.terms.map((t) => t.trim()).filter(Boolean).slice(0, 3)
         strips.push({ product, terms })
-        const hand = openingHand(product, terms)
+        const hand = openingHand(product, terms, { branded: !out.generic })
         reserve.set(product, hand.reserve)
         const asFired = (fq: FamilyQuery): SweptQuery => ({
           q: fq.q,
@@ -501,7 +557,29 @@ Replace the funding block (sweep.ts:872–911, `queues` through the `missed` war
   )
 ```
 
-Then adapt the downstream lines: `catalogs.flatMap((c) => c.queries)` becomes `catalogs.flat()`; the dedupe filter keeps working on `q.q`. The clamp `planned.slice(0, target)` becomes an OVERRIDE, not a default:
+After the `Promise.all`, deal the company-level hand once (owner decision — the densest comparison
+pages a map has):
+
+```ts
+  const company: SweptQuery[] = companyHand(decomp.brand || anchor.replace(/\..*$/, "")).map((fq) => ({
+    q: fq.q,
+    intent: "switching",
+    platform: "web",
+    why: fq.why,
+    market: "",
+    family: fq.family,
+    product: undefined,
+    term: undefined,
+  }))
+```
+
+and include `company` when flattening. **Critical:** the anchor-naming filter a few lines down
+(sweep.ts:990–1005, the `named`/`drop` block that removes queries naming the company) must EXEMPT
+the branded family — naming the company is branded's entire point. Change its predicate so only
+`q.family !== "branded"` rows can be dropped, and update the `say` line to report
+"dropped N debranded/plain queries that named the anchor" so the exemption is visible in the feed.
+
+Then adapt the downstream lines: `catalogs.flatMap((c) => c.queries)` becomes `[...catalogs.flat(), ...company]`; the dedupe filter keeps working on `q.q`. The clamp `planned.slice(0, target)` becomes an OVERRIDE, not a default:
 
 ```ts
   const planned = cat.queries
@@ -805,14 +883,38 @@ Under the "What this company sells" explainer paragraph (lines 169–172), cite 
 
 (Adapt the exact prop path to how NoteView receives the note — follow `foundBy`'s path.)
 
-- [ ] **Step 4: Check and commit**
+- [ ] **Step 4: Rename the section labels to plain sentences (owner decision)**
+
+In `ProductsTab.tsx`:
+- `<SectionHead title="What this company sells" ...>` (line ~164) stays but interpolate the brand
+  when available: `What ${brand} sells` — the component receives notes/catalog; thread a
+  `brand?: string` prop from the same caller that gains `readPages` in Step 2, falling back to
+  "this company".
+- `<SectionHead title="Products found out in the market" ...>` (line ~208) → `"What the market sells"`.
+- `<SectionHead title="Ecosystem" ...>` (line ~270) → `"Who's in this market"`.
+
+Grep `packages/web/components/kb/KbOverview.tsx` for a `title="Ecosystem"` panel (line ~301) and
+retitle it `"Who's in this market"` too, so the two surfaces agree.
+
+- [ ] **Step 5: Set the ceiling**
+
+In `.env` (and the deploy notes in `DEPLOY.md` where env vars are listed):
+
+```
+OPENKB_CEILING_USD=5
+```
+
+The route already reads it per request (`packages/web/app/api/map/route.ts:50`), so no code change —
+just the value, and one line in DEPLOY.md saying $5 is the invite-gated setting.
+
+- [ ] **Step 6: Check and commit**
 
 Run: `pnpm check`
 Expected: clean, including the web typecheck.
 
 ```bash
-git add packages/web
-git commit -m "feat(web): foundAt links on the catalog, family chips on searches and notes
+git add packages/web DEPLOY.md
+git commit -m "feat(web): foundAt links, family chips, plain-sentence section labels, \$5 ceiling
 
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 ```
@@ -852,6 +954,9 @@ For each run, from the printed report and searched output check and record (a sh
 5. debranded contributed entities plain did not (compare per-family host sets from the searched frames).
 6. Every product in the decomposition appears in `strips` (nobody unfunded).
 7. `report.readPages` non-empty and catalog cards in the web UI link out.
+8. The company-level branded queries fired (grep the searched output for `alternatives` rows whose
+   query names the company) and were NOT dropped by the anchor-name filter.
+9. Any product judged `generic` fired no product-branded query (grep its name + "alternatives").
 
 - [ ] **Step 4: Fix what failed, re-run the failing company only, commit**
 

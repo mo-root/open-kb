@@ -99,6 +99,22 @@ door. UI shows the family on the entity and can filter by it.
 
 Nothing on the map is unclickable, including what the anchor itself sells.
 
+## Owner decisions, 2026-08-04
+
+Asked and answered before implementation; these override anything above that disagrees:
+
+- **Company-level branded, once per run.** Besides each product's branded queries, the run fires
+  `<company> alternatives`, `<company> vs`, `<company> competitors` — the densest comparison pages
+  a map has. This requires the anchor-naming filter to EXEMPT the branded family; it keeps
+  filtering plain and debranded.
+- **Generic product names skip branded.** A product named like a common noun ("Datasets") gets no
+  branded queries — `Datasets alternatives` buys noise about the concept. The strip step judges
+  genericness. The company-level branded set covers the gap.
+- **Section labels are plain sentences.** "What <company> sells" / "What the market sells" /
+  "Who's in this market" — the tab reads like an answer, not a taxonomy.
+- **Spend ceiling $5 per run while invite-gated** (`OPENKB_CEILING_USD=5`), the only brake now
+  that query quotas are gone.
+
 ## The bar
 
 - **The screenshot test, on ANY anchor:** the plain family must surface the head-to-head field that
