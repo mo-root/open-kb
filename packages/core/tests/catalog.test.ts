@@ -5,6 +5,7 @@ import {
   isSitemapIndex,
   readPageFacts,
   renderPageFacts,
+  dedupeFacts,
 } from "../src/catalog.js"
 
 const sitemap = (urls: string[]) =>
@@ -148,5 +149,46 @@ describe("reading a page", () => {
     expect(out).toContain("does a")
     // The whole argument for this strategy: it is small.
     expect(out.length).toBeLessThan(200)
+  })
+})
+
+describe("spending the budget", () => {
+  /**
+   * The failure this fixes. A 25-page budget spent depth-first-alphabetically
+   * gave nine slots to industry verticals and ran out at the letter M, losing a
+   * real product that sat later in the alphabet. A vertical page names an
+   * audience; a product page names a capability.
+   */
+  it("spends on products before industry verticals", () => {
+    const out = candidatesFromSitemap(
+      sitemap([
+        "https://x.com/solutions/agencies",
+        "https://x.com/solutions/finance",
+        "https://x.com/solutions/hr",
+        "https://x.com/platform/zzz-last-alphabetically",
+      ]),
+      2,
+    )
+    expect(out.map((c) => new URL(c.url).pathname)).toContain("/platform/zzz-last-alphabetically")
+  })
+
+  it("still takes verticals once the products are exhausted", () => {
+    const out = candidatesFromSitemap(
+      sitemap(["https://x.com/solutions/agencies", "https://x.com/platform"]),
+      5,
+    )
+    expect(out).toHaveLength(2)
+  })
+
+  /** Measured: /platform and /platform/connected-apps-platform returned a
+   *  byte-identical title and description, so the flagship counted twice. */
+  it("drops a page that is the same page under another url", () => {
+    const same = { title: "The platform", description: "one description", heading: "The platform" }
+    const out = dedupeFacts([
+      { url: "https://x.com/platform", ...same },
+      { url: "https://x.com/platform/connected-apps-platform", ...same },
+      { url: "https://x.com/platform/ai", title: "AI", heading: "AI", description: "different" },
+    ])
+    expect(out).toHaveLength(2)
   })
 })

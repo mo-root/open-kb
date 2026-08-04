@@ -30,6 +30,20 @@ export interface Candidate {
  */
 const OFFERING = /^\/(products?|platform|pricing|solutions?|services?|features?)(\/|$)/i
 
+/**
+ * Not every offering path is equally likely to be a product.
+ *
+ * Measured: a 25-page budget spent depth-first-alphabetically gave nine slots
+ * to `/solutions/*` industry verticals and ran out at the letter M, losing a
+ * real product that sat later in the alphabet. A vertical page names an
+ * AUDIENCE; a product page names a CAPABILITY, and only the second is a thing
+ * to buy.
+ *
+ * So the second tier is spent only once the first is exhausted. It is not
+ * excluded, because some vendors genuinely ship products under `/solutions`.
+ */
+const FIRST_TIER = /^\/(products?|platform|pricing|features?)(\/|$)/i
+
 /** Content namespaces that swamp a sitemap and never contain a product. */
 const CONTENT = /^\/(blog|news|resources?|guides?|templates?|customers?|case-studies?|events?|docs?|help|support|legal|about|careers?|press|community|universe|learn|academy|glossary|integrations?|lp|landing|compare|vs|alternatives?)(\/|$)/i
 
@@ -95,7 +109,7 @@ export function candidatesFromSitemap(xml: string, limit = 25): Candidate[] {
  */
 function rank(cands: readonly Candidate[], limit: number): Candidate[] {
   const seen = new Set<string>()
-  const kept: { c: Candidate; depth: number }[] = []
+  const kept: { c: Candidate; depth: number; tier: number }[] = []
   for (const c of cands) {
     const path = pathOf(c.url)
     if (!path || CONTENT.test(path) || !OFFERING.test(path)) continue
@@ -103,10 +117,10 @@ function rank(cands: readonly Candidate[], limit: number): Candidate[] {
     if (depth > MAX_DEPTH) continue
     if (seen.has(path)) continue
     seen.add(path)
-    kept.push({ c, depth })
+    kept.push({ c, depth, tier: FIRST_TIER.test(path) ? 0 : 1 })
   }
   return kept
-    .sort((a, b) => a.depth - b.depth || a.c.url.localeCompare(b.c.url))
+    .sort((a, b) => a.tier - b.tier || a.depth - b.depth || a.c.url.localeCompare(b.c.url))
     .slice(0, limit)
     .map((k) => k.c)
 }
@@ -194,9 +208,29 @@ export function readPageFacts(url: string, html: string): PageFacts | null {
   }
 }
 
+/**
+ * Drop pages that are the same page twice.
+ *
+ * Measured: `/platform` and `/platform/connected-apps-platform` returned a
+ * byte-identical title and description, so the flagship was counted twice and a
+ * slot was spent saying nothing. Deduping on the path cannot see this; two urls
+ * really are two urls.
+ */
+export function dedupeFacts(facts: readonly PageFacts[]): PageFacts[] {
+  const seen = new Set<string>()
+  const out: PageFacts[] = []
+  for (const f of facts) {
+    const key = `${f.title}|${f.description}`.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(f)
+  }
+  return out
+}
+
 /** The block handed to the model, one line per page. */
 export function renderPageFacts(facts: readonly PageFacts[]): string {
-  return facts
+  return dedupeFacts(facts)
     .map((f) => {
       const path = (() => {
         try {

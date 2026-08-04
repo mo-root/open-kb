@@ -21,7 +21,20 @@
 import { generateObject } from "ai"
 import type { LanguageModel } from "ai"
 import { z } from "zod"
-import { sniff, condense, isHtml, type SearchResult, type SpanStream } from "@open-kb/core"
+import {
+  sniff,
+  condense,
+  isHtml,
+  candidatesFromSitemap,
+  candidatesFromLinks,
+  isSitemapIndex,
+  readPageFacts,
+  renderPageFacts,
+  dedupeFacts,
+  type PageFacts,
+  type SearchResult,
+  type SpanStream,
+} from "@open-kb/core"
 import {
   brightDataSearch,
   brightDataFetch,
@@ -365,6 +378,8 @@ export interface SweepOptions {
   /** Skip the paid pass that asks a model to label co-occurring pairs, keeping
    *  only the free edges from pages that name another player outright. */
   skipModelLinking?: boolean
+  /** How many of the company's own product pages to read. 0 uses the index only. */
+  productPages?: number
   /** The CLI's console. Left unset in the browser, where the span stream is the
    *  only output. */
   onLog?: (line: string) => void
@@ -434,6 +449,8 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   const RANK_CONC = Math.max(1, Math.floor(opts.rankConcurrency ?? 6))
   /** How many co-occurring pairs to ask about. Bounds the linking stage's cost. */
   const MAX_PAIRS = Math.max(0, Math.floor(opts.maxPairs ?? 600))
+  /** How many of the company's own product pages to read. */
+  const PRODUCT_PAGES = Math.max(0, Math.floor(opts.productPages ?? 25))
   const search = brightDataSearch(creds, { pages: PAGES })
   const fetcher = brightDataFetch(creds)
 
@@ -630,6 +647,63 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     await read(u, "direct")
   }
 
+  /**
+   * Read the pages where the company says what it sells.
+   *
+   * The index alone recovers every product and eighty-nine things that are not
+   * products: 96% recall at 20% precision, measured against ground truth. The
+   * pages themselves score 72%, because a url says what exists and only a page
+   * says what it is. Costs one to two seconds, concurrent, and nothing at all,
+   * since a direct fetch is free.
+   */
+  const productPages: PageFacts[] = []
+  {
+    const raw = async (u: string) => {
+      const r = await fetcher.get(u, "direct")
+      return r.httpStatus >= 200 && r.httpStatus < 300 ? r.body : ""
+    }
+
+    let candidates = [] as ReturnType<typeof candidatesFromSitemap>
+    let xml = await raw(`https://${anchor}/sitemap.xml`)
+    // A sitemap of sitemaps: folding it here would return nothing but more xml.
+    if (xml && isSitemapIndex(xml)) {
+      const first = /<loc>([^<]+)<\/loc>/.exec(xml)?.[1]
+      xml = first ? await raw(first) : ""
+    }
+    if (xml) candidates = candidatesFromSitemap(xml, PRODUCT_PAGES)
+
+    // The nav ALWAYS, merged rather than used as a fallback. One company's
+    // sitemap has 118 urls of which twelve are products and another's has none,
+    // but the case that decided this is a product named fifteen times on the
+    // homepage and zero times in a 2,976-url sitemap. A sitemap is what a site
+    // wants indexed; the nav is what it wants bought.
+    {
+      const home = await raw(`https://${anchor}/`)
+      const fromNav = candidatesFromLinks(home, `https://${anchor}/`, PRODUCT_PAGES)
+      const seen = new Set(candidates.map((c) => c.url.replace(/\/+$/, "")))
+      candidates = [
+        ...candidates,
+        ...fromNav.filter((c) => !seen.has(c.url.replace(/\/+$/, ""))),
+      ].slice(0, PRODUCT_PAGES)
+    }
+
+    if (candidates.length) {
+      const read = await Promise.all(
+        candidates.map(async (c) => {
+          const body = await raw(c.url)
+          return body ? readPageFacts(c.url, body) : null
+        }),
+      )
+      for (const f of dedupeFacts(read.filter((f): f is PageFacts => f !== null))) productPages.push(f)
+      say(
+        "understand",
+        `read ${productPages.length} of the company's own product pages` +
+          `${candidates.length > productPages.length ? ` (${candidates.length - productPages.length} said nothing)` : ""}`,
+      )
+      for (const f of productPages) think("understand", `${new URL(f.url).pathname} — ${f.heading}`)
+    }
+  }
+
   // A domain that does not resolve is settled, not unlucky. Retrying it and then
   // spending an unlocker call on it wastes time and money, and, worse, the
   // "probably a temporary blip, worth running again" message that follows turns a
@@ -677,7 +751,12 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     "understand",
     `read ${anchor} — ${pages.length} page${pages.length === 1 ? "" : "s"}`,
     Decomposition,
-    prompt("understand", { pages: pages.join("\n\n") }),
+    prompt("understand", {
+      pages: pages.join("\n\n"),
+      productPages: productPages.length
+        ? renderPageFacts(productPages)
+        : "(none found: no sitemap or nav gave product urls, so work from the pages above)",
+    }),
     // Worth thinking about: everything downstream descends from these sentences.
     { think: "medium", maxOutputTokens: 8_000 },
   )

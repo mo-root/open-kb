@@ -43,4 +43,24 @@ a transactional email company that listed an AI-protocol integration alongside i
 third of a small budget on the integration and got back eight pages about AI protocols and nothing
 about email.
 
+## The company's own product pages
+
+These were fetched from its sitemap or its nav, and each line is what ONE page says about itself:
+its path, the name the page gives itself, and its own description.
+
+**This is the catalog. Prefer it over anything you infer from the index below.** A url says what
+exists; only a page says what it is, and the two disagree in both directions. A path reading
+`/platform/ai` fronts a product the page calls "Airtable Assistant", and a path reading
+`scraping-browser` fronts one called "Browser API" — take the page's name in both cases.
+
+A page here is not automatically a product. A hub listing several, a pricing page, a solutions page
+for an industry: those are pages about products rather than products. Read what each one claims.
+
+{{productPages}}
+
+## The index and the front page
+
+Everything the company publishes about itself, condensed. Use it to catch what the product pages
+missed, not as the primary source.
+
 {{pages}}
