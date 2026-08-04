@@ -128,3 +128,74 @@ Asked and answered before implementation; these override anything above that dis
   such product from the agent/MCP/harness world.
 - Cost is not estimated here. Every call is billed through span accounting at runtime and the run
   reports what it spent; estimates in a spec only go stale and mislead.
+
+## First measurement
+
+Date: 2026-08-05. One bounded probe (`pnpm sweep brightdata.com 12`, the `queries: 12` override)
+verdict: PASS — families all present, the agent-demand lens fired on the Discover API product,
+templates well-formed, nothing named the anchor. Proceeded to three full uncapped runs, sequential:
+`pnpm sweep brightdata.com`, `pnpm sweep grundfos.com`, `pnpm sweep resend.com` — the three-of-five
+slice of the bar's named spread this pass covered (clerk.com and flexport.com not run here).
+
+Getting the full runs to actually exercise the uncapped path required a permanent fix: `scripts/
+sweep.ts` always passed a numeric `queries` (default 40), which silently kept every CLI invocation on
+the OLD capped-catalog behavior — the exact quota this spec removes — while the web route already
+treated an unset value as normal. Fixed to leave `queries` unset unless a third arg is given.
+
+### The nine checks
+
+| # | check | brightdata.com | grundfos.com | resend.com |
+|---|---|---|---|---|
+| 1 | all three families asked > 0 | plain 53, debranded 62, branded 8 — PASS | plain 23, debranded 26, branded 6 — PASS | plain 27, debranded 43, branded 6 — PASS |
+| 2 | plain finds ≥3/5 of Apify/Oxylabs/Zyte/ScraperAPI/Scrapy | 5/5 found — PASS | n/a | n/a |
+| 3 | ≥1 agent-demand query fired | 3 fired, e.g. `mcp server web browser scrape` (Web Scraper API), `langchain google search tool mcp` (SERP API) — PASS | n/a | n/a (2 fired anyway, unrequested bonus) |
+| 4 | ZERO agent-demand queries | n/a | 0 fired across 55 queries, incl. several industrial-protocol ones (Modbus/BACnet/MQTT) that could have tempted an "agent" framing and didn't — PASS | n/a |
+| 5 | debranded finds hosts plain missed | 406 hosts unique to debranded (541 debranded vs 495 plain) — PASS | 184 unique (219 vs 254) — PASS | 387 unique (476 vs 219) — PASS |
+| 6 | every decomposed product appears in strips | 13/13 — PASS | 3/3 — PASS | 7/7 — PASS |
+| 7 | `report.readPages` non-empty | 3 pages — PASS | 1 page (homepage only; both llms.txt attempts missed) — PASS | 2 pages — PASS |
+| 8 | company-branded fired, not dropped by the anchor filter | `Bright Data alternatives/vs/competitors`, 31-35 hits each — PASS | `Grundfos alternatives/vs/competitors`, 20-35 hits each — PASS | `Resend alternatives/vs/competitors`, 20-26 hits each — PASS |
+| 9 | generic-judged products fire no branded query | 4 products (Crawl API, Discover API, Managed data acquisition, Web Archive API) fired zero branded queries with no dedup collision to explain it away — PASS | `Advanced Selection` fired zero — PASS | 5 products (Audiences, Automations, Broadcasts, Dedicated IPs, Webhooks) fired zero — PASS |
+
+`report.strips` and `report.readPages` don't carry the model's own `generic` verdict per product, so
+check 9 is read off absence-of-query rather than the flag itself — every case checked had no
+plain/branded term collision to blame instead, which is the closest confirmation the persisted output
+allows.
+
+### Per-run stats
+
+| run | entities kept (noise) | hosts | queries opening→fired | family split | duration | true cost |
+|---|---|---|---|---|---|---|
+| probe: brightdata, `queries:12` | 630 (45) | 675 | 12→73 | plain 46 / debranded 25 / branded 2 | 620s | $1.68 |
+| brightdata.com, uncapped | 910 (24) | 934 | 63→123 | plain 53 / debranded 62 / branded 8 | 702s | $2.80 |
+| grundfos.com, uncapped | 477 (63) | 540 | 20→55 | plain 23 / debranded 26 / branded 6 | 289s | $1.56 |
+| resend.com, uncapped | 617 (12) | 629 | 34→76 | plain 27 / debranded 43 / branded 6 | 615s | $2.00 |
+
+"true cost" is the running total read from span accounting at the run's last billed action, not the
+persisted `stats.usd`/`report.usd` — those undercount, see below. Total measured spend across all
+four runs: **~$8.04 true** (the pipeline's own self-reported totals sum to $6.85). The old baseline
+for brightdata was ~160 entities at 40 capped queries; this pass's uncapped brightdata run found 910
+kept entities from 123 fired queries — 5.7x the entities for ~3x the queries.
+
+### An engine bug this validation surfaced, not fixed here
+
+`packages/sweep/src/sweep.ts` snapshots `usd`/`seconds` (copied into `stats` and `report`) BEFORE the
+paid model-linking phase runs, so every run's self-reported cost and duration excludes linking
+entirely. Measured directly against span accounting on this pass: brightdata reported $2.4099/644s,
+true $2.80/702s; grundfos reported $1.1934/267s, true $1.56/289s; resend reported $1.5683/313s, true
+$2.00/615s — a 12-29% undercount on cost, and on resend the reported duration is *half* the true one.
+Left unfixed here — out of this task's scope (spec + `scripts/sweep.ts` only) — and flagged for a
+follow-up task: move the `usd`/`seconds` capture to after the linking phase, or drop the pre-linking
+snapshot and read `spans` directly the way this validation's `scripts/sweep.ts` change now does.
+
+### Verdict
+
+All nine checks pass on all three full runs, with plenty of margin rather than scraping the bar: the
+plain family found 5 of 5 illustrative vendors on brightdata, not merely 3; debranded contributed
+184-406 hosts per run that plain never touched; the agent-demand lens fired precisely where it should
+(brightdata's Discover/SERP/Scraper products, and unprompted on resend) and nowhere it shouldn't
+(zero on grundfos, holding even against industrial-protocol queries that could plausibly have been
+misread as "agent" queries); and every decomposed product funded a strip and an opening hand on every
+run — the old per-product funding contest is verifiably gone. What's weak is process, not doctrine:
+the CLI script itself was silently defeating the redesign it exists to validate until this pass fixed
+it, and the pipeline's own cost/duration self-report is measurably wrong by a margin (12-29%) large
+enough to mislead anyone reading it to decide whether a run is affordable.

@@ -9,14 +9,27 @@
  */
 import { openrouter } from "@openrouter/ai-sdk-provider"
 import { SpanStream } from "../packages/core/src/index.js"
-import { sweep } from "../packages/sweep/src/index.js"
+import { sweep, readUi } from "../packages/sweep/src/index.js"
 
 const anchor = process.argv[2] ?? "resend.com"
-const TARGET = Number(process.argv[3] ?? 40)
+// Unset unless a third arg is given — the normal case, and now the same
+// default the web route already used (`route.ts`: "undefined is not a bad
+// value, it is the normal one now"). Left as a hardcoded `?? 40` here, every
+// CLI run silently reactivated the old fixed-quota catalog and the run this
+// script exists to validate — every product dealt its own opening hand, the
+// spend ceiling as the only brake — could never actually be exercised from a
+// terminal. A numeric third arg still bounds a probe exactly as before.
+const TARGET = process.argv[3] !== undefined ? Number(process.argv[3]) : undefined
 const MODEL = process.env.OPENKB_MODEL ?? "google/gemini-3.5-flash"
 
 const spans = new SpanStream()
 
+// There is no live ceiling here — the web route's `OPENKB_CEILING_USD` guard
+// is a pre-run refusal, not something that watches a run already in flight,
+// and the CLI has nothing like it at all. `spans.totalUsd()` already tracks
+// the running total as every span is billed, so the only missing piece was
+// printing it. Prefixing every log line costs nothing and turns "did this
+// just blow past $4" from a guess into something read off the screen.
 const out = await sweep({
   domain: anchor,
   queries: TARGET,
@@ -31,9 +44,23 @@ const out = await sweep({
   model: openrouter(MODEL),
   modelId: MODEL,
   runId: `cli-${Date.now()}`,
-  onLog: (line) => console.log(line),
+  onLog: (line) => console.log(`$${spans.totalUsd().toFixed(3)}  ${line}`),
 })
 spans.close()
+
+// Every query the run actually fired, including whatever the widening loop
+// drew from reserve or invented after the opening hand — `out.queries` only
+// ever carries the OPENING batch (the shape the web route's "planned" panel
+// wants), so it undercounts a widened run and there was previously no way to
+// grep what a CLI run actually asked. The span log already has one
+// "ui:results" span per query (`kind: "searched"`), emitted as the sweep runs
+// and never read here before; walked once now that the run has finished and
+// the stream is closed, so this drains the whole log instead of racing it.
+const searched: Record<string, unknown>[] = []
+for await (const span of spans.stream()) {
+  const ui = readUi(span)
+  if (ui?.ns === "results" && ui.frame.kind === "searched") searched.push(ui.frame)
+}
 
 const { stats, entities } = out
 const keep = entities.filter((e) => e.kind !== "noise")
@@ -56,5 +83,5 @@ mkdirSync("runs", { recursive: true })
 // and thirteen minutes should be deleted by a command that does not say "delete".
 const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "")
 const path = `runs/sweep-${anchor.replace(/\W+/g, "-")}-${stamp}.json`
-writeFileSync(path, JSON.stringify(out, null, 2))
-console.log(`\nwrote ${path}`)
+writeFileSync(path, JSON.stringify({ ...out, searched }, null, 2))
+console.log(`\nwrote ${path} (${searched.length} queries logged)`)
