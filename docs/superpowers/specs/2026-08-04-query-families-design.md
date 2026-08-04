@@ -152,14 +152,19 @@ treated an unset value as normal. Fixed to leave `queries` unset unless a third 
 | 4 | ZERO agent-demand queries | n/a | 0 fired across 55 queries, incl. several industrial-protocol ones (Modbus/BACnet/MQTT) that could have tempted an "agent" framing and didn't — PASS | n/a |
 | 5 | debranded finds hosts plain missed | 406 hosts unique to debranded (541 debranded vs 495 plain) — PASS | 184 unique (219 vs 254) — PASS | 387 unique (476 vs 219) — PASS |
 | 6 | every decomposed product appears in strips | 13/13 — PASS | 3/3 — PASS | 7/7 — PASS |
-| 7 | `report.readPages` non-empty | 3 pages — PASS | 1 page (homepage only; both llms.txt attempts missed) — PASS | 2 pages — PASS |
+| 7 | `report.readPages` non-empty, and catalog cards in the web UI link out | readPages: 3 pages — PASS. UI link-out: not exercised this task — see note below | readPages: 1 page (homepage only; both llms.txt attempts missed) — PASS. UI link-out: not exercised | readPages: 2 pages — PASS. UI link-out: not exercised |
 | 8 | company-branded fired, not dropped by the anchor filter | `Bright Data alternatives/vs/competitors`, 31-35 hits each — PASS | `Grundfos alternatives/vs/competitors`, 20-35 hits each — PASS | `Resend alternatives/vs/competitors`, 20-26 hits each — PASS |
 | 9 | generic-judged products fire no branded query | 4 products (Crawl API, Discover API, Managed data acquisition, Web Archive API) fired zero branded queries with no dedup collision to explain it away — PASS | `Advanced Selection` fired zero — PASS | 5 products (Audiences, Automations, Broadcasts, Dedicated IPs, Webhooks) fired zero — PASS |
 
-`report.strips` and `report.readPages` don't carry the model's own `generic` verdict per product, so
-check 9 is read off absence-of-query rather than the flag itself — every case checked had no
-plain/branded term collision to blame instead, which is the closest confirmation the persisted output
-allows.
+`report.strips` doesn't carry the model's own `generic` verdict per product, so check 9 is read off
+absence-of-query rather than the flag itself — every case checked had no plain/branded term collision
+to blame instead, which is the closest confirmation the persisted output allows.
+
+Check 7's UI-link-out half was not run this task: every run here went through the CLI
+(`scripts/sweep.ts`), which never writes into the web app's run registry, so there was no live
+browser session in which a catalog card could have been clicked. The wiring itself (`foundAt` links,
+`readPages` citations) was built and code-reviewed in Task 5 (`ProductsTab.tsx`); that review is the
+only evidence for this half of the check, not anything observed in this task.
 
 ### Per-run stats
 
@@ -180,12 +185,23 @@ kept entities from 123 fired queries — 5.7x the entities for ~3x the queries.
 
 `packages/sweep/src/sweep.ts` snapshots `usd`/`seconds` (copied into `stats` and `report`) BEFORE the
 paid model-linking phase runs, so every run's self-reported cost and duration excludes linking
-entirely. Measured directly against span accounting on this pass: brightdata reported $2.4099/644s,
-true $2.80/702s; grundfos reported $1.1934/267s, true $1.56/289s; resend reported $1.5683/313s, true
-$2.00/615s — a 12-29% undercount on cost, and on resend the reported duration is *half* the true one.
-Left unfixed here — out of this task's scope (spec + `scripts/sweep.ts` only) — and flagged for a
-follow-up task: move the `usd`/`seconds` capture to after the linking phase, or drop the pre-linking
-snapshot and read `spans` directly the way this validation's `scripts/sweep.ts` change now does.
+entirely. Every gap below is computed the same way — `(true − reported) / true`, i.e. the reported
+figure as a shortfall against the true one:
+
+| run | reported usd/seconds | true usd/seconds | cost gap | duration gap |
+|---|---|---|---|---|
+| brightdata | $2.4099 / 644s | $2.801 / 702s | 14.0% | 8.3% |
+| grundfos | $1.1934 / 267s | $1.561 / 289s | 23.5% | 7.6% |
+| resend | $1.5683 / 313s | $2.000 / 615s | 21.6% | 49.2% |
+
+Cost is undercounted by roughly 14-24% on every run. Duration is a different story: brightdata and
+grundfos are only off by 7-8%, but resend's reported duration is barely half the true one (49.2%) —
+resend's 599-pair linking phase alone ran from 313s to 615s, longer than the classification-plus-search
+work the snapshot did capture, so the pre-linking snapshot missed a much larger fraction of the true
+wall clock than it did on the other two runs. Left unfixed here — out of
+this task's scope (spec + `scripts/sweep.ts` only) — and flagged for a follow-up task: move the
+`usd`/`seconds` capture to after the linking phase, or drop the pre-linking snapshot and read `spans`
+directly the way this validation's `scripts/sweep.ts` change now does.
 
 ### Verdict
 
@@ -197,5 +213,6 @@ plain family found 5 of 5 illustrative vendors on brightdata, not merely 3; debr
 misread as "agent" queries); and every decomposed product funded a strip and an opening hand on every
 run — the old per-product funding contest is verifiably gone. What's weak is process, not doctrine:
 the CLI script itself was silently defeating the redesign it exists to validate until this pass fixed
-it, and the pipeline's own cost/duration self-report is measurably wrong by a margin (12-29%) large
-enough to mislead anyone reading it to decide whether a run is affordable.
+it, and the pipeline's own cost self-report is measurably wrong by 14-24% on every run (duration worse
+still on one of the three, off by half) — large enough to mislead anyone reading it to decide whether a
+run is affordable.
