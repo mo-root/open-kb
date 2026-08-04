@@ -111,10 +111,41 @@ function ResultStats({ r }: { r: RunResult }) {
 export function ResultPanel({
   result,
   errorText,
+  stopped = false,
 }: {
   result: RunResult | null;
   errorText: string | null;
+  /** The reader pressed Stop. A different ending from a crash, and the surface
+   *  was calling both "failed". */
+  stopped?: boolean;
 }) {
+  /* THREE endings, not two.
+     Pressing Stop makes the run emit `{kind:"error", message:"Stopped.
+     Everything found before you stopped it is kept."}` (app/api/map/route.ts) —
+     and this panel put that sentence inside a rose card headed "failed / the
+     run did not finish". So the one place the product tells you your money
+     bought something contradicted itself in the same box: the badge said the
+     work was lost, the text said it was kept. A deliberate stop is an outcome,
+     not a fault, and it wears the neutral chrome. */
+  if (stopped && !result) {
+    return (
+      <div className="rounded-lg border border-slate-700 bg-slate-900/50 p-5">
+        <div className="mb-2 flex items-center gap-2">
+          <span className="rounded bg-slate-700/60 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-slate-300">
+            stopped
+          </span>
+          <span className="text-sm text-slate-300">
+            you stopped the run — everything it had already found is kept
+          </span>
+        </div>
+        <p className="text-xs text-slate-500">
+          The map is written from what the sweep had paid for by then. Start
+          again to go deeper; nothing you spent here is lost.
+        </p>
+      </div>
+    );
+  }
+
   if (errorText || !result) {
     return (
       <div className="rounded-lg border border-rose-500/30 bg-rose-500/[0.04] p-5">

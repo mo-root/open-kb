@@ -65,25 +65,43 @@ export function AgentPanel({ chunks }: { chunks: readonly AgentChunk[] }) {
   const [pinned, setPinned] = useState(true);
   const boxRef = useRef<HTMLDivElement>(null);
 
+  const [only, setOnly] = useState<string | null>(null);
+
   const entries = useMemo(() => {
     const out: Entry[] = [];
     let id = 0;
     for (const c of chunks) {
       const t = String(c.type ?? "");
-      // Consecutive text deltas are one thought, not one line each, a token
+      const agent = typeof c.agent === "string" && c.agent ? c.agent : UNKNOWN;
+      // Consecutive text deltas are one thought, not one line each — a token
       // stream rendered as rows is unreadable.
+      //
+      // THE SWARM CORRECTION. This used to merge into whatever the previous
+      // entry was, full stop. With one agent at a time that was right. With
+      // several in flight it welded two different models' answers into one
+      // paragraph — `Promise.all` over concurrent calls interleaves their
+      // frames, and the join was silent, so the panel read as a single
+      // confused voice. Text now merges only into the same agent's own last
+      // entry, which is the narrowest rule that still collapses a token
+      // stream.
       if (t === "text-delta" || t === "text") {
         const piece = String(c.delta ?? c.text ?? "");
         if (!piece) continue;
         const last = out[out.length - 1];
-        if (last?.kind === "text") last.body += piece;
-        else out.push({ id: id++, kind: "text", body: piece });
+        if (last?.kind === "text" && last.agent === agent) last.body += piece;
+        else out.push({ id: id++, kind: "text", body: piece, agent });
       } else if (t === "tool-input-available" || t === "tool-call") {
+        /* Kept, deliberately. Nothing in the repo fed these branches while the
+           engine called `generateObject`, and they read as dead code — but
+           `packages/core/src/discovery.ts` is a `ToolLoopAgent` with real tool
+           definitions, and phase one of the swarm is exactly an agent choosing
+           which pages to read. This is the surface that shows it choosing. */
         out.push({
           id: id++,
           kind: "tool",
           tool: String(c.toolName ?? "tool"),
           body: summarise(c.input),
+          agent,
         });
       } else if (t === "tool-output-available" || t === "tool-result") {
         out.push({
@@ -91,11 +109,32 @@ export function AgentPanel({ chunks }: { chunks: readonly AgentChunk[] }) {
           kind: "result",
           tool: String(c.toolName ?? "tool"),
           body: summarise(c.output),
+          agent,
         });
       }
     }
     return out;
   }, [chunks]);
+
+  /** Who has spoken, in the order they first spoke. Doubles as the filter row:
+   *  with a swarm the useful question is "what is discover doing", and reading
+   *  one agent's thread out of five interleaved ones is not a thing eyes do. */
+  const agents = useMemo(() => {
+    const seen: string[] = [];
+    for (const e of entries) if (!seen.includes(e.agent)) seen.push(e.agent);
+    return seen;
+  }, [entries]);
+
+  const shown = useMemo(
+    () => (only ? entries.filter((e) => e.agent === only) : entries),
+    [entries, only],
+  );
+
+  // A filtered-to agent that stops appearing (a new run, a different phase)
+  // must not leave the panel permanently empty with no visible cause.
+  useEffect(() => {
+    if (only && !agents.includes(only)) setOnly(null);
+  }, [only, agents]);
 
   // Follow the tail, but stop the moment the reader scrolls up, yanking
   // someone back to the bottom while they are reading is worse than not
@@ -103,7 +142,9 @@ export function AgentPanel({ chunks }: { chunks: readonly AgentChunk[] }) {
   useEffect(() => {
     const el = boxRef.current;
     if (el && pinned) el.scrollTop = el.scrollHeight;
-  }, [entries.length, pinned]);
+    // `shown`, not `entries`: filtered to one lane, the tail that matters is
+    // that lane's tail, and the panel must re-follow when the filter changes.
+  }, [shown.length, pinned]);
 
   return (
     <section className="rounded-lg border border-slate-800 bg-slate-900/40">
@@ -112,8 +153,42 @@ export function AgentPanel({ chunks }: { chunks: readonly AgentChunk[] }) {
           What the models said
         </h2>
         <div className="flex items-center gap-3">
-          <span className="font-mono text-[11px] text-slate-500">
-            {entries.length} events
+          {/* The lane picker. Only drawn once more than one agent has actually
+              spoken — a single-agent run must not grow a control that filters
+              nothing. */}
+          {agents.length > 1 && (
+            <div className="flex flex-wrap items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setOnly(null)}
+                aria-pressed={only === null}
+                className={`rounded px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider transition-colors ${
+                  only === null
+                    ? "bg-sky-500/15 text-sky-300"
+                    : "text-slate-500 hover:text-slate-300"
+                }`}
+              >
+                all
+              </button>
+              {agents.map((a) => (
+                <button
+                  key={a}
+                  type="button"
+                  onClick={() => setOnly((cur) => (cur === a ? null : a))}
+                  aria-pressed={only === a}
+                  className={`rounded px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider transition-colors ${
+                    only === a
+                      ? "bg-sky-500/15 text-sky-300"
+                      : "text-slate-500 hover:text-slate-300"
+                  }`}
+                >
+                  {a}
+                </button>
+              ))}
+            </div>
+          )}
+          <span className="tnum font-mono text-[11px] text-slate-500">
+            {shown.length} events
           </span>
           <button
             type="button"
@@ -136,28 +211,39 @@ export function AgentPanel({ chunks }: { chunks: readonly AgentChunk[] }) {
         }}
         className="max-h-[26rem] overflow-y-auto px-4 py-3"
       >
-        {entries.length === 0 ? (
+        {shown.length === 0 ? (
           <p className="py-6 text-center text-sm text-slate-500">
             Nothing yet — each model call&rsquo;s answer lands here as it returns.
           </p>
         ) : (
           <ol className="space-y-2.5">
-            {entries.map((e) => (
-              <li key={e.id} className="text-sm leading-relaxed">
-                {e.kind === "text" ? (
-                  <p className="whitespace-pre-wrap text-slate-300">{e.body}</p>
-                ) : (
-                  <p className="font-mono text-xs">
-                    <span
-                      className={e.kind === "tool" ? "text-sky-400" : "text-emerald-400"}
-                    >
-                      {e.kind === "tool" ? "→" : "←"} {e.tool}
-                    </span>{" "}
-                    <span className="text-slate-500">{e.body}</span>
-                  </p>
-                )}
-              </li>
-            ))}
+            {shown.map((e, i) => {
+              /* The name is printed only when the speaker CHANGES. Stamping it
+                 on every line turns a paragraph into a chat log; printing it at
+                 the hand-off is what makes an interleaved stream readable. */
+              const turn = i === 0 || shown[i - 1].agent !== e.agent;
+              return (
+                <li key={e.id} className="text-sm leading-relaxed">
+                  {turn && agents.length > 1 && (
+                    <div className="mb-0.5 font-mono text-[10px] uppercase tracking-wider text-slate-500">
+                      {e.agent}
+                    </div>
+                  )}
+                  {e.kind === "text" ? (
+                    <p className="whitespace-pre-wrap text-slate-300">{e.body}</p>
+                  ) : (
+                    <p className="font-mono text-xs">
+                      <span
+                        className={e.kind === "tool" ? "text-sky-400" : "text-emerald-400"}
+                      >
+                        {e.kind === "tool" ? "→" : "←"} {e.tool}
+                      </span>{" "}
+                      <span className="text-slate-500">{e.body}</span>
+                    </p>
+                  )}
+                </li>
+              );
+            })}
           </ol>
         )}
       </div>

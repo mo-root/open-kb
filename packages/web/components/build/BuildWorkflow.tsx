@@ -151,10 +151,44 @@ async function readOnce(
  * call and a run meant one wave, and they survived both changes unchanged,
  * quietly promising a third of the real bill.
  */
+/**
+ * Depth, priced from runs rather than from guesswork.
+ *
+ * These were three times too slow and twice too expensive: they were written
+ * before the worker pool, the SERP timeout, the reasoning cut and the
+ * per-product budget, and each of those made a run cheaper and faster while the
+ * numbers stayed put. A reader was told twelve minutes and $1.60 and got three
+ * minutes and $0.67.
+ *
+ * Medians over 33 measured runs, and stated as ranges because the spread is the
+ * honest part: sixteen queries produced 170 entities against one company and 10
+ * against another. What a run returns is set by how many products the company
+ * sells and whether its market is written about, not by the number bought here.
+ * So the count is described as what it buys — questions asked — and the entity
+ * count is not promised at all.
+ */
 const DEPTHS = [
-  { key: "quick", label: "Quick look", queries: 12, about: "~4 min · ~$0.45", note: "enough to see the shape of a market" },
-  { key: "standard", label: "Standard", queries: 40, about: "~7 min · ~$0.90", note: "the one to reach for" },
-  { key: "deep", label: "Deep", queries: 80, about: "~12 min · ~$1.60", note: "buys corroboration more than breadth" },
+  {
+    key: "quick",
+    label: "Quick look",
+    queries: 10,
+    about: "~1 min · ~$0.15",
+    note: "the shape of a market, and whether it is worth a real run",
+  },
+  {
+    key: "standard",
+    label: "Standard",
+    queries: 16,
+    about: "~2 min · ~$0.50",
+    note: "the one to reach for: every core market gets its own questions",
+  },
+  {
+    key: "deep",
+    label: "Deep",
+    queries: 40,
+    about: "~3-11 min · ~$0.70-2.00",
+    note: "widest spread of any setting, because the planner keeps going while it is still finding",
+  },
 ] as const;
 type DepthKey = (typeof DEPTHS)[number]["key"];
 const DEFAULT_DEPTH: DepthKey = "standard";
@@ -204,6 +238,9 @@ export function BuildWorkflow() {
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [result, setResult] = useState<RunResult | null>(null);
   const [errorText, setErrorText] = useState<string | null>(null);
+  /** Set by the Stop button, cleared by the next run. Distinguishes the ending
+   *  the reader chose from the one that happened to them. */
+  const [stopped, setStopped] = useState(false);
 
   const feedId = useRef(0);
   const abort = useRef<AbortController | null>(null);
@@ -252,6 +289,7 @@ export function BuildWorkflow() {
     setResult(null);
     navigated.current = false;
     setErrorText(null);
+    setStopped(false);
     setRunId(null);
     startedAt.current = Date.now();
     setElapsed(0);
@@ -531,6 +569,11 @@ export function BuildWorkflow() {
             <button
               type="button"
               onClick={() => {
+                // Recorded here, not sniffed out of the error text downstream:
+                // the run's stop message is prose and matching on prose breaks
+                // the moment someone rewords it. This is the one place that
+                // knows for certain the ending was chosen.
+                setStopped(true)
                 void fetch(`/api/run/${runId}/cancel`, { method: "POST" }).catch(() => {})
               }}
               className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-400 transition hover:border-rose-600/60 hover:text-rose-400"
@@ -548,7 +591,7 @@ export function BuildWorkflow() {
             query). The model half depends on how much text comes back and
             cannot be promised. */}
         <p className="mt-2 font-mono text-[10px] uppercase tracking-wider text-slate-500">
-          a query reads 3 result pages at $0.0015 each · the agent adds waves where the map looks thin
+          a question reads 4 result pages at $0.0015 each · the planner keeps asking while it is still finding
         </p>
       </div>
 
@@ -563,7 +606,17 @@ export function BuildWorkflow() {
               trend={spendHistory}
             />
             <StatTile label="elapsed" value={formatDuration(elapsed)} hint="wall clock" />
-            <StatTile label="serp calls" value={cost?.serpCalls ?? 0} hint="searches bought" />
+            {/* "queries", not "serp calls". The adapter counts one per search
+                SPAN and the sweep bills PAGES — `serpCalls += PAGES` with
+                PAGES=3 — so this tile read a third of the number the finished
+                run reports under the same words, and the line directly above
+                it already tells the reader a query is three pages. The tile
+                now names what it actually counts. */}
+            <StatTile
+              label="queries fired"
+              value={cost?.serpCalls ?? 0}
+              hint="×3 result pages each"
+            />
             {/* Usually zero, and that is the truth rather than a dead tile: the
                 sweep reads a company's own pages with a free direct fetch and
                 only falls back to the paid unlocker when that returns nothing. */}
@@ -606,7 +659,9 @@ export function BuildWorkflow() {
             <SearchesPanel searches={searches} />
             <FindingsPanel calls={calls} entities={entities} />
             <EventFeed items={feed} running={running} />
-            {(result || errorText) && <ResultPanel result={result} errorText={errorText} />}
+            {(result || errorText || stopped) && (
+              <ResultPanel result={result} errorText={errorText} stopped={stopped} />
+            )}
           </div>
         </div>
       ) : null}
