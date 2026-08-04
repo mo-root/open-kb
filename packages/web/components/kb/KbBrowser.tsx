@@ -212,7 +212,9 @@ export function KbBrowser({
             openNote={openNote}
           />
         )}
-        {tab === "products" && <ProductsTab notes={notes} openNote={openNote} />}
+        {tab === "products" && (
+          <ProductsTab notes={notes} catalog={kb.catalog} markets={kb.markets} openNote={openNote} />
+        )}
         {tab === "graph" && <GraphCanvas slug={slug} openNote={openNote} />}
       </div>
     </div>

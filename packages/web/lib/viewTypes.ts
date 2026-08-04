@@ -129,6 +129,18 @@ export interface KbView {
    *  are counted straight off the run, so there is nothing to mis-parse. */
   kinds: Record<string, number>
   relations: Record<string, number>
+  /**
+   * The anchor's OWN products, read from its own pages.
+   *
+   * This was extracted on every run and never shown. The products tab filtered
+   * entities of kind `product` instead, which are other companies' products
+   * found out in the market, and headed them "Catalog" — so a map of Bright
+   * Data listed Honeygain's SDK and Apify's docs as Bright Data products.
+   */
+  catalog: { name: string; does: string }[]
+  /** Those products grouped into the markets they sit in, which is the unit the
+   *  search budget was actually divided across. */
+  markets: { name: string; does: string; centrality?: string; covers: string[] }[]
 }
 
 /** One entity, whole. v1's equivalent carried a markdown `body`; an entity has

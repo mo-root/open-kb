@@ -82,8 +82,12 @@ const IS_RIVAL = /^(competitor|substitute)$/i;
 
 export function ProductsTab({
   notes,
+  catalog = [],
+  markets = [],
   openNote,
 }: {
+  catalog?: { name: string; does: string }[]
+  markets?: { name: string; does: string; centrality?: string; covers: string[] }[]
   notes: NoteRef[];
   openNote: (p: string) => void;
 }) {
@@ -127,9 +131,48 @@ export function ProductsTab({
               className="shrink-0"
               style={{ color: TYPE_CSS.product }}
             />
-            <SectionHead title="Products" count={products.length} />
+            <SectionHead title="Products found in this market" count={products.length} />
           </div>
         </div>
+        {catalog.length > 0 && (
+          <div className="mb-8">
+            <p className="mb-3 max-w-[70ch] text-[13px] text-slate-500">
+              What this company sells, read from its own pages. Everything below this block is
+              somebody else&rsquo;s product, found out in the market.
+            </p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {catalog.map((p) => (
+                <div
+                  key={p.name}
+                  className="rounded-lg border border-sky-800/50 bg-sky-950/20 p-4"
+                >
+                  <div className="min-w-0 text-sm font-medium text-slate-100">{p.name}</div>
+                  <p className="mt-1 text-[13px] leading-snug text-slate-400">{p.does}</p>
+                </div>
+              ))}
+            </div>
+
+            {markets.length > 0 && (
+              <div className="mt-5">
+                <p className="mb-2 font-mono text-[11px] uppercase tracking-[0.14em] text-slate-500">
+                  grouped into {markets.length} markets, which is how the query budget was split
+                </p>
+                <ul className="flex flex-col gap-1.5">
+                  {markets.map((m) => (
+                    <li key={m.name} className="flex flex-wrap items-baseline gap-2 text-[13px]">
+                      <span className="font-mono text-[10px] uppercase tracking-wider text-slate-600">
+                        {m.centrality ?? "—"}
+                      </span>
+                      <span className="text-slate-200">{m.name}</span>
+                      <span className="min-w-0 text-slate-500">{m.covers.join(", ")}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+
         {products.length === 0 ? (
           <p className="text-sm text-slate-500">
             The classifier tagged nothing on this map as a standalone product —
