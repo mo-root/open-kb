@@ -18,7 +18,12 @@ Those words are banned from every query this run makes, so listing one is an ins
 Name each product exactly as the company's own pages name it, in full. Copy the string, do not
 paraphrase it: dropping or adding a trailing word turns one product into two across runs, and a
 catalog that names the same thing differently each time reads as a catalog that keeps changing. The
-de-branding happens in `capabilities` below, not here.
+de-branding happens in `capabilities` below, not here. For each product, copy into `foundAt` the url
+of the page that establishes it — the product pages carry their urls — or an empty string if only the
+homepage mentions it.
+
+Also write `brand`: the company's own name, as it writes it — from its header, its footer, or how it
+signs a page. A domain like `brightdata.com` is not the name a person types; "Bright Data" is.
 
 Then group those products into `capabilities`, the markets they actually sit in.
 

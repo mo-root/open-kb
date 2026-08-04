@@ -152,21 +152,6 @@ function isSpendDecision(agent: string, message: string): boolean {
   return /^enough\b/i.test(m) || /^round\s+\d+/i.test(m);
 }
 
-/**
- * There is one run, and it is the thorough one.
- *
- * This was three buttons — quick, standard, deep — which asked a reader to
- * price a map before they had ever seen one. The dial is gone because it was
- * never really what sealed the run: the planner stops when it stops finding,
- * so a quiet market costs less on its own without being told to.
- *
- * This is the OPENING catalog, not a ceiling on the run. It divides across the
- * anchor's products, and each later round may add up to half of it again, so
- * the true bound is nearer 120. The run's real brake is the planner calling
- * enough, and the spend ceiling underneath it.
- */
-const OPENING_QUERIES = 40;
-
 export function BuildWorkflow() {
   const router = useRouter();
   /**
@@ -276,7 +261,7 @@ export function BuildWorkflow() {
       const res = await fetch("/api/map", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ domain: target, queries: OPENING_QUERIES }),
+        body: JSON.stringify({ domain: target }),
         signal: ctrl.signal,
       });
       const body = (await res.json().catch(() => null)) as

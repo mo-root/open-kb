@@ -31,9 +31,13 @@ import {
   readPageFacts,
   renderPageFacts,
   dedupeFacts,
+  openingHand,
+  companyHand,
   type PageFacts,
   type SearchResult,
   type SpanStream,
+  type FamilyQuery,
+  type QueryFamily,
 } from "@open-kb/core"
 import {
   brightDataSearch,
@@ -193,10 +197,14 @@ export type EntityEdge = z.infer<typeof EntityEdge>
 const Decomposition = z.object({
   sells: z.string().describe("what this company sells, in one plain sentence, no marketing words"),
   buyer: z.string().describe("who buys it and what has just gone wrong for them"),
+  brand: z.string().describe("the company's name as it writes it, e.g. from its own header or footer"),
   products: z.array(
     z.object({
       name: z.string(),
       does: z.string().describe("what this product does, stripped of the company's own naming"),
+      foundAt: z
+        .string()
+        .describe("the url of the company's own page that establishes this product, copied from the pages given; empty string if none does"),
     }),
   ),
   /**
@@ -281,6 +289,12 @@ export interface QueryYield {
 
 export type Decomposition = z.infer<typeof Decomposition>
 export type PlannedQuery = z.infer<typeof PlannedQuery>
+
+/** A query as the sweep fires it: the model's PlannedQuery plus the mechanical
+ *  tags. Family and product are stamped in code, never asked of the model —
+ *  a tag the model can forget is a tag the join cannot rely on. */
+export type SweptQuery = PlannedQuery & { family: QueryFamily; product?: string; term?: string }
+
 /**
  * `foundBy` is which of the anchor's markets' queries surfaced this host,
  * strongest first. Filled mechanically after classification — every hit knows
@@ -293,7 +307,7 @@ export type PlannedQuery = z.infer<typeof PlannedQuery>
  * reader got one hub with a hundred spokes and no way to see which market any
  * of them belonged to.
  */
-export type Entity = z.infer<typeof Entity> & { foundBy?: string[] }
+export type Entity = z.infer<typeof Entity> & { foundBy?: string[]; families?: QueryFamily[] }
 
 export interface SweepStats {
   queries: number
@@ -314,7 +328,7 @@ export interface SweepStats {
 export interface SweepResult {
   anchor: string
   decomposition: Decomposition
-  queries: PlannedQuery[]
+  queries: SweptQuery[]
   entities: Entity[]
   /** How the entities relate to each other, not to the anchor. */
   edges?: EntityEdge[]
@@ -339,8 +353,10 @@ export interface ModelPricing {
 
 export interface SweepOptions {
   domain: string
-  /** How many queries the catalog is asked for. The single biggest lever on
-   *  both cost and breadth. */
+  /** An override that clamps the catalog to a fixed count, for a bounded
+   *  probe. Left unset — the normal case — every product is dealt its own
+   *  opening hand instead, and the run's real ceiling is the spend limit, not
+   *  a query quota. */
   queries?: number
   spans: SpanStream
   creds: BrightDataCredentials
@@ -653,6 +669,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   // ── 1. read the company ──────────────────────────────────────────────────
   say("understand", `reading ${anchor}`)
   const pages: string[] = []
+  const readPages: string[] = []
 
   const read = async (url: string, mode: "direct" | "unlocked") => {
     const raw = await fetcher.get(url, mode)
@@ -686,6 +703,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     if (found) {
       const kept = condense(s.text)
       pages.push(`--- ${url} ---\n${kept}`)
+      readPages.push(url)
       say(
         "understand",
         `  ${url} -> ${s.text.length} chars${kept.length < s.text.length ? ` (condensed to ${kept.length})` : ""}`,
@@ -833,7 +851,12 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   })
 
   // ── 2. write the catalog, knowing no company names ────────────────────────
-  say("plan", `writing a catalog of ${target} queries that never name the company`)
+  say(
+    "plan",
+    opts.queries !== undefined
+      ? `writing a catalog of up to ${target} queries that never name the company`
+      : `dealing every product an opening hand — no fixed count, the templates and the strip decide`,
+  )
   /**
    * One call per PRODUCT, not one per lens.
    *
@@ -856,69 +879,57 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     a.centrality === b.centrality ? 0 : a.centrality === "core" ? -1 : 1,
   )
 
-  /**
-   * Fund one product from every market before any market gets a second.
-   *
-   * Taking products in order looks fair and is not: a core market whose
-   * products sort late gets nothing at all. Measured on a fifteen-product
-   * company with a sixteen-query budget — eight products funded, seven
-   * unfunded, and a CORE market left with zero queries, which is the exact
-   * failure the coverage rule exists to prevent.
-   *
-   * Round-robin across markets instead, so the budget runs out breadth-first.
-   * Core markets are exhausted before an adjacent one is touched, because an
-   * add-on is a real market and is not what the company is bought for.
-   */
+  // Every product gets a hand. The funding contest died with the spec of
+  // 2026-08-04: a product left unfunded is an entire market the map never
+  // sees, which is the exact failure phase 3 exists to prevent. Core markets
+  // still go first so the pool starts on what the company is bought for.
   const queues = ranked.map((c) => ({
     market: c,
     products: (c.covers.length ? c.covers : [c.name]).slice(),
   }))
-  const core = queues.filter((q) => q.market.centrality === "core")
-  const rest = queues.filter((q) => q.market.centrality !== "core")
-
-  const drain = (qs: typeof queues, room: number, out: { market: (typeof ranked)[number]; product: string }[]) => {
+  const funded: { market: (typeof ranked)[number]; product: string }[] = []
+  {
     let moved = true
-    while (moved && out.length < room) {
+    while (moved) {
       moved = false
-      for (const q of qs) {
-        if (out.length >= room) break
+      for (const q of queues.filter((x) => x.market.centrality === "core")) {
         const p = q.products.shift()
-        if (!p) continue
-        out.push({ market: q.market, product: p })
-        moved = true
+        if (p) { funded.push({ market: q.market, product: p }); moved = true }
+      }
+    }
+    moved = true
+    while (moved) {
+      moved = false
+      for (const q of queues.filter((x) => x.market.centrality !== "core")) {
+        const p = q.products.shift()
+        if (p) { funded.push({ market: q.market, product: p }); moved = true }
       }
     }
   }
+  say("plan", `${funded.length} products, every one dealt an opening hand`)
 
-  // Three per product is the floor worth funding: fewer and a call cannot
-  // spread across even the first shapes, and one query per product buys
-  // nineteen versions of the same question.
-  const perProduct = Math.max(1, Math.min(PER_PRODUCT, Math.max(3, Math.ceil(target / Math.max(queues.length, 1)))))
-  const room = Math.max(1, Math.ceil(target / perProduct))
-  const funded: { market: (typeof ranked)[number]; product: string }[] = []
-  drain(core, room, funded)
-  drain(rest, room, funded)
+  // Debranded ask per product. Small on purpose: the templates already hold
+  // the center, so the model's few are spent where templates cannot go.
+  const debrandedAsk = Math.max(2, Math.min(PER_PRODUCT, 3))
 
-  const unfunded = queues.reduce((n, q) => n + q.products.length, 0)
-  const missed = core.filter((q) => !funded.some((f) => f.market.name === q.market.name))
-  say(
-    "plan",
-    `${funded.length} products get up to ${perProduct} queries each` +
-      `${unfunded ? `, ${unfunded} left unfunded by the budget` : ""}`,
-  )
-  if (missed.length) {
-    say("plan", `budget too small to reach ${missed.length} core market(s): ${missed.map((q) => q.market.name).join(", ")}`)
-  }
+  const strips: { product: string; terms: string[] }[] = []
+  const reserve = new Map<string, FamilyQuery[]>()
 
   const catalogs = await Promise.all(
     funded.map(({ market, product }) =>
       call(
         "plan",
         `catalog: ${product}`,
-        z.object({ queries: z.array(PlannedQuery) }),
+        z.object({
+          terms: z.array(z.string()).describe("1-3 terms a buyer types for this job, ordered, closest first"),
+          generic: z
+            .boolean()
+            .describe("true if this product's NAME alone reads as a common noun rather than this product — 'Datasets' is generic, 'Web Scraper API' is not"),
+          queries: z.array(PlannedQuery),
+        }),
         prompt("catalog", {
           anchor,
-          target: perProduct,
+          target: debrandedAsk,
           product,
           productDoes: market.does,
           market: market.name,
@@ -929,17 +940,53 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
             market.covers.filter((c) => c !== product).join(", ") || "(nothing else in this market)",
           coinages: decomp.coinages.join(", "),
         }),
-        { think: "low", maxOutputTokens: 180 * perProduct + 6_000 },
-      ),
+        { think: "low", maxOutputTokens: 180 * debrandedAsk + 6_000 },
+      ).then((out) => {
+        const terms = out.terms.map((t) => t.trim()).filter(Boolean).slice(0, 3)
+        strips.push({ product, terms })
+        const hand = openingHand(product, terms, { branded: !out.generic })
+        reserve.set(product, hand.reserve)
+        const asFired = (fq: FamilyQuery): SweptQuery => ({
+          q: fq.q,
+          intent: fq.family === "plain" ? "evaluation" : "switching",
+          platform: "web",
+          why: fq.why,
+          market: market.name,
+          family: fq.family,
+          product: fq.product,
+          term: fq.term,
+        })
+        const debranded: SweptQuery[] = out.queries.map((q) => ({
+          ...q,
+          market: market.name,
+          family: "debranded" as const,
+          product,
+        }))
+        return [...hand.open.map(asFired), ...debranded.slice(0, debrandedAsk)]
+      }),
     ),
   )
+
+  // Deal the company-level hand once — the owner decision, and the densest
+  // comparison pages a map has. Fired outside the per-product calls because it
+  // is not about any one product, it is about the company itself.
+  const company: SweptQuery[] = companyHand(decomp.brand || anchor.replace(/\..*$/, "")).map((fq) => ({
+    q: fq.q,
+    intent: "switching",
+    platform: "web",
+    why: fq.why,
+    market: "",
+    family: fq.family,
+    product: undefined,
+    term: undefined,
+  }))
 
   // Deduplicated across lenses: they were told to stay in their own lane, but
   // "best X alternatives" is reachable from two of the three, and a repeat is a
   // query bought twice.
   const seenQ = new Set<string>()
   const cat = {
-    queries: catalogs.flatMap((c) => c.queries).filter((q) => {
+    queries: [...catalogs.flat(), ...company].filter((q) => {
       const k = q.q.trim().toLowerCase()
       if (seenQ.has(k)) return false
       seenQ.add(k)
@@ -959,7 +1006,15 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   // silently topping it up would hide that the market gave the model less to
   // work with than it was asked for.
   const planned = cat.queries
-  const queries = planned.slice(0, target)
+  // opts.queries is now an override for scripts that want a bounded probe.
+  // Left unset — the normal case — the opening is the product count times the
+  // hand, and the ceiling on the RUN is the spend ceiling, not a query quota.
+  //
+  // Copied either way, never aliased to `planned`: the anchor-naming filter
+  // below splices `queries` in place, and `written: planned.length` further
+  // down has to keep reporting what the model actually wrote, not what
+  // survived the drop.
+  const queries = opts.queries !== undefined ? planned.slice(0, target) : [...planned]
 
 
   // Coverage, stated rather than assumed. A market with no query cannot put a
@@ -979,16 +1034,25 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       say("plan", `every one of the ${core.length} core markets got at least one query`)
     }
   }
-  if (planned.length > target) {
+  // The truncation warning only applies when opts.queries actually clamped the
+  // catalog — the normal, unset case never slices, so "using the first N"
+  // would be a lie about a cut that never happened.
+  if (opts.queries !== undefined && planned.length > target) {
     say("plan", `catalog: model wrote ${planned.length} for a budget of ${target} — using the first ${target}`)
-  } else if (planned.length < target) {
+  } else if (opts.queries !== undefined && planned.length < target) {
     say("plan", `catalog: model wrote ${planned.length} of the ${target} asked for`)
   }
 
   const forbidden = [anchor.split(".")[0], ...decomp.coinages].filter(Boolean) as string[]
+  // Branded is exempt: naming the anchor is that family's entire point — its
+  // queries are "{anchor} alternatives" / "{anchor} vs", written by
+  // companyHand and openingHand, never by the model. Everything else that
+  // named the anchor got there by accident and is bought for nothing.
   const named = forbidden.length
-    ? queries.filter((x) =>
-        new RegExp(`\\b(${forbidden.map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\b`, "i").test(x.q),
+    ? queries.filter(
+        (x) =>
+          x.family !== "branded" &&
+          new RegExp(`\\b(${forbidden.map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\b`, "i").test(x.q),
       )
     : []
   // Dropped, not counted. This only ever tested the anchor's own name and its
@@ -999,7 +1063,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   if (named.length) {
     const drop = new Set(named.map((q) => q.q))
     for (let i = queries.length - 1; i >= 0; i--) if (drop.has(queries[i]!.q)) queries.splice(i, 1)
-    say("plan", `catalog: ${queries.length} queries (dropped ${named.length} that named the anchor)`)
+    say("plan", `catalog: ${queries.length} queries (dropped ${named.length} debranded/plain queries that named the anchor)`)
     for (const q of named) think("plan", `dropped, names the anchor: ${q.q}`)
   } else {
     say("plan", `catalog: ${queries.length} queries, none name the anchor`)
@@ -1031,7 +1095,15 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   // already on the map, more queries buy corroboration rather than coverage, and
   // the honest move is to stop rather than to spend the rest of the budget
   // proving what is already known.
-  const hits: Array<{ url: string; title: string; description: string; q: string; intent: string }> = []
+  const hits: Array<{
+    url: string
+    title: string
+    description: string
+    q: string
+    intent: string
+    family: QueryFamily
+    product?: string
+  }> = []
 
   /**
    * Fire a wave, keeping the pipe full.
@@ -1047,7 +1119,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    */
   /** Search one query and record everything it produced. The pool below calls
    *  this; nothing here knows about batches or waves. */
-  const runOne = async (planned: PlannedQuery) => {
+  const runOne = async (planned: SweptQuery) => {
     const [r] = await search.search([planned.q])
     if (!r) return
     {
@@ -1070,7 +1142,8 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         error: r.error,
         usd: r.usd,
       })
-      for (const h of r.hits) hits.push({ ...h, q: r.query, intent: batch[j]!.intent })
+      for (const h of r.hits)
+        hits.push({ ...h, q: r.query, intent: batch[j]!.intent, family: batch[j]!.family, product: batch[j]!.product })
 
       // The results themselves, not just the count. Everything downstream, the
       // hosts, the classifications, the map, is derived from these rows, and
@@ -1081,6 +1154,8 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         query: r.query,
         intent: batch[j]!.intent,
         platform: batch[j]!.platform,
+        family: batch[j]!.family,
+        product: batch[j]!.product ?? "",
         why: batch[j]!.why,
         ok: r.ok,
         error: r.error,
@@ -1111,7 +1186,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     return s
   }
 
-  const asked: PlannedQuery[] = [...queries]
+  const asked: SweptQuery[] = [...queries]
   /**
    * One queue, drained continuously, refilled while it drains.
    *
@@ -1126,13 +1201,13 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    * another query there is usually one waiting. Assessment overlaps searching
    * instead of interrupting it.
    */
-  const queue: PlannedQuery[] = [...queries]
+  const queue: SweptQuery[] = [...queries]
   let taken = 0
   let sealed = false
   let rounds = 0
 
   let ran = 0
-  const take = (): PlannedQuery | null => (taken < queue.length ? queue[taken++]! : null)
+  const take = (): SweptQuery | null => (taken < queue.length ? queue[taken++]! : null)
   const pending = () => queue.length - taken
   const idle = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
@@ -1207,9 +1282,14 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       // but it is writing under time pressure against a moving map and a repeat
       // is a query bought for nothing.
       const seen = new Set(asked.map((q) => q.q.trim().toLowerCase()))
-      const fresh = verdict.queries
+      // Untagged by product or template — the assess call widens on a gap it
+      // named in prose, not a reserve slot, so "debranded" is the honest family
+      // for a query written free-form rather than drawn from a hand. Reserve
+      // draws proper (Task 4) will carry their own product and family through.
+      const fresh: SweptQuery[] = verdict.queries
         .filter((q) => !seen.has(q.q.trim().toLowerCase()))
         .slice(0, Math.max(1, Math.floor(target / 2)))
+        .map((q) => ({ ...q, family: "debranded" as const }))
 
       if (!fresh.length) {
         say("plan", `round ${rounds + 1}: every suggested query had already been asked — stopping`)
@@ -1383,6 +1463,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     const declared = new Map(decomp.capabilities.map((c) => [c.name.trim().toLowerCase(), c.name]))
     const canonical = (m: string | undefined) => (m ? declared.get(m.trim().toLowerCase()) : undefined)
     const marketOf = new Map(asked.map((q) => [q.q, canonical(q.market)]))
+    const familyOf = new Map(asked.map((q) => [q.q, q.family]))
 
     const stray = new Set(asked.map((q) => q.market).filter((m) => m && !canonical(m)))
     if (stray.size) {
@@ -1399,6 +1480,12 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       if (counts.size) {
         e.foundBy = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([m]) => m)
       }
+      const fams = new Map<QueryFamily, number>()
+      for (const h of rows) {
+        const f = familyOf.get(h.q)
+        if (f) fams.set(f, (fams.get(f) ?? 0) + 1)
+      }
+      if (fams.size) e.families = [...fams.entries()].sort((a, b) => b[1] - a[1]).map(([f]) => f)
     }
   }
 
@@ -1603,6 +1690,15 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
 
   say("write", `${keep.length} on the map from ${byHost.size} hosts`)
 
+  // A family contributing nothing must be reported, not absorbed: the doctrine
+  // or the templates have a hole and the only way anyone finds it is here.
+  {
+    const fam = count(asked.map((q) => q.family))
+    for (const f of ["plain", "debranded", "branded"] as const) {
+      if (!fam[f]) say("plan", `the ${f} family asked nothing this run — its doctrine or templates have a hole`)
+    }
+  }
+
   const report: Record<string, unknown> = {
     domain: anchor,
     sells: decomp.sells,
@@ -1614,6 +1710,9 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     noise: entities.length - keep.length,
     kinds: count(keep.map((e) => e.kind)),
     relations: count(keep.map((e) => e.relation)),
+    families: count(asked.map((q) => q.family)),
+    strips,
+    readPages,
     usd,
     seconds,
     cost: {

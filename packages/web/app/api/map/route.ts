@@ -84,14 +84,19 @@ export async function POST(req: Request) {
   // A query count is the single biggest lever on the bill, so a bad one is
   // refused here rather than silently coerced: `Number("")` is 0, and a sweep of
   // zero queries returns an empty map that reads as a quiet market.
-  const requested = body.queries === undefined ? 40 : Number(body.queries)
-  if (!Number.isFinite(requested) || requested < 1 || requested > MAX_QUERIES) {
+  //
+  // Undefined is not a bad value, it is the normal one now: BuildWorkflow sends
+  // no `queries` at all, and an unset override lets the sweep deal every
+  // product its own opening hand instead of racing every product for a share
+  // of a fixed 40. Only an explicit override still needs a bound.
+  const requested = body.queries === undefined ? undefined : Number(body.queries)
+  if (requested !== undefined && (!Number.isFinite(requested) || requested < 1 || requested > MAX_QUERIES)) {
     return Response.json(
       { error: `queries must be between 1 and ${MAX_QUERIES}` },
       { status: 400 },
     )
   }
-  const queries = Math.floor(requested)
+  const queries = requested === undefined ? undefined : Math.floor(requested)
 
   // Checked before a run exists, because a missing key surfaces inside the
   // sweep as a failed model call after the SERP money is already spent.
@@ -130,7 +135,11 @@ export async function POST(req: Request) {
   }
 
   const modelId = process.env.OPENKB_MODEL ?? "google/gemini-3.5-flash"
-  const record = createRun(domain, queries)
+  // `createRun` still records a definite number — its `queries` column is a
+  // bookkeeping field a run's whole history reads, not the sweep's own input.
+  // 0 means "no override was requested", the same convention `ceilingUsd()`
+  // above uses for "no ceiling", rather than reintroducing the 40 default.
+  const record = createRun(domain, queries ?? 0)
 
   // Not awaited. The whole point of the registry is that the run outlives this
   // request; awaiting here would turn a 200-in-a-millisecond into a three-minute
