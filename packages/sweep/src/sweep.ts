@@ -855,20 +855,60 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   const ranked = [...decomp.capabilities].sort((a, b) =>
     a.centrality === b.centrality ? 0 : a.centrality === "core" ? -1 : 1,
   )
-  const units = ranked.flatMap((c) =>
-    (c.covers.length ? c.covers : [c.name]).map((product) => ({ market: c, product })),
-  )
 
-  // Per-product budget, capped. A company with thirty SKUs must not turn a
-  // twenty-query request into a hundred and fifty.
-  const perProduct = Math.max(1, Math.min(PER_PRODUCT, Math.ceil(target / Math.max(units.length, 1))))
-  const funded = units.slice(0, Math.max(1, Math.ceil(target / perProduct)))
+  /**
+   * Fund one product from every market before any market gets a second.
+   *
+   * Taking products in order looks fair and is not: a core market whose
+   * products sort late gets nothing at all. Measured on a fifteen-product
+   * company with a sixteen-query budget — eight products funded, seven
+   * unfunded, and a CORE market left with zero queries, which is the exact
+   * failure the coverage rule exists to prevent.
+   *
+   * Round-robin across markets instead, so the budget runs out breadth-first.
+   * Core markets are exhausted before an adjacent one is touched, because an
+   * add-on is a real market and is not what the company is bought for.
+   */
+  const queues = ranked.map((c) => ({
+    market: c,
+    products: (c.covers.length ? c.covers : [c.name]).slice(),
+  }))
+  const core = queues.filter((q) => q.market.centrality === "core")
+  const rest = queues.filter((q) => q.market.centrality !== "core")
 
+  const drain = (qs: typeof queues, room: number, out: { market: (typeof ranked)[number]; product: string }[]) => {
+    let moved = true
+    while (moved && out.length < room) {
+      moved = false
+      for (const q of qs) {
+        if (out.length >= room) break
+        const p = q.products.shift()
+        if (!p) continue
+        out.push({ market: q.market, product: p })
+        moved = true
+      }
+    }
+  }
+
+  // Three per product is the floor worth funding: fewer and a call cannot
+  // spread across even the first shapes, and one query per product buys
+  // nineteen versions of the same question.
+  const perProduct = Math.max(1, Math.min(PER_PRODUCT, Math.max(3, Math.ceil(target / Math.max(queues.length, 1)))))
+  const room = Math.max(1, Math.ceil(target / perProduct))
+  const funded: { market: (typeof ranked)[number]; product: string }[] = []
+  drain(core, room, funded)
+  drain(rest, room, funded)
+
+  const unfunded = queues.reduce((n, q) => n + q.products.length, 0)
+  const missed = core.filter((q) => !funded.some((f) => f.market.name === q.market.name))
   say(
     "plan",
     `${funded.length} products get up to ${perProduct} queries each` +
-      `${funded.length < units.length ? `, ${units.length - funded.length} left unfunded by the budget` : ""}`,
+      `${unfunded ? `, ${unfunded} left unfunded by the budget` : ""}`,
   )
+  if (missed.length) {
+    say("plan", `budget too small to reach ${missed.length} core market(s): ${missed.map((q) => q.market.name).join(", ")}`)
+  }
 
   const catalogs = await Promise.all(
     funded.map(({ market, product }) =>

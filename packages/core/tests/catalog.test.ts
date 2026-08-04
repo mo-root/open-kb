@@ -213,3 +213,82 @@ describe("market names are snapped to the declared list", () => {
     expect(canonicalise(["Proxy Infrastructure"], "Headless browser rendering APIs")).toBeUndefined()
   })
 })
+
+/**
+ * Budget allocation across products, extracted so it is testable without a run.
+ * Measured failure: a fifteen-product company with a sixteen-query budget
+ * funded eight products in order and left a CORE market with zero queries.
+ */
+function allocate(
+  markets: { name: string; centrality: string; covers: string[] }[],
+  target: number,
+  cap = 5,
+) {
+  const ranked = [...markets].sort((a, b) =>
+    a.centrality === b.centrality ? 0 : a.centrality === "core" ? -1 : 1,
+  )
+  const queues = ranked.map((m) => ({ m, products: (m.covers.length ? m.covers : [m.name]).slice() }))
+  const per = Math.max(1, Math.min(cap, Math.max(3, Math.ceil(target / Math.max(queues.length, 1)))))
+  const room = Math.max(1, Math.ceil(target / per))
+  const out: { market: string; product: string }[] = []
+  const drain = (qs: typeof queues) => {
+    let moved = true
+    while (moved && out.length < room) {
+      moved = false
+      for (const q of qs) {
+        if (out.length >= room) break
+        const p = q.products.shift()
+        if (!p) continue
+        out.push({ market: q.m.name, product: p })
+        moved = true
+      }
+    }
+  }
+  drain(queues.filter((q) => q.m.centrality === "core"))
+  drain(queues.filter((q) => q.m.centrality !== "core"))
+  return { per, funded: out }
+}
+
+describe("spending the query budget across products", () => {
+  const mk = (name: string, centrality: string, covers: string[]) => ({ name, centrality, covers })
+
+  it("reaches every core market before giving any market a second product", () => {
+    const { funded } = allocate(
+      [
+        mk("Proxy", "core", ["Residential", "Datacenter", "ISP"]),
+        mk("Unblocking", "core", ["Unlocker", "Browser"]),
+        mk("Web Datasets", "core", ["Datasets"]),
+      ],
+      16,
+    )
+    expect(new Set(funded.map((f) => f.market))).toEqual(new Set(["Proxy", "Unblocking", "Web Datasets"]))
+  })
+
+  /** Taking products in order looks fair and starves a market that sorts late. */
+  it("does not starve a core market whose products sort last", () => {
+    const { funded } = allocate(
+      [mk("A", "core", ["a1", "a2", "a3", "a4", "a5", "a6"]), mk("Z", "core", ["z1"])],
+      6,
+    )
+    expect(funded.some((f) => f.market === "Z")).toBe(true)
+  })
+
+  it("funds core markets before touching an adjacent one", () => {
+    const { funded } = allocate(
+      [mk("Core", "core", ["c1", "c2"]), mk("Side", "adjacent", ["s1"])],
+      6,
+    )
+    expect(funded.every((f) => f.market === "Core")).toBe(true)
+  })
+
+  /** One query per product cannot spread across even the first shapes, so a
+   *  wide catalog buys nineteen versions of the same question. */
+  it("never drops below three queries per funded product", () => {
+    const many = Array.from({ length: 19 }, (_, i) => mk(`m${i}`, "core", [`p${i}`]))
+    expect(allocate(many, 16).per).toBeGreaterThanOrEqual(3)
+  })
+
+  it("respects the per-product cap when the budget is generous", () => {
+    expect(allocate([mk("A", "core", ["a1"])], 80, 5).per).toBe(5)
+  })
+})
