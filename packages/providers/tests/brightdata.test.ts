@@ -175,3 +175,40 @@ describe("brightDataSearch timeouts", () => {
     expect(r!.hits).toHaveLength(2)
   })
 })
+
+describe("brightDataSearch error reporting", () => {
+  /**
+   * A run reported "42 failed" and nothing else while every response carried the
+   * reason in a header: "response body was rejected" with an upstream 502.
+   */
+  it("reports the provider's own reason rather than a generic failure", async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response("", {
+          status: 200,
+          headers: { "x-brd-error": "response body was rejected", "x-brd-status-code": "502" },
+        }),
+    )
+    const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 1 })
+    const [r] = await s.search(["anything"])
+    expect(r!.ok).toBe(false)
+    expect(r!.error).toContain("response body was rejected")
+    expect(r!.error).toContain("502")
+  })
+
+  it("says the body was empty when there is no header to explain it", async () => {
+    const fetchImpl = vi.fn(async () => new Response("", { status: 200 }))
+    const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 1 })
+    const [r] = await s.search(["anything"])
+    expect(r!.error).toContain("empty body")
+  })
+
+  it("carries the reason through on a non-2xx too", async () => {
+    const fetchImpl = vi.fn(
+      async () => new Response("nope", { status: 429, headers: { "x-brd-error": "cooldown, retry after 15 seconds" } }),
+    )
+    const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 1 })
+    const [r] = await s.search(["anything"])
+    expect(r!.error).toContain("cooldown")
+  })
+})

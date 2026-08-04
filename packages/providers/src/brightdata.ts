@@ -76,13 +76,41 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
               signal: AbortSignal.timeout(timeoutMs),
             })
             const ms = Date.now() - started
-            if (!res.ok) return { query, hits: [], ok: false, error: `serp http ${res.status}`, usd: price, ms }
+
+            /**
+             * The reason lives in a header, not in the status.
+             *
+             * Bright Data answers 200 and puts the real outcome in `x-brd-error`
+             * with the upstream's own code in `x-brd-status-code`. A run once
+             * reported "42 failed" and nothing else while every response carried
+             * "response body was rejected" and an upstream 502, or "this query
+             * recently failed and cannot be attempted at this time". Both are
+             * actionable and neither reached the reader.
+             */
+            const brdError = res.headers.get("x-brd-error")
+            const brdStatus = res.headers.get("x-brd-status-code")
+            const reason = brdError
+              ? `${brdError}${brdStatus ? ` (upstream ${brdStatus})` : ""}`
+              : undefined
+
+            if (!res.ok) {
+              return { query, hits: [], ok: false, error: reason ?? `serp http ${res.status}`, usd: price, ms }
+            }
             const text = await res.text()
             let parsed: { organic?: Array<{ link?: string; title?: string; description?: string }> }
             try {
               parsed = JSON.parse(text)
             } catch {
-              return { query, hits: [], ok: false, error: "serp returned unparseable body", usd: price, ms }
+              return {
+                query,
+                hits: [],
+                ok: false,
+                // A 200 with no body is the shape this provider uses for a
+                // refusal, so the header is the only place the cause exists.
+                error: reason ?? (text.length === 0 ? "serp returned an empty body" : "serp returned unparseable body"),
+                usd: price,
+                ms,
+              }
             }
             const hits = (parsed.organic ?? [])
               .filter((h) => typeof h.link === "string")
