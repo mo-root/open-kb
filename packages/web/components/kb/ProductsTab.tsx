@@ -114,10 +114,19 @@ export function ProductsTab({
   notes,
   catalog = [],
   markets = [],
+  readPages = [],
+  brand,
   openNote,
 }: {
-  catalog?: { name: string; does: string }[]
+  catalog?: { name: string; does: string; foundAt?: string }[]
   markets?: { name: string; does: string; centrality?: string; covers: string[] }[]
+  /** The pages the understand stage read to write the catalog, cited under
+   *  the "What <brand> sells" explainer so a reader can follow the same
+   *  links the model did. */
+  readPages?: string[]
+  /** The company's own name for itself (`decomposition.brand`). Falls back
+   *  to "this company" when a run predates that field. */
+  brand?: string
   notes: NoteRef[];
   openNote: (p: string) => void;
 }) {
@@ -161,7 +170,7 @@ export function ProductsTab({
               className="shrink-0"
               style={{ color: TYPE_CSS.product }}
             />
-            <SectionHead title="What this company sells" count={catalog.length} />
+            <SectionHead title={`What ${brand ?? "this company"} sells`} count={catalog.length} />
           </div>
         </div>
         {catalog.length > 0 && (
@@ -170,6 +179,16 @@ export function ProductsTab({
               What this company sells, read from its own pages. Everything below this block is
               somebody else&rsquo;s product, found out in the market.
             </p>
+            {readPages.length > 0 && (
+              <p className="mb-3 font-mono text-[10px] text-slate-600">
+                read from:{" "}
+                {readPages.map((u, i) => (
+                  <a key={u} href={u} target="_blank" rel="noreferrer" className="text-sky-500 hover:text-sky-400">
+                    {i > 0 ? " · " : ""}{(() => { try { return new URL(u).pathname || "/" } catch { return u } })()}
+                  </a>
+                ))}
+              </p>
+            )}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {catalog.map((p) => (
                 <div
@@ -178,6 +197,17 @@ export function ProductsTab({
                 >
                   <div className="min-w-0 text-sm font-medium text-slate-100">{p.name}</div>
                   <p className="mt-1 text-[13px] leading-snug text-slate-400">{p.does}</p>
+                  {p.foundAt && (
+                    <a
+                      href={p.foundAt}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-2 inline-block max-w-full truncate font-mono text-[10px] text-sky-400 hover:text-sky-300"
+                      title={p.foundAt}
+                    >
+                      {(() => { try { return new URL(p.foundAt).pathname } catch { return p.foundAt } })()}
+                    </a>
+                  )}
                 </div>
               ))}
             </div>
@@ -205,7 +235,7 @@ export function ProductsTab({
 
         {products.length > 0 && (
           <div className="mb-4 mt-10 border-t border-slate-800 pt-6">
-            <SectionHead title="Products found out in the market" count={products.length} />
+            <SectionHead title="What the market sells" count={products.length} />
             <p className="mt-2 max-w-[70ch] text-[13px] text-slate-500">
               Other companies&rsquo; products, grouped by which of the markets above was being
               searched when each one turned up.
@@ -267,7 +297,7 @@ export function ProductsTab({
                 className="shrink-0"
                 style={{ color: TYPE_CSS.player }}
               />
-              <SectionHead title="Ecosystem" count={ecosystem.length} />
+              <SectionHead title="Who's in this market" count={ecosystem.length} />
             </div>
           </div>
           {ecosystem.length > 0 && (

@@ -298,7 +298,7 @@ function EcosystemPanel({
   return (
     <Card className="reveal reveal-3">
       <PanelHead
-        title="Ecosystem"
+        title="Who's in this market"
         count={count}
         right={
           <span className="font-mono text-[10px] lowercase tracking-wide text-slate-600">

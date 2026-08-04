@@ -41,19 +41,26 @@ const PANE_TABS: ReadonlySet<Tab> = new Set<Tab>(["graph"]);
 export function KbBrowser({
   slug,
   manifest,
+  brand: companyBrand,
   notes,
   counts,
   unplaced,
   noise,
   catalog,
   markets,
+  readPages,
   initialNote,
 }: {
   /** The anchor's own products, and the markets they group into. */
-  catalog?: { name: string; does: string }[]
+  catalog?: { name: string; does: string; foundAt?: string }[]
   markets?: { name: string; does: string; centrality?: string; covers: string[] }[]
   slug: string;
   manifest: KbManifest | null;
+  /** The company's own name for itself (`decomposition.brand`), for
+   *  ProductsTab's "What <brand> sells" heading. Distinct from the `brand`
+   *  computed below for the page header, which falls back to the slug rather
+   *  than "this company". */
+  brand?: string;
   notes: NoteRef[];
   /** Entities per node type, tallied by the reader off the run. */
   counts: TypeCounts;
@@ -61,6 +68,8 @@ export function KbBrowser({
   unplaced: number;
   /** Hosts the run paid for and the classifier threw away. */
   noise: number;
+  /** The pages the understand stage read to write the catalog. */
+  readPages?: string[];
   initialNote?: string;
 }) {
   // The entity a bare KB URL opens on: the anchor, the one page that explains
@@ -268,7 +277,14 @@ export function KbBrowser({
           />
         )}
         {tab === "products" && (
-          <ProductsTab notes={notes} catalog={catalog} markets={markets} openNote={openNote} />
+          <ProductsTab
+            notes={notes}
+            catalog={catalog}
+            markets={markets}
+            readPages={readPages}
+            brand={companyBrand}
+            openNote={openNote}
+          />
         )}
         {tab === "graph" && <GraphCanvas slug={slug} openNote={openNote} />}
       </div>

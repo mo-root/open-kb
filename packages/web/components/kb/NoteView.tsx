@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { NoteRef, NoteView as NoteData } from "@/lib/viewTypes";
-import { RELATION_BLURB } from "@/lib/viewTypes";
+import { FAMILY_TONE, RELATION_BLURB } from "@/lib/viewTypes";
 import { SiteIcon } from "@/components/SiteIcon";
 import { KindChip, RelevanceBadge, TypeChip } from "@/components/ui";
 
@@ -179,6 +179,17 @@ export function NoteView({
             )
           )}
           <span className="font-mono text-[11px] text-slate-500">{note.path}</span>
+          {note.families?.map((f) => (
+            <span
+              key={f}
+              title={`surfaced by a ${f} query`}
+              className={`rounded border px-1.5 py-0.5 font-mono text-[10px] ${
+                FAMILY_TONE[f] ?? "border-slate-700 text-slate-400"
+              }`}
+            >
+              found via {f}
+            </span>
+          ))}
         </div>
         <div className="flex items-center gap-2.5">
           <SiteIcon domain={note.domain} name={note.title} size={24} />

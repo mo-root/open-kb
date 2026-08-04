@@ -249,6 +249,7 @@ export function viewOf(run: StoredRun): KbView {
         what: p.entity.what,
         why: p.entity.why,
         foundBy: p.entity.foundBy,
+        families: p.entity.families,
       }),
     ),
   ].sort((a, b) => b.relevance - a.relevance || a.path.localeCompare(b.path))
@@ -256,7 +257,12 @@ export function viewOf(run: StoredRun): KbView {
   return {
     slug: run.id,
     manifest: manifestOf(run),
-    catalog: (run.result.decomposition?.products ?? []).map((p) => ({ name: p.name, does: p.does })),
+    brand: run.result.decomposition?.brand || undefined,
+    catalog: (run.result.decomposition?.products ?? []).map((p) => ({
+      name: p.name,
+      does: p.does,
+      foundAt: p.foundAt || undefined,
+    })),
     markets: (run.result.decomposition?.capabilities ?? []).map((c) => ({
       name: c.name,
       does: c.does,
@@ -267,6 +273,7 @@ export function viewOf(run: StoredRun): KbView {
     notes,
     kinds: tally(kept.map((p) => p.entity.kind)),
     relations: tally(kept.map((p) => p.entity.relation)),
+    readPages: (run.result.report?.readPages as string[] | undefined) ?? [],
   }
 }
 
@@ -303,6 +310,7 @@ export function noteOf(run: StoredRun, path: string): NoteView | null {
     kind: hit.entity.kind,
     relation: hit.entity.relation,
     domain: hit.entity.domain,
+    families: hit.entity.families,
   }
 }
 

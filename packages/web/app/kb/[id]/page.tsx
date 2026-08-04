@@ -39,12 +39,14 @@ export default async function KbPage({
     <KbBrowser
       slug={view.slug}
       manifest={view.manifest}
+      brand={view.brand}
       notes={view.notes}
       counts={view.counts}
       unplaced={summary.unplaced}
       noise={summary.noise}
       catalog={view.catalog}
       markets={view.markets}
+      readPages={view.readPages}
       initialNote={typeof note === "string" ? note : undefined}
     />
   );

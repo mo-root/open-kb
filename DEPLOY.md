@@ -40,6 +40,10 @@ Set both. Either alone leaves the obvious hole.
 A run costs roughly $0.50 at twenty queries and $2.00 at forty. Read the key's
 current usage first and set the base, so the ceiling counts from your deploy:
 
+This deployment ships with `OPENKB_CEILING_USD=5` in `.env` — the invite-gated
+setting: enough for a couple of runs by someone you handed the link to, not
+enough for a stranger who finds it to do real damage.
+
 ```bash
 curl -s https://openrouter.ai/api/v1/key -H "Authorization: Bearer $OPENROUTER_API_KEY"
 ```

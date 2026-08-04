@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { FAMILY_TONE } from "@/lib/viewTypes";
 
 /**
  * Every question the run asked, why it asked it, and what came back.
@@ -27,6 +28,10 @@ export interface SearchView {
   platform: string;
   /** The model's stated reason for asking, written before any result existed. */
   why: string;
+  /** Which of the plain/debranded/branded families this query belongs to.
+   *  Optional: a run recorded before families existed carries no frame with
+   *  one, and that is a real run, not a malformed one. */
+  family?: string;
   ok: boolean;
   error?: string;
   ms: number;
@@ -55,6 +60,7 @@ export function readSearched(v: unknown): SearchView | null {
     intent: String(o.intent ?? ""),
     platform: String(o.platform ?? ""),
     why: String(o.why ?? ""),
+    family: typeof o.family === "string" && o.family ? o.family : undefined,
     ok: o.ok !== false,
     error: typeof o.error === "string" ? o.error : undefined,
     ms: Number(o.ms) || 0,
@@ -132,6 +138,16 @@ export function SearchesPanel({ searches }: { searches: SearchView[] }) {
                 aria-expanded={isOpen}
                 className="flex w-full items-baseline gap-3 px-4 py-2.5 text-left hover:bg-slate-900/40"
               >
+                {s.family && (
+                  <span
+                    className={`shrink-0 rounded border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] ${
+                      FAMILY_TONE[s.family] ?? "text-slate-400 border-slate-600/40 bg-slate-700/20"
+                    }`}
+                    title={`asked as a ${s.family} query`}
+                  >
+                    {s.family}
+                  </span>
+                )}
                 <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-slate-600">
                   {s.intent}
                 </span>

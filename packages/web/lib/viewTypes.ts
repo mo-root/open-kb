@@ -45,6 +45,20 @@ export const RELATION_BLURB: Record<string, string> = {
   anchor: "the company this map is of",
 }
 
+/**
+ * Chip tone per query family, the plain/debranded/branded triad the planner
+ * asks in. Lives here, next to `RELATION_BLURB`, for the same reason: the
+ * searches panel and an entity's own page both need the identical mapping,
+ * and a chip that drifted color between the two surfaces would read as two
+ * different facts about the same query. Unknown values (a run recorded
+ * before families existed) fall through to the caller's own neutral tone.
+ */
+export const FAMILY_TONE: Record<string, string> = {
+  plain: "text-sky-300 border-sky-500/40 bg-sky-500/10",
+  debranded: "text-violet-300 border-violet-400/40 bg-violet-400/10",
+  branded: "text-amber-300 border-amber-500/40 bg-amber-500/10",
+}
+
 /* ------------------------------------------------------------------ manifest */
 
 /** Whatever a completed run recorded about itself.
@@ -94,6 +108,11 @@ export interface NoteRef {
    *  products tab groups by it, so a reader sees which market each finding
    *  belongs to rather than one undifferentiated grid. */
   foundBy?: string[]
+  /** Which of the plain/debranded/branded query families surfaced this host,
+   *  strongest-first, same shape as `foundBy`. A host can carry more than one:
+   *  a debranded search and a branded one both turning up the same domain is
+   *  itself a fact worth showing, not a collision to resolve. */
+  families?: string[]
   /** The node id, shaped like a v1 note path, "players/postmarkapp.com.md".
    *  Keeping the path shape is what lets `nodeTypeOf`, `groupLabel`,
    *  `glyphForNotePath` and the canvas's domain reconstruction all carry over
@@ -125,6 +144,12 @@ export interface NoteRef {
 export interface KbView {
   slug: string
   manifest: KbManifest | null
+  /** The company's own name for itself, from the understand stage
+   *  (`decomposition.brand`) — e.g. "Resend", not "resend.com". Undefined on
+   *  a run recorded before the understand stage wrote it; callers fall back
+   *  to their own wording ("this company") rather than the raw domain, which
+   *  `manifest.brand`/`slug` already cover elsewhere. */
+  brand?: string
   counts: TypeCounts
   /** Strongest placement first, ties broken by path so the order is stable. */
   notes: NoteRef[]
@@ -141,10 +166,15 @@ export interface KbView {
    * found out in the market, and headed them "Catalog" — so a map of Bright
    * Data listed Honeygain's SDK and Apify's docs as Bright Data products.
    */
-  catalog: { name: string; does: string }[]
+  catalog: { name: string; does: string; foundAt?: string }[]
   /** Those products grouped into the markets they sit in, which is the unit the
    *  search budget was actually divided across. */
   markets: { name: string; does: string; centrality?: string; covers: string[] }[]
+  /** The pages the understand stage actually read to write the catalog above,
+   *  in the order it read them. The citation behind "What <brand> sells": a
+   *  reader can follow the same links the model did rather than take the
+   *  summary on faith. Empty on a run recorded before this was tracked. */
+  readPages: string[]
 }
 
 /** One entity, whole. v1's equivalent carried a markdown `body`; an entity has
@@ -163,6 +193,10 @@ export interface NoteView {
   kind: string
   relation: string
   domain: string
+  /** Which query families surfaced this entity, strongest-first. Undefined on
+   *  the anchor (read from its own pages, not searched for) and on a run
+   *  recorded before families existed. */
+  families?: string[]
 }
 
 /* --------------------------------------------------------------------- graph */
