@@ -1268,13 +1268,17 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       const before = distinctHosts().size
       // Per-family and per-product yield, computed from what was actually
       // asked and what actually landed — the table the widening judgement
-      // reads. hostsOf is O(hits) per round; rounds are rare.
+      // reads. O(asked + hits) per round via byQ below, not O(hits × asked):
+      // every product now gets funded (no funding contest capping `asked`),
+      // so a `.find` per hit over a several-thousand-row `asked` would make
+      // this quadratic in the run's own size, rebuilt every round.
       const hostOfHit = (u: string) => {
         try { return new URL(u).hostname.toLowerCase().replace(/^www\./, "") } catch { return "" }
       }
       const famTable = (() => {
         const rowsByFam = new Map<string, { asked: number; hosts: Set<string> }>()
         const rowsByProd = new Map<string, { asked: number; hosts: Set<string> }>()
+        const byQ = new Map(asked.map((x) => [x.q, x]))
         for (const q of asked) {
           const f = rowsByFam.get(q.family) ?? { asked: 0, hosts: new Set<string>() }
           f.asked += 1
@@ -1286,7 +1290,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           }
         }
         for (const h of hits) {
-          const q = asked.find((x) => x.q === h.q)
+          const q = byQ.get(h.q)
           if (!q) continue
           const host = hostOfHit(h.url)
           if (!host) continue
