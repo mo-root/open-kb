@@ -1266,13 +1266,56 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       if (sealed || signal?.aborted) return
 
       const before = distinctHosts().size
+      // Per-family and per-product yield, computed from what was actually
+      // asked and what actually landed — the table the widening judgement
+      // reads. hostsOf is O(hits) per round; rounds are rare.
+      const hostOfHit = (u: string) => {
+        try { return new URL(u).hostname.toLowerCase().replace(/^www\./, "") } catch { return "" }
+      }
+      const famTable = (() => {
+        const rowsByFam = new Map<string, { asked: number; hosts: Set<string> }>()
+        const rowsByProd = new Map<string, { asked: number; hosts: Set<string> }>()
+        for (const q of asked) {
+          const f = rowsByFam.get(q.family) ?? { asked: 0, hosts: new Set<string>() }
+          f.asked += 1
+          rowsByFam.set(q.family, f)
+          if (q.product) {
+            const p = rowsByProd.get(q.product) ?? { asked: 0, hosts: new Set<string>() }
+            p.asked += 1
+            rowsByProd.set(q.product, p)
+          }
+        }
+        for (const h of hits) {
+          const q = asked.find((x) => x.q === h.q)
+          if (!q) continue
+          const host = hostOfHit(h.url)
+          if (!host) continue
+          rowsByFam.get(q.family)?.hosts.add(host)
+          if (q.product) rowsByProd.get(q.product)?.hosts.add(host)
+        }
+        const famLines = [...rowsByFam.entries()].map(
+          ([f, v]) => `  ${f} — ${v.asked} queries, ${v.hosts.size} distinct hosts`,
+        )
+        const prodLines = [...rowsByProd.entries()].map(
+          ([p, v]) => `  ${p} — ${v.asked} queries, ${v.hosts.size} hosts`,
+        )
+        return { families: famLines.join("\n"), products: prodLines.join("\n") }
+      })()
+      const reserveLines = [...reserve.entries()]
+        .filter(([, v]) => v.length)
+        .map(([p, v]) => `  ${p} — ${v.length} held: ${v.map((x) => `"${x.q}"`).join(", ")}`)
+        .join("\n") || "  (all reserves released)"
+
       const verdict = await call(
         "plan",
         "assess",
         z.object({
           enough: z.boolean().describe("is this a map worth showing, or is something obviously missing?"),
           missing: z.string().describe("what is thin or absent, one line. Empty if nothing is."),
-          queries: z.array(PlannedQuery).describe("queries aimed at what is missing. Empty if enough."),
+          draw: z
+            .array(z.object({ product: z.string(), n: z.number() }))
+            .describe("reserve template queries to release, per product. Empty if none."),
+          queries: z.array(PlannedQuery).describe("fresh debranded queries aimed at what no template can reach. Empty if enough."),
         }),
         prompt("assess", {
           anchor,
@@ -1284,6 +1327,8 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           asked: asked.length,
           angles: asked.map((q) => `  ${q.intent} · ${q.platform} — ${q.q}`).join("\n"),
           sample: [...distinctHosts()].slice(0, 60).join(", "),
+          families: `${famTable.families}\n${famTable.products}`,
+          reserve: reserveLines,
         }),
         // A judgement about whether to spend more money. Cheap, and rare.
         // 20,000 because 8,000 was not enough: medium effort against a prompt
@@ -1292,10 +1337,35 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         { think: "medium", maxOutputTokens: 20_000 },
       )
 
-      if (verdict.enough || verdict.queries.length === 0) {
+      // queries.length === 0 alone no longer means "enough": the prompt now
+      // tells the model to release reserve instead of inventing when a
+      // template covers the gap, so a widening round can legitimately carry
+      // zero fresh queries and a non-empty draw. Only seal here when there is
+      // neither.
+      if (verdict.enough || (verdict.queries.length === 0 && !verdict.draw?.length)) {
         say("plan", `enough — ${before} hosts${verdict.missing ? ` (noted gap: ${verdict.missing})` : ""}`)
         sealed = true
         return
+      }
+
+      // Reserve first: a held template is a query already judged worth its
+      // family, so it outranks a freshly invented one.
+      const released: SweptQuery[] = []
+      for (const d of verdict.draw ?? []) {
+        const held = reserve.get(d.product)
+        if (!held?.length) continue
+        for (const fq of held.splice(0, Math.max(1, Math.floor(d.n)))) {
+          released.push({
+            q: fq.q,
+            intent: fq.family === "plain" ? "evaluation" : "switching",
+            platform: "web",
+            why: fq.why,
+            market: asked.find((x) => x.product === fq.product)?.market ?? "",
+            family: fq.family,
+            product: fq.product,
+            term: fq.term,
+          })
+        }
       }
 
       // Never ask the same thing twice. The planner sees what has been asked,
@@ -1305,23 +1375,29 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       // Untagged by product or template — the assess call widens on a gap it
       // named in prose, not a reserve slot, so "debranded" is the honest family
       // for a query written free-form rather than drawn from a hand. Reserve
-      // draws proper (Task 4) will carry their own product and family through.
+      // draws above carry their own product and family through.
       const fresh: SweptQuery[] = verdict.queries
         .filter((q) => !seen.has(q.q.trim().toLowerCase()))
-        .slice(0, Math.max(1, Math.floor(target / 2)))
+        // 20: a round's fresh-invention allowance, distinct from the reserve
+        // releases above, which are pre-judged and uncapped here.
+        .slice(0, 20)
         .map((q) => ({ ...q, family: "debranded" as const }))
 
-      if (!fresh.length) {
+      const widened = [...released, ...fresh]
+      if (!widened.length) {
         say("plan", `round ${rounds + 1}: every suggested query had already been asked — stopping`)
         sealed = true
         return
       }
 
       rounds += 1
-      say("plan", `round ${rounds}: ${verdict.missing || "widening"} — ${fresh.length} more queries queued`)
+      say(
+        "plan",
+        `round ${rounds}: ${verdict.missing || "widening"} — ${released.length} drawn from reserve, ${fresh.length} freshly written — ${widened.length} queries queued`,
+      )
       think("plan", `after ${before} hosts the model wants more: ${verdict.missing}`)
-      asked.push(...fresh)
-      queue.push(...fresh)
+      asked.push(...widened)
+      queue.push(...widened)
 
       // Yield floor, measured once the round's queries have actually landed.
       // A round that adds almost nothing means the queries are reaching ground
