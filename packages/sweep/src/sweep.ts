@@ -362,6 +362,9 @@ export interface SweepOptions {
   rankConcurrency?: number
   /** How many co-occurring entity pairs to ask about. 0 disables linking. */
   maxPairs?: number
+  /** Skip the paid pass that asks a model to label co-occurring pairs, keeping
+   *  only the free edges from pages that name another player outright. */
+  skipModelLinking?: boolean
   /** The CLI's console. Left unset in the browser, where the span stream is the
    *  only output. */
   onLog?: (line: string) => void
@@ -1229,8 +1232,87 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   })()
 
   const edges: EntityEdge[] = []
-  if (coPairs.length) {
-    say("link", `${coPairs.length} pairs co-occurred in 2+ searches — asking how they relate`)
+
+  /**
+   * Systematic linking, before any model sees a pair.
+   *
+   * Taken from v1, which joined a community to the vendors it discusses by
+   * asking one question of the text: does it NAME them. A word boundary match,
+   * no judgement, no call.
+   *
+   * It belongs first because it is the stronger evidence. A page that writes a
+   * company's name is a fact about that page; a model deciding two hosts are
+   * related because they co-occurred is an inference, and an audit of this
+   * engine's inferences on thin evidence found more wrong than right. So
+   * matching runs first, its edges are `measured`, and the model is left only
+   * the pairs no page resolved.
+   *
+   * Free, and it costs no wall clock worth measuring.
+   */
+  const namesIt = (haystack: string, needle: string): boolean =>
+    new RegExp(`\\b${needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(haystack)
+
+  {
+    const spellings: { entity: Entity; terms: string[] }[] = keep.map((e) => {
+      const host = e.domain.toLowerCase().replace(/^www\./, "")
+      return {
+        entity: e,
+        // The company's name and its full host, and nothing else. Matching a
+        // host's first label instead looked clever and was not: it made "cloud"
+        // a spelling of cloud.google.com, "guides" of a university library, and
+        // "google" of four separate entities, so a page saying "cloud" linked to
+        // Google. v1 matched name and slug only, and was right.
+        terms: [...new Set([e.name, host])].filter((t) => t && t.length > 3),
+      }
+    })
+
+    const seenEdge = new Set<string>()
+    let matched = 0
+    for (const [host, rows] of byHost) {
+      const src = keep.find((e) => e.domain.toLowerCase().replace(/^www\./, "") === host)
+      if (!src) continue
+      // Only what this host's own results said, which is text the run retrieved.
+      const blob = rows.map((r) => `${r.title} ${r.description ?? ""}`).join("\n")
+      for (const { entity, terms } of spellings) {
+        const target = entity.domain.toLowerCase().replace(/^www\./, "")
+        if (target === host) continue
+        const hit = terms.find((t) => namesIt(blob, t))
+        if (!hit) continue
+        const key = `${host}|${target}`
+        if (seenEdge.has(key)) continue
+        seenEdge.add(key)
+        edges.push({
+          from: host,
+          to: target,
+          // What the naming means depends on what the namer is. A forum naming a
+          // vendor discusses it; a directory lists it; a publication covers it;
+          // a vendor naming a vendor is positioning against one.
+          relation:
+            src.kind === "community"
+              ? "discusses"
+              : src.kind === "directory"
+                ? "lists"
+                : src.kind === "publisher"
+                  ? "covers"
+                  : "competitor",
+          why: `a page on ${host} names "${hit}"`,
+          confidence: "measured",
+        })
+        matched += 1
+      }
+    }
+    if (matched) say("link", `${matched} edges from pages that name another player outright`)
+  }
+
+  // Whatever the free pass already answered is not worth asking a model about.
+  const resolved = new Set(edges.map((e) => [e.from, e.to].sort().join("|")))
+  const unresolved = coPairs.filter((p) => !resolved.has([p.a, p.b].sort().join("|")))
+  if (resolved.size) {
+    say("link", `${coPairs.length - unresolved.length} of ${coPairs.length} pairs already answered by a page`)
+  }
+
+  if (unresolved.length && !opts.skipModelLinking) {
+    say("link", `${unresolved.length} pairs co-occurred but no page names either — asking how they relate`)
     const byDomain = new Map(keep.map((e) => [e.domain.toLowerCase().replace(/^www\./, ""), e]))
     const describe = (d: string) => {
       const e = byDomain.get(d)
@@ -1238,7 +1320,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     }
 
     const pairBatches: (typeof coPairs)[] = []
-    for (let i = 0; i < coPairs.length; i += BATCH) pairBatches.push(coPairs.slice(i, i + BATCH))
+    for (let i = 0; i < unresolved.length; i += BATCH) pairBatches.push(unresolved.slice(i, i + BATCH))
 
     let linked = 0
     await Promise.all(
@@ -1268,7 +1350,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           edges.push({ ...e, from, to })
         }
         linked += batch.length
-        say("link", `  ${linked}/${coPairs.length} pairs`)
+        say("link", `  ${linked}/${unresolved.length} pairs`)
       }),
     )
     say("link", `${edges.length} edges between entities`)
