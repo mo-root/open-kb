@@ -45,5 +45,8 @@ COPY --from=build /app ./
 ENV OPENKB_RUNS_DIR=/app/runs
 RUN mkdir -p /app/runs
 
+# The host assigns this; the start script binds ${PORT:-3210}. Hard-coding a
+# port means the platform health-checks a closed socket and fails the deploy.
+ENV PORT=3000
 EXPOSE 3000
 CMD ["pnpm", "--filter", "@open-kb/web", "start"]

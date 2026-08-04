@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "NODE_OPTIONS=--max-http-header-size=65536 next dev --webpack --port 3210",
     "build": "next build --webpack",
-    "start": "NODE_OPTIONS=--max-http-header-size=65536 next start --port 3210",
+    "start": "NODE_OPTIONS=--max-http-header-size=65536 next start --port ${PORT:-3210}",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

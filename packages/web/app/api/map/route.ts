@@ -35,7 +35,21 @@ const MAX_QUERIES = 120
  * instance. The provider's own usage figure is the only number that is true
  * across both.
  */
-const CEILING_USD = Number(process.env.OPENKB_CEILING_USD ?? 0)
+/**
+ * Read per request, NEVER at module scope.
+ *
+ * Next inlines `process.env.X` at build time for any statically analysable
+ * reference, so `const CEILING = Number(process.env.OPENKB_CEILING_USD ?? 0)`
+ * became `const CEILING = 0` in the bundle, `if (CEILING > 0)` became `if
+ * (false)`, and the whole guard was tree-shaken out. The deployment reported
+ * itself protected and had no ceiling in it at all.
+ *
+ * A function body defers the read to run time, which is when the host actually
+ * sets the variable.
+ */
+function ceilingUsd(): number {
+  return Number(process.env.OPENKB_CEILING_USD ?? 0)
+}
 
 async function spentSoFar(): Promise<number | null> {
   try {
@@ -95,7 +109,8 @@ export async function POST(req: Request) {
   // reading means the provider did not answer: that is not a licence to spend,
   // so it refuses too. Failing closed on the one guard that protects the
   // balance is the only defensible direction.
-  if (CEILING_USD > 0) {
+  const ceiling = ceilingUsd()
+  if (ceiling > 0) {
     const spent = await spentSoFar()
     if (spent === null) {
       return Response.json(
@@ -104,10 +119,10 @@ export async function POST(req: Request) {
       )
     }
     const base = Number(process.env.OPENKB_CEILING_BASE_USD ?? 0)
-    if (spent - base >= CEILING_USD) {
+    if (spent - base >= ceiling) {
       return Response.json(
         {
-          error: `this deployment has spent its $${CEILING_USD} ceiling. Nothing is broken; the limit is deliberate.`,
+          error: `this deployment has spent its $${ceiling} ceiling. Nothing is broken; the limit is deliberate.`,
         },
         { status: 429 },
       )
