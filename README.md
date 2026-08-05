@@ -24,7 +24,10 @@ Give it a domain, get back a cited map of the ecosystem around it — competitor
 > ### **▶ Demo**
 
 <!-- Drop the demo video / GIF here: assets/demo.gif -->
-*demo coming — run `pnpm sweep stripe.com` and watch*
+
+<img src="./assets/map.png" alt="The map for brightdata.com — 490 entities, 210 players, 69 queries fanned into 553 hosts. The focused cluster is one market: web scraping apis." width="100%" />
+
+<sub>One run on `brightdata.com`: **490 entities · 210 players · 69 queries → 553 hosts**. The lit cluster is a single market — *web scraping apis* — and every node on it was found by that market's searches, wears its own favicon, and carries its citations.</sub>
 
 </div>
 
@@ -42,7 +45,6 @@ If you search **"Stripe competitors"**, you get the articles everyone already re
 
 That includes the ones no comparison article has ever listed: the open-source tool people outgrow, the substitute solving the same problem a completely different way, the new player with no press.
 
-<!-- Screenshot: the map view — assets/map.png -->
 
 <br />
 
