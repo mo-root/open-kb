@@ -559,6 +559,73 @@ describe("rememberTool", () => {
     expect(s.map.nodes.get("rival.com")!.because).toBeUndefined()
   })
 
+  it("a downgrade reaches the writer: the return carries the row, the refusal, and the remedy verbatim", () => {
+    // Live run 1's structural failure: every commercial claim was downgraded
+    // on the map while every remember return said "added: 1" — so no agent
+    // ever learned its relation died, and nobody fetched a front page all run.
+    // The downgraded row is the feedback loop: key, the relation the claim
+    // asserted, admit()'s own because, and the in-band remedy.
+    const s = seeded()
+    const r = rememberTool(ctxOf(s), {
+      nodes: [{
+        name: "Roundup", domain: "third.com", kind: "company", what: "vendor?", relation: "competitor",
+        why: "the snippet made it sound like a vendor",
+        evidence: [{ url: "https://third.com/roundup", quote: "compared head to head" }],
+      }],
+      why: "t",
+    })
+    expect(r.added.nodes).toBe(1) // still landed — downgraded, never deleted
+    expect(r.downgraded).toEqual([
+      {
+        key: "third.com",
+        relation: "competitor",
+        because: "nothing on its own site says it does this — the front page could not be read this run",
+        hint: "fetch https://third.com/ and cite its own page to establish a commercial relation",
+      },
+    ])
+  })
+
+  it("an admitted claim returns no downgraded row", () => {
+    const s = seeded()
+    const r = rememberTool(ctxOf(s), {
+      nodes: [{
+        name: "Acme", domain: "rival.com", kind: "company", what: "scraping api", relation: "competitor",
+        why: "same job, same buyer, in its own words",
+        evidence: [{ url: "https://rival.com/", quote: "sells a scraping API" }],
+      }],
+      why: "t",
+    })
+    expect(r.added.nodes).toBe(1)
+    expect(r.downgraded).toEqual([])
+  })
+
+  it("the directory downgrade carries its own remedy, not the fetch-the-front-page one", () => {
+    const evidence = new RunEvidence()
+    const map = new MapState("anchor.com")
+    const links = Array.from({ length: 15 }, (_, i) => `<a href="https://vendor${i}.com/">v${i}</a>`).join(" ")
+    evidence.record({
+      url: "https://listicle.com/",
+      text: "The 15 best scraping vendors of 2026, ranked by price and coverage for busy buyers",
+      raw: `<html><body><p>The 15 best scraping vendors of 2026.</p>${links}</body></html>`,
+      status: "found",
+      tier: "page",
+    })
+    const r = rememberTool({ map, evidence, ledger: ledger(), aggregatorThreshold: 12 }, {
+      nodes: [{
+        name: "Listicle", domain: "listicle.com", kind: "company", what: "vendor", relation: "competitor",
+        why: "appeared in the market's search results",
+        evidence: [{ url: "https://listicle.com/", quote: "best scraping vendors of 2026" }],
+      }],
+      why: "t",
+    })
+    expect(r.downgraded).toHaveLength(1)
+    expect(r.downgraded[0]).toMatchObject({ key: "listicle.com", relation: "competitor" })
+    expect(r.downgraded[0]!.because).toContain("15 distinct vendor domains")
+    expect(r.downgraded[0]!.hint).toBe(
+      "a page that enumerates vendors maps as a directory; open the vendors it names and record them instead",
+    )
+  })
+
   it("with a threshold, a company whose own page enumerates vendors becomes a directory", () => {
     const evidence = new RunEvidence()
     const map = new MapState("anchor.com")

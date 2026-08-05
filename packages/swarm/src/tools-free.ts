@@ -366,6 +366,13 @@ export interface RememberReturn {
   added: { nodes: number; edges: number; retractions: number }
   merged: { nodes: number; edges: number }
   rejected: Array<{ item: string; reason: string }>
+  /** Claims the kernel's gate refused this call. Each still LANDED — downgraded,
+   *  never deleted — but the writer is told in the same return, because a
+   *  downgrade only the map knows about teaches nobody anything: live run 1
+   *  wrote nine commercial claims, all downgraded, and every return said
+   *  "added". `relation` is what the claim asserted, not what it landed as;
+   *  `hint` is the in-band remedy. */
+  downgraded: Array<{ key: string; relation: string; because: string; hint: string }>
   poolLeftUsd: number
 }
 
@@ -383,6 +390,16 @@ const RELS = new Set<string>(SWARM_RELATIONS)
 
 const kindSentence = `use one of ${SWARM_NODE_KINDS.join(", ")}`
 const relSentence = `use one of ${SWARM_RELATIONS.join(", ")}`
+
+/** The remedy on a commercial downgrade, host filled in. The skill quotes this
+ *  sentence with `<host>` where the host goes — the two must not drift. */
+export const commercialDowngradeHint = (host: string): string =>
+  `fetch https://${host}/ and cite its own page to establish a commercial relation`
+
+/** The remedy on the directory downgrade: the claim is not fixable by fetching —
+ *  the page IS the refusal — so the hint points at the vendors it names. */
+export const directoryDowngradeHint =
+  "a page that enumerates vendors maps as a directory; open the vendors it names and record them instead"
 
 /** Mint every ref or explain the first failure — the mint's sentence, verbatim. */
 function mintAll(
@@ -424,12 +441,14 @@ function dedupeEvidence(existing: Evidence[], incoming: Evidence[]): Evidence[] 
  * FREE, and the only writer. Every claim is proven against stored bytes by
  * the kernel's mint, keyed by registrable host so concurrent writers merge
  * instead of duplicating, gated by admit() so a commercial stance nothing
- * supports lands downgraded to `unknown` wearing its refusal — never deleted.
- * Every rejection is a sentence the model can act on, in-band, next to the
- * siblings that landed.
+ * supports lands downgraded to `unknown` wearing its refusal — never deleted,
+ * and never silent: the refusal comes back to the writer as a `downgraded`
+ * row with the remedy beside it. Every rejection is a sentence the model can
+ * act on, in-band, next to the siblings that landed.
  */
 export function rememberTool(ctx: RememberCtx, input: RememberInput): RememberReturn {
   const rejected: Array<{ item: string; reason: string }> = []
+  const downgraded: RememberReturn["downgraded"] = []
   const added = { nodes: 0, edges: 0, retractions: 0 }
   const merged = { nodes: 0, edges: 0 }
 
@@ -495,6 +514,15 @@ export function rememberTool(ctx: RememberCtx, input: RememberInput): RememberRe
         kind = verdict.kind
         relation = verdict.relation
         because = verdict.because
+        // The row reports the CALL's verdict on the CALLER's claim; the node
+        // itself may keep a supported stance on merge (the seam below), but
+        // this claim was refused either way and the writer must hear it.
+        downgraded.push({
+          key,
+          relation: n.relation,
+          because: verdict.because,
+          hint: verdict.kind === "directory" ? directoryDowngradeHint : commercialDowngradeHint(key),
+        })
       }
     }
 
@@ -665,5 +693,5 @@ export function rememberTool(ctx: RememberCtx, input: RememberInput): RememberRe
     rejected.push({ item: "retract", reason: "say what to retract: a node's domain, or an edge's two ends" })
   }
 
-  return { added, merged, rejected, poolLeftUsd: ctx.ledger.spendable() }
+  return { added, merged, rejected, downgraded, poolLeftUsd: ctx.ledger.spendable() }
 }
