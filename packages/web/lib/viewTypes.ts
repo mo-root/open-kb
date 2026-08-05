@@ -42,6 +42,7 @@ export const RELATION_BLURB: Record<string, string> = {
   buyer: "buys in this market",
   target: "the anchor is trying to sell to it",
   none: "the classifier saw it and would not place it",
+  unknown: "claimed but not confirmed by the available evidence",
   anchor: "the company this map is of",
 }
 
