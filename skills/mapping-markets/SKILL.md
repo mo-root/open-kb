@@ -76,7 +76,7 @@ stops because new queries are buying corroboration.
 
 ## Step 3 — Run it
 
-The tool lives at `/Users/moin/open-kb` and every command runs from there.
+The tool lives wherever open-kb is cloned (github.com/mo-root/open-kb); every command runs from that repo root.
 
 ```bash
 pnpm sweep <domain> <queries>
@@ -94,7 +94,7 @@ It streams a phase log. Watch for these, because each one is a real signal:
 ## Step 4 — Read it back
 
 ```bash
-cd /Users/moin/open-kb
+cd <path-to-open-kb>
 pnpm read <domain>              # the summary
 pnpm read <domain> --entities   # every entity by relation
 pnpm read <domain> --edges      # how entities relate to each other
@@ -134,7 +134,7 @@ There is a web app for watching a run live — the stage rail, every query and i
 ticking up, and the finished map as a graph.
 
 ```bash
-cd /Users/moin/open-kb/packages/web && pnpm dev    # then open localhost:3210
+cd packages/web && pnpm dev    # then open localhost:3210
 ```
 
 It shows the stage rail, every query and what it returned, the cost ticking up, and the finished map
