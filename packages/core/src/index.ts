@@ -19,3 +19,4 @@ export {
   type SettleOutcome,
   type DrawOutcome,
 } from "./ledger.js"
+export { BreakerTable, type BreakerState, type StrikeCount } from "./breaker.js"
