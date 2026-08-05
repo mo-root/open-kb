@@ -93,6 +93,23 @@ export {
 } from "./agent.js"
 
 export {
+  runSwarm,
+  seedMission,
+  DEFAULT_CEILING_USD,
+  DEFAULT_LANES,
+  DEFAULT_WALL_MS,
+  DEFAULT_GRACE_MS,
+  DEFAULT_STILLBORN_MS,
+  WALL_WARN_BEFORE_MS,
+  type SwarmOptions,
+  type SwarmRun,
+  type SwarmEnding,
+  type SwarmEndReason,
+  type SwarmTally,
+  type MissionLanding,
+} from "./orchestrator.js"
+
+export {
   spawnTool,
   proposeTool,
   nextTool,

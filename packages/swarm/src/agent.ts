@@ -441,13 +441,20 @@ interface TurnOutcome {
 }
 
 /** Rejects the moment the signal fires — the wall must win even over a model
- *  call that ignores its abort signal. */
-function abortRejection(signal: AbortSignal): Promise<never> {
-  return new Promise((_, reject) => {
+ *  call that ignores its abort signal. `release` detaches the listener once
+ *  the race is over: a long-lived run signal must not accumulate one listener
+ *  per model turn for its whole life. */
+function abortRejection(signal: AbortSignal): { promise: Promise<never>; release: () => void } {
+  let release = () => {}
+  const promise = new Promise<never>((_, reject) => {
     const fire = () => reject(Object.assign(new Error("the deadline cancelled this call"), { name: "AbortError" }))
     if (signal.aborted) fire()
-    else signal.addEventListener("abort", fire, { once: true })
+    else {
+      signal.addEventListener("abort", fire, { once: true })
+      release = () => signal.removeEventListener("abort", fire)
+    }
   })
+  return { promise, release }
 }
 
 /**
@@ -475,8 +482,9 @@ async function oneTurn(o: {
     stopWhen: stepCountIs(1),
     abortSignal: o.signal,
   })
+  const wall = o.signal ? abortRejection(o.signal) : null
   try {
-    const result = o.signal ? await Promise.race([gen, abortRejection(o.signal)]) : await gen
+    const result = wall ? await Promise.race([gen, wall.promise]) : await gen
     const tokensIn = result.usage.inputTokens ?? 0
     const tokensOut = result.usage.outputTokens ?? 0
     const usd = (tokensIn * o.pricing.inUsdPerM + tokensOut * o.pricing.outUsdPerM) / 1e6
@@ -497,6 +505,8 @@ async function oneTurn(o: {
       usd: 0,
     })
     throw e
+  } finally {
+    wall?.release()
   }
 }
 
