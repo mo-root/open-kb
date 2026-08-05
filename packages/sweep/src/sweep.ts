@@ -1573,6 +1573,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     concurrency: 8,
     signal,
     onFetch: (url, ok, ms) => {
+      bill("fetch", "rank", 0, ms, ok)
       spans.emit({
         runId, agentId: "rank", parentId: null, kind: "fetch", name: "fetch",
         argsDigest: url, ms, ok, usd: 0,
@@ -1606,6 +1607,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     },
   })
   flushRanked()
+  if (signal?.aborted) throw new Error("aborted")
   entities.push(...judged.entities.map((e) => ({ ...e, domain: e.domain } as Entity)))
   say("rank", `${judged.stats.settledFree} hosts settled by predicate for $0; ${judged.stats.modelJudged} judged by the model`)
 
