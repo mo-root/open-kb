@@ -54,6 +54,16 @@ importers:
         specifier: ^22.10.0
         version: 22.20.1
 
+  packages/swarm:
+    dependencies:
+      '@open-kb/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.1
+
   packages/sweep:
     dependencies:
       '@open-kb/core':

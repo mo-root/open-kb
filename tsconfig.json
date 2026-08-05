@@ -3,6 +3,7 @@
   "references": [
     { "path": "./packages/core" },
     { "path": "./packages/providers" },
-    { "path": "./packages/sweep" }
+    { "path": "./packages/sweep" },
+    { "path": "./packages/swarm" }
   ]
 }
