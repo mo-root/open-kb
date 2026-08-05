@@ -67,13 +67,38 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
 
   const judgeOne = async (h: HostCandidate): Promise<void> => {
     const url = `https://${h.host}/`
-    const raw = await deps.fetcher.get(url, "direct")
+    const started = Date.now()
+    let raw: Awaited<ReturnType<FetchPort["get"]>>
+    try {
+      raw = await deps.fetcher.get(url, "direct", { signal: deps.signal })
+    } catch (err) {
+      // An abort must stay an abort: the sweep-level guard turns it into the
+      // run's rejection, and settling the host here would let an aborted run
+      // hand back a judged map.
+      if (deps.signal?.aborted) throw err
+      // The contract does not promise never-throw, and one throwing host must
+      // not reject the pool and discard every entity already judged. It costs
+      // itself: the same downgrade the unreadable branch below hands out.
+      stats.fetched += 1
+      stats.unreadable += 1
+      stats.settledFree += 1
+      deps.onFetch?.(url, false, Date.now() - started)
+      emit({
+        name: h.host, domain: h.host, kind: "unknown", what: "",
+        relation: "unknown", why: "",
+        because: `its front page fetch threw this run (${err instanceof Error ? err.message : String(err)})`,
+        settledBy: "predicate",
+      })
+      return
+    }
     stats.fetched += 1
     const s = sniff(raw)
     deps.onFetch?.(url, s.status === "found", raw.ms)
 
-    // An answer key is worth keeping whatever the verdict on the host is.
-    if (raw.body && raw.body.toLowerCase().includes(anchorKey)) {
+    // An answer key is worth keeping whatever the verdict on the host is —
+    // except the anchor's own page, which names the anchor by definition and
+    // would let the map grade itself.
+    if (raw.body && registrableHost(h.host) !== anchorKey && raw.body.toLowerCase().includes(anchorKey)) {
       probePages.push({ url, html: raw.body })
     }
 

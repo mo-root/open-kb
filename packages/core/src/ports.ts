@@ -32,6 +32,13 @@ export interface FetchResponse extends RawResponse {
   usd: number
 }
 
+/**
+ * `opts.signal` lets the caller cancel a fetch already in flight — a pool that
+ * aborts between hosts still holds a socket open for minutes without it. The
+ * shipped port answers an abort the way it answers any failure, with an
+ * unreadable response; nothing here promises never-throw, so a caller must
+ * still contain a port that throws instead.
+ */
 export interface FetchPort {
-  get(url: string, mode: FetchMode): Promise<FetchResponse>
+  get(url: string, mode: FetchMode, opts?: { signal?: AbortSignal }): Promise<FetchResponse>
 }

@@ -185,6 +185,76 @@ describe("judgeHosts pool", () => {
     expect(fetchCalls).toBe(0)
   })
 
+  it("a port that throws for one host downgrades that host, not the run", async () => {
+    // The FetchPort contract nowhere says never-throw. The shipped provider
+    // converts failures to httpStatus 0, but an alternate port that throws on
+    // DNS failure must cost one host, not every entity already judged.
+    const hosts = [cand("ok0.com"), cand("boom.com"), cand("ok1.com"), cand("ok2.com")]
+    const fetches: Array<{ url: string; ok: boolean }> = []
+    const fetcher: FetchPort = {
+      async get(url) {
+        if (url === "https://boom.com/") throw new Error("getaddrinfo ENOTFOUND boom.com")
+        return { url, httpStatus: 200, body: vendorHtml, contentType: "text/html", ms: 1, usd: 0 }
+      },
+    }
+    const out = await judgeHosts(hosts, {
+      fetcher,
+      classify: async (h) => ({ name: h.host, kind: "company", what: "", relation: "competitor", why: "" }),
+      anchor: "anchor.com",
+      aggregatorThreshold: 12,
+      onFetch: (url, ok) => fetches.push({ url, ok }),
+    })
+    expect(out.entities).toHaveLength(4)
+    const boom = out.entities.find((e) => e.domain === "boom.com")!
+    expect(boom).toMatchObject({ kind: "unknown", relation: "unknown", settledBy: "predicate" })
+    expect(boom.because).toContain("threw")
+    expect(boom.because).toContain("ENOTFOUND")
+    expect(out.entities.filter((e) => e.settledBy === "model")).toHaveLength(3)
+    expect(out.stats.fetched).toBe(4)
+    expect(out.stats.settledFree + out.stats.modelJudged).toBe(out.stats.fetched)
+    expect(fetches.find((f) => f.url === "https://boom.com/")!.ok).toBe(false)
+  })
+
+  it("a throw caused by the abort signal rejects the run instead of settling the host", async () => {
+    // An abort must stay an abort: the sweep-level guard turns it into the
+    // run's rejection. Settling the host as unknown would let an aborted run
+    // report a judged map.
+    const ctl = new AbortController()
+    const fetcher: FetchPort = {
+      async get() {
+        ctl.abort()
+        const e = new Error("This operation was aborted")
+        e.name = "AbortError"
+        throw e
+      },
+    }
+    await expect(
+      judgeHosts([cand("a.com"), cand("b.com")], {
+        fetcher,
+        classify: async () => ({ name: "x", kind: "company", what: "", relation: "competitor", why: "" }),
+        anchor: "anchor.com",
+        aggregatorThreshold: 12,
+        signal: ctl.signal,
+      }),
+    ).rejects.toThrow("aborted")
+  })
+
+  it("the anchor's own homepage is judged but never becomes a recall probe", async () => {
+    // The anchor's page names the anchor by definition; letting it into the
+    // probe pool would have the map grading itself.
+    const out = await judgeHosts([cand("anchor.com"), cand("listicle.com")], {
+      fetcher: fakeFetcher({
+        "https://anchor.com/": aggregatorHtml,
+        "https://listicle.com/": aggregatorHtml,
+      }),
+      classify: async () => ({ name: "", kind: "noise", what: "", relation: "none", why: "" }),
+      anchor: "anchor.com",
+      aggregatorThreshold: 12,
+    })
+    expect(out.probePages.map((p) => p.url)).toEqual(["https://listicle.com/"])
+    expect(out.entities.map((e) => e.domain).sort()).toEqual(["anchor.com", "listicle.com"])
+  })
+
   it("does not duplicate or drop hosts when classify resolves out of order under concurrency", async () => {
     const hosts = Array.from({ length: 6 }, (_, i) => cand(`vendor${i}.com`))
     const pages: Record<string, string> = {}

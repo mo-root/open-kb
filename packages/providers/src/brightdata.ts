@@ -36,6 +36,18 @@ interface Opts {
    * the queue.
    */
   timeoutMs?: number
+  /**
+   * How long one DIRECT fetch may take before it is abandoned as unreadable.
+   *
+   * Direct fetches hit arbitrary SERP-surfaced hosts, and a tar-pit or
+   * firewalled host that never answers holds a pool worker for undici's
+   * default ~300s header timeout — minutes of tail added by a handful of
+   * hosts. The calibration script bounded this at 8 seconds; a front page
+   * that has not answered in that long is the unreadable path anyway.
+   *
+   * Unlocked fetches are not bounded by this: they legitimately take 33-60s.
+   */
+  directTimeoutMs?: number
   /** Pause before the single retry of a retryable failure. */
   retryMs?: number
 }
@@ -260,14 +272,20 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
 export function brightDataFetch(creds: BrightDataCredentials, opts: Opts = {}): FetchPort {
   const f = opts.fetchImpl ?? fetch
   const price = opts.unlockUsd ?? 0.008
+  const directTimeoutMs = Math.max(1, Math.floor(opts.directTimeoutMs ?? 8_000))
 
   return {
-    async get(url: string, mode: FetchMode): Promise<FetchResponse> {
+    async get(url: string, mode: FetchMode, callOpts?: { signal?: AbortSignal }): Promise<FetchResponse> {
       const started = Date.now()
 
       if (mode === "direct") {
+        // The timeout and the caller's own signal race; whichever fires first
+        // lands this fetch in the catch below, which is the designed
+        // unreadable path — httpStatus 0, no second error shape.
+        const timeout = AbortSignal.timeout(directTimeoutMs)
+        const signal = callOpts?.signal ? AbortSignal.any([timeout, callOpts.signal]) : timeout
         try {
-          const res = await f(url, { redirect: "follow" })
+          const res = await f(url, { redirect: "follow", signal })
           const body = await res.text()
           return { url, httpStatus: res.status, body, contentType: res.headers.get("content-type") ?? undefined, ms: Date.now() - started, usd: 0 }
         } catch (e) {
@@ -280,6 +298,9 @@ export function brightDataFetch(creds: BrightDataCredentials, opts: Opts = {}): 
           method: "POST",
           headers: { Authorization: `Bearer ${creds.token}`, "Content-Type": "application/json" },
           body: JSON.stringify({ zone: creds.unlockerZone, url, format: "raw" }),
+          // The caller's signal only — no timeout here, because unlocked
+          // fetches legitimately take 33-60s.
+          signal: callOpts?.signal,
         })
         const body = await res.text()
         // Deliberately returned as-is. A 200 with an empty body is a real, measured outcome

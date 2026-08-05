@@ -129,6 +129,54 @@ describe("brightDataFetch", () => {
   })
 })
 
+describe("brightDataFetch direct timeouts", () => {
+  /** A fetch that never answers but honors init.signal the way undici does:
+   *  reject with an AbortError the moment the signal fires. A fake that
+   *  ignores the signal would pass against code that never wires one. */
+  const hangingFetch = () =>
+    vi.fn((_u: unknown, init: unknown) => {
+      const signal = (init as RequestInit).signal
+      return new Promise<Response>((_res, rej) => {
+        if (signal?.aborted) {
+          const e = new Error("This operation was aborted")
+          e.name = "AbortError"
+          rej(e)
+          return
+        }
+        signal?.addEventListener("abort", () => {
+          const e = new Error("This operation was aborted")
+          e.name = "AbortError"
+          rej(e)
+        })
+      })
+    })
+
+  it("abandons a direct fetch that will not answer, after directTimeoutMs", async () => {
+    // Measured on the rank pool: a handful of tar-pit hosts each hold a worker
+    // slot for undici's default ~300s without this bound. The calibration
+    // script already used 8s; the production path must too.
+    const fetchImpl = hangingFetch()
+    const f = brightDataFetch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, directTimeoutMs: 50 })
+    const r = await f.get("https://tarpit.com/", "direct")
+    expect(r.httpStatus).toBe(0)
+    expect(r.body).toBe("")
+    expect(r.usd).toBe(0)
+  }, 2_000)
+
+  it("an external abort lands a direct fetch as unreadable promptly, not at the timeout", async () => {
+    const fetchImpl = hangingFetch()
+    const ctl = new AbortController()
+    // A timeout long past the test's own deadline: only the caller's signal
+    // can end this fetch inside the test window.
+    const f = brightDataFetch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, directTimeoutMs: 60_000 })
+    const pending = f.get("https://slow.com/", "direct", { signal: ctl.signal })
+    setTimeout(() => ctl.abort(), 20)
+    const r = await pending
+    expect(r.httpStatus).toBe(0)
+    expect(r.usd).toBe(0)
+  }, 2_000)
+})
+
 describe("brightDataSearch timeouts", () => {
   it("abandons a page that will not answer, and charges nothing for it", async () => {
     // Measured: in a worker pool, thirty of forty queries finished in 43s and
