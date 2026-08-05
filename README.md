@@ -100,6 +100,48 @@ The boring families are **code** — no model can have a clever day and skip the
 
 <!-- ─────────────────────────────────────────────────────────────────────── -->
 
+## The agents
+
+Every agent in open-kb is the same three things: **a markdown prompt** (its beliefs, editable in [`prompts/`](./prompts)), **a Zod schema** (its output type — the model cannot return prose), and **a metered call** (its tokens and dollars land on the run's bill as it happens). No framework, no graph library — the orchestration is plain TypeScript you can read in one file.
+
+| agent | fires | what it judges |
+|---|---|---|
+| **understand** | once | reads the company's own pages: what it sells, every product, which products share a market, which words are invented brand names |
+| **catalog** | once **per product**, 6 in parallel | strips the product to the terms a buyer would type, judges whether its name is too generic to search, writes that product's debranded queries |
+| **assess** | between rounds | the widening judge — reads what every family returned for every product, and decides: release held queries where a door is paying, switch doors where results repeat, or say *enough* |
+| **classify** | per batch of hosts, 6 batches in flight | fetches each host's actual page and judges what it is and how it relates to the anchor — from the page, never from a search snippet |
+| **link** | once | where two entities' pages name each other, judges what the relationship is |
+| **discover** | standalone (`pnpm discover`) | a tool-loop investigator: maps a site's product pages, reads the ones it chooses, follows leads, submits products one by one, decides itself when the catalogue is complete |
+
+How they compose into one run:
+
+```mermaid
+flowchart TD
+    U["**understand**<br/>one call, reads the site"] --> C1["**catalog** · product 1"]
+    U --> C2["**catalog** · product 2"]
+    U --> C3["**catalog** · product N<br/><i>6 in parallel</i>"]
+    C1 & C2 & C3 --> Q["query queue<br/><i>refilled while it drains</i>"]
+    Q --> W["SERP worker pool"]
+    W --> A{"**assess**<br/>the widening judge"}
+    A -- "release reserve /<br/>write new queries" --> Q
+    A -- "enough" --> K["**classify** · 6 batches in flight"]
+    K --> L["**link**"] --> M["the map"]
+```
+
+### What the agents decide — and what they can't
+
+The design rule the whole engine is built on: **agentic where the answer is a judgement, code where the answer is a guarantee.**
+
+Agents decide: what a company really sells, what to type next after seeing what came back, whether a market is exhausted, what a host actually is once its page is fetched.
+
+Agents **cannot**: mint evidence for a page that was never fetched (one code path owns that, and it verifies the quote), skip the plain query family (templates fire regardless), search the company's own name outside the branded family (a code filter drops the query), or spend past the dollar ceiling (the harness refuses the run).
+
+So a model having a bad day can write a weak query or misjudge a host — it cannot fabricate a citation, blind a market, or run up a bill. The failure modes are bounded by construction, not by hoping the prompt was good enough.
+
+<br />
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+
 ## Receipts, or it doesn't exist
 
 The trust layer, enforced in code:
