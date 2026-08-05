@@ -59,3 +59,41 @@ describe("the sweep's prompts", () => {
     expect(unnamed).toEqual([])
   })
 })
+
+/**
+ * The classify prompt is sent once per host. A measured live run made 740 such
+ * calls, and ~75% of its 3.19M input tokens were the same ~13K chars of
+ * composed doctrine re-sent every time — breadth doctrine, search craft,
+ * reading-the-web narrative, none of which a per-host judge can act on: it
+ * fetches nothing and plans nothing. The prompt was trimmed to carry only what
+ * one judgement needs. These tests keep the win from silently regressing and
+ * keep the trim from cutting the one thing that must never be cut: the full
+ * relation vocabulary, because a judge choosing from words it was never given
+ * poisons every judgement.
+ */
+describe("the composed classify prompt", () => {
+  const composed = () => composePrompt("classify", join(root(), "agents"), join(root(), "doctrine"))
+
+  it("stays small enough to send 740 times without dominating the bill", () => {
+    // Measured 12,996 chars before the trim; ~4K after. The ceiling leaves
+    // headroom for wording, not for re-including a doctrine file.
+    expect(composed().length).toBeLessThan(6_000)
+  })
+
+  it("still carries the whole relation vocabulary, every word the schema will accept", () => {
+    const c = composed()
+    const missing = RELATIONS.filter((r) => !c.includes(`**${r}**`))
+    expect(missing).toEqual([])
+  })
+
+  it("keeps the de-branding warning — ranking market vocabulary is not selling", () => {
+    expect(composed()).toContain("RANKS, COMPARES or REVIEWS")
+  })
+
+  it("keeps exactly the placeholders the rank call renders with", () => {
+    // render() throws on any mismatch between these and the call-site's vars,
+    // so a drift here would fail at runtime, on a paid call. Fail here instead.
+    const found = new Set([...composed().matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]!))
+    expect([...found].sort()).toEqual(["anchor", "buyer", "host", "intents", "page", "seenIn", "sells"])
+  })
+})

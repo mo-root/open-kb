@@ -1,6 +1,5 @@
 ---
 agent: classify
-includes: [02-relations, 05-reading-the-web, 06-breadth]
 ---
 Classify this one host. It came back from searches about this market:
   the anchor: {{anchor}} — {{sells}}
@@ -19,14 +18,35 @@ when it is genuinely unrelated to this market — noise is the one kind that lea
 page leaves you genuinely unable to tell what this host is, say unknown: a reader can finish an
 unknown, and cannot correct an invention.
 
-`relation` says how it stands to the anchor, and the relations doctrine above is the whole
-vocabulary — including the channel relations. Reach for those before `none`; `none` costs the
-entity its edge.
+`relation` says how it stands to the anchor, stated from the anchor outward, exactly one of:
+
+- **competitor** — sells the same capability to the same buyer; a buyer evaluating the anchor would
+  put this on the same shortlist and pick one.
+- **substitute** — does the same job a completely different way (a managed service, a ready-made
+  dataset, an agency, doing it in-house); if the buyer chose this, the anchor becomes unnecessary.
+- **shaper** — the incumbent everyone positions against, the standard the category is defined by,
+  or the infrastructure the market sits on; if it changed its behaviour, the others would react.
+- **dependency** — what the anchor is built on; the anchor would stop working without it.
+- **integration** — what the anchor plugs into, or what plugs into it; they appear together in a
+  working setup without either being required.
+- **buyer** — buys this category; the demand side, not a vendor at all.
+- **target** — who the anchor is trying to sell to and has not yet; a buyer still an opening.
+- **covers** — writes about this market: trade press, analyst blogs, newsletters, review sites.
+- **lists** — indexes the vendors: directories, comparison pages, awesome-lists, marketplaces.
+- **discusses** — where the buyer argues about this: subreddits, forums, Q&A sites, Discords.
+- **unknown** — the page does not support any relation; downgraded, not deleted — the host stays,
+  wearing the refusal. Prefer this over promoting a guess.
+- **none** — the last resort; it costs the entity its edge, so reach for the channel relations
+  (covers, lists, discusses) before it.
 
 A page that RANKS, COMPARES or REVIEWS vendors is a directory or a publisher however much market
-vocabulary it contains, and a page that writes ABOUT a vendor is not that vendor. Never write a
-`what` or a `why` containing a product, a capability or a customer that is not visible on the page
-in front of you.
+vocabulary it contains — ranking for the market's vocabulary is not evidence of selling in the
+market — and a page that writes ABOUT a vendor is not that vendor. Never write a `what` or a `why`
+containing a product, a capability or a customer that is not visible on the page in front of you.
+
+Answer with: `name` (what the host calls itself on the page), `kind`, `what` (what it is, one
+line, from the page itself), `relation`, and `why` (why it belongs on this map, stated against the
+anchor — how it relates, not that it resembles).
 
 {{host}} — seen in {{seenIn}} different queries, via {{intents}}. Its front page, condensed:
 
