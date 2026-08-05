@@ -34,6 +34,8 @@ import {
   openingHand,
   companyHand,
   banned,
+  answerKeyRecall,
+  registrableHost,
   type PageFacts,
   type SearchResult,
   type SpanStream,
@@ -49,6 +51,7 @@ import { existsSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { composePrompt, render } from "@open-kb/core"
+import { judgeHosts, type Judged } from "./rank.js"
 
 /**
  * Where `prompts/` lives.
@@ -107,6 +110,7 @@ export const ENTITY_KINDS = [
   "publisher",
   "directory",
   "noise",
+  "unknown",
 ] as const
 
 /**
@@ -128,6 +132,7 @@ export const RELATIONS = [
   "covers",
   "lists",
   "discusses",
+  "unknown",
   "none",
 ] as const
 
@@ -175,6 +180,7 @@ const PEER_RELATIONS = [
   "covers",
   "lists",
   "discusses",
+  "unknown",
 ] as const
 
 const EntityEdge = z.object({
@@ -308,7 +314,10 @@ export type SweptQuery = PlannedQuery & { family: QueryFamily; product?: string;
  * reader got one hub with a hundred spokes and no way to see which market any
  * of them belonged to.
  */
-export type Entity = z.infer<typeof Entity> & { foundBy?: string[]; families?: QueryFamily[] }
+export type Entity = z.infer<typeof Entity> & { foundBy?: string[]; families?: QueryFamily[] } & {
+  because?: string
+  settledBy?: "predicate" | "model"
+}
 
 export interface SweepStats {
   queries: number
@@ -383,6 +392,13 @@ export interface SweepOptions {
   batchSize?: number
   /** Classification batches in flight at once. */
   rankConcurrency?: number
+  /** Outbound-link count above which a company-shaped front page is settled as
+   *  a directory for free, without a model call. Left unset: calibration
+   *  (`scripts/calibrate-kernel.ts`) found no separation between vendor and
+   *  directory front pages on the measured sample, so the rule ships disabled
+   *  (`null`) rather than shipping a guessed number. Set it once a real run
+   *  produces a cutoff worth trusting. */
+  aggregatorThreshold?: number
   /** How many co-occurring entity pairs to ask about. 0 disables linking. */
   maxPairs?: number
   /** Skip the paid pass that asks a model to label co-occurring pairs, keeping
@@ -465,9 +481,6 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   /** A wave adding fewer new hosts than this is reaching ground already covered.
    *  The harness's backstop for a model that keeps asking while learning nothing. */
   const MIN_NEW_HOSTS = Math.max(1, Math.floor(opts.minNewHosts ?? 8))
-  /** Classification batches in flight at once. They have no dependency on each
-   *  other; the only reason not to run all of them is the provider's patience. */
-  const RANK_CONC = Math.max(1, Math.floor(opts.rankConcurrency ?? 6))
   /** How many co-occurring pairs to ask about. Bounds the linking stage's cost. */
   const MAX_PAIRS = Math.max(0, Math.floor(opts.maxPairs ?? 600))
   /** Most queries any single product may take. */
@@ -939,8 +952,8 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   // once. A rate limiter does not know this is a planning stage: a 429 on any
   // one of them exhausts `call()`'s single retry, and `Promise.all` is
   // all-or-nothing, so one throttled product call kills a run that has
-  // already paid for everything `understand` read. Same shape of fix as the
-  // classification pool below (`RANK_CONC`): a small pool, not a wide one.
+  // already paid for everything `understand` read. Same shape of fix used
+  // elsewhere in this file: a small pool, not a wide one.
   const CATALOG_CONC = 6
 
   const catalogs: SweptQuery[][] = []
@@ -1521,70 +1534,80 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     intents: [...new Set(hs.map((h) => h.intent))],
     titles: [...new Set(hs.map((h) => h.title))].slice(0, 3),
     desc: hs[0]!.description?.slice(0, 190) ?? "",
+    topHit: hs[0]?.url,
   }))
 
-  const batches: typeof hostList[] = []
-  for (let i = 0; i < hostList.length; i += BATCH) batches.push(hostList.slice(i, i + BATCH))
+  // Left null unless the caller supplies a real one. Calibration
+  // (`scripts/calibrate-kernel.ts`) found no separation between vendor and
+  // directory front pages on the measured sample, so shipping a guessed 12
+  // would be arithmetic dressed as evidence. `report.kernel.threshold` below
+  // carries this value through honestly, null included.
+  const KERNEL_THRESHOLD = opts.aggregatorThreshold ?? null
+  say(
+    "rank",
+    `judging ${hostList.length} hosts from their own front pages, predicates first` +
+      (KERNEL_THRESHOLD === null ? ", aggregator rule off" : `, aggregator threshold ${KERNEL_THRESHOLD}`),
+  )
 
-  // In parallel, because these batches never needed to wait for each other.
-  //
-  // Each one classifies its own hosts against the anchor and reads nothing from
-  // any other, yet they ran one after another, eleven calls at ~44s each on one
-  // measured run, which was 485 of that run's 771 seconds. Sixty-three percent of
-  // the wall clock spent queueing behind work that had no dependency on it.
-  //
-  // Capped rather than unleashed: forty batches at once is a rate-limit waiting to
-  // happen, and a 429 costs more than the queueing did.
-  say("rank", `classifying ${hostList.length} hosts in ${batches.length} batches, ${RANK_CONC} at a time`)
   const entities: Entity[] = []
-  let done = 0
-
-  const classify = async (slice: typeof hostList, n: number) => {
-    if (signal?.aborted) throw new Error("aborted")
-    const out = await call(
-      "rank",
-      `classify batch ${n + 1} of ${batches.length}`,
-      z.object({ entities: z.array(Entity) }),
-      prompt("classify", {
-        anchor,
-        sells: decomp.sells,
-        buyer: decomp.buyer,
-        hosts: slice
-          .map((h) => `${h.host}  seenIn=${h.seenIn}  intents=${h.intents.join(",")}\n   ${h.titles.join(" | ")}\n   ${h.desc}`)
-          .join("\n\n"),
-      }),
-      // A label per host from a fixed vocabulary. Nothing to reason about, and
-      // this stage is three quarters of the bill.
-      { think: "none", maxOutputTokens: 220 * slice.length + 6_000 },
-    )
-    entities.push(...out.entities)
-    done += slice.length
-    say("rank", `  classified ${done}/${hostList.length}`)
-
-    // Streamed per batch rather than held to the end: the findings table fills
-    // while the run is still working, which is the difference between a live
-    // surface and a progress bar.
-    const kept = out.entities.filter((e) => e.kind !== "noise")
+  let judgedCount = 0
+  let rankedBuffer: Judged[] = []
+  const flushRanked = () => {
+    const kept = rankedBuffer.filter((e) => e.kind !== "noise")
     if (kept.length) {
       emitResult("rank", {
         kind: "ranked",
         candidates: kept.map((e) => ({
-          domain: e.domain || e.name,
-          name: e.name,
-          kind: e.kind,
-          relation: e.relation,
-          what: e.what,
-          why: e.why,
-          breadth: byHost.get(e.domain)?.length ?? 0,
+          domain: e.domain, name: e.name || e.domain, kind: e.kind, relation: e.relation,
+          what: e.what, why: e.because ?? e.why, breadth: byHost.get(e.domain)?.length ?? 0,
         })),
       })
-      think("rank", kept.map((e) => `${e.domain} — ${e.kind}/${e.relation}: ${e.why}`).join("\n"))
     }
+    rankedBuffer = []
   }
 
-  for (let i = 0; i < batches.length; i += RANK_CONC) {
-    await Promise.all(batches.slice(i, i + RANK_CONC).map((b, k) => classify(b, i + k)))
-  }
+  const judged = await judgeHosts(hostList, {
+    fetcher,
+    anchor,
+    aggregatorThreshold: KERNEL_THRESHOLD,
+    concurrency: 8,
+    signal,
+    onFetch: (url, ok, ms) => {
+      spans.emit({
+        runId, agentId: "rank", parentId: null, kind: "fetch", name: "fetch",
+        argsDigest: url, ms, ok, usd: 0,
+      })
+    },
+    onJudged: (e) => {
+      rankedBuffer.push(e)
+      judgedCount += 1
+      if (rankedBuffer.length >= 25) flushRanked()
+      if (judgedCount % 50 === 0) say("rank", `  judged ${judgedCount}/${hostList.length}`)
+    },
+    classify: async (h, pageText) => {
+      const out = await call(
+        "rank",
+        `classify ${h.host}`,
+        z.object({
+          name: z.string(),
+          kind: z.enum(ENTITY_KINDS),
+          what: z.string().describe("what it is, one line, from the page itself"),
+          relation: z.enum(RELATIONS),
+          why: z.string().describe("why it belongs on this map, stated against the anchor"),
+        }),
+        prompt("classify", {
+          anchor, sells: decomp.sells, buyer: decomp.buyer,
+          host: h.host, seenIn: String(h.seenIn), intents: h.intents.join(","),
+          page: pageText,
+        }),
+        { think: "none", maxOutputTokens: 350 },
+      )
+      return out
+    },
+  })
+  flushRanked()
+  entities.push(...judged.entities.map((e) => ({ ...e, domain: e.domain } as Entity)))
+  say("rank", `${judged.stats.settledFree} hosts settled by predicate for $0; ${judged.stats.modelJudged} judged by the model`)
 
   // ── report ────────────────────────────────────────────────────────────────
   // ── attribute every entity to the markets whose queries surfaced it ───────
@@ -1749,7 +1772,9 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
                 ? "lists"
                 : src.kind === "publisher"
                   ? "covers"
-                  : "competitor",
+                  : src.kind === "company" || src.kind === "product"
+                    ? "competitor"
+                    : "unknown",
           why: `a page on ${host} names "${hit}"`,
           confidence: "measured",
         })
@@ -1850,6 +1875,17 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     }
   }
 
+  // The one defensible coverage number: recall against the pages the run
+  // itself retrieved that name the anchor and enumerate vendors — no
+  // estimator, no guess. `judged.probePages` is exactly the set `judgeHosts`
+  // kept while judging; nothing extra is fetched to compute this.
+  const mapHosts = new Set(
+    entities
+      .filter((e) => e.kind === "company" || e.kind === "product")
+      .map((e) => registrableHost(e.domain || e.name)),
+  )
+  const recall = answerKeyRecall(judged.probePages, { anchor, mapHosts })
+
   const report: Record<string, unknown> = {
     domain: anchor,
     sells: decomp.sells,
@@ -1873,6 +1909,8 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     readPages,
     usd,
     seconds,
+    kernel: { ...judged.stats, threshold: KERNEL_THRESHOLD },
+    recall,
     cost: {
       usd,
       elapsedMs: Date.now() - t0,
