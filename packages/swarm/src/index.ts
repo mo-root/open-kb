@@ -109,6 +109,8 @@ export {
   type MissionLanding,
 } from "./orchestrator.js"
 
+export { serializeSwarmRun, type SerializedSwarmRun } from "./serialize.js"
+
 export {
   spawnTool,
   proposeTool,

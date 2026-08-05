@@ -1,0 +1,107 @@
+/**
+ * The swarm, from a terminal.
+ *
+ * The orchestrator lives in `packages/swarm`; this file is argv, credentials,
+ * models and a console, nothing else — the sweep CLI's voice, pointed at the
+ * swarm. What you see here is what any future web route will drive.
+ *
+ * Usage:  set -a && . ./.env && set +a && npx tsx scripts/swarm.ts brightdata.com [ceilingUsd]
+ *
+ * Ceiling defaults to $1.50 — the design's reference budget, split at t=0
+ * into the finish reserve and the work pool by the ledger itself.
+ *
+ * Models come from OPENKB_MODEL-style envs, one per tier, ids as OpenRouter
+ * spells them. The agents themselves never see these names — tiers are the
+ * only words cost has inside the run:
+ *
+ *   OPENKB_SWARM_LEAD_MODEL   default google/gemini-3-flash-preview — the one
+ *     growing transcript; its input price is what matters ($0.50/M measured
+ *     at ~$0.10 per run in the design).
+ *   OPENKB_SWARM_PEEK_MODEL   default google/gemini-3.1-flash-lite —
+ *     verification and demotion, the cheapest honest look.
+ *   OPENKB_SWARM_READ_MODEL   default OPENKB_MODEL, then google/gemini-3.5-flash.
+ *   OPENKB_SWARM_DIG_MODEL    default OPENKB_MODEL, then google/gemini-3.5-flash.
+ *
+ * Pricing is accounting only — a wrong number makes the cost readout wrong,
+ * never the run. Known ids take their row below; anything else takes the
+ * default row (the read/dig model's prices, the conservative guess).
+ */
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { openrouter } from "@openrouter/ai-sdk-provider"
+import { SpanStream } from "../packages/core/src/index.js"
+import { brightDataFetch, brightDataSearch } from "../packages/providers/src/index.js"
+import { runSwarm, serializeSwarmRun } from "../packages/swarm/src/index.js"
+
+const domain = process.argv[2] ?? "resend.com"
+const ceilingUsd = process.argv[3] !== undefined ? Number(process.argv[3]) : 1.5
+
+const LEAD = process.env.OPENKB_SWARM_LEAD_MODEL ?? "google/gemini-3-flash-preview"
+const PEEK = process.env.OPENKB_SWARM_PEEK_MODEL ?? "google/gemini-3.1-flash-lite"
+const READ = process.env.OPENKB_SWARM_READ_MODEL ?? process.env.OPENKB_MODEL ?? "google/gemini-3.5-flash"
+const DIG = process.env.OPENKB_SWARM_DIG_MODEL ?? process.env.OPENKB_MODEL ?? "google/gemini-3.5-flash"
+
+/** $/M tokens. The design's lead numbers, the sweep's default row for flash. */
+const PRICES: Record<string, { inUsdPerM: number; outUsdPerM: number }> = {
+  "google/gemini-3-flash-preview": { inUsdPerM: 0.5, outUsdPerM: 3.0 },
+  "google/gemini-3.1-flash-lite": { inUsdPerM: 0.1, outUsdPerM: 0.4 },
+  "google/gemini-3.5-flash": { inUsdPerM: 1.5, outUsdPerM: 9.0 },
+}
+const priceOf = (id: string) => PRICES[id] ?? { inUsdPerM: 1.5, outUsdPerM: 9.0 }
+
+const skill = readFileSync(new URL("../prompts/swarm/skill.md", import.meta.url), "utf8")
+
+const creds = {
+  token: process.env.BRIGHTDATA_API_TOKEN!,
+  serpZone: process.env.BRIGHTDATA_SERP_ZONE!,
+  unlockerZone: process.env.BRIGHTDATA_UNLOCKER_ZONE!,
+}
+
+const spans = new SpanStream()
+
+// Every line wears the running total the span stream has actually billed —
+// model turns via the runner's hooks, SERP rows and fetches at the port —
+// so "did this just blow past the ceiling" is read off the screen, not
+// guessed. The ledger enforces; this only shows.
+const run = await runSwarm({
+  domain,
+  ceilingUsd,
+  skill,
+  search: brightDataSearch(creds),
+  fetch: brightDataFetch(creds),
+  models: { lead: openrouter(LEAD), peek: openrouter(PEEK), read: openrouter(READ), dig: openrouter(DIG) },
+  pricing: { lead: priceOf(LEAD), peek: priceOf(PEEK), read: priceOf(READ), dig: priceOf(DIG) },
+  spans,
+  runId: `cli-${Date.now()}`,
+  onLog: (line) => console.log(`$${spans.totalUsd().toFixed(3)}  ${line}`),
+})
+spans.close()
+
+const out = serializeSwarmRun(run)
+const { ending, finish } = run
+const count = (arr: string[]) => arr.reduce<Record<string, number>>((a, k) => ((a[k] = (a[k] ?? 0) + 1), a), {})
+
+console.log(`\n${"=".repeat(80)}`)
+console.log(ending.humanReason)
+if (finish) {
+  console.log(`\n${finish.summary}`)
+  for (const u of finish.unresolved) console.log(`  unresolved: ${u}`)
+}
+console.log(`\n${out.entities.length} on the map · ${out.edges.length} edges between them`)
+console.log(`kinds     `, count(out.entities.map((e) => e.kind)))
+console.log(`relations `, count(out.entities.map((e) => e.relation)))
+const recall = out.report.recall as { pooled: number | null; probes: unknown[] }
+console.log(
+  `recall    `,
+  recall.pooled === null ? "no probe page qualified" : `${(recall.pooled * 100).toFixed(1)}% over ${recall.probes.length} probe page(s)`,
+)
+console.log(`\n${out.stats.queries} queries · ${out.stats.serpCalls} SERP calls · ${out.stats.results} results`)
+console.log(`tokens ${out.stats.tokIn.toLocaleString()} in / ${out.stats.tokOut.toLocaleString()} out`)
+console.log(`$${out.stats.usd.toFixed(4)} · ${out.stats.seconds.toFixed(0)}s · ${ending.residue.length} residue`)
+
+// Stamped, for the same reason the sweep stamps: a second run of the same
+// company must never silently destroy the first — maps cost real dollars.
+mkdirSync("runs", { recursive: true })
+const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "")
+const path = `runs/swarm-${domain.replace(/\W+/g, "-")}-${stamp}.json`
+writeFileSync(path, JSON.stringify(out, null, 2))
+console.log(`\nwrote ${path}`)

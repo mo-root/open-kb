@@ -195,6 +195,23 @@ export class RunEvidence {
   }
 
   /**
+   * Every readable page this run bought, one row per URL, rawest bytes held —
+   * the probe pool for answerKeyRecall, which applies its own namesHost and
+   * min-vendors gates. Nothing extra is ever fetched to grade a map.
+   */
+  pages(): Array<{ url: string; html: string }> {
+    const out: Array<{ url: string; html: string }> = []
+    const taken = new Set<string>()
+    for (const rec of this.#all) {
+      if (rec.status !== "found" || rec.tier !== "page") continue
+      if (taken.has(rec.canonical)) continue
+      taken.add(rec.canonical)
+      out.push({ url: rec.url, html: this.#raw.get(rec.handle) ?? rec.text })
+    }
+    return out
+  }
+
+  /**
    * Harvestable pages nobody has opened: URLs this run has only ever seen as
    * search snippets, with the snippet handle so the caller can still cite it.
    */
