@@ -35,6 +35,7 @@ export {
   readTool,
   recallTool,
   rememberTool,
+  linksOf,
   SLICE,
   type ReadInput,
   type ReadReturn,
@@ -51,3 +52,23 @@ export {
   type RememberReturn,
   type RememberCtx,
 } from "./tools-free.js"
+
+export {
+  searchTool,
+  fetchTool,
+  MAX_QUERIES,
+  MAX_URLS,
+  PENDING_AFTER_MS,
+  type PaidCtx,
+  type SearchInput,
+  type SearchItem,
+  type SearchRow,
+  type SearchReturn,
+  type SwarmFetchMode,
+  type FetchInput,
+  type FetchDoc,
+  type FetchDocOk,
+  type FetchDocFail,
+  type FetchDocPending,
+  type FetchReturn,
+} from "./tools-paid.js"

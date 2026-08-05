@@ -64,9 +64,42 @@ export class RunEvidence {
   #all: FetchRecord[] = []
   #raw = new Map<string, string>()
   #byUrl = new Map<string, string[]>()
+  /** Handles promised before their bytes arrived: `p3` -> the store handle it
+   *  became, or the URL still in flight. A fetch past its deadline answers
+   *  `{status:"pending", handle}` so the caller is never stuck; the promise
+   *  keeps filling the store, and the handle starts answering when it lands. */
+  #pending = new Map<string, { url: string; landed?: string }>()
+  #pn = 0
 
   constructor(store: EvidenceStore = new EvidenceStore()) {
     this.#store = store
+  }
+
+  /** Mint a handle for a fetch still in flight. */
+  pending(url: string): string {
+    const handle = `p${++this.#pn}`
+    this.#pending.set(handle, { url })
+    return handle
+  }
+
+  /** The in-flight fetch behind a pending handle finished; its bytes land now
+   *  and the pending handle starts answering as the record it became. */
+  land(pendingHandle: string, input: RecordInput): FetchRecord {
+    const rec = this.record(input)
+    const slot = this.#pending.get(pendingHandle)
+    if (slot) slot.landed = rec.handle
+    return rec
+  }
+
+  /** True while a pending handle's bytes have not arrived yet. */
+  isPending(handle: string): boolean {
+    const slot = this.#pending.get(handle)
+    return !!slot && slot.landed === undefined
+  }
+
+  /** A pending handle resolves to the store handle it became, once landed. */
+  #resolve(handle: string): string {
+    return this.#pending.get(handle)?.landed ?? handle
   }
 
   record(input: RecordInput): FetchRecord {
@@ -86,11 +119,11 @@ export class RunEvidence {
   }
 
   get(handle: string): FetchRecord | undefined {
-    return this.#store.get(handle)
+    return this.#store.get(this.#resolve(handle))
   }
 
   rawOf(handle: string): string | undefined {
-    return this.#raw.get(handle)
+    return this.#raw.get(this.#resolve(handle))
   }
 
   /** Every handle recorded for this URL, in arrival order. */

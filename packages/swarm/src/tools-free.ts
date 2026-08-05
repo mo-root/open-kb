@@ -77,19 +77,26 @@ function projectHeadings(text: string, raw: string | undefined): string {
     .join("\n")
 }
 
+/** Anchors with their text, resolved absolute. A site's own navigation is the
+ *  universal machine-readable summary; the paid fetch returns these first-class. */
+export function linksOf(raw: string, baseUrl: string): Array<{ href: string; text: string }> {
+  const out: Array<{ href: string; text: string }> = []
+  for (const m of raw.matchAll(HTML_ANCHOR)) {
+    let href = m[1]!
+    try {
+      href = new URL(href, baseUrl).toString()
+    } catch {
+      continue
+    }
+    out.push({ href, text: extractText(m[2]!) })
+  }
+  return out
+}
+
 function projectLinks(text: string, raw: string | undefined, baseUrl: string): string {
   const lines: string[] = []
   if (raw !== undefined && isHtml(raw)) {
-    for (const m of raw.matchAll(HTML_ANCHOR)) {
-      let href = m[1]!
-      try {
-        href = new URL(href, baseUrl).toString()
-      } catch {
-        continue
-      }
-      const label = extractText(m[2]!)
-      lines.push(label ? `${href} — ${label}` : href)
-    }
+    for (const l of linksOf(raw, baseUrl)) lines.push(l.text ? `${l.href} — ${l.text}` : l.href)
   } else {
     for (const m of text.matchAll(MD_LINK)) lines.push(`${m[2]!} — ${m[1]!}`)
   }
@@ -104,7 +111,16 @@ function projectLinks(text: string, raw: string | undefined, baseUrl: string): s
 export function readTool(ctx: ReadCtx, input: ReadInput): ReadReturn {
   const poolLeftUsd = ctx.ledger.spendable()
   const rec = ctx.evidence.get(input.handle)
-  if (!rec) return { ok: false, reason: "no such handle in this run", poolLeftUsd }
+  if (!rec) {
+    if (ctx.evidence.isPending(input.handle)) {
+      return {
+        ok: false,
+        reason: "that fetch is still in flight; its bytes land in the store when it returns — ask again in a moment",
+        poolLeftUsd,
+      }
+    }
+    return { ok: false, reason: "no such handle in this run", poolLeftUsd }
+  }
   if (rec.status !== "found") {
     return {
       ok: false,
