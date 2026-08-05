@@ -44,3 +44,8 @@ coverage/
 /runs/
 .next/
 *.tsbuildinfo
+
+# --- internal engineering record (local only; the public repo is the product) --
+/docs/
+/.superpowers/
+/overnight/
