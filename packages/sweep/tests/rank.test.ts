@@ -107,3 +107,99 @@ describe("judgeHosts", () => {
     expect(out.stats.aggregators).toBe(0)
   })
 })
+
+// The single-host tests above never exercise the worker pool itself: with one
+// candidate there is exactly one fetch, so the concurrency bound, the drain
+// loop's completeness, and the abort check at the top of `worker()` are all
+// unreached. These tests use many hosts specifically to put the pool under
+// load.
+describe("judgeHosts pool", () => {
+  it("bounds in-flight fetches to the configured concurrency", async () => {
+    let inFlight = 0
+    let maxInFlight = 0
+    const fetcher: FetchPort = {
+      async get(url) {
+        inFlight++
+        maxInFlight = Math.max(maxInFlight, inFlight)
+        await new Promise((resolve) => setTimeout(resolve, 5))
+        inFlight--
+        // Empty body -> sniff() reads this as unreadable, settling every host
+        // by predicate. The point of this test is the pool's shape, not the
+        // judging path, so classify is never meant to be reached.
+        return { url, httpStatus: 200, body: "", contentType: "text/html", ms: 5, usd: 0 }
+      },
+    }
+    const hosts = Array.from({ length: 8 }, (_, i) => cand(`host${i}.com`))
+    const out = await judgeHosts(hosts, {
+      fetcher,
+      classify: async () => { throw new Error("classify should not be reached — every host here is unreadable") },
+      anchor: "anchor.com",
+      aggregatorThreshold: 12,
+      concurrency: 2,
+    })
+    expect(maxInFlight).toBeLessThanOrEqual(2)
+    expect(out.entities).toHaveLength(8)
+  })
+
+  it("drains every host exactly once, and settledFree + modelJudged accounts for all of them", async () => {
+    const hosts = Array.from({ length: 12 }, (_, i) => cand(`host${i}.com`))
+    // Even-indexed hosts get the padded vendor page and reach the model;
+    // odd-indexed hosts get no entry in the page map, so fakeFetcher returns
+    // an empty body and sniff() reads them as unreadable.
+    const pages: Record<string, string> = {}
+    hosts.forEach((h, i) => {
+      if (i % 2 === 0) pages[`https://${h.host}/`] = vendorHtml
+    })
+    const out = await judgeHosts(hosts, {
+      fetcher: fakeFetcher(pages),
+      classify: async () => ({ name: "x", kind: "company", what: "", relation: "competitor", why: "" }),
+      anchor: "anchor.com",
+      aggregatorThreshold: 12,
+      concurrency: 4,
+    })
+    expect(out.entities).toHaveLength(12)
+    expect(out.stats.fetched).toBe(12)
+    expect(out.stats.settledFree + out.stats.modelJudged).toBe(out.stats.fetched)
+  })
+
+  it("returns immediately when the signal is already aborted — the fetcher is never called", async () => {
+    let fetchCalls = 0
+    const fetcher: FetchPort = {
+      async get(url) {
+        fetchCalls++
+        return { url, httpStatus: 200, body: vendorHtml, contentType: "text/html", ms: 1, usd: 0 }
+      },
+    }
+    const hosts = [cand("a.com"), cand("b.com"), cand("c.com")]
+    const out = await judgeHosts(hosts, {
+      fetcher,
+      classify: async () => ({ name: "x", kind: "company", what: "", relation: "competitor", why: "" }),
+      anchor: "anchor.com",
+      aggregatorThreshold: 12,
+      // Every worker checks `deps.signal?.aborted` at the top of its loop,
+      // before ever popping the queue — so an already-aborted signal means
+      // no host is ever fetched.
+      signal: AbortSignal.abort(),
+    })
+    expect(out.entities).toHaveLength(0)
+    expect(fetchCalls).toBe(0)
+  })
+
+  it("does not duplicate or drop hosts when classify resolves out of order under concurrency", async () => {
+    const hosts = Array.from({ length: 6 }, (_, i) => cand(`vendor${i}.com`))
+    const pages: Record<string, string> = {}
+    for (const h of hosts) pages[`https://${h.host}/`] = vendorHtml
+    const out = await judgeHosts(hosts, {
+      fetcher: fakeFetcher(pages),
+      classify: async (h) => {
+        await new Promise((resolve) => setTimeout(resolve, 1 + Math.random() * 9))
+        return { name: `Name-${h.host}`, kind: "company", what: "scraping api", relation: "competitor", why: "sells the same job" }
+      },
+      anchor: "anchor.com",
+      aggregatorThreshold: 12,
+    })
+    const domains = new Set(out.entities.map((e) => e.domain))
+    expect(domains.size).toBe(6)
+    expect(out.entities).toHaveLength(6)
+  })
+})
