@@ -31,11 +31,13 @@ export function answerKeyRecall(
   const anchor = registrableHost(opts.anchor)
   const probes: RecallProbe[] = []
   for (const p of pages) {
-    if (!p.html.toLowerCase().includes(anchor)) continue
+    const namesAnchor = (html: string): boolean =>
+      new RegExp(`(^|[^a-z0-9-])${anchor.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9-]|$)`, "i").test(html)
+    if (!namesAnchor(p.html)) continue
     const vendors = outboundHosts(p.html, p.url).filter((h) => h !== anchor)
     if (vendors.length < minVendors) continue
     const found = vendors.filter((v) => opts.mapHosts.has(v))
-    probes.push({ url: p.url, vendors, found, recall: found.length / vendors.length })
+    probes.push({ url: p.url, vendors, found, recall: vendors.length ? found.length / vendors.length : 0 })
   }
   const total = probes.reduce((n, p) => n + p.vendors.length, 0)
   const hit = probes.reduce((n, p) => n + p.found.length, 0)

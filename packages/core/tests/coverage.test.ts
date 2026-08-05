@@ -43,4 +43,22 @@ describe("answerKeyRecall", () => {
     expect(r.probes[0]!.vendors).not.toContain("anchor.com")
     expect(r.probes[0]!.vendors).not.toContain("listicle.com")
   })
+  it("does not qualify a page where the anchor only appears inside another domain", () => {
+    const r = answerKeyRecall(
+      [{ url: "https://x.com/best", html: `radio.com is great <a href="https://a.com/"><a href="https://b.com/"><a href="https://c.com/"><a href="https://d.com/"><a href="https://e.com/">` }],
+      { anchor: "io.com", mapHosts: new Set(["a.com"]) },
+    )
+    expect(r.probes).toHaveLength(0)
+  })
+  it("still matches the anchor followed by a path or punctuation", () => {
+    const r = answerKeyRecall(
+      [{ url: "https://x.com/best", html: `see anchor.com/pricing. <a href="https://a.com/"><a href="https://b.com/"><a href="https://c.com/"><a href="https://d.com/"><a href="https://e.com/">` }],
+      { anchor: "anchor.com", mapHosts: new Set(["a.com"]) },
+    )
+    expect(r.probes).toHaveLength(1)
+  })
+  it("never emits NaN recall even at minVendors 0", () => {
+    const r = answerKeyRecall([{ url: "https://x.com/", html: "anchor.com" }], { anchor: "anchor.com", mapHosts: new Set(), minVendors: 0 })
+    expect(r.probes.every((p) => Number.isFinite(p.recall))).toBe(true)
+  })
 })
