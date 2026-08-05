@@ -409,10 +409,10 @@ function tierOf(key: string, evidence: Evidence[]): ProvenanceTier {
 }
 
 function dedupeEvidence(existing: Evidence[], incoming: Evidence[]): Evidence[] {
-  const seen = new Set(existing.map((e) => `${e.url} ${e.quote}`))
+  const seen = new Set(existing.map((e) => `${e.url}\u0000${e.quote}`))
   const out = [...existing]
   for (const e of incoming) {
-    const k = `${e.url} ${e.quote}`
+    const k = `${e.url}\u0000${e.quote}`
     if (seen.has(k)) continue
     seen.add(k)
     out.push(e)

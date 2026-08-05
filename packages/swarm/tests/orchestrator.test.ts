@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest"
 import { MockLanguageModelV4 } from "ai/test"
 import type { LanguageModel } from "ai"
-import { SpanStream, type FetchPort, type SearchPort } from "@open-kb/core"
+import { SpanStream, type FetchPort, type Ledger, type SearchPort } from "@open-kb/core"
 import { runSwarm, seedMission, type SwarmEnding, type SwarmOptions } from "../src/index.js"
 
 /**
@@ -99,8 +99,12 @@ function mkOpts(o: {
   }
 }
 
-/** Every ending, whatever the reason, ships the same complete frame. */
-function expectEndingShape(e: SwarmEnding) {
+/** Every ending, whatever the reason, ships the same complete frame — and a
+ *  balanced ledger: no claim outstanding, so spendable + spent + the finish
+ *  reserve reassembles the ceiling exactly. The aborted ending is the one
+ *  caller that cannot hand a ledger over: the thrown error carries only the
+ *  terminal frame. */
+function expectEndingShape(e: SwarmEnding, ledger?: Ledger) {
   expect(e.kind).toBe("terminated")
   expect(typeof e.reason).toBe("string")
   expect(typeof e.humanReason).toBe("string")
@@ -110,6 +114,11 @@ function expectEndingShape(e: SwarmEnding) {
   expect(typeof e.nodes).toBe("number")
   expect(typeof e.edges).toBe("number")
   expect(Array.isArray(e.residue)).toBe(true)
+  if (ledger) {
+    expect(
+      Math.abs(ledger.spendable() + ledger.spentUsd() + ledger.finishReserveUsd - ledger.ceilingUsd),
+    ).toBeLessThan(1e-9)
+  }
 }
 
 const mission = (dedupeKey: string, priority: number, tier: string) => ({
@@ -166,7 +175,7 @@ describe("runSwarm: fill/think/wake", () => {
     const run = await runSwarm(mkOpts({ lead, inv, logs }))
 
     expect(run.ending.reason).toBe("lead-finished")
-    expectEndingShape(run.ending)
+    expectEndingShape(run.ending, run.ledger)
     const keys = run.landings.map((l) => l.mission.dedupeKey)
     expect(keys).toContain("m1")
     expect(keys).toContain("m2")
@@ -230,7 +239,7 @@ describe("runSwarm: fill/think/wake", () => {
     expect(turn2).toContain("skipped")
     // The dig never ran; it ships as residue with its author's own priority.
     expect(run.ending.residue.map((r) => r.dedupeKey)).toContain("dig-deep")
-    expectEndingShape(run.ending)
+    expectEndingShape(run.ending, run.ledger)
   })
 })
 
@@ -291,7 +300,7 @@ describe("runSwarm: endings", () => {
       .sort()
     expect(toolNames).toEqual(["finish", "read", "recall", "remember"].sort())
     expect(run.finish?.reason).toBe("out of money")
-    expectEndingShape(run.ending)
+    expectEndingShape(run.ending, run.ledger)
   })
 
   it("wall-clock: popping halts at the wall, in-flight drains with grace, then hard-cancel — partial writes stand", async () => {
@@ -347,10 +356,9 @@ describe("runSwarm: endings", () => {
     // The cut-off missions report themselves as timeouts, with their writes counted.
     expect(run.landings.some((l) => l.digest.status === "timeout")).toBe(true)
     // m2 never ran: it is residue, and its spawn-time claim settled at $0 —
-    // the ledger balances exactly.
+    // the ledger balances exactly, per the shape helper.
     expect(run.ending.residue.map((r) => r.dedupeKey)).toContain("m2")
-    expect(Math.abs(run.ledger.spendable() - (run.ledger.workPoolUsd - run.ledger.spentUsd()))).toBeLessThan(1e-9)
-    expectEndingShape(run.ending)
+    expectEndingShape(run.ending, run.ledger)
   })
 
   it("stillborn: no readable seed-host page and an empty identification SERP end the run inside the window", async () => {
@@ -383,7 +391,7 @@ describe("runSwarm: endings", () => {
     expect(run.ending.humanReason).toBe("Nothing at this domain could be read; there is no map to build from here.")
     expect(run.ending.nodes).toBe(0)
     expect(run.ending.spentUsd).toBeLessThan(0.03)
-    expectEndingShape(run.ending)
+    expectEndingShape(run.ending, run.ledger)
   })
 
   it("lead-fault: two consecutive model failures end the run; the landed mission's writes stand", async () => {
@@ -429,7 +437,7 @@ describe("runSwarm: endings", () => {
     expect(run.map.nodes.get("rival.com")).toBeDefined()
     expect(run.ending.nodes).toBeGreaterThan(0)
     expect(leadCalls).toBe(3) // one good turn, two faults, no third retry
-    expectEndingShape(run.ending)
+    expectEndingShape(run.ending, run.ledger)
   })
 
   it("turn-cap: a lead that never finishes trips the loop detector, loudly", async () => {
@@ -442,7 +450,7 @@ describe("runSwarm: endings", () => {
     expect(run.ending.reason).toBe("turn-cap")
     expect(run.ending.humanReason).toMatch(/loop detector/)
     expect(run.tally.leadTurns).toBe(24)
-    expectEndingShape(run.ending)
+    expectEndingShape(run.ending, run.ledger)
   })
 
   it("aborted: the caller's signal rejects the run like the sweep does, terminal frame attached", async () => {
@@ -517,7 +525,7 @@ describe("runSwarm: the ledger stays honest", () => {
     expect(run.seconds).toBeGreaterThanOrEqual(0.075)
     // Nothing invisible: the port spans carry the same dollars.
     expect(spans.totalUsd()).toBeCloseTo(0.021, 4)
-    expectEndingShape(run.ending)
+    expectEndingShape(run.ending, run.ledger)
   })
 
   it("a mission killed while QUEUED settles its claim at $0 and ships as residue", async () => {
@@ -539,10 +547,10 @@ describe("runSwarm: the ledger stays honest", () => {
     const run = await runSwarm(mkOpts({ lead, over: { lanes: 1 } }))
 
     expect(run.ending.reason).toBe("lead-finished")
-    // m2 was claimed at spawn but never run: its reservation came back whole.
+    // m2 was claimed at spawn but never run: its reservation came back whole;
+    // the balance itself is the shape helper's line.
     expect(run.ending.residue.map((r) => r.dedupeKey)).toContain("m2")
-    expect(Math.abs(run.ledger.spendable() - (run.ledger.workPoolUsd - run.ledger.spentUsd()))).toBeLessThan(1e-9)
     expect(run.finish?.summary).toBe("one lane was enough")
-    expectEndingShape(run.ending)
+    expectEndingShape(run.ending, run.ledger)
   })
 })

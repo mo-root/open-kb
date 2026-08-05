@@ -78,7 +78,19 @@ export function serializeSwarmRun(
       .filter((n) => !n.retracted && (n.kind === "company" || n.kind === "product"))
       .map((n) => registrableHost(n.domain || n.name)),
   )
-  const recall: RecallReport = answerKeyRecall(run.evidence.pages(), { anchor: run.map.anchor, mapHosts })
+  // The probe pool excludes the anchor's own pages — they name the anchor by
+  // definition and would let the map grade itself against the anchor's own
+  // marketing. Same rung-0 rule as the sweep's probe gate (rank.ts); registrable
+  // host, not hostname, so www. and subdomains fold in with it.
+  const anchorKey = registrableHost(run.map.anchor)
+  const probePool = run.evidence.pages().filter((p) => {
+    try {
+      return registrableHost(new URL(p.url).hostname) !== anchorKey
+    } catch {
+      return false
+    }
+  })
+  const recall: RecallReport = answerKeyRecall(probePool, { anchor: run.map.anchor, mapHosts })
 
   const hosts = new Set<string>()
   for (const url of run.seen) {

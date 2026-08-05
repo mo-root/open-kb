@@ -35,6 +35,20 @@ const probeHtml =
   `<a href="https://third.com">Third</a> <a href="https://fourth.com">Fourth</a> ` +
   `<a href="https://fifth.com">Fifth</a></body></html>`
 
+// A page on the anchor's OWN host that reads exactly like an answer key —
+// names anchor.com as a word of its own, links six vendors. Rung 0 of the
+// kernel (rank.ts) refuses these: a probe on the anchor's host lets the map
+// grade itself against the anchor's marketing. The swarm's pool must refuse
+// it the same way, while the third-party roundup still counts.
+const anchorOwnHtml =
+  `<html><body><h1>Why merchants choose anchor.com</h1>` +
+  `<p>We compared anchor.com to every fraud scoring vendor a merchant shortlists, on latency, ` +
+  `pricing and review tooling, then ran the same hundred stolen-card checkouts through each ` +
+  `platform; the review queue and the flags before authorization are where the field splits.</p>` +
+  `<a href="https://rival.com">Rival</a> <a href="https://second.com">Second</a> ` +
+  `<a href="https://third.com">Third</a> <a href="https://fourth.com">Fourth</a> ` +
+  `<a href="https://fifth.com">Fifth</a> <a href="https://sixth.com">Sixth</a></body></html>`
+
 const HITS = [
   { url: "https://rival.com", title: "Rival", description: "Rival sells fraud scoring to online merchants" },
   { url: "https://second.com", title: "Second", description: "Second scores checkout fraud for merchants" },
@@ -49,7 +63,7 @@ const search: SearchPort = {
 
 const fetchPort: FetchPort = {
   async get(url) {
-    const body = url.includes("roundup.com") ? probeHtml : rivalHtml
+    const body = url.includes("roundup.com") ? probeHtml : url.includes("anchor.com") ? anchorOwnHtml : rivalHtml
     return { url, httpStatus: 200, body, ms: 1, usd: 0.002 }
   },
 }
@@ -82,9 +96,9 @@ const digModel = new MockLanguageModelV4({
     if (turn === 1)
       return reply(
         call("f1", "fetch", {
-          urls: ["https://rival.com", "https://roundup.com/best-fraud-tools"],
+          urls: ["https://rival.com", "https://roundup.com/best-fraud-tools", "https://anchor.com/customers"],
           mode: "direct",
-          why: "the vendor's own words and the market's answer key",
+          why: "the vendor's own words, the market's answer key, and the anchor's own comparison page",
         }),
         false,
       )
@@ -274,16 +288,19 @@ describe("serializeSwarmRun renders through the web reader", () => {
     // The kernel block reports what the write gate did.
     const report = out.report as {
       kernel: { downgraded: number; retractions: number; aggregatorThreshold: number | null }
-      recall: { pooled: number | null; probes: Array<{ vendors: string[]; found: string[] }> }
+      recall: { pooled: number | null; probes: Array<{ url: string; vendors: string[]; found: string[] }> }
       ending: { reason: string; residue: unknown[] }
     }
     expect(report.kernel.downgraded).toBe(1)
     expect(report.kernel.retractions).toBe(1)
     expect(report.kernel.aggregatorThreshold).toBeNull()
     // Recall against the probe page the run itself bought: five vendors
-    // enumerated, two of them on the map.
+    // enumerated, two of them on the map. The anchor's own /customers page —
+    // fetched, readable, names the anchor, six vendors linked — is NOT a
+    // probe: a map graded against the anchor's own marketing grades itself.
     expect(report.recall.pooled).toBeCloseTo(2 / 5, 6)
     expect(report.recall.probes).toHaveLength(1)
+    expect(report.recall.probes[0]?.url).toBe("https://roundup.com/best-fraud-tools")
     expect(report.ending.reason).toBe("lead-finished")
 
     // The JSON survives the disk round trip whole.
