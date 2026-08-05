@@ -109,7 +109,7 @@ Every agent in open-kb is the same three things: **a markdown prompt** (its beli
 | **understand** | once | reads the company's own pages: what it sells, every product, which products share a market, which words are invented brand names |
 | **catalog** | once **per product**, 6 in parallel | strips the product to the terms a buyer would type, judges whether its name is too generic to search, writes that product's debranded queries |
 | **assess** | between rounds | the widening judge — reads what every family returned for every product, and decides: release held queries where a door is paying, switch doors where results repeat, or say *enough* |
-| **classify** | per batch of hosts, 6 batches in flight | fetches each host's actual page and judges what it is and how it relates to the anchor — from the page, never from a search snippet |
+| **classify** | once per undecided host | judges each host from its fetched front page. Aggregator-shaped and unreadable hosts are settled by code for $0 before any model is asked; a claim that fails the evidence bar lands as `unknown` with the refusal attached, never as a guessed competitor |
 | **link** | once | where two entities' pages name each other, judges what the relationship is |
 | **discover** | standalone (`pnpm discover`) | a tool-loop investigator: maps a site's product pages, reads the ones it chooses, follows leads, submits products one by one, decides itself when the catalogue is complete |
 
