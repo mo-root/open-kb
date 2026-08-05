@@ -25,7 +25,7 @@ Give it a domain, get back a cited map of the ecosystem around it — competitor
 
 <img src="./assets/demo.gif" alt="open-kb in action: a domain goes in, the run streams live, the cited map comes out" width="100%" />
 
-<sub>3× speed — [**watch the full demo with audio**](./assets/demo.mp4) (57s)</sub>
+<sub>4× speed — [**watch the full demo with audio**](./assets/demo.mp4) (1m26s)</sub>
 
 </div>
 
