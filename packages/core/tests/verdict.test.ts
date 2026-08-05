@@ -16,6 +16,12 @@ describe("outboundHosts", () => {
   it("ignores same-host and relative links", () => {
     expect(outboundHosts(`<a href="/pricing"><a href="https://self.com/docs">`, "https://self.com/")).toEqual([])
   })
+  it("does not throw on an unparseable page URL", () => {
+    expect(outboundHosts(`<a href="https://a.com/">`, "not a url")).toEqual(["a.com"])
+  })
+  it("counts protocol-relative links", () => {
+    expect(outboundHosts(`<a href="//b.com/x">`, "https://self.com/")).toEqual(["b.com"])
+  })
 })
 
 describe("admit", () => {
