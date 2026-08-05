@@ -56,6 +56,11 @@ Test: does it enumerate players rather than argue about them?
 **discusses** — where the buyer argues about this. Subreddits, forums, Q&A sites, Discords, HN
 threads. Test: is the conversation *by* the buyer rather than *at* them?
 
+**unknown** — claimed, not established. The evidence in hand did not support the relation the
+classifier wanted, so the claim was downgraded rather than deleted: the host stays on the map
+with the refusal attached, and a reader can finish the job. Prefer this over promoting a guess —
+an audit measured the guess wrong 121 times in 207.
+
 ## Choosing
 
 `dependency` and `integration` are the pair most often confused: built **on** versus plugged **into**.
