@@ -45,7 +45,7 @@ export const STAGE_BLURB: Record<Stage, string> = {
   understand: "read the company's own pages — what it sells, who buys it, which words it invented",
   plan: "write the query catalog knowing no company names, so a look-up query is impossible",
   sweep: "fire every query at once and keep the hosts that come back",
-  rank: "classify the whole host bag in batches — player, community, publisher, noise",
+  rank: "judge each host from its own front page — player, community, publisher, unknown",
   link: "ask how the players relate to each other, not just to the anchor",
   write: "assemble the map and settle the bill",
 };

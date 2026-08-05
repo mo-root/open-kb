@@ -5,7 +5,8 @@
  *   2. write the catalog, one model call -> N queries, generated before any company
  *                                name is known, so a look-up query is impossible to write
  *   3. fire everything at once, parallel, cheap
- *   4. extract in bulk, every company visible in the results, in batches
+ *   4. judge every host from its own front page, predicates first, a model
+ *                                call only on the residue, one host at a time
  *
  * This is the library form of what `scripts/sweep.ts` used to be inline. It is
  * the same code the CLI and the web route run, the script is now a thin
@@ -116,10 +117,12 @@ export const ENTITY_KINDS = [
 /**
  * How an entity stands to the anchor.
  *
- * The first seven are commercial stances. The last three cover hosts that have
- * no commercial stance but still relate: publications, directories, forums.
- * With only commercial words, 144 of 438 hosts on one run came back `none` and
- * dropped off the map, since a node with no relation gets no edge.
+ * Seven are commercial stances. Three cover hosts that have no commercial
+ * stance but still relate: publications, directories, forums. `unknown` is
+ * the downgrade for a claim the evidence refused — the host stays, wearing
+ * the refusal. With only commercial words, 144 of 438 hosts on one run came
+ * back `none` and dropped off the map, since a node with no relation gets no
+ * edge.
  */
 export const RELATIONS = [
   "competitor",
@@ -388,10 +391,8 @@ export interface SweepOptions {
   minNewHosts?: number
   /** SERP calls in flight at once. */
   concurrency?: number
-  /** Hosts per classification batch. */
+  /** Co-occurring pairs per link-phase model call. */
   batchSize?: number
-  /** Classification batches in flight at once. */
-  rankConcurrency?: number
   /** Outbound-link count above which a company-shaped front page is settled as
    *  a directory for free, without a model call. Left unset: calibration
    *  (`scripts/calibrate-kernel.ts`) found no separation between vendor and
@@ -1527,7 +1528,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   }
   say("sweep", `${hits.length} results, ${byHost.size} distinct hosts${folded ? ` (${folded} rows folded into a parent domain)` : ""}`)
 
-  // ── 4. extract in bulk ────────────────────────────────────────────────────
+  // ── 4. judge every host from its own page ─────────────────────────────────
   const hostList = [...byHost.entries()].map(([host, hs]) => ({
     host,
     seenIn: new Set(hs.map((h) => h.q)).size,
@@ -1608,7 +1609,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   })
   flushRanked()
   if (signal?.aborted) throw new Error("aborted")
-  entities.push(...judged.entities.map((e) => ({ ...e, domain: e.domain } as Entity)))
+  entities.push(...judged.entities.map((e) => ({ ...e } as Entity)))
   say("rank", `${judged.stats.settledFree} hosts settled by predicate for $0; ${judged.stats.modelJudged} judged by the model`)
 
   // ── report ────────────────────────────────────────────────────────────────

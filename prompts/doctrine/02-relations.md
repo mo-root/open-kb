@@ -5,8 +5,8 @@ doctrine: 02-relations
 
 Every edge is stated **from the anchor outward** and is exactly one of these.
 
-They come in two groups: the first seven say how something stands to the anchor *commercially*, the
-last three say where the market is *talked about*. A map needs both. Ask only the commercial
+They come in two groups: seven say how something stands to the anchor *commercially*, three say
+where the market is *talked about*. A map needs both. Ask only the commercial
 question and of 438 hosts on one run **144 came back unplaceable** — every publication, directory
 and forum — and all 144 dropped off the map, because a node with no relation gets no edge. They were
 not unclassifiable. There was no word for what they do.
@@ -56,9 +56,6 @@ Test: does it enumerate players rather than argue about them?
 **discusses** — where the buyer argues about this. Subreddits, forums, Q&A sites, Discords, HN
 threads. Test: is the conversation *by* the buyer rather than *at* them?
 
-**unknown** — evidence did not support the relation, downgraded not deleted. Host stays, wearing
-  refusal. Prefer this over promoting a guess — measured wrong 121 times in 207.
-
 ## Choosing
 
 `dependency` and `integration` are the pair most often confused: built **on** versus plugged **into**.
@@ -67,6 +64,9 @@ threads. Test: is the conversation *by* the buyer rather than *at* them?
 
 Pick the closest honest one and say why in the reason. Guessing confidently is worse than choosing
 approximately and explaining — a reader can correct a stated reason and cannot correct a bare label.
+
+**unknown** — evidence did not support the relation, downgraded not deleted. Host stays, wearing
+refusal. Prefer this over promoting a guess — measured wrong 121 times in 207.
 
 **none** is the last resort and it costs the entity its place on the map — a node kept but unplaced
 is one a reader sees floating, unexplained. If you reach for it often, the missing word is a gap in

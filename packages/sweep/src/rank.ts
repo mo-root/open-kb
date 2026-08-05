@@ -151,6 +151,15 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
       })
       return
     }
+    // This gate is structurally unreachable today, and that is worth saying
+    // out loud rather than letting it read as load-bearing. Classify only
+    // ever runs on a page that was just read, so the own-page rule is
+    // satisfied by construction; and the aggregator rule was either already
+    // settled by the pre-model check above with the same threshold, or
+    // disabled into infinity here. It stays wired so that if residue
+    // classification ever runs off anything but a just-read page — a snippet
+    // fallback, a cached body — the downgrade path already exists instead of
+    // needing to be remembered.
     const gate = admit({ host: h.host, kind: out.kind, relation: out.relation }, page, {
       anchor: deps.anchor, aggregatorThreshold: threshold ?? Number.POSITIVE_INFINITY,
     })

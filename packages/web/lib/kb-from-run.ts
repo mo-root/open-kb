@@ -105,7 +105,8 @@ function pathFor(group: string, e: Entity): string {
   return `${group}/${safe}.md`
 }
 
-/** One entity per host. The classifier batches, so a host can come back twice.
+/** One entity per host. Each host is judged once from its own page now, but
+ *  this fold stays as the guard against a duplicate row from any source.
  *  First placement wins, except that any real relation beats `none`. */
 function dedupe(entities: readonly Entity[]): Entity[] {
   const by = new Map<string, Entity>()
