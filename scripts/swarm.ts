@@ -28,9 +28,20 @@
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { openrouter } from "@openrouter/ai-sdk-provider"
-import { SpanStream } from "../packages/core/src/index.js"
+import { SpanStream, type Span } from "../packages/core/src/index.js"
 import { brightDataFetch, brightDataSearch } from "../packages/providers/src/index.js"
 import { runSwarm, serializeSwarmRun } from "../packages/swarm/src/index.js"
+
+// The AI SDK's warning hook, installed as a function: real SDK warnings still
+// print (prefixed, once per event), while the OpenRouter provider's per-turn
+// "reasoning_details entries were removed" console spam — emitted only when NO
+// custom logger is installed — stays off the run log. Live run 1 buried its 55
+// useful lines under 32 copies of it. Errors are untouched; warnings reroute.
+Object.assign(globalThis, {
+  AI_SDK_LOG_WARNINGS: (o: { warnings: Array<{ message?: string }> }) => {
+    for (const w of o.warnings) console.warn(`[ai-sdk] ${w.message ?? JSON.stringify(w)}`)
+  },
+})
 
 const domain = process.argv[2] ?? "resend.com"
 const ceilingUsd = process.argv[3] !== undefined ? Number(process.argv[3]) : 1.5
@@ -57,6 +68,15 @@ const creds = {
 }
 
 const spans = new SpanStream()
+
+// The span stream, kept: run 1's spans died with the process, and "did the
+// lead ever attempt a spawn" became unanswerable an hour later. Every span —
+// model turns, SERP rows, fetches, tool calls with their why — collects here
+// and writes beside the run JSON as JSONL.
+const spanRows: Span[] = []
+const spanPump = (async () => {
+  for await (const s of spans.stream()) spanRows.push(s)
+})()
 
 // Every line wears the running total the span stream has actually billed —
 // model turns via the runner's hooks, SERP rows and fetches at the port —
@@ -105,3 +125,8 @@ const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "")
 const path = `runs/swarm-${domain.replace(/\W+/g, "-")}-${stamp}.json`
 writeFileSync(path, JSON.stringify(out, null, 2))
 console.log(`\nwrote ${path}`)
+
+await spanPump
+const spansPath = path.replace(/\.json$/, ".spans.jsonl")
+writeFileSync(spansPath, spanRows.map((s) => JSON.stringify(s)).join("\n") + "\n")
+console.log(`wrote ${spansPath} (${spanRows.length} spans)`)
