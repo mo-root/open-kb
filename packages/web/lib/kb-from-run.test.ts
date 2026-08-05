@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { graphOf } from "./kb-from-run"
+import { graphOf, noteOf } from "./kb-from-run"
 import type { StoredRun } from "./runs"
 
 /**
@@ -30,6 +30,13 @@ function run(entities: unknown[], edges: unknown[] = []): StoredRun {
       report: {},
     } as never,
   }
+}
+
+/** Object-shaped fixture for tests that want to name `entities`/`edges`
+ *  together rather than positionally. Built on `run()` above, the smallest
+ *  existing `StoredRun` fixture in this file, so both stay one shape. */
+function fixtureRun(overrides: { entities?: unknown[]; edges?: unknown[] }): StoredRun {
+  return run(overrides.entities ?? [], overrides.edges ?? [])
 }
 
 describe("graphOf, entity-to-entity edges", () => {
@@ -152,5 +159,40 @@ describe("graphOf, market clustering", () => {
   it("matches market names case-insensitively", () => {
     const g = graphOf(withMarkets([{ ...entity("b.com", "substitute"), foundBy: ["  Proxy Network "] }]))
     expect(g.edges.find((x) => x.target.includes("b.com"))!.source).toBe("markets/proxy-network.md")
+  })
+})
+
+describe("validation kernel surfaces", () => {
+  it("places unknown-kind entities under unplaced instead of dropping them", () => {
+    const run = fixtureRun({
+      entities: [{ name: "dead.com", domain: "dead.com", kind: "unknown", what: "", relation: "unknown", why: "", because: "its front page could not be read this run (blocked)" }],
+    })
+    const g = graphOf(run)
+    expect(g.nodes.some((n) => n.id === "unplaced/dead.com.md")).toBe(true)
+  })
+  it("carries edge confidence through to GraphEdge", () => {
+    // relation "none" on both ends, not "competitor": with a real relation
+    // and no `foundBy`, `graphOf` also draws an anchor->entity edge labelled
+    // "competitor" for each (see the placement loop above this one), and
+    // `.find` would grab that undecorated edge before the peer edge this test
+    // means to check. "none" keeps the only "competitor"-labelled edge the
+    // one this test asserts on: the peer edge carrying `confidence`.
+    const run = fixtureRun({
+      entities: [
+        { name: "a.com", domain: "a.com", kind: "company", what: "", relation: "none", why: "" },
+        { name: "b.com", domain: "b.com", kind: "company", what: "", relation: "none", why: "" },
+      ],
+      edges: [{ from: "a.com", to: "b.com", relation: "competitor", why: "", confidence: "inferred" }],
+    })
+    const g = graphOf(run)
+    const edge = g.edges.find((e) => e.label === "competitor")
+    expect(edge?.confidence).toBe("inferred")
+  })
+  it("noteOf exposes the refusal reason", () => {
+    const run = fixtureRun({
+      entities: [{ name: "x.com", domain: "x.com", kind: "unknown", what: "", relation: "unknown", why: "", because: "nothing on its own site says it does this" }],
+    })
+    const note = noteOf(run, "unplaced/x.com.md")
+    expect(note?.because).toContain("its own site")
   })
 })

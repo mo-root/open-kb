@@ -203,6 +203,9 @@ export interface NoteView {
    *  the anchor (read from its own pages, not searched for) and on a run
    *  recorded before families existed. */
   families?: string[]
+  /** the kernel's refusal, when this claim was downgraded — rendered so a
+   *  reader sees why the map does not trust it. */
+  because?: string
 }
 
 /* --------------------------------------------------------------------- graph */
@@ -229,6 +232,10 @@ export interface GraphEdge {
    *  were untyped wikilinks and had nothing to say; ours are the whole point,
    *  so the label rides along and the canvas's link tooltip reads it. */
   label: string
+  /** measured = a retrieved page named both ends; inferred = the model
+   *  reasoned it. 73–88% of a map's edges are inferred, and until this field
+   *  the canvas drew them identically. */
+  confidence?: "measured" | "inferred"
 }
 
 export interface DanglingLink {

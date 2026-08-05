@@ -49,6 +49,12 @@ import type { StoredRun } from "./runs"
  *
  * The collapse loses information, so every node and card also shows the
  * classifier's own `kind`. `noise` maps to nothing; see `graphOf`'s `dangling`.
+ *
+ * `unknown` is different from `noise`: it is the kernel declining to settle a
+ * host rather than the classifier ruling it out. Dropping it silently would
+ * make the map look more confident than the run was, so it gets a node too —
+ * in its own group, `unplaced`, rather than folded into a colour that claims
+ * a kind was decided.
  */
 const KIND_GROUP: Record<string, string> = {
   company: "players",
@@ -56,6 +62,7 @@ const KIND_GROUP: Record<string, string> = {
   community: "communities",
   publisher: "communities",
   directory: "communities",
+  unknown: "unplaced",
 }
 
 /**
@@ -315,6 +322,7 @@ export function noteOf(run: StoredRun, path: string): NoteView | null {
     relation: hit.entity.relation,
     domain: hit.entity.domain,
     families: hit.entity.families,
+    because: (hit.entity as { because?: string }).because,
   }
 }
 
@@ -426,7 +434,7 @@ export function graphOf(run: StoredRun): GraphView {
     const key = [from, to].sort().join("|") + e.relation
     if (seen.has(key)) continue
     seen.add(key)
-    edges.push({ source: from, target: to, label: e.relation })
+    edges.push({ source: from, target: to, label: e.relation, confidence: (e as { confidence?: "measured" | "inferred" }).confidence })
   }
 
   return {
