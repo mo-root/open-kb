@@ -1,110 +1,251 @@
+<div align="center">
+
 # open-kb
 
-Domain in, market map out. open-kb strips every product a company sells of its
-brand language and searches for what it **does** — the map that comes back
-shows who else does it, and every node and edge carries a source URL and a
-plain-language reason you can click and check.
+**The open-source market mapper.**
+Give it a domain, get back a cited map of the ecosystem around it — competitors, substitutes, communities, and the receipts on every claim. Powered by an agent sweep wired into Bright Data's web infrastructure.
 
-Point it at `stripe.com` and it does not look up "Stripe competitors." It reads
-Stripe's own pages, works out that one of the things sold is *card-fraud
-scoring on the authorization path*, and searches for that. The companies that
-answer a de-branded query are competitors by evidence, not by reputation — 
-including the ones no comparison article has ever listed.
+<br />
 
-## How a run works
+[![License: MIT](https://img.shields.io/badge/License-MIT-4B8BFF?style=flat-square&labelColor=0a1628)](./LICENSE)
+[![Node](https://img.shields.io/badge/Node-%E2%89%A520-4B8BFF?style=flat-square&labelColor=0a1628)](https://nodejs.org)
+[![Next.js](https://img.shields.io/badge/Next.js-16-4B8BFF?style=flat-square&labelColor=0a1628)](https://nextjs.org)
+[![AI SDK](https://img.shields.io/badge/AI%20SDK-7-4B8BFF?style=flat-square&labelColor=0a1628)](https://sdk.vercel.ai)
+[![Bright Data](https://img.shields.io/badge/Powered%20by-Bright%20Data-22D3EE?style=flat-square&labelColor=0a1628)](https://brightdata.com)
 
-1. **Understand.** The engine reads the company's own site — sitemap, nav,
-   product pages — and writes down what it sells, who buys it, and which words
-   are invented brand names that a search must never contain.
+</div>
 
-2. **Strip and deal.** Every product is stripped to the terms a buyer would
-   actually type (`Web Scraper API` → `web scraper`), and dealt a hand of
-   queries across three families:
+<br />
 
-   | family | example | what it finds |
-   |---|---|---|
-   | **plain** | `web scraper`, `web scraper alternatives` | the head-to-head field — who competes directly |
-   | **debranded** | `extract data from site that blocks bots` | substitutes solving the job a different way |
-   | **branded** | `Web Scraper API vs`, `<company> competitors` | the comparison ecosystem around the name |
+<!-- ─────────────────────────────────────────────────────────────────────── -->
 
-   The plain and branded families are code-generated templates — no model can
-   have a clever day and skip the boring query that finds the center of a
-   market. The debranded family is model-written, because that is where
-   judgement pays.
+<div align="center">
 
-3. **Widen.** After each round an agent reads what came back — per product,
-   per family — and decides: release more held queries where a door is paying,
-   switch doors where results repeat, stop when new queries only corroborate.
-   No fixed wave count, no query quota. The brake is a dollar ceiling.
+> ### **▶ Demo**
 
-4. **Map.** Every host that answered is fetched, classified from its own page
-   (not from a search snippet), and hung on the market whose search surfaced
-   it. Entities link to each other where pages name each other. The result is
-   clusters around markets, not a star around the company.
+<!-- Drop the demo video / GIF here: assets/demo.gif -->
+*demo coming — run `pnpm sweep stripe.com` and watch*
 
-## Receipts, or it does not exist
+</div>
 
-- A claim carries a **literal quote from a page this run fetched**, minted
-  through one code path — there is no way to attach evidence that was not
-  actually retrieved.
-- Every entity records **which product's search found it, through which
-  family** — the graph is born attributed.
-- Every model call, SERP query and page fetch is **billed to the run as it
-  happens**; the UI shows the meter live, and the report states what the run
-  actually cost.
-- The company's own catalog links to the pages that establish it. Nothing on
-  the map is unclickable.
+<br />
 
-## Quickstart
+<!-- ─────────────────────────────────────────────────────────────────────── -->
 
-Requirements: Node 20+, pnpm, an [OpenRouter](https://openrouter.ai) key, and
-a [Bright Data](https://brightdata.com) account with a SERP zone and a Web
-Unlocker zone.
+## The idea
+
+If you search **"Stripe competitors"**, you get the articles everyone already read. open-kb never searches the company's name to find its market. Instead it:
+
+1. **Reads the company's own site** and lists everything it sells
+2. **Strips each product of its brand** — `Web Scraper API` becomes `web scraper`
+3. **Searches for the job, not the name** — and the companies that answer are competitors by evidence, not by reputation
+
+That includes the ones no comparison article has ever listed: the open-source tool people outgrow, the substitute solving the same problem a completely different way, the new player with no press.
+
+<!-- Screenshot: the map view — assets/map.png -->
+
+<br />
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+
+## Why this exists
+
+| | Market-intel vendors | Asking an LLM | **open-kb** |
+|---|---|---|---|
+| **Where answers come from** | curated databases | model memory | live searches, this run |
+| **Finds substitutes & long tail** | rarely | sometimes, unverifiable | yes — that's the method |
+| **Citation on every claim** | rare | no | every node and edge: URL + quote |
+| **Cost per map** | contracts | free but uncheckable | a few dollars, metered live |
+| **Self-hosted** | no | — | yes |
+
+<br />
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+
+## How it works
+
+One domain becomes one run. Agents make the judgement calls; code enforces the guarantees.
+
+```mermaid
+flowchart LR
+    A[domain] --> B[**understand**<br/>read the company's own site<br/>list every product]
+    B --> C[**strip & deal**<br/>each product gets queries<br/>in three families]
+    C --> D[**fire**<br/>SERP worker pool<br/>every hit tagged]
+    D --> E{**widen?**<br/>agent reads the yield}
+    E -- "a door is paying" --> D
+    E -- "enough" --> F[**classify**<br/>fetch each host's page<br/>judge from the page itself]
+    F --> G[**link**<br/>pages that name each other<br/>become edges]
+    G --> H[the map]
+```
+
+### The three query families
+
+Every product's queries are dealt across three families, because each one opens a different door into the same market:
+
+```mermaid
+flowchart TD
+    P["Web Scraper API<br/>(one product)"] --> PL["**plain** · code templates<br/><code>web scraper</code> · <code>web scraper alternatives</code><br/>→ the head-to-head field"]
+    P --> DB["**debranded** · model-written<br/><code>extract data from site that blocks bots</code><br/>→ substitutes nobody lists"]
+    P --> BR["**branded** · code templates<br/><code>Web Scraper API vs</code> · <code>company competitors</code><br/>→ the comparison ecosystem"]
+```
+
+The boring families are **code** — no model can have a clever day and skip the query that finds the center of a market. The clever family is **model-written**, because that's where judgement pays. Every entity on the map records which product's search found it, through which door.
+
+<!-- Screenshot: searches panel with family chips — assets/families.png -->
+
+<br />
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+
+## Receipts, or it doesn't exist
+
+The trust layer, enforced in code:
+
+- **Every claim carries a literal quote from a page this run fetched.** There is one code path that mints evidence, and it refuses quotes that weren't actually retrieved.
+- **Every dollar is billed live.** Each model call, SERP query and page fetch lands on the run's meter as it happens — you watch the bill during the run, and the report states what it truly cost.
+- **Every entity knows its origin.** Which product's search surfaced it, which query family, which market it hangs on.
+- **The company's own catalog links to the pages that establish it.** Nothing on the map is unclickable.
+
+<!-- Screenshot: an entity with its citations — assets/receipts.png -->
+
+<br />
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+
+## Quick start
+
+You'll need a [Bright Data](https://brightdata.com) account with two zones (**SERP API** and **Web Unlocker**), plus an [OpenRouter](https://openrouter.ai) key for the LLM layer.
 
 ```bash
+# 1. Clone and install
+git clone https://github.com/mo-root/open-kb.git
+cd open-kb
 pnpm install
-cp .env.example .env        # fill in the required block
-pnpm test                   # 220 tests, no network needed
 
-# a full map from the CLI
-pnpm sweep stripe.com
+# 2. Configure
+cp .env.example .env
+# fill in:
+#   OPENROUTER_API_KEY
+#   BRIGHTDATA_API_TOKEN
+#   BRIGHTDATA_SERP_ZONE
+#   BRIGHTDATA_UNLOCKER_ZONE
 
-# or the web app
-cd packages/web && pnpm dev # → http://localhost:3210
+# 3. Run the web app
+cd packages/web && pnpm dev
+# open http://localhost:3210 — type a domain, watch the run, get the map
 ```
 
-The web app streams the run as it happens — the plan, every search with its
-family, every dollar — and navigates to the finished map on completion.
+### Or skip the UI
 
-## Architecture
-
-```
-packages/core        pure logic: evidence mint, query families, canonical urls,
-                     content sniffing, span accounting. No env, no vendor
-                     names, no HTTP — enforced by a purity gate in CI.
-packages/providers   Bright Data SERP + unlocker clients (zone rotation,
-                     rate-aware pacing), OpenRouter wiring.
-packages/sweep       the engine: understand → strip → deal → fire → widen →
-                     classify → link → report.
-packages/web         Next.js app: live run surface + the map.
-prompts/             every judgement the models make, as editable markdown.
-                     Doctrine files are shared across agents; changing how the
-                     engine thinks is a text edit, not a rebuild.
-scripts/             CLI entry points (sweep, discover, read).
-skills/              a Claude skill that drives open-kb conversationally.
+```bash
+pnpm sweep stripe.com        # full map from the CLI
+pnpm discover stripe.com     # just phase one: what does this company sell?
+pnpm test                    # 220 tests, no network, no keys needed
 ```
 
-The split that matters: **guarantees are code, judgements are prompts.** The
-evidence mint, the query templates, the anchor-name filter and the billing are
-code — they hold no matter what a model does. What to read next, what a host
-is, whether a market is exhausted — those are model calls, and every one of
-them is a prompt file you can read and edit.
+<br />
 
-## Deploy
+<!-- ─────────────────────────────────────────────────────────────────────── -->
 
-See [DEPLOY.md](DEPLOY.md) — a Dockerfile for a long-running host, basic auth,
-and a spend ceiling read from the environment.
+## Or drive it from your coding agent
+
+open-kb ships an [Agent Skill](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview) at [`skills/mapping-markets`](./skills/mapping-markets) that teaches Claude Code and other agents how to run maps, read them, and tune the query doctrine.
+
+```bash
+npx skills add mo-root/open-kb/skills/mapping-markets
+```
+
+<br />
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+
+## The judgements are files you can edit
+
+Everything the models are told lives in [`prompts/`](./prompts) as plain markdown — the doctrine for what makes a good query, how to read a page, when a market is exhausted. Changing how the engine thinks is a text edit, not a rebuild.
+
+```
+prompts/
+├── doctrine/        shared beliefs — search craft, evidence rules, query families
+└── agents/          one file per judgement — understand, catalog, assess, classify, link
+```
+
+The split that matters: **guarantees are code, judgements are prompts.** The evidence mint, the query templates, the anchor-name filter and the billing hold no matter what a model does.
+
+<br />
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+
+## Project layout
+
+```
+open-kb/
+├── packages/
+│   ├── core/        pure logic — evidence mint, query families, url canon,
+│   │                span accounting. No env, no vendor names, no HTTP.
+│   │                A purity gate in CI enforces it.
+│   ├── providers/   Bright Data SERP + Unlocker clients (zone rotation,
+│   │                rate-aware pacing), OpenRouter wiring.
+│   ├── sweep/       the engine — understand → strip → deal → fire →
+│   │                widen → classify → link → report.
+│   └── web/         Next.js 16 app — live run surface + the map.
+│
+├── prompts/         every judgement, editable markdown
+├── scripts/         CLI entry points (sweep, discover, read)
+├── skills/          the Agent Skill
+└── tests/           vitest — all offline
+```
+
+<br />
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+
+## Tech stack
+
+| Layer | Choice | Why |
+|---|---|---|
+| Data access | **Bright Data** (SERP API, Web Unlocker) | searches that don't get blocked, pages that actually load |
+| LLM layer | **OpenRouter** via **AI SDK 7** | model-agnostic; every call typed with **Zod** structured output |
+| Web app | **Next.js 16** + **React 19** + **Tailwind v4** | live NDJSON streaming, resumable across reconnects |
+| Persistence | **Supabase** (optional) | spans written as they happen — a crashed run stays readable |
+| Safety | spend ceiling + span accounting | the app refuses runs past a dollar ceiling you set |
+
+<br />
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+
+## Roadmap
+
+Shipping today: the family engine, the widening loop, live metering, the cited map, the web app, the Agent Skill.
+
+Next:
+- **The full swarm** — the discovery agent (already built and tested standalone) wired in as phase one, pulling the company's corpus itself instead of a single-pass read
+- **Run journals** — each run writes what worked; the next run on that market reads it first. The self-evolving substrate.
+- Deeper community and channel mapping — where buyers argue, not just who sells
+
+<br />
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+
+## Contributing
+
+PRs welcome. Three things worth knowing:
+
+1. **`pnpm check && pnpm test` before pushing.** The check includes a purity gate: `packages/core` may not touch env, vendors, or HTTP.
+2. **Guarantees stay code, judgements stay prompts.** A PR that moves one into the other needs a reason.
+3. **Numbers, not adjectives.** Changes to the engine should come with a before/after on a real domain.
+
+<br />
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
 
 ## License
 
-[MIT](LICENSE)
+MIT. Use it, fork it, ship it.
+
+<br />
+
+<div align="center">
+
+<sub>Built on Bright Data's web infrastructure. The internet is the dataset.</sub>
+
+</div>
