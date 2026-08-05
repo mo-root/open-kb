@@ -74,6 +74,25 @@ export {
 } from "./tools-paid.js"
 
 export {
+  runLead,
+  runInvestigator,
+  estimateTokens,
+  LEAD_EST_OUT_TOKENS,
+  LEAD_TURN_CAP,
+  INVESTIGATOR_TURN_CAP,
+  TIER_DEADLINE_MS,
+  DIGEST_TOKEN_CAP,
+  type ModelPricing,
+  type AgentHooks,
+  type SwarmAgentDeps,
+  type LeadDeps,
+  type InvestigatorDeps,
+  type LeadRunner,
+  type LeadTurnOutcome,
+  type InvestigatorDigest,
+} from "./agent.js"
+
+export {
   spawnTool,
   proposeTool,
   nextTool,

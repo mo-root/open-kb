@@ -59,6 +59,12 @@ importers:
       '@open-kb/core':
         specifier: workspace:*
         version: link:../core
+      ai:
+        specifier: ^7.0.48
+        version: 7.0.48(zod@4.4.3)
+      zod:
+        specifier: ^4.0.0
+        version: 4.4.3
     devDependencies:
       '@types/node':
         specifier: ^22.10.0

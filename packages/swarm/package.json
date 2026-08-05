@@ -6,7 +6,9 @@
   "main": "./src/index.ts",
   "exports": { ".": "./src/index.ts" },
   "dependencies": {
-    "@open-kb/core": "workspace:*"
+    "@open-kb/core": "workspace:*",
+    "ai": "^7.0.48",
+    "zod": "^4.0.0"
   },
   "devDependencies": { "@types/node": "^22.10.0" }
 }
