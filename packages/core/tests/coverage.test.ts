@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { answerKeyRecall } from "../src/coverage.js"
+import { answerKeyRecall, namesHost } from "../src/coverage.js"
 
 const page = (vendors: string[], namesAnchor = true) => ({
   url: "https://listicle.com/best",
@@ -60,5 +60,30 @@ describe("answerKeyRecall", () => {
   it("never emits NaN recall even at minVendors 0", () => {
     const r = answerKeyRecall([{ url: "https://x.com/", html: "anchor.com" }], { anchor: "anchor.com", mapHosts: new Set(), minVendors: 0 })
     expect(r.probes.every((p) => Number.isFinite(p.recall))).toBe(true)
+  })
+})
+
+/**
+ * The boundary semantics answerKeyRecall always had, exported so the probe
+ * gate in sweep's rank pass can share them instead of re-deriving them as a
+ * bare substring check — which over-collects: "io.com" is inside "radio.com".
+ */
+describe("namesHost", () => {
+  it("does not match the host inside a larger token", () => {
+    expect(namesHost("radio.com is great", "io.com")).toBe(false)
+    expect(namesHost("bright-sdk.com ships today", "sdk.com")).toBe(false)
+  })
+  it("matches the host as a word of its own", () => {
+    expect(namesHost("we compared io.com against five rivals", "io.com")).toBe(true)
+  })
+  it("matches the host followed by a path or punctuation", () => {
+    expect(namesHost("see io.com/pricing.", "io.com")).toBe(true)
+  })
+  it("is case-insensitive, pages shout and hosts do not", () => {
+    expect(namesHost("IO.COM is our top pick", "io.com")).toBe(true)
+  })
+  it("matches at the very start and very end of the text", () => {
+    expect(namesHost("io.com leads the pack", "io.com")).toBe(true)
+    expect(namesHost("the pack is led by io.com", "io.com")).toBe(true)
   })
 })

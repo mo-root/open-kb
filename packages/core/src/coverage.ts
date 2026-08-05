@@ -1,6 +1,23 @@
 import { outboundHosts } from "./verdict.js"
 import { registrableHost } from "./url.js"
 
+/**
+ * Does this text name this host as a word of its own?
+ *
+ * A bare substring check over-collects: "io.com" sits inside "radio.com", and
+ * a probe gate built on `includes` graded the map against pages that never
+ * named the anchor at all. The boundary is anything that cannot be part of a
+ * hostname — so "radio.com" does not name "io.com" and "bright-sdk.com" does
+ * not name "sdk.com", while "see io.com/pricing" does. Case-insensitive:
+ * pages shout, hosts do not.
+ */
+export function namesHost(text: string, host: string): boolean {
+  return new RegExp(
+    `(^|[^a-z0-9-])${host.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9-]|$)`,
+    "i",
+  ).test(text)
+}
+
 export interface RecallProbe {
   url: string
   vendors: string[]
@@ -31,9 +48,7 @@ export function answerKeyRecall(
   const anchor = registrableHost(opts.anchor)
   const probes: RecallProbe[] = []
   for (const p of pages) {
-    const namesAnchor = (html: string): boolean =>
-      new RegExp(`(^|[^a-z0-9-])${anchor.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9-]|$)`, "i").test(html)
-    if (!namesAnchor(p.html)) continue
+    if (!namesHost(p.html, anchor)) continue
     const vendors = outboundHosts(p.html, p.url).filter((h) => h !== anchor)
     if (vendors.length < minVendors) continue
     const found = vendors.filter((v) => opts.mapHosts.has(v))

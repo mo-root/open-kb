@@ -1,5 +1,5 @@
 import {
-  sniff, condense, admit, outboundHosts, registrableHost,
+  sniff, condense, admit, outboundHosts, registrableHost, namesHost,
   type FetchPort, type JudgedPage,
 } from "@open-kb/core"
 
@@ -97,8 +97,11 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
 
     // An answer key is worth keeping whatever the verdict on the host is —
     // except the anchor's own page, which names the anchor by definition and
-    // would let the map grade itself.
-    if (raw.body && registrableHost(h.host) !== anchorKey && raw.body.toLowerCase().includes(anchorKey)) {
+    // would let the map grade itself. Boundary-matched, not substring: the
+    // substring era counted "radio.com" as naming "io.com". Same semantics
+    // as the recall scorer in core's coverage.ts, deliberately — a probe the
+    // gate admits is one the scorer will also accept.
+    if (raw.body && registrableHost(h.host) !== anchorKey && namesHost(raw.body, anchorKey)) {
       probePages.push({ url, html: raw.body })
     }
 

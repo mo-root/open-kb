@@ -78,6 +78,29 @@ describe("judgeHosts", () => {
     expect(out.probePages[0]!.url).toBe("https://listicle.com/")
   })
 
+  it("a page containing the anchor only inside a larger token is not a probe", async () => {
+    // The substring era: anchor "io.com" matched "radio.com" and the map was
+    // graded against a page that never named the anchor at all. Same boundary
+    // semantics as core's answerKeyRecall, now shared.
+    const out = await judgeHosts([cand("acme.com")], {
+      fetcher: fakeFetcher({ "https://acme.com/": vendorHtml.replace("</p>", " As covered on radio.com last week.</p>") }),
+      classify: async () => ({ name: "Acme", kind: "company", what: "scraping api", relation: "competitor", why: "same job" }),
+      anchor: "io.com",
+      aggregatorThreshold: 12,
+    })
+    expect(out.probePages).toHaveLength(0)
+  })
+
+  it("a page naming the anchor on a word boundary still becomes a probe", async () => {
+    const out = await judgeHosts([cand("acme.com")], {
+      fetcher: fakeFetcher({ "https://acme.com/": vendorHtml.replace("</p>", " We benchmark against io.com/pricing weekly.</p>") }),
+      classify: async () => ({ name: "Acme", kind: "company", what: "scraping api", relation: "competitor", why: "same job" }),
+      anchor: "io.com",
+      aggregatorThreshold: 12,
+    })
+    expect(out.probePages.map((p) => p.url)).toEqual(["https://acme.com/"])
+  })
+
   it("a model classify failure downgrades to unknown instead of losing the host", async () => {
     const out = await judgeHosts([cand("acme.com")], {
       fetcher: fakeFetcher({ "https://acme.com/": vendorHtml }),
