@@ -179,6 +179,7 @@ const TOOL_SPAN_KIND: Record<string, SpanKind> = {
   remember: "remember",
   spawn: "spawn",
   propose: "spawn",
+  review: "spawn",
   next: "spawn",
   finish: "spawn",
 }

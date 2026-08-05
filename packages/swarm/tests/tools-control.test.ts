@@ -5,6 +5,7 @@ import {
   proposeTool,
   nextTool,
   finishTool,
+  reviewTool,
   newRunControl,
   type ControlCtx,
 } from "../src/index.js"
@@ -138,6 +139,103 @@ describe("proposeTool", () => {
   })
 })
 
+describe("reviewTool", () => {
+  it("promote lifts a proposal into the upper band, clears unreviewed, and popAffordable reaches it", () => {
+    const ctx = ctxOf()
+    proposeTool(ctx, { missions: [mission("found", { priority: 30 }), mission("other", { priority: 45 })] })
+    const r = reviewTool(ctx, { promote: [{ dedupeKey: "found", priority: 86 }], why: "the whole map says so" })
+    expect(r.promoted).toEqual([{ dedupeKey: "found", ok: true }])
+    expect(r.killed).toEqual([])
+    expect(ctx.board.residue()[0]).toMatchObject({ dedupeKey: "found", priority: 86, unreviewed: false })
+    const popped = ctx.board.popAffordable(ctx.ledger.spendable(), ALLOWANCES)
+    expect(popped.mission?.dedupeKey).toBe("found")
+  })
+
+  it("promote moves no money", () => {
+    const ctx = ctxOf()
+    proposeTool(ctx, { missions: [mission("found", { priority: 30 })] })
+    const before = ctx.ledger.spendable()
+    const r = reviewTool(ctx, { promote: [{ dedupeKey: "found", priority: 70 }], why: "t" })
+    expect(ctx.ledger.spendable()).toBeCloseTo(before)
+    expect(r.poolLeftUsd).toBeCloseTo(before)
+  })
+
+  it("an out-of-band promote target gets the board's own band sentence, and the item is untouched", () => {
+    const ctx = ctxOf()
+    proposeTool(ctx, { missions: [mission("found", { priority: 30 })] })
+    const r = reviewTool(ctx, { promote: [{ dedupeKey: "found", priority: 50 }], why: "t" })
+    expect(r.promoted).toEqual([
+      { dedupeKey: "found", ok: false, reason: "the lead ranks 61-100; priority 50 belongs in the proposal band" },
+    ])
+    expect(ctx.board.residue()[0]).toMatchObject({ dedupeKey: "found", priority: 30, unreviewed: true })
+  })
+
+  it("promote refuses an unknown key and a claimed mission, each in the board's words", () => {
+    const ctx = ctxOf()
+    spawnTool(ctx, { missions: [mission("running")], why: "t" })
+    ctx.board.claim("running")
+    const r = reviewTool(ctx, {
+      promote: [
+        { dedupeKey: "ghost", priority: 80 },
+        { dedupeKey: "running", priority: 80 },
+      ],
+      why: "t",
+    })
+    expect(r.promoted[0]!.reason).toBe('"ghost" is not queued; nothing to promote')
+    expect(r.promoted[1]!.reason).toContain("a running mission cannot be re-ranked")
+  })
+
+  it("killing a funded queued mission settles its reservation back to the pool in the same call", () => {
+    const ctx = ctxOf()
+    spawnTool(ctx, { missions: [mission("dead", { tier: "read" })], why: "t" })
+    expect(ctx.ledger.spendable()).toBeCloseTo(1.35 - ALLOWANCES.read)
+    const r = reviewTool(ctx, {
+      kill: [{ dedupeKey: "dead", because: "the rivals lens already asks this" }],
+      why: "duplicate angle",
+    })
+    expect(r.killed).toEqual([{ dedupeKey: "dead", ok: true }])
+    expect(r.poolLeftUsd).toBeCloseTo(1.35) // the read's $0.10 returned before the tool answered
+    expect(ctx.ledger.spendable()).toBeCloseTo(1.35)
+    expect(ctx.control.claims.has("dead")).toBe(false)
+    expect(ctx.board.residue()).toHaveLength(0)
+  })
+
+  it("killing an unfunded proposal moves no money", () => {
+    const ctx = ctxOf()
+    proposeTool(ctx, { missions: [mission("idea", { priority: 20 })] })
+    const r = reviewTool(ctx, { kill: [{ dedupeKey: "idea", because: "dead angle" }], why: "t" })
+    expect(r.killed).toEqual([{ dedupeKey: "idea", ok: true }])
+    expect(ctx.ledger.spendable()).toBeCloseTo(1.35)
+  })
+
+  it("a claimed mission is not killable: the sentence says review does not abort lanes, the money stays held", () => {
+    const ctx = ctxOf()
+    spawnTool(ctx, { missions: [mission("running", { tier: "read" })], why: "t" })
+    ctx.board.claim("running")
+    const r = reviewTool(ctx, { kill: [{ dedupeKey: "running", because: "changed my mind" }], why: "t" })
+    expect(r.killed[0]!.ok).toBe(false)
+    expect(r.killed[0]!.reason).toContain('"running" is already claimed')
+    expect(r.killed[0]!.reason).toContain("review does not abort lanes")
+    expect(ctx.ledger.spendable()).toBeCloseTo(1.35 - ALLOWANCES.read) // still reserved for the lane
+    expect(ctx.control.claims.has("running")).toBe(true)
+  })
+
+  it("an unknown key is refused in words", () => {
+    const ctx = ctxOf()
+    const r = reviewTool(ctx, { kill: [{ dedupeKey: "ghost", because: "x" }], why: "t" })
+    expect(r.killed).toEqual([{ dedupeKey: "ghost", ok: false, reason: '"ghost" is not queued; nothing to kill' }])
+  })
+
+  it("a killed key leaves the dedupe universe: a re-phrased question may return", () => {
+    const ctx = ctxOf()
+    spawnTool(ctx, { missions: [mission("q")], why: "t" })
+    reviewTool(ctx, { kill: [{ dedupeKey: "q", because: "too vague" }], why: "t" })
+    const again = proposeTool(ctx, { missions: [mission("q", { priority: 40 })] })
+    expect(again.queued).toBe(1)
+    expect(again.deduped).toEqual([])
+  })
+})
+
 describe("nextTool", () => {
   it("records the lead's re-entry condition and says what it waits for", () => {
     const ctx = ctxOf()
@@ -190,6 +288,7 @@ describe("finishTool", () => {
     expect(spawnTool(ctx, { missions: [], why: "t" }).poolLeftUsd).toBeCloseTo(1.35)
     expect(proposeTool(ctx, { missions: [] }).poolLeftUsd).toBeCloseTo(1.35)
     expect(nextTool(ctx, { after: { landings: 1 }, why: "t" }).poolLeftUsd).toBeCloseTo(1.35)
+    expect(reviewTool(ctx, { why: "t" }).poolLeftUsd).toBeCloseTo(1.35)
     expect(finishTool(ctx, { reason: "r", summary: "s", unresolved: [] }).poolLeftUsd).toBeCloseTo(1.35)
   })
 })

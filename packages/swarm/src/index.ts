@@ -114,6 +114,7 @@ export { serializeSwarmRun, type SerializedSwarmRun } from "./serialize.js"
 export {
   spawnTool,
   proposeTool,
+  reviewTool,
   nextTool,
   finishTool,
   newRunControl,
@@ -125,6 +126,9 @@ export {
   type SpawnReturn,
   type ProposeInput,
   type ProposeReturn,
+  type ReviewInput,
+  type ReviewOutcomeRow,
+  type ReviewReturn,
   type NextInput,
   type NextReturn,
   type FinishInput,

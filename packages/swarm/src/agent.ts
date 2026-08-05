@@ -27,6 +27,7 @@ import {
   finishTool,
   nextTool,
   proposeTool,
+  reviewTool,
   spawnTool,
   type ControlCtx,
   type RunControl,
@@ -82,7 +83,9 @@ export const TIER_DEADLINE_MS: Record<MissionTier, number> = {
 /** A digest is a note to the lead, not a deliverable. Enforced by truncation. */
 export const DIGEST_TOKEN_CAP = 120
 
-/** The in-band line after two consecutive paid refusals — the skill teaches it. */
+/** The in-band line after two consecutive paid refusals. The skill teaches the
+ *  situation — past the allowance, paid tools refuse and you finish rather than
+ *  die — but this exact sentence is the harness's own, not quoted there. */
 const SPENT_LINE = "your allowance is spent; finish with what you hold"
 
 // ── deps ─────────────────────────────────────────────────────────────────────
@@ -370,6 +373,22 @@ function leadControlTools(deps: SwarmAgentDeps): ToolSet {
         // knows"), so the wider zod type narrows at the boundary it teaches at.
         const out = spawnTool(controlCtx, { missions: missions as unknown as Mission[], why })
         report("spawn", why, { missions: missions.length }, started, out.refused.length === 0)
+        return out
+      },
+    }),
+    review: tool({
+      description:
+        "FREE. Review the board with whole-map context: promote proposals into your 61-100 band (clears unreviewed), kill duplicates and dead angles with the reason stated. A running mission is not killable — review does not abort lanes.",
+      inputSchema: z.object({
+        promote: z.array(z.object({ dedupeKey: z.string(), priority: z.number() })).optional(),
+        kill: z.array(z.object({ dedupeKey: z.string(), because: z.string() })).optional(),
+        why: whyField,
+      }),
+      execute: async ({ promote, kill, why }) => {
+        const started = Date.now()
+        const out = reviewTool(controlCtx, { promote, kill, why })
+        const allOk = [...out.promoted, ...out.killed].every((r) => r.ok)
+        report("review", why, { promote: promote?.length ?? 0, kill: kill?.length ?? 0 }, started, allOk)
         return out
       },
     }),

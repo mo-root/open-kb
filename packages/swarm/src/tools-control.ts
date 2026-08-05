@@ -1,11 +1,11 @@
 import { ALLOWANCES, type Board, type Ledger, type Mission } from "@open-kb/core"
 
 /**
- * The control tools: spawn, propose, next, finish. No model call, no provider
- * call — these move money and questions, and they mutate one small RunControl
- * the orchestrator reads. Spawn is the lead's only way to fund work and it is
- * non-blocking by construction: reserving and queueing are arithmetic, so it
- * returns in about a millisecond and the lead keeps thinking.
+ * The control tools: spawn, propose, review, next, finish. No model call, no
+ * provider call — these move money and questions, and they mutate one small
+ * RunControl the orchestrator reads. Spawn is the lead's only way to fund work
+ * and it is non-blocking by construction: reserving and queueing are
+ * arithmetic, so it returns in about a millisecond and the lead keeps thinking.
  *
  * Refusals are sentences. "the pool no longer funds a dig; re-tier it or drop
  * it" is a decision the lead can make on its next line; a thrown error is not.
@@ -146,6 +146,79 @@ export function proposeTool(ctx: ControlCtx, input: ProposeInput): ProposeReturn
   }
 
   return { queued, deduped, poolLeftUsd: ctx.ledger.spendable() }
+}
+
+// ── review ───────────────────────────────────────────────────────────────────
+
+export interface ReviewInput {
+  promote?: Array<{ dedupeKey: string; priority: number }>
+  kill?: Array<{ dedupeKey: string; because: string }>
+  why: string
+}
+
+export interface ReviewOutcomeRow {
+  dedupeKey: string
+  ok: boolean
+  reason?: string
+}
+
+export interface ReviewReturn {
+  promoted: ReviewOutcomeRow[]
+  killed: ReviewOutcomeRow[]
+  poolLeftUsd: number
+}
+
+/**
+ * The lead's board review, free like recall: promote proposals into the upper
+ * band with whole-map context, kill duplicates and dead angles with the reason
+ * stated. Killing a FUNDED queued mission hands its reservation straight back
+ * to the pool — the mirror of spawn's board-refusal refund: nothing was
+ * worked, so the money returns in the same call. A claimed mission is refused
+ * in words: review re-ranks the queue, it does not abort lanes. A killed key
+ * leaves the dedupe universe, so a better-phrased version of the question may
+ * be pushed later. Promote moves no money — the mission is funded when popped,
+ * or was funded at spawn.
+ */
+export function reviewTool(ctx: ControlCtx, input: ReviewInput): ReviewReturn {
+  const promoted: ReviewOutcomeRow[] = []
+  const killed: ReviewOutcomeRow[] = []
+
+  for (const p of input.promote ?? []) {
+    // Band-validate here with the board's own sentence: promote is the lead's
+    // act, and a target below 61 is not a review, it is a re-file into the
+    // worker band the item already sits in.
+    if (!(p.priority >= 61 && p.priority <= 100)) {
+      promoted.push({
+        dedupeKey: p.dedupeKey,
+        ok: false,
+        reason: `the lead ranks 61-100; priority ${p.priority} belongs in the proposal band`,
+      })
+      continue
+    }
+    const out = ctx.board.promote(p.dedupeKey, p.priority)
+    promoted.push(out.ok ? { dedupeKey: p.dedupeKey, ok: true } : { dedupeKey: p.dedupeKey, ok: false, reason: out.reason })
+  }
+
+  for (const k of input.kill ?? []) {
+    const out = ctx.board.kill(k.dedupeKey, k.because)
+    if (!out.ok) {
+      // The board says "kill the lane" for a claimed item; the lead holds no
+      // lane-killing tool, so the sentence it acts on says what review is not.
+      const reason = out.reason.includes("already claimed")
+        ? `"${k.dedupeKey}" is already claimed; review does not abort lanes — a running mission finishes on its own clock`
+        : out.reason
+      killed.push({ dedupeKey: k.dedupeKey, ok: false, reason })
+      continue
+    }
+    const claimId = ctx.control.claims.get(k.dedupeKey)
+    if (claimId !== undefined) {
+      ctx.ledger.settle(claimId, 0) // funded but never worked; the money goes straight back
+      ctx.control.claims.delete(k.dedupeKey)
+    }
+    killed.push({ dedupeKey: k.dedupeKey, ok: true })
+  }
+
+  return { promoted, killed, poolLeftUsd: ctx.ledger.spendable() }
 }
 
 // ── next ─────────────────────────────────────────────────────────────────────

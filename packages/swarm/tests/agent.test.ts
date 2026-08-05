@@ -16,6 +16,7 @@ import {
   newRunControl,
   runLead,
   runInvestigator,
+  spawnTool,
   estimateTokens,
   LEAD_TURN_CAP,
   TIER_DEADLINE_MS,
@@ -132,7 +133,7 @@ const toolNames = (options: unknown): string[] =>
 // ── the lead ────────────────────────────────────────────────────────────────
 
 describe("runLead", () => {
-  it("prefixes the one role line, exposes all eight tools, and settles the turn's real cost on the ledger", async () => {
+  it("prefixes the one role line, exposes all nine tools, and settles the turn's real cost on the ledger", async () => {
     const h = harness(5)
     const model = new MockLanguageModelV4({
       doGenerate: async ({ prompt }) => {
@@ -153,7 +154,7 @@ describe("runLead", () => {
     expect(system.startsWith("You are the LEAD. Target: anchor.com. Ceiling $5.00. GO.")).toBe(true)
     expect(system).toContain("Prove what you claim")
     expect(toolNames(options)).toEqual(
-      ["search", "fetch", "read", "recall", "remember", "spawn", "next", "finish"].sort(),
+      ["search", "fetch", "read", "recall", "remember", "spawn", "review", "next", "finish"].sort(),
     )
 
     // The turn's model cost landed on the ledger as spend, not as a dangling claim.
@@ -248,6 +249,48 @@ describe("runLead", () => {
     expect(second.kind).toBe("turn")
   })
 
+  it("a review turn through the SDK path promotes a proposal and kills a funded angle, money back the same call", async () => {
+    const h = harness(5)
+    // A worker proposal sits unreviewed in the 1-60 band…
+    h.board.push({ ...mission, priority: 40, dedupeKey: "worker-idea" }, "investigator")
+    // …and a funded lead mission is queued, its read allowance held on the pool.
+    const ctl = { board: h.board, ledger: h.ledger, control: h.control }
+    spawnTool(ctl, { missions: [{ ...mission, priority: 70, dedupeKey: "dead-angle" }], why: "fund the angle" })
+    expect(h.ledger.spendable()).toBeCloseTo(4.5 - ALLOWANCES.read)
+
+    const model = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = prompt.filter((m) => m.role === "tool").length
+        return turn === 0
+          ? reply(
+              call("1", "review", {
+                promote: [{ dedupeKey: "worker-idea", priority: 86 }],
+                kill: [{ dedupeKey: "dead-angle", because: "the rivals lens already asks this" }],
+                why: "rank the board with the whole map in view",
+              }),
+              false,
+            )
+          : reply([{ type: "text" as const, text: "board reviewed." }], true)
+      },
+    })
+    const lead = runLead({ ...h, domain: "anchor.com", model, pricing: { inUsdPerM: 0, outUsdPerM: 0 } })
+    const out = await lead.leadTurn()
+    expect(out.kind).toBe("turn")
+
+    // The proposal now sits in the lead's band, reviewed; the killed angle is gone.
+    const rows = h.board.residue()
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ dedupeKey: "worker-idea", priority: 86, unreviewed: false })
+    // The dead angle's reservation returned to the pool in the same call, not at run end.
+    expect(h.control.claims.has("dead-angle")).toBe(false)
+    expect(h.ledger.spendable()).toBeCloseTo(4.5, 6)
+    // The tool's outcome rows reach the model on its next turn.
+    await lead.leadTurn()
+    const second = JSON.stringify(model.doGenerateCalls[1]!.prompt)
+    expect(second).toContain("worker-idea")
+    expect(second).toContain("poolLeftUsd")
+  })
+
   it("the 24-turn cap is a loop detector: turn 25 refuses loudly", async () => {
     const h = harness(50)
     const model = new MockLanguageModelV4({
@@ -320,7 +363,7 @@ describe("runInvestigator", () => {
     expect(node.relation).toBe("competitor")
     expect(node.evidence[0]!.url).toBe("https://rival.com")
 
-    // The system line names the mission and the bans; no spawn/next/finish offered.
+    // The system line names the mission and the bans; the lead's control seat is not offered.
     const options = model.doGenerateCalls[0]!
     const system = String(options.prompt.find((m) => m.role === "system")?.content ?? "")
     expect(system).toContain("INVESTIGATOR")
@@ -331,6 +374,9 @@ describe("runInvestigator", () => {
     expect(system).toContain("AnchorPay")
     expect(system).toContain("The map so far")
     expect(toolNames(options)).toEqual(["search", "fetch", "read", "recall", "remember", "propose"].sort())
+    for (const leadOnly of ["review", "spawn", "next", "finish"]) {
+      expect(toolNames(options), `investigator must not hold ${leadOnly}`).not.toContain(leadOnly)
+    }
   })
 
   it("a wall-deadline kill leaves every map write standing and the digest says timeout", async () => {

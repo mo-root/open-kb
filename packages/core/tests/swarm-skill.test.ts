@@ -50,9 +50,12 @@ describe("swarm skill", () => {
 
   it("states the evidence bar and shows what the mint's refusals look like", () => {
     expect(raw).toContain("literal substring of bytes this run fetched")
-    // The rejection sentences are quoted so the agent recognises them as feedback, not errors.
+    // The rejection sentences are quoted so the agent recognises them as feedback, not errors —
+    // and only sentences the cite-by-URL path can actually emit. "no such handle" is the store's
+    // sentence for a bad handle; remember cites by URL, so the un-fetched-URL sentence is the
+    // one a model will really see.
     expect(raw).toContain("quote not present in")
-    expect(raw).toContain("no such handle")
+    expect(raw).toContain("nothing was fetched from")
     expect(raw).toContain("feedback, not")
   })
 
@@ -90,10 +93,11 @@ describe("swarm skill", () => {
     expect(raw).toContain("The map is the ecosystem, not the shortlist")
   })
 
-  it("gives the lead its band, its re-entry, and its ending", () => {
+  it("gives the lead its band, its re-entry, its review seat, and its ending", () => {
     expect(raw).toContain("61–100")
     expect(raw).toContain("dedupeKey")
     expect(raw).toContain("next({after:{landings, seconds}, why})")
+    expect(raw).toContain("review({promote, kill, why})")
     expect(raw).toContain("finish(reason, summary, unresolved[])")
     expect(raw).toContain("yield curve")
   })

@@ -39,9 +39,9 @@ a handle, and quoting the title or snippet you were given is a real citation at 
 companies seen, 14 recorded.
 
 The mint rejects everything else, in-band, with a sentence next to the siblings that landed:
-"quote not present in https://…", "no such handle: ev7", "cannot cite ev7: page was blocked
-(empty-body)", "quote too short to prove anything (minimum 8 characters)". These are feedback, not
-errors. Fix that one claim — re-read the page, quote what is actually there, or drop it. Do not
+"quote not present in https://…", "nothing was fetched from https://… this run; fetch it (or cite
+the search hit's own url) before quoting it", "cannot cite ev7: page was blocked (empty-body)",
+"quote too short to prove anything (minimum 8 characters)". These are feedback, not errors. Fix that one claim — re-read the page, quote what is actually there, or drop it. Do not
 abandon the batch, and do not retry the same words.
 
 Record as you go, never batch to the end. A run can stop at any moment — budget, clock, a hang —
@@ -135,8 +135,8 @@ firms no comparison content lists" is. Spawning never blocks you. Declare your o
 investigator overrides your condition.
 
 Worker proposals arrive in the 1–60 band, unreviewed. On each turn back: `recall` the board and
-the gaps, promote what deserves the upper band, kill duplicates and dead angles with a reason
-stated. The harness shows you the yield curve — "the last six landings produced 2 new companies;
+the gaps, then `review({promote, kill, why})` — promote what deserves the upper band, kill
+duplicates and dead angles with a reason stated. The harness shows you the yield curve — "the last six landings produced 2 new companies;
 the six before produced 14". When the remaining gaps will not close with more searching, call
 `finish(reason, summary, unresolved[])`, where `unresolved` is the honest residue: the questions
 this run did not reach, in your order. A map that ends on budget or clock instead of your finish
