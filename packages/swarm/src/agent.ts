@@ -574,14 +574,23 @@ export function runLead(deps: LeadDeps): LeadRunner {
 
     // Reserve the turn before making it: the estimate plus one peek of tool
     // headroom (a lead turn's own searching is about a peek's worth of work);
-    // over-reserving costs milliseconds, the surplus returns at settle.
+    // over-reserving costs milliseconds, the surplus returns at settle. What
+    // was GRANTED is captured beside the hold: the tight fallback reserves
+    // estUsd alone, and pricing the drawn total against the wide figure there
+    // would invent a phantom $0.03 at settle.
     let hold: { ok: true; claimId: string } | null = null
+    let grantedUsd = 0
     if (affordable) {
       const wide = deps.ledger.reserve(estUsd + ALLOWANCES.peek)
-      if (wide.ok) hold = wide
-      else {
+      if (wide.ok) {
+        hold = wide
+        grantedUsd = estUsd + ALLOWANCES.peek
+      } else {
         const tight = deps.ledger.reserve(estUsd)
-        if (tight.ok) hold = tight
+        if (tight.ok) {
+          hold = tight
+          grantedUsd = estUsd
+        }
       }
     }
 
@@ -631,7 +640,7 @@ export function runLead(deps: LeadDeps): LeadRunner {
       landings.push(landing)
       deps.trackPending?.(landing)
     }
-    const reservedUsd = estUsd + ALLOWANCES.peek // what `hold` was granted at, wide or tight
+    const reservedUsd = grantedUsd // what `hold` was really granted at, wide or tight
     const tools: ToolSet = {
       ...free,
       ...paidTools({ deps, claimId: hold.claimId, signal: deps.signal, trackPending }),

@@ -208,6 +208,46 @@ describe("runLead", () => {
     expect(after.kind).toBe("done")
   })
 
+  it("the tight-reserve fallback settles at actuals, not actuals plus the peek headroom", async () => {
+    // Ceiling $0.20: finish reserve $0.12, spendable $0.08. Input is free and
+    // the 800-token output headroom at $75/M prices the turn estimate at
+    // exactly $0.06 whatever the transcript length — so the wide reserve
+    // ($0.09) fails and the tight one ($0.06) is granted. This is the last
+    // affordable metered turn of a budget-bound run.
+    const h = harness(0.2)
+    const model = new MockLanguageModelV4({
+      doGenerate: async () => reply([{ type: "text" as const, text: "done." }], true),
+    })
+    const lead = runLead({ ...h, domain: "anchor.com", model, pricing: { inUsdPerM: 0, outUsdPerM: 75 } })
+
+    const out = await lead.leadTurn()
+    expect(out.kind).toBe("turn")
+    // The turn's real cost is 50 output tokens at $75/M. Pricing the drawn
+    // total against the WIDE figure here settled at actuals + a phantom $0.03.
+    expect(h.ledger.spentUsd()).toBeCloseTo((50 * 75) / 1e6, 6)
+  })
+
+  it("a paid draw inside a lead turn lands in that turn's settle", async () => {
+    const h = harness(5)
+    const model = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = prompt.filter((m) => m.role === "tool").length
+        return turn === 0
+          ? reply(call("1", "search", { queries: ["fraud scoring for merchants"], why: "buy one wave" }), false)
+          : reply([{ type: "text" as const, text: "done." }], true)
+      },
+    })
+    const lead = runLead({ ...h, domain: "anchor.com", model, pricing: { inUsdPerM: 0, outUsdPerM: 0 } })
+
+    await lead.leadTurn()
+    // One $0.001 SERP row drawn on the turn's claim; model tokens are free
+    // here, so the settle is exactly the tool's spend — no phantom headroom.
+    expect(h.ledger.spentUsd()).toBeCloseTo(0.001, 6)
+
+    const second = await lead.leadTurn()
+    expect(second.kind).toBe("turn")
+  })
+
   it("the 24-turn cap is a loop detector: turn 25 refuses loudly", async () => {
     const h = harness(50)
     const model = new MockLanguageModelV4({
