@@ -68,7 +68,7 @@ const RELATION_COLOR: Record<string, string> = {
   competitor: "var(--type-player, #EB368C)",
   substitute: "#F072AC",
   integration: "#76A5FF",
-  dependency: "var(--type-community, #C4C1F8)",
+  dependency: "var(--type-community, #D95926)",
   shaper: "var(--accent, #3D7FFC)",
   buyer: "var(--type-core, #9DB2D6)",
   target: "#8FA3C6",

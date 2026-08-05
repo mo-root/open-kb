@@ -36,7 +36,9 @@ export function GraphLegend({
 }) {
   if (types.length === 0) return null;
   return (
-    <div className="absolute bottom-3 left-3 z-10 w-44 rounded-md border border-slate-800 bg-slate-950/85 px-2 pb-2 pt-2 shadow-lg">
+    <div /* max-h + scroll: a map with every type present, with the notes open, must
+         never grow past the canvas it is labelling. */
+      className="absolute bottom-3 left-3 z-10 max-h-[calc(100%-1.5rem)] w-44 overflow-y-auto rounded-md border border-slate-800 bg-slate-950/85 px-2 pb-2 pt-2 shadow-lg">
       <p className="mb-1.5 px-1 font-mono text-[9px] uppercase tracking-[0.18em] text-slate-500">
         signal key
       </p>
@@ -74,16 +76,29 @@ export function GraphLegend({
           );
         })}
       </ul>
-      <p className="mt-1.5 border-t border-slate-800/70 px-1 pt-1.5 text-[10px] leading-4 text-slate-500">
-        counts = drawn nodes · size = placement · ring = the anchor · players wear
-        their favicon
-      </p>
-      <p
-        title="The --type-* palette is fixed at four hues in both themes, and neither the product blue nor the rival pink would be honest for a newsletter or a vendor directory. Each node's detail card names its real kind."
-        className="mt-1 px-1 text-[10px] leading-4 text-slate-600"
-      >
-        communities = community · publisher · directory
-      </p>
+      {/* The two footnotes are a DISCLOSURE, not standing text.
+          Eleven lines of 10px prose in a 176px column made the key taller than
+          the corner it sits in — on a normal window the last line ran off the
+          bottom of the canvas and the sentence about publishers and directories
+          was cut in half, so the one place the palette's compromise gets
+          confessed was the one place nobody could read. Closed it is four rows
+          and a link; open, it says everything it said before. */}
+      <details className="group mt-1.5 border-t border-slate-800/70 pt-1.5">
+        <summary className="cursor-pointer list-none px-1 font-mono text-[9px] uppercase tracking-[0.14em] text-slate-500 transition-colors hover:text-slate-300">
+          <span className="group-open:hidden">what the marks mean</span>
+          <span className="hidden group-open:inline">hide</span>
+        </summary>
+        <p className="mt-1 px-1 text-[10px] leading-4 text-slate-500">
+          counts = drawn nodes · size = placement · ring = the anchor · nodes wear
+          their favicon
+        </p>
+        <p
+          title="The --type-* palette is fixed at a few hues in both themes, and neither the product blue nor the rival pink would be honest for a newsletter or a vendor directory. Each node's detail card names its real kind."
+          className="mt-1 px-1 text-[10px] leading-4 text-slate-600"
+        >
+          communities = community · publisher · directory
+        </p>
+      </details>
     </div>
   );
 }

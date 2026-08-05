@@ -35,7 +35,10 @@ export function nodeTypeOf(path: string): NodeType {
 export const TYPE_COLOR: Record<NodeType, string> = {
   product: "#3D7FFC", // primary blue / --accent
   player: "#EB368C", // brand pink — rivals stand out
-  community: "#C4C1F8", // lavender
+  // Kept in sync with --type-community's DARK step (globals.css). This map is
+  // the fallback for canvas paint, which cannot read a CSS variable; surfaces
+  // that can read one should, so they follow the theme.
+  community: "#D95926", // orange
   core: "#9DB2D6", // muted
 }
 

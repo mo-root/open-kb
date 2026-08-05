@@ -54,7 +54,7 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 const KIND_COLOR: Record<string, string> = {
   company: "var(--type-player, #EB368C)",
   product: "var(--type-product, #3D7FFC)",
-  community: "var(--type-community, #C4C1F8)",
+  community: "var(--type-community, #D95926)",
   publisher: "var(--type-core, #9DB2D6)",
   directory: "#7C8BA8",
 };

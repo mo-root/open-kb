@@ -22,7 +22,33 @@ import {
   TYPE_ORDER,
   type NodeType,
 } from "@/lib/nodeTypes";
+import {
+  ALPHA_DECAY,
+  ALPHA_MIN,
+  VELOCITY_DECAY,
+  chargeDistanceMax,
+  chargeStrength,
+  cooldownTicks,
+  isHubDegree,
+  linkDistance,
+  linkStrength,
+  seedPosition,
+  tetherAspect,
+  tetherStrength,
+  warmupTicks,
+} from "@/lib/graph/layout";
+import { IconCache } from "@/lib/graphIcons";
 import { GraphLegend } from "./GraphLegend";
+import { GraphSearch } from "./GraphSearch";
+import { GraphSettingsPanel } from "./GraphSettings";
+import {
+  DEFAULT_SETTINGS,
+  loadSettings,
+  saveSettings,
+  type GraphSettings as Settings,
+} from "@/lib/graph/settings";
+import { labelPriority, planLabels, type LabelCandidate } from "@/lib/graph/labels";
+import { rankMatches } from "@/lib/graph/search";
 
 // react-force-graph-2d gives us zoom / pan / physics for free. dynamic() cannot
 // carry the library's generics, so we import it as an untyped boundary (the
@@ -87,6 +113,8 @@ interface FLink {
   source: string | FNode;
   target: string | FNode;
   hubLink: boolean;
+  /** Degree of the busier endpoint — how many children this spring must seat. */
+  parentDeg: number;
   /** What this edge asserts. v1's edges were untyped wikilinks with nothing to
    *  say; every edge here carries the relation the classifier assigned, which
    *  is the whole content of the map. */
@@ -111,19 +139,25 @@ interface Detail {
 // The handful of imperative force-graph methods we drive off the ref. dynamic()
 // erases the real generics, so we describe just this surface and cast to it.
 interface FgMethods {
-  d3Force: (
-    name: string,
-    fn?: unknown,
-  ) =>
-    | {
-        strength?: (v: unknown) => unknown;
-        distance?: (v: unknown) => unknown;
-        radius?: (v: unknown) => unknown;
-      }
-    | undefined;
+  d3Force: (name: string, fn?: unknown) => D3Force | undefined;
   d3ReheatSimulation?: () => void;
   zoomToFit?: (ms?: number, px?: number) => void;
   centerAt?: (x?: number, y?: number, ms?: number) => void;
+  /** Absolute zoom level, animated over `ms`. Used to land a search hit. */
+  zoom?: (k?: number, ms?: number) => number;
+}
+
+/* A d3 force, as far as this file drives it. Every setter returns the force so
+   calls chain, which is what lets charge configure strength and both distance
+   bounds in one expression. All optional: `d3Force("link")` and
+   `d3Force("charge")` return different forces and neither has the other's
+   setters. */
+interface D3Force {
+  strength?: (v: unknown) => D3Force;
+  distance?: (v: unknown) => D3Force;
+  distanceMax?: (v: number) => D3Force;
+  distanceMin?: (v: number) => D3Force;
+  radius?: (v: unknown) => D3Force;
 }
 
 /* The pane's height is CSS, not a number: the ResizeObserver below reads the
@@ -134,6 +168,15 @@ const PANE_H = "h-[min(78dvh,900px)] min-h-[520px]";
 const FALLBACK_H = 520; // only if clientHeight reads 0 mid-transition
 const HUB_DEGREE_FRAC = 0.3; // node counts as a hub above this share of node count
 const STAR_EDGE_FRAC = 0.4; // banner threshold: one node carrying > this share of edges
+/* Screen radius a node must reach before it may claim a label. This IS the
+   zoom reveal: `r * scale` grows as the reader zooms in, so a lobe that was
+   anonymous dots at the overview names itself once they zoom into it. */
+const LABEL_MIN_SCREEN_R = 9;
+
+/* Ceiling on labels per frame. A deep zoom into a dense lobe can qualify
+   hundreds; past this many the screen is not more informative, only slower. */
+const MAX_LABELS = 60;
+
 const TOP_LABELS = 6; // top-N by relevance get an always-on label
 const DARK_INK = "rgba(10,20,31,0.9)"; // glyph ink drawn on bright node fills
 // Near-paper chip drawn behind a competitor favicon. Held constant across
@@ -142,7 +185,13 @@ const DARK_INK = "rgba(10,20,31,0.9)"; // glyph ink drawn on bright node fills
 const FAVICON_BACKING = "#F2F6FF";
 // Only paint a favicon once the node is ≥ ~16px across on screen; smaller than
 // this the mark turns to mush, so we keep the crisp type glyph instead.
-const FAVICON_MIN_SCREEN_R = 8;
+/* Screen radius below which a node is a plain coloured dot.
+   Raised from 8. At the fitted overview zoom a 295-node map put a favicon chip
+   on almost every node, and 289 competing logos at 9px is noise that HIDES the
+   thing the overview is for — the shape of the market and where its lobes are.
+   At 11 the overview reads as clean typed dots and the marks resolve as the
+   reader zooms into a lobe, which is the zoom-reveal Obsidian gets right. */
+const FAVICON_MIN_SCREEN_R = 11;
 
 /* Deterministic seeding: same KB (+ reset count) → same starting layout, so a
    reset is a genuine re-layout (fresh node objects) rather than an in-place
@@ -163,6 +212,36 @@ function mulberry32(seed: number): () => number {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+/**
+ * Blend `hex` toward `toward` by `t` (0 = untouched, 1 = fully `toward`).
+ *
+ * Used to recede a node into the page rather than making it transparent:
+ * `globalAlpha` composites against whatever is behind, which on the navy theme
+ * erases the node and on paper bleaches it, while mixing toward the surface
+ * colour keeps a readable silhouette in both.
+ */
+function mixHex(hex: string, toward: string, t: number): string {
+  const a = parseHex(hex);
+  const b = parseHex(toward);
+  if (!a || !b) return hex;
+  const k = Math.min(1, Math.max(0, t));
+  const ch = (x: number, y: number) => Math.round(x + (y - x) * k);
+  return `rgb(${ch(a[0], b[0])},${ch(a[1], b[1])},${ch(a[2], b[2])})`;
+}
+
+/** `#rgb` / `#rrggbb` -> [r,g,b], or null for anything else. */
+function parseHex(hex: string): [number, number, number] | null {
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return null;
+  let h = m[1];
+  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+  return [
+    parseInt(h.slice(0, 2), 16),
+    parseInt(h.slice(2, 4), 16),
+    parseInt(h.slice(4, 6), 16),
+  ];
 }
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -250,7 +329,7 @@ function ControlIcon({
   name,
   size = 15,
 }: {
-  name: "expand" | "compress" | "reset" | "filter";
+  name: "expand" | "compress" | "reset" | "filter" | "sliders";
   size?: number;
 }) {
   const p = (d: string) => <path d={d} />;
@@ -272,6 +351,16 @@ function ControlIcon({
           {p("M20 9V5a1 1 0 0 0-1-1h-4")}
           {p("M4 15v4a1 1 0 0 0 1 1h4")}
           {p("M20 15v4a1 1 0 0 1-1 1h-4")}
+        </>
+      )}
+      {name === "sliders" && (
+        <>
+          {p("M4 8h10")}
+          {p("M18 8h2")}
+          {p("M4 16h4")}
+          {p("M12 16h8")}
+          <circle cx="16" cy="8" r="2" />
+          <circle cx="10" cy="16" r="2" />
         </>
       )}
       {name === "compress" && (
@@ -318,6 +407,16 @@ export function GraphCanvas({
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [showLegend, setShowLegend] = useState(true);
+  const [showSettings, setShowSettings] = useState(false);
+  /* Starts at the defaults on BOTH server and client, then adopts the saved
+     values after mount. Reading localStorage during the initial render would
+     make the server and client markup disagree and hydration would tear. */
+  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+  useEffect(() => setSettings(loadSettings()), []);
+  const updateSettings = useCallback((next: Settings) => {
+    setSettings(next);
+    saveSettings(next);
+  }, []);
   // The unplaced, entities the classifier put on the map and then would not
   // connect to the anchor (`relation: "none"`), are shown by default.
   //
@@ -335,10 +434,19 @@ export function GraphCanvas({
   // reader who wants the wired subgraph, with the count on the button.
   const [showUnplaced, setShowUnplaced] = useState(true);
   const [detail, setDetail] = useState<Detail | null>(null);
-  const [hoverId, setHoverId] = useState<string | null>(null);
+  /* Hover lives in a ref, not in state.
+     `autoPauseRedraw={false}` means this canvas repaints every frame anyway, so
+     the painter can simply read the current value — while `useState` re-rendered
+     a 1,300-line component on every mousemove, up to 60 times a second, purely
+     to change one node's alpha. Nothing in the JSX reads it. */
+  const hoverRef = useRef<string | null>(null);
   const [hoverLink, setHoverLink] = useState<FLink | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null);
   const [focusSet, setFocusSet] = useState<Set<string> | null>(null);
+  /* The live search query. Non-matches dim through the SAME channel hover and
+     focus use, so the three never fight over the canvas: whichever is most
+     specific wins, and a query is the least specific of the three. */
+  const [query, setQuery] = useState("");
   const [size, setSize] = useState({ w: 800, h: FALLBACK_H });
   const [resetSeed, setResetSeed] = useState(0); // bump → rebuild data → re-layout
 
@@ -356,17 +464,20 @@ export function GraphCanvas({
     font: "ui-sans-serif, system-ui, sans-serif",
   });
 
-  // Competitor favicons for player nodes, keyed by reconstructed domain. Held in
-  // a ref (survives interaction renders) with a per-entry ok flag so the paint
-  // decides favicon-vs-glyph off cached state, never re-touching the network.
-  const faviconCacheRef = useRef<Map<string, { img: HTMLImageElement; ok: boolean }>>(
-    new Map(),
-  );
+  /* Favicons for ANY node that has a domain, fetched only when one is actually
+     about to be drawn. Two changes from the old cache: it is no longer limited
+     to players (that left 139 communities and 20 products as bare dots on a
+     295-node map), and it no longer prefetches the whole graph on mount — the
+     painter asks per frame, so a node too small to show a mark never costs a
+     request. See lib/graphIcons.ts. */
+  const iconsRef = useRef<IconCache | null>(null);
   // Bump-only counter: an async favicon load flips autoPauseRedraw's engine off,
   // so we force one React render, the fresh nodeCanvasObject closure makes the
   // kapsule repaint (no simulation reheat, layout untouched).
   const [, forceRepaint] = useState(0);
   const bumpFavicon = useCallback(() => forceRepaint((n) => n + 1), []);
+  if (iconsRef.current === null) iconsRef.current = new IconCache(bumpFavicon);
+  useEffect(() => () => iconsRef.current?.dispose(), []);
 
   // coarse pointer (touch) → tap-driven interaction + adjusted caption
   const coarse = useSyncExternalStore(
@@ -505,7 +616,7 @@ export function GraphCanvas({
     const orphanCount = nodes.filter((n) => n.relation === "none").length;
 
     return {
-      degById, adj, maxRel, share, maxTitle, hubId,
+      degById, adj, maxRel, maxDeg, share, maxTitle, hubId,
       typeCounts, presentTypes, topSet, activeLinks, orphanCount,
     };
   }, [graph]);
@@ -529,8 +640,11 @@ export function GraphCanvas({
       const type = nodeTypeOf(n.group);
       const deg = meta.degById.get(n.id) ?? 0;
       const rel = Math.max(0, n.relevance || 0);
-      const angle = rng() * Math.PI * 2;
-      const radius = type === "core" ? 20 + rng() * 60 : 100 + rng() * 90;
+      const isHub = n.id === meta.hubId;
+      // Seeded from the id, not from `rng()`: the old seed advanced per node, so
+      // the opening shape depended on iteration order and a reset produced a
+      // different map. Same graph, same opening, every time.
+      const seed = seedPosition({ id: n.id, deg, r: 0, isHub }, nodeCount, meta.maxDeg);
       return {
         id: n.id,
         title: n.title,
@@ -540,13 +654,24 @@ export function GraphCanvas({
         relation: n.relation,
         rel: n.relevance || 0,
         deg,
-        hub: deg > nodeCount * HUB_DEGREE_FRAC,
-        isHub: n.id === meta.hubId,
+        // Hub-ness is SHAPE, not identity, and it is an absolute degree rather
+        // than a share of the node count. `deg > nodeCount * 0.3` demanded 88
+        // edges on a 295-node map, so the markets carrying 82, 64 and 55
+        // children all scored as leaves and were laid out with leaf springs —
+        // which is precisely why they rendered as filled discs.
+        hub: isHubDegree(deg),
+        isHub,
         isOrphan: n.relation === "none",
         r: 4 + Math.sqrt(rel / meta.maxRel) * 12, // honest sqrt scale, 4–16px
-        domain: type === "player" ? n.domain || undefined : undefined,
-        x: Math.cos(angle) * radius,
-        y: Math.sin(angle) * radius,
+        // Every node that HAS a domain may show its mark. Restricting this to
+        // players meant 139 communities with instantly recognisable icons
+        // (serverfault, superuser, youtube) and 20 products drew as bare dots.
+        domain: n.domain || undefined,
+        x: seed.x,
+        y: seed.y,
+        // The anchor is pinned. Everything is nominally attached to it, so if
+        // it drifts the whole map swims after it.
+        ...(isHub ? { fx: 0, fy: 0 } : {}),
       };
     });
     const byId = new Map(nodes.map((n) => [n.id, n]));
@@ -558,7 +683,10 @@ export function GraphCanvas({
         return {
           source: l.source,
           target: l.target,
-          hubLink: s.hub || t.hub,
+          hubLink: s.isHub || t.isHub,
+          // How many children the busier end is seating. The spring has to be
+          // long enough to give them a circumference to sit on.
+          parentDeg: Math.max(s.deg, t.deg),
           relation: l.label ?? "",
         };
       });
@@ -566,6 +694,31 @@ export function GraphCanvas({
   }, [graph, meta, slug, resetSeed, showUnplaced]);
 
   const nodeCount = Math.max(1, data.nodes.length);
+
+  /* What the search box searches. Derived from the same node list the canvas
+     draws, so a hidden type is not findable — a result that cannot be shown is
+     not a result. */
+  const searchItems = useMemo(
+    () =>
+      data.nodes
+        .filter((n) => visibleTypes[n.type])
+        .map((n) => ({
+          id: n.id,
+          title: n.title,
+          domain: n.domain,
+          type: n.type,
+          deg: n.deg,
+        })),
+    [data, visibleTypes],
+  );
+
+  /* Which nodes the query matches. Empty query = null, meaning "no query
+     dimming", which is a different state from "matched nothing" — the latter
+     must dim the whole map so the reader sees their search failed. */
+  const matchSet = useMemo(() => {
+    if (!query.trim()) return null;
+    return new Set(rankMatches(searchItems, query, 500).map((m) => m.id));
+  }, [searchItems, query]);
 
   // Tune the physics for mild same-type clustering. force-graph rebuilds the
   // simulation (and resets forces to defaults) whenever graphData changes, so
@@ -585,73 +738,67 @@ export function GraphCanvas({
         if (tries++ < 30) raf = requestAnimationFrame(apply);
         return;
       }
-      // Charge scales with degree so well-connected nodes claim more space.
-      // Every edge here is a relation the classifier asserted, so this responds
-      // to real connectivity, which in a star means the anchor, and only the
-      // anchor, pushes hard.
-      fg.d3Force("charge")?.strength?.(
-        (n: FNode) => -30 * (1 + (n.deg / nodeCount) * 3),
-      );
-      // Springs: every edge is semantic, so the graph can afford long, firm
-      // links without collapsing.
+      /* THE force that was never removed.
+         react-force-graph installs charge + link + CENTER. This effect replaced
+         the first two and added its own tethers, but `center` stayed — and it
+         translates the whole graph every tick to drag the centroid back to the
+         origin. With the anchor pinned it can never succeed, so it pushed all
+         294 other nodes forever. That was the slow orbit that never settled. */
+      fg.d3Force("center", null);
+
+      fg.d3Force("charge")
+        // Every force reads its multiplier from the panel, so a slider changes
+        // the strength of the DESIGNED recipe rather than replacing it.
+        ?.strength?.((n: FNode) => chargeStrength(n) * settings.repelForce)
+        // Repulsion had no range limit, so every node pressed on every other
+        // node across the whole canvas. All-pairs pressure irons any structure
+        // flat into one even disc; capping it lets lobes form.
+        ?.distanceMax?.(chargeDistanceMax(nodeCount))
+        ?.distanceMin?.(2);
+
       const link = fg.d3Force("link");
-      link?.distance?.((l: FLink) => (l.hubLink ? 110 : 55));
-      link?.strength?.((l: FLink) => (l.hubLink ? 0.2 : 0.5));
-      // Collision: nodes stop overlapping. There was no collide force at all
-      // before, which is why favicons sat on top of each other. r is in graph
-      // units (4-16); the pad keeps labels and favicon chips clear.
+      link?.distance?.((l: FLink) => linkDistance(l, nodeCount) * settings.linkDistance);
+      link?.strength?.((l: FLink) => linkStrength(l) * settings.linkForce);
+
+      // Collide at two iterations rather than one: at this density a single
+      // pass leaves overlaps that can only be cleared by raising strength to
+      // ~1, which visibly jitters.
       fg.d3Force(
         "collide",
         forceCollide<FNode>()
-          .radius((n) => n.r + 6)
-          .strength(0.9),
+          // Pad and iterations both raised after looking at a settled 295-node
+          // map: at (r+5, 0.85, 2) the dense lobes still had visibly stacked
+          // favicon chips, because alpha ran out before the overlaps resolved.
+          // Three passes clear them without pushing strength to 1, which
+          // visibly jitters.
+          // Collision follows the drawn size: turning nodes up must give them
+          // more room, not make them overlap.
+          .radius((n) => n.r * settings.nodeScale + 7)
+          .strength(0.9)
+          .iterations(3),
       );
-      // Tether toward the origin. This is the force that makes the unplaced
-      // showable at all: an entity with `relation: "none"` has no edge, so no
-      // spring holds it, charge repulsion pushes it to infinity, and zoomToFit
-      // measures it, a handful of escapees drag the bounding box wide and
-      // shrink the real cluster to nothing.
-      // Hiding them would be dishonest (they are genuine hosts the run found),
-      // so they are held in frame instead: barely-there for connected nodes,
-      // firm for the disconnected.
-      // 0.09 was not enough: repulsion throws an orphan outward early, and
-      // alpha decays before a weak tether can walk it back. It has to win
-      // outright from the first tick.
-      const pull = (n: FNode) => (n.deg === 0 ? 0.34 : 0.012);
-      fg.d3Force("x", forceX<FNode>(0).strength(pull));
-      fg.d3Force("y", forceY<FNode>(0).strength(pull));
+
+      // A weak leash to the origin. The springs and charge decide the shape;
+      // this only stops the map wandering out of frame — and holds the
+      // disconnected, which have no spring at all.
+      /* Shaped to the pane, not to a circle. See tetherAspect: an equal pull on
+         both axes settles into a disc, which in a 2:1 pane fits by height and
+         wastes half the canvas while crowding the middle. */
+      const aspect = tetherAspect(size.w, size.h);
+      const tether = (n: FNode) => tetherStrength(n) * settings.centerForce;
+      fg.d3Force("x", forceX<FNode>(0).strength((n: FNode) => tether(n) * aspect.x));
+      fg.d3Force("y", forceY<FNode>(0).strength((n: FNode) => tether(n) * aspect.y));
       // per-type centroid pull, segments loosely group
       fg.d3Force("cluster", makeClusterForce());
       fg.d3ReheatSimulation?.();
     };
     apply();
     return () => cancelAnimationFrame(raf);
-  }, [data, nodeCount]);
+  }, [data, nodeCount, settings, size.w, size.h]);
 
-  // Preload competitor favicons for player nodes (client-only, new Image()
-  // touches the DOM). DuckDuckGo's icon service maps a domain to a small .ico;
-  // we cache the Image per domain and repaint once each settles. onerror also
-  // repaints so the glyph fallback appears promptly instead of waiting on a
-  // frame that autoPauseRedraw may never schedule.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const cache = faviconCacheRef.current;
-    for (const n of data.nodes) {
-      if (n.type !== "player" || !n.domain || cache.has(n.domain)) continue;
-      const img = new Image();
-      const entry = { img, ok: false };
-      cache.set(n.domain, entry);
-      img.onload = () => {
-        entry.ok = img.naturalWidth > 1 && img.naturalHeight > 1;
-        bumpFavicon();
-      };
-      img.onerror = () => {
-        entry.ok = false;
-        bumpFavicon();
-      };
-      img.src = `https://icons.duckduckgo.com/ip3/${n.domain}.ico`;
-    }
-  }, [data, bumpFavicon]);
+  // (The eager preload loop that lived here is gone: IconCache fetches on
+  // demand from the painter, so nothing is requested for a node the reader
+  // never sees at a legible size.)
 
   // measure the wrap → drive the library's width/height (it needs numbers).
   // Re-measures on the fullscreen transition (wrap box changes).
@@ -745,7 +892,7 @@ export function GraphCanvas({
 
   const resetView = () => {
     clearFocus();
-    setHoverId(null);
+    hoverRef.current = null;
     setHoverLink(null);
     setVisibleTypes({ core: true, product: true, player: true, community: true });
     shouldFitRef.current = true;
@@ -758,8 +905,23 @@ export function GraphCanvas({
     setVisibleTypes((v) => (v[n.type] ? v : { ...v, [n.type]: true }));
     setFocusId(n.id);
     setFocusSet(new Set([n.id, ...(meta.adj.get(n.id) ?? [])]));
-    if (center && n.x != null && n.y != null)
-      (fgRef.current as FgMethods | null)?.centerAt?.(n.x, n.y, 400);
+    if (center && n.x != null && n.y != null) {
+      const fg = fgRef.current as FgMethods | null;
+      const ms = reduceMotion ? 0 : 600;
+      fg?.centerAt?.(n.x, n.y, ms);
+      /* Zoom IN to a legible level as part of the same move. Centring alone
+         left a search hit as an unreadable dot in the middle of the pane —
+         arriving somewhere means the labels around you resolve. Never zooms
+         OUT: a reader already close in should not be yanked back. */
+      const cur = fg?.zoom?.() ?? 1;
+      if (cur < 2) fg?.zoom?.(2, ms);
+    }
+  };
+
+  /** Land on a node by id — what the search box hands back. */
+  const focusById = (id: string) => {
+    const n = data.byId.get(id);
+    if (n) focusNode(n, true);
   };
 
   const focusFromDetail = (d: Detail) => {
@@ -837,6 +999,7 @@ export function GraphCanvas({
     const s = endId(l.source);
     const t = endId(l.target);
     if (l === hoverLink) return hexToRgba(palette.dataflow, 0.9);
+    const hoverId = hoverRef.current;
     if (hoverId) {
       const inc = s === hoverId || t === hoverId;
       return hexToRgba(palette.dataflow, inc ? 0.55 : 0.05);
@@ -845,15 +1008,22 @@ export function GraphCanvas({
       const inc = s === focusId || t === focusId;
       return hexToRgba(palette.dataflow, inc ? 0.55 : 0.03);
     }
+    if (matchSet) {
+      // An edge is lit only when it actually touches a hit; a search should not
+      // brighten the wiring of nodes it did not find.
+      const inc = matchSet.has(s) || matchSet.has(t);
+      return hexToRgba(palette.dataflow, inc ? 0.4 : 0.03);
+    }
     return hexToRgba(palette.dataflow, 0.1);
   };
   const linkWidth = (l: FLink) => {
     const s = endId(l.source);
     const t = endId(l.target);
-    if (l === hoverLink) return 1.9;
-    if (hoverId) return s === hoverId || t === hoverId ? 1.6 : 1;
-    if (focusId) return s === focusId || t === focusId ? 1.6 : 1;
-    return 1;
+    if (l === hoverLink) return 1.9 * settings.linkWidth;
+    const hoverId = hoverRef.current;
+    if (hoverId) return (s === hoverId || t === hoverId ? 1.6 : 1) * settings.linkWidth;
+    if (focusId) return (s === focusId || t === focusId ? 1.6 : 1) * settings.linkWidth;
+    return settings.linkWidth;
   };
 
   // The tooltip leads with the classifier's OWN two words, its kind and the
@@ -888,16 +1058,28 @@ export function GraphCanvas({
     const palette = paletteRef.current;
     const x = n.x ?? 0;
     const y = n.y ?? 0;
-    const r = n.r;
+    const r = n.r * settings.nodeScale;
+    const hoverId = hoverRef.current;
     const isHover = n.id === hoverId;
     const isFocus = n.id === focusId;
 
     // dim non-neighbours of the hovered (or, absent hover, the focused) node
+    /* Three ways to be dim, most specific first. Hover beats focus beats
+       search, so the channels can never disagree about one node — and a search
+       that matches nothing dims the WHOLE map, which is how a reader sees the
+       search failed rather than assuming the graph is just busy. */
     let bright = true;
     if (hoverId) bright = isHover || (meta.adj.get(hoverId)?.has(n.id) ?? false);
     else if (focusId) bright = focusSet?.has(n.id) ?? true;
-    const alpha = bright ? (isHover ? 1 : 0.95) : 0.12;
-    ctx.globalAlpha = alpha;
+    else if (matchSet) bright = matchSet.has(n.id);
+    /* Dimming used to be `globalAlpha = 0.12`, which is a hole rather than a
+       recession: on the navy theme it erased the node entirely and on paper it
+       bleached it to nearly white, so hovering one company deleted the shape of
+       the market around it. The point of dimming is to keep that shape as
+       context while moving attention off it — so the colour is mixed toward the
+       page surface instead, which recedes in BOTH themes and leaves the
+       silhouette readable. */
+    ctx.globalAlpha = bright ? (isHover ? 1 : 0.96) : 0.42;
 
     // cyan glow on the live node(s): hover brightest, then focus, then hub
     if (bright && !reduceMotion) {
@@ -909,11 +1091,14 @@ export function GraphCanvas({
     }
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fillStyle = palette.type[n.type];
+    ctx.fillStyle = bright
+      ? palette.type[n.type]
+      : mixHex(palette.type[n.type], palette.paper, 0.72);
     ctx.fill();
     ctx.shadowBlur = 0;
 
-    if (isHover || isFocus) {
+    const isMatch = !hoverId && !focusId && (matchSet?.has(n.id) ?? false);
+    if (isHover || isFocus || isMatch) {
       ctx.lineWidth = 1.5 / scale;
       ctx.strokeStyle = palette.text;
       ctx.stroke();
@@ -940,15 +1125,21 @@ export function GraphCanvas({
     // NOTE: drawing these third-party images is what taints the canvas. Once
     // tainted, getImageData / toDataURL throw a SecurityError, so a client-side
     // PNG export of the graph is impossible. Do not add an export button.
-    const fav =
-      n.type === "player" && n.domain
-        ? faviconCacheRef.current.get(n.domain)
-        : undefined;
-    const showFavicon =
-      !!fav?.ok && fav.img.complete && screenR >= FAVICON_MIN_SCREEN_R;
+    // Ask only when the node is big enough to show a mark — that gate is what
+    // keeps the request count proportional to what is on screen.
+    const favImg =
+      screenR >= FAVICON_MIN_SCREEN_R && n.domain
+        ? iconsRef.current?.get(n.domain) ?? null
+        : null;
+    const showFavicon = !!favImg?.complete;
 
-    if (showFavicon && fav) {
-      const rim = Math.max(1, r * 0.18); // pink identity ring kept around the chip
+    if (showFavicon && favImg) {
+      /* The identity ring, thinned from 0.18r to 0.12r and capped.
+         At 0.18 the ring was a third of the node's area, so a hundred players
+         at overview zoom read as a field of pink doughnuts rather than as a
+         hundred logos — the mark it exists to frame was the smaller half of it.
+         It still says "player" at a glance; it no longer outshouts the icon. */
+      const rim = Math.min(2.2, Math.max(0.8, r * 0.12));
       const ir = Math.max(1, r - rim); // favicon (and paper backing) radius
       ctx.save();
       ctx.beginPath();
@@ -957,7 +1148,7 @@ export function GraphCanvas({
       ctx.fillStyle = FAVICON_BACKING; // paper backing so transparent marks read
       ctx.fill();
       ctx.clip();
-      ctx.drawImage(fav.img, x - ir, y - ir, ir * 2, ir * 2);
+      ctx.drawImage(favImg, x - ir, y - ir, ir * 2, ir * 2);
       ctx.restore();
     } else if (n.isHub) {
       if (screenR >= 9) {
@@ -975,28 +1166,82 @@ export function GraphCanvas({
       ctx.textBaseline = "alphabetic";
     }
 
-    // labels: hover/focus bright, a small focus neighbourhood, and the top-N by
-    // relevance (plus the hub) always on. Kept ~constant on screen via 1/scale.
-    const smallFocus = (focusSet?.size ?? 0) <= 15;
-    const showLabel =
-      isHover ||
-      isFocus ||
-      (focusId != null && bright && smallFocus) ||
-      ((meta.topSet.has(n.id) || n.isHub) && (focusId == null || bright));
-    if (showLabel && bright) {
-      const fpx = Math.max(9, 11 / scale);
-      ctx.font = `${isHover || isFocus ? "500 " : ""}${fpx}px ${palette.font}`;
-      ctx.fillStyle = isHover || isFocus ? palette.text : palette.muted;
-      ctx.textBaseline = "alphabetic";
+    /* Labels are NOT drawn here any more. Which node gets a name depends on
+       what else is already on screen and how far the reader has zoomed — both
+       properties of the FRAME, which a per-node painter cannot see. They are
+       laid out in one pass in onRenderFramePost, via lib/graph/labels.ts. */
+    ctx.globalAlpha = 1;
+  };
+
+  /* One pass over the frame to place every label.
+     Drawn AFTER the nodes (onRenderFramePost) so a name is never buried under a
+     circle painted later, and decided all at once so two labels cannot land on
+     top of each other — both things a per-node painter structurally cannot do.
+     The reveal is `r * scale`: zoom in and more nodes grow past the threshold,
+     which is what makes zooming an act of reading rather than just of framing. */
+  const drawLabels = (ctx: CanvasRenderingContext2D, scale: number) => {
+    const palette = paletteRef.current;
+    const hoverId = hoverRef.current;
+    /* Font size in GRAPH units so it lands at a constant size on SCREEN: the
+       canvas is scaled by `scale`, so the graph-space size must be its inverse.
+       `Math.max(9, 11 / scale)` floored that in graph units, which does the
+       opposite of what it looks like — past ~1.2x zoom the floor wins and the
+       text grows with the canvas, reaching 36px at 4x. */
+    const fpx = settings.labelPx / scale;
+    ctx.font = `${fpx}px ${palette.font}`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "alphabetic";
+
+    const hoverAdj = hoverId ? meta.adj.get(hoverId) : null;
+
+    const candidates: LabelCandidate[] = [];
+    for (const n of data.nodes) {
+      if (!visibleTypes[n.type]) continue;
+      // Dimmed nodes are context, not content — naming them would put the
+      // reader's attention back exactly where the dimming just took it from.
+      let bright = true;
+      if (hoverId) bright = n.id === hoverId || (hoverAdj?.has(n.id) ?? false);
+      else if (focusId) bright = focusSet?.has(n.id) ?? true;
+      else if (matchSet) bright = matchSet.has(n.id);
+      if (!bright) continue;
+
+      const forced =
+        n.id === hoverId ||
+        n.id === focusId ||
+        (!hoverId && !focusId && (matchSet?.has(n.id) ?? false));
+
+      candidates.push({
+        id: n.id,
+        text: truncate(n.title, 28),
+        x: n.x ?? 0,
+        y: n.y ?? 0,
+        r: n.r,
+        priority: labelPriority(n),
+        forced,
+      });
+    }
+
+    const placed = planLabels(candidates, {
+      scale,
+      minScreenR: settings.labelThreshold,
+      maxLabels: MAX_LABELS,
+      // Measured against the very ctx that will draw them, so the packing uses
+      // real glyph widths rather than a guess at the font's metrics.
+      measure: (t) => ctx.measureText(t).width * scale,
+      lineHeight: 12,
+    });
+
+    for (const l of placed) {
+      ctx.font = `${l.forced ? "500 " : ""}${fpx}px ${palette.font}`;
+      ctx.fillStyle = l.forced ? palette.text : palette.muted;
       // Halo the label in the page surface (theme-aware): a paper cut-out in
       // light mode, a dark cut-out when --bg flips to navy, so ink labels stay
       // legible against the canvas in both.
       ctx.shadowColor = hexToRgba(palette.paper, 0.85);
       ctx.shadowBlur = 4;
-      ctx.fillText(truncate(n.title, 28), x, y + r + 13 / scale);
+      ctx.fillText(l.text, l.x, l.y);
       ctx.shadowBlur = 0;
     }
-    ctx.globalAlpha = 1;
   };
 
   // hit area matches the drawn circle so picking never drifts from the visual
@@ -1146,15 +1391,21 @@ export function GraphCanvas({
           nodePointerAreaPaint={nodePointerAreaPaint}
           linkColor={linkColor}
           linkWidth={linkWidth}
-          onNodeHover={(n: FNode | null) => setHoverId(n ? n.id : null)}
+          onNodeHover={(n: FNode | null) => {
+            hoverRef.current = n ? n.id : null;
+          }}
           onLinkHover={(l: FLink | null) => setHoverLink(l)}
           onNodeClick={onNodeClick}
           onNodeDoubleClick={(n: FNode) => openNote(n.id)}
           onBackgroundClick={clearFocus}
-          warmupTicks={reduceMotion ? Math.min(400, nodeCount * 4) : 0}
-          cooldownTicks={reduceMotion ? 0 : Math.min(400, 200 + nodeCount)}
-          d3AlphaDecay={0.014}
-          d3VelocityDecay={0.28}
+          warmupTicks={warmupTicks(nodeCount, reduceMotion)}
+          cooldownTicks={cooldownTicks(nodeCount, reduceMotion)}
+          d3AlphaDecay={ALPHA_DECAY}
+          // Above zero so the simulation genuinely STOPS. At d3's default of 0 it
+          // creeps forever below the visible threshold, holding the render loop
+          // open and never letting onEngineStop fire cleanly.
+          d3AlphaMin={ALPHA_MIN}
+          d3VelocityDecay={VELOCITY_DECAY}
           minZoom={0.4}
           maxZoom={8}
           // The library pauses redrawing once the engine settles, which leaves
@@ -1162,6 +1413,31 @@ export function GraphCanvas({
           // ~100 nodes the cost of always redrawing is not worth that class of
           // bug.
           autoPauseRedraw={false}
+          onRenderFramePost={drawLabels}
+          /* THE RIPPLE.
+             Dragging a node moved that node and nothing else: `d3AlphaMin` is
+             what finally made the simulation STOP after settling, and a stopped
+             simulation has no energy to pass along an edge, so the graph felt
+             like a picture rather than a web. Reheating on drag puts energy
+             back in, and the neighbours — then their neighbours — follow
+             through the springs. */
+          onNodeDrag={() => {
+            (fgRef.current as FgMethods | null)?.d3ReheatSimulation?.();
+          }}
+          onNodeDragEnd={(n: FNode) => {
+            /* Let go properly. force-graph pins a dragged node by writing
+               fx/fy, so without this every node a reader ever touched stayed
+               nailed where they dropped it and the layout slowly became a
+               collection of pins. The anchor is the one deliberate exception —
+               it is pinned by the recipe, not by a drag. */
+            if (!n.isHub) {
+              n.fx = undefined;
+              n.fy = undefined;
+            }
+            (fgRef.current as FgMethods | null)?.d3ReheatSimulation?.();
+          }}
+          linkDirectionalArrowLength={settings.arrows ? 3 : 0}
+          linkDirectionalArrowRelPos={0.98}
           onEngineStop={() => {
             if (!shouldFitRef.current) return;
             shouldFitRef.current = false;
@@ -1172,7 +1448,26 @@ export function GraphCanvas({
         {/* compact control bar — filters / reset / fullscreen. There is
             deliberately no export button: see the canvas-taint note in
             nodeCanvasObject. */}
+        {/* Search sits apart from the icon cluster: it is the one control a
+            reader uses while looking AT the map, not at the chrome. */}
+        <div className="absolute left-3 top-3 z-20">
+          <GraphSearch items={searchItems} onPick={focusById} onQueryChange={setQuery} />
+        </div>
+
         <div className="absolute right-3 top-3 z-20 flex items-center gap-1 rounded-md border border-slate-800 bg-slate-950/85 p-1 shadow-lg">
+          <button
+            onClick={() => setShowSettings((v) => !v)}
+            aria-pressed={showSettings}
+            title="display & forces"
+            className={`inline-flex h-7 items-center gap-1.5 rounded px-2 font-mono text-[10px] uppercase tracking-[0.08em] transition-colors ${
+              showSettings
+                ? "bg-sky-500/15 text-sky-300"
+                : "text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            <ControlIcon name="sliders" />
+            tune
+          </button>
           <button
             onClick={() => setShowLegend((s) => !s)}
             aria-pressed={showLegend}
@@ -1236,6 +1531,21 @@ export function GraphCanvas({
             </span>
           </button>
         </div>
+
+        {/* Sits under the control bar it belongs to, on the right, so it never
+            covers the legend on the left or the search box above it. */}
+        {showSettings && (
+          <div className="absolute right-3 top-14 z-20 max-h-[calc(100%-4.5rem)] overflow-y-auto">
+            <GraphSettingsPanel
+              settings={settings}
+              onChange={updateSettings}
+              onReheat={() => {
+                shouldFitRef.current = true;
+                (fgRef.current as FgMethods | null)?.d3ReheatSimulation?.();
+              }}
+            />
+          </div>
+        )}
 
         {showLegend && (
           <GraphLegend

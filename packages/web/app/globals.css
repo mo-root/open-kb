@@ -65,7 +65,18 @@
      they are intentionally NOT overridden under [data-theme="dark"]. */
   --type-product: #3d7ffc;   /* blue */
   --type-player: #eb368c;    /* pink */
-  --type-community: #c4c1f8; /* lavender */
+  /* Community was lavender #c4c1f8 in both themes under the "node hues are
+     fixed" rule. Measured, that rule was costing more than it bought: on paper
+     the lavender sits at 1.7:1 against white — 139 of 295 nodes on a real map,
+     effectively invisible — and it lands only ΔE 8.0 from --type-core in normal
+     vision, well under the 15 floor, so community and the anchor were nearly
+     the same colour. Both themes FAILED the all-pairs categorical check.
+
+     Orange is the third hue that passes: it is far enough from the brand blue
+     AND the brand pink to clear every gate in both modes (checked with the
+     dataviz validator, all-pairs, on #ffffff and #0e1b34). It is the ONE
+     --type-* that steps per theme; product and player are unchanged. */
+  --type-community: #c2410c; /* orange — paper step */
   --type-core: #9db2d6;      /* muted */
 
   /* Tailwind ramp — LIGHT, inverted by MEANING (consumed via @theme inline).
@@ -129,7 +140,9 @@
   --scroll-thumb: #32495f;
   --scan-rgb: 0, 224, 255;
 
-  /* --type-* deliberately NOT overridden — node hues are fixed in both themes. */
+  /* Only --type-community steps per theme; see the note in the light block.
+     product / player / core keep one value in both, as before. */
+  --type-community: #d95926; /* orange — navy step */
 
   --c-slate-950: #0a1730;
   --c-slate-900: #0d2243;  /* surface */

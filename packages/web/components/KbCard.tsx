@@ -48,19 +48,20 @@ export function KbCard({ kb }: { kb: KbSummary }) {
   ].filter((s) => s.value > 0);
   const mass = segments.reduce((sum, s) => sum + s.value, 0);
 
-  // Glyph counts double as the composition bar's legend: notes is neutral
-  // chrome. products/players borrow the fixed --type-* vars, blue #3d7ffc and
-  // pink #eb368c both hold contrast on paper AND navy, so chip == segment there.
-  // Community is the exception: its brand-fixed lavender #c4c1f8 lands at ~1.6:1
-  // on the light card, so a hairline stroke glyph would vanish. A solid segment
-  // fill survives any luminance (bar stays --type-community), but the standalone
-  // mark uses the theme-flipped violet ramp, text-violet-400 resolves to a
-  // paper-legible #7e79c3 in light and back to the lavender #c4c1f8 in dark.
+  // Glyph counts double as the composition bar's legend, and every one of them
+  // now reads the same --type-* var its segment does.
+  //
+  // Community used to be the exception here: the old lavender landed at ~1.6:1
+  // on the light card, so the standalone mark had to borrow the violet ramp
+  // while the bar segment kept the token — chip and segment were two different
+  // colours for one concept. --type-community is a validated orange that holds
+  // contrast on paper and on navy, so the workaround is gone and the mark
+  // matches its segment again.
   const allStats: Stat[] = [
     { glyph: "docs", label: "notes", value: kb.notes, className: "text-slate-400" },
     { glyph: "product", label: "products", value: products, className: "text-[var(--type-product)]" },
     { glyph: "player", label: "players", value: players, className: "text-[var(--type-player)]" },
-    { glyph: "community", label: "communities", value: communities, className: "text-violet-400" },
+    { glyph: "community", label: "communities", value: communities, className: "text-[var(--type-community)]" },
   ];
   const stats = allStats.filter((s) => s.value > 0);
 
