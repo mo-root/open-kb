@@ -1,4 +1,4 @@
-export * from "./url.js"
+export { canonicalUrl, registrableHost } from "./url.js"
 export * from "./sniff.js"
 export * from "./evidence.js"
 export * from "./spans.js"
