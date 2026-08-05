@@ -205,6 +205,20 @@ export function NoteView({
             {note.evidence}
           </div>
         )}
+        {note.because && (
+          /* amber-* is remapped to the brand-pink ramp in globals.css, and only
+             steps 200–500 are re-keyed per theme (see GraphCanvas's advisory
+             banner) — border-amber-900/bg-amber-950 would sit outside that
+             range and render as a fixed dark literal instead of flipping with
+             light mode. Kept inside 200–500, matching the "unplaced" badge
+             above and every other amber box in this app. */
+          <div className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-300">
+            <span className="mr-2 text-[11px] uppercase tracking-wide text-amber-400">
+              downgraded
+            </span>
+            {note.because}
+          </div>
+        )}
         {sources.length > 0 && (
           <div className="mt-3">
             <div className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">

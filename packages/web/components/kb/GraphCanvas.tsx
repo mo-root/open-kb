@@ -119,6 +119,9 @@ interface FLink {
    *  say; every edge here carries the relation the classifier assigned, which
    *  is the whole content of the map. */
   relation: string;
+  /** measured = a page named both ends; inferred = model reasoning. Inferred
+   *  draws dashed. */
+  confidence: string;
 }
 
 // A serialisable snapshot of the clicked node, drives the React detail card.
@@ -688,6 +691,7 @@ export function GraphCanvas({
           // long enough to give them a circumference to sit on.
           parentDeg: Math.max(s.deg, t.deg),
           relation: l.label ?? "",
+          confidence: l.confidence ?? "measured",
         };
       });
     return { nodes, links, byId };
@@ -1391,6 +1395,7 @@ export function GraphCanvas({
           nodePointerAreaPaint={nodePointerAreaPaint}
           linkColor={linkColor}
           linkWidth={linkWidth}
+          linkLineDash={(l: FLink) => (l.confidence === "inferred" ? [3, 3] : null)}
           onNodeHover={(n: FNode | null) => {
             hoverRef.current = n ? n.id : null;
           }}
