@@ -49,8 +49,10 @@ export interface MapNode {
   tier: ProvenanceTier
   evidence: Evidence[]
   /** Competing accounts kept on merge — a collision between two writers is
-   *  usually two true descriptions of one company, not a duplicate. */
-  also: string[]
+   *  usually two true descriptions of one company, not a duplicate. Each entry
+   *  keeps the displaced `what`, and the displaced `name` when it had its own —
+   *  a product folded into its host node stays recoverable by name. */
+  also: Array<{ name?: string; what: string }>
   retracted?: { why: string }
 }
 

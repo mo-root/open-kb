@@ -520,21 +520,41 @@ export function rememberTool(ctx: RememberCtx, input: RememberInput): RememberRe
     // Merge, commutative on key: the same two accounts land as one node with
     // both sets of evidence whichever order they arrive in. The account with
     // the stronger provenance owns the scalar fields; the other survives in
-    // `also` rather than being discarded.
+    // `also` — its what, and its name when it had its own — rather than being
+    // discarded.
     existing.evidence = dedupeEvidence(existing.evidence, minted.evidence)
     const incomingStronger = strongerTier(tier, existing.tier) === tier && tier !== existing.tier
     if (incomingStronger) {
-      if (existing.what && existing.what !== n.what) existing.also.push(existing.what)
-      existing.name = n.name || existing.name
+      const survivorName = n.name || existing.name
+      if (existing.what && existing.what !== n.what && !existing.also.some((a) => a.what === existing.what)) {
+        existing.also.push({
+          ...(existing.name && existing.name !== survivorName ? { name: existing.name } : {}),
+          what: existing.what,
+        })
+      }
+      existing.name = survivorName
       existing.what = n.what
       existing.why = n.why
-      existing.kind = kind
-      existing.relation = relation
-      if (because) existing.because = because
-      else delete existing.because
+      // An unknown never outranks a supported claim, even arriving stronger:
+      // a downgraded account contributes its evidence and its tier, but the
+      // standing supported kind/relation hold and the refusal is dropped —
+      // the mirror of the recovery rule below, so the merge commutes across
+      // the downgrade/recovery seam whichever order the two accounts arrive.
+      const downgradeIntoSupported = !!because && relation === "unknown" && existing.relation !== "unknown"
+      if (!downgradeIntoSupported) {
+        existing.kind = kind
+        existing.relation = relation
+        if (because) existing.because = because
+        else delete existing.because
+      }
       existing.tier = tier
     } else {
-      if (n.what && n.what !== existing.what && !existing.also.includes(n.what)) existing.also.push(n.what)
+      if (n.what && n.what !== existing.what && !existing.also.some((a) => a.what === n.what)) {
+        existing.also.push({
+          ...(n.name && n.name !== existing.name ? { name: n.name } : {}),
+          what: n.what,
+        })
+      }
       // An unknown never outranks a supported claim: if the standing relation
       // was the downgrade and this account was admitted, the node recovers.
       if (existing.relation === "unknown" && relation !== "unknown" && !because) {

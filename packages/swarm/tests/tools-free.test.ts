@@ -7,6 +7,7 @@ import {
   recallTool,
   rememberTool,
   SLICE,
+  type MapNode,
   type RememberCtx,
   type ReadCtx,
   type RecallCtx,
@@ -347,7 +348,7 @@ describe("rememberTool", () => {
     expect(map.nodes.size).toBe(1)
     const node = map.nodes.get("apify.com")!
     expect(node.evidence).toHaveLength(2)
-    expect(node.also).toContain("docs portal")
+    expect(node.also).toContainEqual({ name: "Apify Docs", what: "docs portal" })
   })
 
   it("merge is commutative on key: either arrival order lands one node with both quotes", () => {
@@ -379,6 +380,159 @@ describe("rememberTool", () => {
     expect(ba.what).toBe("widgets")
     expect(ab.tier).toBe("own-page")
     expect(ba.tier).toBe("own-page")
+  })
+
+  it("merge commutes across the downgrade/recovery seam: both orders land the same node", () => {
+    // The surviving fields of a merged node — everything a reader of the map
+    // sees. Evidence compares as a set of URLs; arrival order may differ.
+    const surviving = (n: MapNode) => ({
+      name: n.name,
+      kind: n.kind,
+      what: n.what,
+      relation: n.relation,
+      why: n.why,
+      because: n.because,
+      tier: n.tier,
+      also: n.also,
+      urls: [...new Set(n.evidence.map((e) => e.url))].sort(),
+    })
+
+    type Account = {
+      name: string; domain: string; kind: string; what: string; relation: string; why: string
+      evidence: Array<{ url: string; quote: string }>
+    }
+
+    const bothOrders = (seed: (evidence: RunEvidence) => void, a: Account, b: Account, key: string) => {
+      const run = (first: Account, second: Account) => {
+        const evidence = new RunEvidence()
+        const map = new MapState("anchor.com")
+        const ctx: RememberCtx = { map, evidence, ledger: ledger() }
+        seed(evidence)
+        for (const n of [first, second]) {
+          const r = rememberTool(ctx, { nodes: [n], why: "t" })
+          expect(r.rejected).toEqual([])
+        }
+        return map.nodes.get(key)!
+      }
+      return { ab: run(a, b), ba: run(b, a) }
+    }
+
+    // A snippet naming h.com as a venue, and a third-party page calling it a vendor.
+    const seed = (evidence: RunEvidence) => {
+      evidence.record({
+        url: "https://finder.com/list",
+        text: "h.com gathers the scraping crowd weekly for tips and war stories",
+        status: "found",
+        tier: "snippet",
+      })
+      evidence.record({
+        url: "https://press.com/story",
+        text: "the story says h.com sells a scraping api to developers at scale",
+        status: "found",
+        tier: "page",
+      })
+    }
+    const supportedWeaker: Account = {
+      name: "H", domain: "h.com", kind: "community", what: "weekly roundup", relation: "covers",
+      why: "a venue this market gathers in, seen in search",
+      evidence: [{ url: "https://finder.com/list", quote: "gathers the scraping crowd weekly" }],
+    }
+    // A commercial claim with no page from h.com itself behind it: admit()
+    // downgrades this to unknown + because, at the stronger page tier.
+    const downgradedStronger: Account = {
+      name: "H", domain: "h.com", kind: "company", what: "scraping api vendor", relation: "competitor",
+      why: "a press story calls it a rival",
+      evidence: [{ url: "https://press.com/story", quote: "sells a scraping api to developers" }],
+    }
+
+    // Pair 1 — the reviewer's repro: downgraded-stronger + supported-weaker.
+    {
+      const { ab, ba } = bothOrders(seed, downgradedStronger, supportedWeaker, "h.com")
+      expect(surviving(ab)).toEqual(surviving(ba))
+      // And concretely: the downgrade never outranks the supported claim.
+      expect(ab.kind).toBe("community")
+      expect(ab.relation).toBe("covers")
+      expect(ab.because).toBeUndefined()
+      expect(ab.tier).toBe("page")
+    }
+
+    // Pair 2 — supported-stronger + supported-weaker.
+    {
+      const seedOwn = (evidence: RunEvidence) => {
+        seed(evidence)
+        evidence.record({
+          url: "https://h.com/",
+          text: "h.com sells a scraping api to developers worldwide, on its own terms",
+          status: "found",
+          tier: "page",
+        })
+      }
+      const supportedStronger: Account = {
+        name: "H Corp", domain: "h.com", kind: "company", what: "scraping api", relation: "competitor",
+        why: "same job, same buyer, in its own words",
+        evidence: [{ url: "https://h.com/", quote: "sells a scraping api to developers worldwide" }],
+      }
+      const { ab, ba } = bothOrders(seedOwn, supportedStronger, supportedWeaker, "h.com")
+      expect(surviving(ab)).toEqual(surviving(ba))
+      expect(ab.relation).toBe("competitor")
+      expect(ab.tier).toBe("own-page")
+    }
+
+    // Pair 3 — two downgraded accounts.
+    {
+      const downgradedWeaker: Account = {
+        name: "H", domain: "h.com", kind: "company", what: "scraping shop", relation: "competitor",
+        why: "the snippet made it sound like a vendor",
+        evidence: [{ url: "https://finder.com/list", quote: "gathers the scraping crowd" }],
+      }
+      const { ab, ba } = bothOrders(seed, downgradedStronger, downgradedWeaker, "h.com")
+      expect(surviving(ab)).toEqual(surviving(ba))
+      expect(ab.relation).toBe("unknown")
+      expect(ab.because).toBeDefined()
+      expect(ab.tier).toBe("page")
+    }
+  })
+
+  it("a stronger merge keeps the displaced name in also[], so a product folded into its host stays recoverable", () => {
+    const build = (order: "company-first" | "product-first") => {
+      const evidence = new RunEvidence()
+      const map = new MapState("anchor.com")
+      const ctx: RememberCtx = { map, evidence, ledger: ledger() }
+      evidence.record({
+        url: "https://brightdata.com/",
+        text: "Bright Data operates a web data platform with proxies and unblocking for enterprises",
+        status: "found",
+        tier: "page",
+      })
+      evidence.record({
+        url: "https://review.com/tools",
+        text: "the review says Web Unlocker defeats bot detection on hard sites",
+        status: "found",
+        tier: "page",
+      })
+      const company = {
+        name: "Bright Data", domain: "brightdata.com", kind: "company", what: "web data platform", relation: "competitor",
+        why: "sells the same collection job to the same buyer",
+        evidence: [{ url: "https://brightdata.com/", quote: "web data platform with proxies" }],
+      }
+      const product = {
+        name: "Web Unlocker", domain: "brightdata.com", kind: "product", what: "unblocking product", relation: "competitor",
+        why: "the product that overlaps the anchor's core",
+        evidence: [{ url: "https://review.com/tools", quote: "defeats bot detection on hard sites" }],
+      }
+      for (const n of order === "company-first" ? [company, product] : [product, company]) {
+        const r = rememberTool(ctx, { nodes: [n], why: "t" })
+        expect(r.rejected).toEqual([])
+      }
+      return map.nodes.get("brightdata.com")!
+    }
+    for (const order of ["company-first", "product-first"] as const) {
+      const node = build(order)
+      // The own-page account owns the primary name; the folded product's name
+      // survives beside its what instead of being overwritten away.
+      expect(node.name).toBe("Bright Data")
+      expect(node.also).toContainEqual({ name: "Web Unlocker", what: "unblocking product" })
+    }
   })
 
   it("admit downgrades a commercial claim with no readable own page — landed, wearing its refusal", () => {
