@@ -3,7 +3,7 @@ import { z } from "zod"
 import { EvidenceStore } from "../src/evidence.js"
 import { SpanStream } from "../src/spans.js"
 import { FakeSearch, FakeFetch } from "../src/testing/fake-provider.js"
-import { makeTools, anchorNode, nodeId, NODE_KINDS } from "../src/tools.js"
+import { makeTools, anchorNode, nodeId, NODE_KINDS, type StoredNode, type StoredEdge } from "../src/tools.js"
 
 const ctx = () => ({
   evidence: new EvidenceStore(() => "2026-08-03T10:00:00.000Z"),
@@ -33,7 +33,7 @@ const ctx = () => ({
   runId: "r1",
   agentId: "inv1",
   parentId: "lead",
-  graph: { nodes: new Map(), edges: [] },
+  graph: { nodes: new Map<string, StoredNode>(), edges: [] as StoredEdge[] },
 })
 
 type Ctx = ReturnType<typeof ctx>
@@ -231,10 +231,10 @@ describe("remember tool", () => {
     // The rejection is specific enough that a model reading it knows exactly what to fix:
     // which claim failed (by name), and why (the quote it offered isn't on the page).
     expect(out.rejected).toHaveLength(2)
-    const nodeRejection = out.rejected.find((r) => r.includes("Ghost Co"))
+    const nodeRejection = out.rejected.find((r: string) => r.includes("Ghost Co"))
     expect(nodeRejection).toBeDefined()
     expect(nodeRejection).toContain("quote not present")
-    const edgeRejection = out.rejected.find((r) => r.includes("company:rival->company:ghost-co"))
+    const edgeRejection = out.rejected.find((r: string) => r.includes("company:rival->company:ghost-co"))
     expect(edgeRejection).toBeDefined()
     expect(edgeRejection).toContain("quote not present")
   })
@@ -243,7 +243,7 @@ describe("remember tool", () => {
 describe("remember, the kinds the model is told about", () => {
   /** The `kind` field of a node, as the model receives it. */
   const kindField = () => {
-    const schema = z.toJSONSchema(makeTools(ctx()).remember.inputSchema as unknown as z.ZodType) as {
+    const schema = z.toJSONSchema(makeTools(ctx()).remember.inputSchema as unknown as z.ZodType) as unknown as {
       properties: { nodes: { items: { properties: { kind: { enum: string[]; description?: string } } } } }
     }
     return schema.properties.nodes.items.properties.kind

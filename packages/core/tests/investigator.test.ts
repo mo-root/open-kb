@@ -92,6 +92,8 @@ describe("investigate", () => {
       whyHere: "someone else's finding",
       howFound: "someone else's query",
       evidence: [],
+      alsoWhat: [],
+      alsoWhyHere: [],
     })
     ctx.graph.edges.push({
       from: "company:already-here",
