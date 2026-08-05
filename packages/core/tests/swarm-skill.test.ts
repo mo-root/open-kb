@@ -62,6 +62,26 @@ describe("swarm skill", () => {
   it("downgrades rather than deletes, and retraction carries a why", () => {
     expect(raw).toContain("downgraded, not deleted")
     expect(raw).toContain("`retract` carries a why")
+    // The downgrade is no longer silent: remember returns the refused claim
+    // with its remedy, and the skill teaches the row so the model acts on it.
+    expect(raw).toContain("`downgraded` row")
+  })
+
+  it("divides the spending: the lead buys questions, investigators buy pages", () => {
+    // Live run 1's lesson: sixteen lead turns, thirty-three of the lead's own
+    // searches, one mission, zero pages fetched — every commercial claim died
+    // at the gate. Each of these sentences is that run's counter-instruction.
+    expect(raw).toContain("you buy questions; investigators buy pages")
+    expect(raw).toContain("spending the map's money on one context's guesses")
+    expect(raw).toContain("fetch the target's apex page")
+  })
+
+  it("requires the host's own front page behind a commercial claim, remedy quoted byte for byte", () => {
+    expect(raw).toContain("fetch that host's own front page THIS mission")
+    // The exact hint tools-free.ts returns with <host> filled in — the swarm
+    // package's own tests assert the same sentence from the template side, so
+    // skill and tool cannot drift apart without one of the two suites failing.
+    expect(raw).toContain('"fetch https://<host>/ and cite its own page to establish a commercial relation"')
   })
 
   it("names cost as tiers and never as models", () => {

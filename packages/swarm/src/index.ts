@@ -37,6 +37,8 @@ export {
   rememberTool,
   linksOf,
   SLICE,
+  commercialDowngradeHint,
+  directoryDowngradeHint,
   type ReadInput,
   type ReadReturn,
   type ReadCtx,

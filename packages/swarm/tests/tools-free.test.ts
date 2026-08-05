@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest"
+import { readFileSync } from "node:fs"
 import { Ledger, Board } from "@open-kb/core"
 import {
   RunEvidence,
@@ -6,6 +7,7 @@ import {
   readTool,
   recallTool,
   rememberTool,
+  commercialDowngradeHint,
   SLICE,
   type MapNode,
   type RememberCtx,
@@ -597,6 +599,14 @@ describe("rememberTool", () => {
     })
     expect(r.added.nodes).toBe(1)
     expect(r.downgraded).toEqual([])
+  })
+
+  it("the skill quotes the commercial remedy byte for byte — the tool and the doctrine cannot drift", () => {
+    // The investigator section quotes the hint with `<host>` where the host
+    // goes; remember returns it with the host filled in. One template, both
+    // sides — this assertion is the seam.
+    const skill = readFileSync("prompts/swarm/skill.md", "utf8")
+    expect(skill).toContain(commercialDowngradeHint("<host>"))
   })
 
   it("the directory downgrade carries its own remedy, not the fetch-the-front-page one", () => {
