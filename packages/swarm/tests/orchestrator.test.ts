@@ -151,7 +151,7 @@ describe("runSwarm: fill/think/wake", () => {
           // been narrated. If landings needed the lead to be idle, this would
           // deadlock — the timeout below is the barrier detector.
           const t = Date.now()
-          while (!logs.some((l) => l.includes("m2 landed"))) {
+          while (!logs.some((l) => l.includes("lane frees: rivals (m2)"))) {
             if (Date.now() - t > 3_000) throw new Error("no landing arrived while the lead was thinking")
             await sleep(5)
           }
@@ -180,10 +180,39 @@ describe("runSwarm: fill/think/wake", () => {
     expect(keys).toContain("m1")
     expect(keys).toContain("m2")
     // The landing was narrated BEFORE the thinking turn came back: interleave.
-    const landedAt = logs.findIndex((l) => l.includes("m2 landed"))
+    const landedAt = logs.findIndex((l) => l.includes("lane frees: rivals (m2)"))
     const turnDoneAt = logs.findIndex((l) => l.includes("lead turn 2"))
     expect(landedAt).toBeGreaterThanOrEqual(0)
     expect(turnDoneAt).toBeGreaterThan(landedAt)
+  })
+
+  it("narrates the lead's buying: spawn and refusal counts ride every turn line, and a landing frees its lane on screen", async () => {
+    // Live run 1 spawned nothing for 16 turns and the console never said so —
+    // the only way to learn it was to diff the run JSON. The counts are now on
+    // every turn line, zeros included, because the zero IS the finding.
+    const logs: string[] = []
+    const lead = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = leadTurnOf(prompt)
+        if (turn === 1)
+          return reply(
+            call("1", "spawn", {
+              missions: [mission("m1", 90, "read"), mission("m-untiered", 85, "mega")],
+              why: "one fundable, one wearing a tier money does not know",
+            }),
+            false,
+          )
+        return reply(call("f1", "finish", { reason: "done", summary: "s", unresolved: [], why: "d" }), false)
+      },
+    })
+
+    const run = await runSwarm(mkOpts({ lead, logs }))
+
+    expect(run.ending.reason).toBe("lead-finished")
+    expect(logs.some((l) => / — spawned 1, refused 1$/.test(l) && l.includes("lead turn 1"))).toBe(true)
+    expect(logs.some((l) => l.includes("lead turn 2") && / — spawned 0, refused 0 — finish called$/.test(l))).toBe(true)
+    // Every landing narrates the lane freeing: lens, key, status, delta, dollars.
+    expect(logs.some((l) => /lane frees: rivals \(m1\) — done, \+\d+ nodes \+\d+ edges, \$[\d.]+/.test(l))).toBe(true)
   })
 
   it("degrades rather than snapping: an unaffordable dig is skipped with narration and a cheaper peek runs", async () => {

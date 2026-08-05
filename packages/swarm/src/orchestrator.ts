@@ -312,6 +312,11 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
     },
   }
 
+  /** Spawn activity since the lead's last narrated turn. Only the lead holds
+   *  the spawn tool, so no attribution is needed; the counts ride the turn
+   *  line — zeros included, because run 1's silent zero was the failure. */
+  const turnSpawns = { queued: 0, refused: 0 }
+
   const hooks: AgentHooks = {
     onModel: (i) => {
       tally.modelCalls += 1
@@ -330,6 +335,10 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
       })
     },
     onTool: (i) => {
+      if (i.tool === "spawn" && i.spawn) {
+        turnSpawns.queued += i.spawn.queued
+        turnSpawns.refused += i.spawn.refused
+      }
       emit({
         agentId: "swarm",
         kind: TOOL_SPAN_KIND[i.tool] ?? "spawn",
@@ -521,8 +530,8 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
         // the final drain still belongs to the run's record.
         landings.push({ mission, digest, actualUsd, atSec: sec() })
         say(
-          `${mission.dedupeKey} landed: ${digest.status}, +${digest.added.nodes} nodes ` +
-            `+${digest.added.edges} edges, $${actualUsd.toFixed(3)}`,
+          `lane frees: ${mission.lens} (${mission.dedupeKey}) — ${digest.status}, ` +
+            `+${digest.added.nodes} nodes +${digest.added.edges} edges, $${actualUsd.toFixed(3)}`,
         )
         return { type: "mission" as const, key: mission.dedupeKey, mission, digest, actualUsd }
       })
@@ -858,8 +867,11 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
         say(
           o.kind === "closing"
             ? `lead closing turn: ${o.because}`
-            : `lead turn ${o.turn}: $${o.usd.toFixed(3)}${o.finished ? " — finish called" : ""}`,
+            : `lead turn ${o.turn}: $${o.usd.toFixed(3)} — spawned ${turnSpawns.queued}, ` +
+                `refused ${turnSpawns.refused}${o.finished ? " — finish called" : ""}`,
         )
+        turnSpawns.queued = 0
+        turnSpawns.refused = 0
         if (o.kind === "closing" && !stopReason) {
           stopping = true
           stopReason = "budget-floor"

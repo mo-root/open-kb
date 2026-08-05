@@ -111,7 +111,17 @@ export interface AgentHooks {
     tokensOut: number
     usd: number
   }) => void
-  onTool?: (info: { tool: string; why: string; argsDigest: string; ms: number; ok: boolean }) => void
+  onTool?: (info: {
+    tool: string
+    why: string
+    argsDigest: string
+    ms: number
+    ok: boolean
+    /** spawn calls only: how many missions the call queued and how many it
+     *  refused — the orchestrator narrates these per lead turn, because a lead
+     *  that spawns nothing all run must be visible from the console. */
+    spawn?: { queued: number; refused: number }
+  }) => void
 }
 
 /** The run state both roles share. S7 owns all of it; the runner only acts on it. */
@@ -184,13 +194,21 @@ interface WireOpts {
 }
 
 function makeReport(deps: SwarmAgentDeps) {
-  return (toolName: string, why: string, args: unknown, started: number, ok: boolean) =>
+  return (
+    toolName: string,
+    why: string,
+    args: unknown,
+    started: number,
+    ok: boolean,
+    spawn?: { queued: number; refused: number },
+  ) =>
     deps.hooks?.onTool?.({
       tool: toolName,
       why,
       argsDigest: JSON.stringify(args).slice(0, 200),
       ms: Date.now() - started,
       ok,
+      ...(spawn ? { spawn } : {}),
     })
 }
 
@@ -372,7 +390,10 @@ function leadControlTools(deps: SwarmAgentDeps): ToolSet {
         // The tier string is validated by the tool in words ("not a tier money
         // knows"), so the wider zod type narrows at the boundary it teaches at.
         const out = spawnTool(controlCtx, { missions: missions as unknown as Mission[], why })
-        report("spawn", why, { missions: missions.length }, started, out.refused.length === 0)
+        report("spawn", why, { missions: missions.length }, started, out.refused.length === 0, {
+          queued: out.queued.length,
+          refused: out.refused.length,
+        })
         return out
       },
     }),
