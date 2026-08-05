@@ -1,5 +1,6 @@
 export { canonicalUrl, registrableHost } from "./url.js"
 export { outboundHosts, admit, type Claim, type JudgedPage, type VerdictCtx, type Admission } from "./verdict.js"
+export { answerKeyRecall, type RecallProbe, type RecallReport } from "./coverage.js"
 export * from "./sniff.js"
 export * from "./evidence.js"
 export * from "./spans.js"
