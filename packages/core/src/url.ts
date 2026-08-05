@@ -40,7 +40,13 @@ const TWO_PART_TLD = new Set([
 /** The domain a company actually registered: `docs.apify.com` -> `apify.com`.
  *  Identity for company/product nodes keys on this, never on the display name. */
 export function registrableHost(host: string): string {
-  const h = host.trim().toLowerCase().replace(/^www\./, "")
+  const h = host.trim().toLowerCase().replace(/^www\./, "").replace(/\.$/, "")
+
+  // IPv4 addresses should pass through unchanged
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h)) {
+    return h
+  }
+
   const parts = h.split(".")
   if (parts.length <= 2) return h
   const lastTwo = parts.slice(-2).join(".")

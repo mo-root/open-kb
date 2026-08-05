@@ -36,4 +36,11 @@ describe("registrableHost", () => {
     expect(registrableHost("localhost")).toBe("localhost")
     expect(registrableHost("")).toBe("")
   })
+  it("strips a trailing FQDN dot", () => {
+    expect(registrableHost("apify.com.")).toBe("apify.com")
+    expect(registrableHost("a.b.example.co.uk.")).toBe("example.co.uk")
+  })
+  it("passes IPv4 addresses through unchanged", () => {
+    expect(registrableHost("192.168.1.1")).toBe("192.168.1.1")
+  })
 })
