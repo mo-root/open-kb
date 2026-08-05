@@ -10,4 +10,44 @@
  * ports, never through process.env.
  */
 
-export {}
+export {
+  RunEvidence,
+  MAX_STORED_BYTES,
+  originKey,
+  strongerTier,
+  type RecordInput,
+  type CiteOutcome,
+  type ProvenanceTier,
+} from "./run-evidence.js"
+
+export {
+  MapState,
+  nodeKey,
+  SWARM_NODE_KINDS,
+  SWARM_RELATIONS,
+  type MapNode,
+  type MapEdge,
+  type EntityRow,
+  type EntityEdgeRow,
+} from "./map.js"
+
+export {
+  readTool,
+  recallTool,
+  rememberTool,
+  SLICE,
+  type ReadInput,
+  type ReadReturn,
+  type ReadCtx,
+  type RecallInput,
+  type RecallReturn,
+  type RecallCtx,
+  type SearchTrace,
+  type EvidenceRef,
+  type RememberNodeInput,
+  type RememberEdgeInput,
+  type RetractInput,
+  type RememberInput,
+  type RememberReturn,
+  type RememberCtx,
+} from "./tools-free.js"
