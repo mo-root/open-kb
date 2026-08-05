@@ -72,3 +72,23 @@ export {
   type FetchDocPending,
   type FetchReturn,
 } from "./tools-paid.js"
+
+export {
+  spawnTool,
+  proposeTool,
+  nextTool,
+  finishTool,
+  newRunControl,
+  type RunControl,
+  type NextCondition,
+  type FinishState,
+  type ControlCtx,
+  type SpawnInput,
+  type SpawnReturn,
+  type ProposeInput,
+  type ProposeReturn,
+  type NextInput,
+  type NextReturn,
+  type FinishInput,
+  type FinishReturn,
+} from "./tools-control.js"
