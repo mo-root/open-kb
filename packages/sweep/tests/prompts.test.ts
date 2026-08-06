@@ -3,7 +3,7 @@ import { readFileSync, existsSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { composePrompt } from "@open-kb/core"
-import { RELATIONS, ENTITY_KINDS } from "../src/sweep.js"
+import { RELATIONS, ENTITY_KINDS, makePrompt } from "../src/sweep.js"
 
 /**
  * The prompts are the product.
@@ -95,5 +95,70 @@ describe("the composed classify prompt", () => {
     // so a drift here would fail at runtime, on a paid call. Fail here instead.
     const found = new Set([...composed().matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]!))
     expect([...found].sort()).toEqual(["anchor", "buyer", "host", "intents", "page", "seenIn", "sells"])
+  })
+})
+
+/**
+ * The per-run compose memo. The classify prompt is rendered once per residue
+ * host from inside the rank pool, and composing there meant re-reading the
+ * same unchanging files for every host a model judged. `makePrompt` composes
+ * each agent's template once per run and leaves only the placeholder fill per
+ * call — these tests pin that arithmetic with a counting fake, since the real
+ * file reads are not cleanly observable from a test.
+ */
+describe("makePrompt (the per-run compose memo)", () => {
+  it("composes an agent's template once for N per-host renders, and still fills per host", () => {
+    let compositions = 0
+    const prompt = makePrompt((agent) => {
+      compositions += 1
+      return `judge {{host}} as ${agent}`
+    })
+    const hosts = Array.from({ length: 40 }, (_, i) => `host${i}.test`)
+    const rendered = hosts.map((h) => prompt("classify", { host: h }))
+    expect(compositions).toBe(1)
+    // The render is the per-host half and must stay per-host: memoising the
+    // template can never memoise the fill.
+    expect(rendered[0]).toBe("judge host0.test as classify")
+    expect(rendered[39]).toBe("judge host39.test as classify")
+    expect(new Set(rendered).size).toBe(40)
+  })
+
+  it("keeps agents separate — each composes its own template, once", () => {
+    const composed: string[] = []
+    const prompt = makePrompt((agent) => {
+      composed.push(agent)
+      return `${agent}: {{x}}`
+    })
+    prompt("classify", { x: 1 })
+    prompt("understand", { x: 2 })
+    prompt("classify", { x: 3 })
+    prompt("understand", { x: 4 })
+    expect(composed).toEqual(["classify", "understand"])
+  })
+
+  it("two renderers share nothing — a new run re-reads the disk, so a prompt edit lands next run", () => {
+    let compositions = 0
+    const compose = () => {
+      compositions += 1
+      return "{{x}}"
+    }
+    makePrompt(compose)("classify", { x: 1 })
+    makePrompt(compose)("classify", { x: 2 })
+    expect(compositions).toBe(2)
+  })
+
+  it("the default compose renders the real classify prompt, every placeholder filled", () => {
+    const prompt = makePrompt()
+    const out = prompt("classify", {
+      anchor: "anchor.test",
+      sells: "a scraping api",
+      buyer: "a data engineer",
+      host: "rival.test",
+      seenIn: "2",
+      intents: "evaluation",
+      page: "the page text",
+    })
+    expect(out).toContain("rival.test")
+    expect(out).not.toMatch(/\{\{\w+\}\}/)
   })
 })

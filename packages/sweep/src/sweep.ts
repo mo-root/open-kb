@@ -72,10 +72,42 @@ function promptsRoot(): string {
   throw new Error("cannot find prompts/ — the agents have no instructions to load")
 }
 
-/** An agent's full instruction: its own file, with the doctrine it declares. */
-function prompt(agent: string, vars: Record<string, string | number>): string {
-  const root = promptsRoot()
-  return render(composePrompt(agent, join(root, "agents"), join(root, "doctrine")), vars)
+/**
+ * A per-run prompt renderer: each agent's template is composed from disk once,
+ * and only the placeholder fill happens per call.
+ *
+ * Composition is sync `readFileSync` work plus the `promptsRoot` walk, and the
+ * classify call sits inside the rank pool — composing per call meant every
+ * residue host re-read the same unchanging files from inside an async worker
+ * (measured on the offline rehearsal: 18 compositions across three runs, one
+ * per model call; a 740-host live run pays that per host). The files cannot
+ * change mid-run, so the run composes each agent's template on first use and
+ * renders from memory after that.
+ *
+ * Scoped to the run, not the module, on purpose: the prompts are editable
+ * without a rebuild, and a process-wide memo would quietly end that for any
+ * long-lived server — the next run must see the edited file.
+ *
+ * `compose` is injectable so a test can prove the arithmetic with a counting
+ * fake; `sweep()` always uses the real files. It is synchronous, which is what
+ * makes the memo race-free under the rank pool: the first classify call fills
+ * the map before any other worker can look.
+ */
+export function makePrompt(
+  compose: (agent: string) => string = (agent) => {
+    const root = promptsRoot()
+    return composePrompt(agent, join(root, "agents"), join(root, "doctrine"))
+  },
+): (agent: string, vars: Record<string, string | number>) => string {
+  const templates = new Map<string, string>()
+  return (agent, vars) => {
+    let t = templates.get(agent)
+    if (t === undefined) {
+      t = compose(agent)
+      templates.set(agent, t)
+    }
+    return render(t, vars)
+  }
 }
 
 import { emitUi } from "./ui.js"
@@ -464,6 +496,34 @@ function suggest(host: string): string {
   return alt ? `Did you mean ${[...parts.slice(0, -1), alt].join(".")}?` : ""
 }
 
+/**
+ * The rank phase's line for the live reading panel, one per judged host.
+ *
+ * The batch classifier emitted exactly this per kept entity —
+ * `${domain} — ${kind}/${relation}: ${why}` — and the per-host rewrite dropped
+ * it, so the panel went silent through the longest phase of the run. Restored
+ * per entity as each judgement lands: model-judged hosts arrive about one a
+ * second, predicate-settled ones in a burst at the start, and one frame each
+ * is the same volume the panel already absorbed per batch.
+ *
+ * Predicate-settled hosts are included, wearing their `because`. Chosen to
+ * match both the history and the neighbouring frame: the batch era showed
+ * every kept classification (the predicate concept did not exist to filter
+ * on), and the `ranked` results frame built beside this line already streams
+ * predicate-settled entities with `because ?? why` — the reading panel saying
+ * less than the findings table would be two surfaces disagreeing about the
+ * same event. Noise stays off the panel, as it always was.
+ *
+ * The model's name rides ahead of the domain when it gave one; a predicate
+ * settlement has no name beyond its host, and prints as the host alone.
+ */
+export function rankThinkLine(e: Judged): string | null {
+  if (e.kind === "noise") return null
+  const head = e.name && e.name !== e.domain ? `${e.name} (${e.domain})` : e.domain
+  const reason = e.because ?? e.why
+  return `${head} — ${e.kind}/${e.relation}${reason ? `: ${reason}` : ""}`
+}
+
 export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   const {
     domain: anchor,
@@ -476,6 +536,10 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     onLog,
     signal,
   } = opts
+  // One renderer per run: templates composed on first use, rendered per call.
+  // The prompts on disk cannot change mid-run, and the per-host classify call
+  // used to recompose them inside the rank pool for every residue host.
+  const prompt = makePrompt()
   const target = Math.max(1, Math.floor(opts.queries ?? 40))
   const CONC = Math.max(1, Math.floor(opts.concurrency ?? 20))
   const BATCH = Math.max(1, Math.floor(opts.batchSize ?? 40))
@@ -1588,6 +1652,10 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     onJudged: (e) => {
       rankedBuffer.push(e)
       judgedCount += 1
+      // The judgement itself, to the reading panel, as it lands — the batch
+      // classifier's think line, restored to the per-host path.
+      const line = rankThinkLine(e)
+      if (line) think("rank", line)
       if (rankedBuffer.length >= 25) flushRanked()
       if (judgedCount % 50 === 0) say("rank", `  judged ${judgedCount}/${hostList.length}`)
     },
