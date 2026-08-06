@@ -34,6 +34,14 @@ export const SWARM_RELATIONS = [
   "unknown",
 ] as const
 
+/** One writer's stamp on a node: who landed a claim here, and at what
+ *  provenance tier THAT claim proved out — the mission dedupeKey for an
+ *  investigator's remembers, "lead" for the lead's own. */
+export interface Contribution {
+  writer: string
+  tier: ProvenanceTier
+}
+
 export interface MapNode {
   /** Identity: registrableHost(domain) for company/product; `kind:slug` otherwise. */
   key: string
@@ -53,6 +61,12 @@ export interface MapNode {
    *  keeps the displaced `what`, and the displaced `name` when it had its own —
    *  a product folded into its host node stays recoverable by name. */
   also: Array<{ name?: string; what: string }>
+  /** Run-local writer attribution: every remember that adds or merges into
+   *  this node appends its stamp, identical {writer, tier} pairs deduped.
+   *  Semantically a SET — concurrent lanes make arrival order meaningless, so
+   *  readers must not depend on it. Never serialized: entities() omits it and
+   *  the run-JSON shape is unchanged; the scorecard reads the live MapState. */
+  contributions: Contribution[]
   retracted?: { why: string }
 }
 
@@ -149,4 +163,25 @@ export class MapState {
   endpointOnMap(key: string): boolean {
     return key === this.anchor || this.nodes.has(key)
   }
+}
+
+/**
+ * The scorecard's per-family question, as one query: for each writer, how many
+ * LIVE nodes did that writer land page-or-better evidence on? "Page-or-better"
+ * is a claim whose own quotes came from a fetched page (page or own-page) —
+ * snippet stamps do not count. Retracted nodes do not count either: the
+ * scorecard grades the map a reader gets, though the contribution record
+ * itself survives retraction for the audit trail. A writer with no qualifying
+ * node is absent from the result — read with `?? 0`.
+ */
+export function pageTierByWriter(map: MapState): Map<string, number> {
+  const out = new Map<string, number>()
+  for (const n of map.nodes.values()) {
+    if (n.retracted) continue
+    const writers = new Set(
+      n.contributions.filter((c) => c.tier === "page" || c.tier === "own-page").map((c) => c.writer),
+    )
+    for (const w of writers) out.set(w, (out.get(w) ?? 0) + 1)
+  }
+  return out
 }

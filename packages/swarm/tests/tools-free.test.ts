@@ -4,6 +4,7 @@ import { Ledger, Board } from "@open-kb/core"
 import {
   RunEvidence,
   MapState,
+  pageTierByWriter,
   readTool,
   recallTool,
   rememberTool,
@@ -387,6 +388,12 @@ describe("rememberTool", () => {
   it("merge commutes across the downgrade/recovery seam: both orders land the same node", () => {
     // The surviving fields of a merged node — everything a reader of the map
     // sees. Evidence compares as a set of URLs; arrival order may differ.
+    // Contributions compare as a SET too, deliberately: merge appends each
+    // writer's stamp in arrival order, and the property under test is that
+    // arrival order cannot change the surviving node — so the stamps are
+    // canonicalized to writer:tier strings and sorted before comparing.
+    // Asserting array order here would demand the very thing commutativity
+    // forbids the merge to promise.
     const surviving = (n: MapNode) => ({
       name: n.name,
       kind: n.kind,
@@ -397,9 +404,11 @@ describe("rememberTool", () => {
       tier: n.tier,
       also: n.also,
       urls: [...new Set(n.evidence.map((e) => e.url))].sort(),
+      contributions: n.contributions.map((c) => `${c.writer}:${c.tier}`).sort(),
     })
 
     type Account = {
+      writer: string
       name: string; domain: string; kind: string; what: string; relation: string; why: string
       evidence: Array<{ url: string; quote: string }>
     }
@@ -408,9 +417,11 @@ describe("rememberTool", () => {
       const run = (first: Account, second: Account) => {
         const evidence = new RunEvidence()
         const map = new MapState("anchor.com")
-        const ctx: RememberCtx = { map, evidence, ledger: ledger() }
         seed(evidence)
         for (const n of [first, second]) {
+          // Each account writes as its own mission — the writer travels with
+          // the account, not with the arrival position.
+          const ctx: RememberCtx = { map, evidence, ledger: ledger(), writer: n.writer }
           const r = rememberTool(ctx, { nodes: [n], why: "t" })
           expect(r.rejected).toEqual([])
         }
@@ -435,6 +446,7 @@ describe("rememberTool", () => {
       })
     }
     const supportedWeaker: Account = {
+      writer: "venue-scan",
       name: "H", domain: "h.com", kind: "community", what: "weekly roundup", relation: "covers",
       why: "a venue this market gathers in, seen in search",
       evidence: [{ url: "https://finder.com/list", quote: "gathers the scraping crowd weekly" }],
@@ -442,6 +454,7 @@ describe("rememberTool", () => {
     // A commercial claim with no page from h.com itself behind it: admit()
     // downgrades this to unknown + because, at the stronger page tier.
     const downgradedStronger: Account = {
+      writer: "press-angle",
       name: "H", domain: "h.com", kind: "company", what: "scraping api vendor", relation: "competitor",
       why: "a press story calls it a rival",
       evidence: [{ url: "https://press.com/story", quote: "sells a scraping api to developers" }],
@@ -456,6 +469,9 @@ describe("rememberTool", () => {
       expect(ab.relation).toBe("covers")
       expect(ab.because).toBeUndefined()
       expect(ab.tier).toBe("page")
+      // Both writers' stamps survive the seam, each at its own claim's tier —
+      // the downgrade rewrote the claim's stance, never its attribution.
+      expect(surviving(ab).contributions).toEqual(["press-angle:page", "venue-scan:snippet"])
     }
 
     // Pair 2 — supported-stronger + supported-weaker.
@@ -470,6 +486,7 @@ describe("rememberTool", () => {
         })
       }
       const supportedStronger: Account = {
+        writer: "own-page-read",
         name: "H Corp", domain: "h.com", kind: "company", what: "scraping api", relation: "competitor",
         why: "same job, same buyer, in its own words",
         evidence: [{ url: "https://h.com/", quote: "sells a scraping api to developers worldwide" }],
@@ -483,6 +500,7 @@ describe("rememberTool", () => {
     // Pair 3 — two downgraded accounts.
     {
       const downgradedWeaker: Account = {
+        writer: "snippet-guess",
         name: "H", domain: "h.com", kind: "company", what: "scraping shop", relation: "competitor",
         why: "the snippet made it sound like a vendor",
         evidence: [{ url: "https://finder.com/list", quote: "gathers the scraping crowd" }],
@@ -788,5 +806,160 @@ describe("rememberTool", () => {
     const s = seeded()
     const r = rememberTool(ctxOf(s), { why: "empty call" })
     expect(r.poolLeftUsd).toBeCloseTo(1.35)
+  })
+})
+
+// ── writer attribution: contributions ────────────────────────────────────────
+
+describe("writer attribution (contributions)", () => {
+  it("an add stamps its writer at the claim's own tier; an unset writer is the lead", () => {
+    const s = seeded()
+    // An investigator's ctx carries its mission dedupeKey as the writer.
+    const investigator: RememberCtx = { map: s.map, evidence: s.evidence, ledger: ledger(), writer: "rival-pricing" }
+    rememberTool(investigator, {
+      nodes: [{
+        name: "Acme", domain: "rival.com", kind: "company", what: "scraping api", relation: "competitor",
+        why: "same job, same buyer, in its own words",
+        evidence: [{ url: "https://rival.com/", quote: "sells a scraping API" }],
+      }],
+      why: "t",
+    })
+    expect(s.map.nodes.get("rival.com")!.contributions).toEqual([{ writer: "rival-pricing", tier: "own-page" }])
+
+    // The lead's own remembers carry no writer key; they stamp as "lead".
+    rememberTool(ctxOf(s), {
+      nodes: [{
+        name: "Roundup", domain: "third.com", kind: "community", what: "comparison blog", relation: "covers",
+        why: "ranks the vendors in this market",
+        evidence: [{ url: "https://third.com/roundup", quote: "compared head to head" }],
+      }],
+      why: "t",
+    })
+    expect(s.map.nodes.get("third.com")!.contributions).toEqual([{ writer: "lead", tier: "snippet" }])
+  })
+
+  it("two missions writing one key both leave their stamps, whichever order they arrive", () => {
+    const build = (order: "ab" | "ba") => {
+      const evidence = new RunEvidence()
+      const map = new MapState("anchor.com")
+      evidence.record({ url: "https://press.com/story", text: "the story says x.com sells widgets to plumbers at scale", status: "found", tier: "page" })
+      evidence.record({ url: "https://finder.com/list", text: "a search hit naming x.com among widget vendors this year", status: "found", tier: "snippet" })
+      const a = {
+        writer: "m-press",
+        node: {
+          name: "X", domain: "x.com", kind: "company", what: "widgets", relation: "competitor",
+          why: "a press story places it in the same market",
+          evidence: [{ url: "https://press.com/story", quote: "sells widgets to plumbers" }],
+        },
+      }
+      const b = {
+        writer: "m-directory",
+        node: {
+          name: "X", domain: "x.com", kind: "company", what: "widget vendor", relation: "competitor",
+          why: "listed among the market's vendors",
+          evidence: [{ url: "https://finder.com/list", quote: "among widget vendors" }],
+        },
+      }
+      for (const { writer, node } of order === "ab" ? [a, b] : [b, a]) {
+        rememberTool({ map, evidence, ledger: ledger(), writer }, { nodes: [node], why: "t" })
+      }
+      return map.nodes.get("x.com")!
+    }
+    for (const order of ["ab", "ba"] as const) {
+      const stamps = build(order).contributions.map((c) => `${c.writer}:${c.tier}`).sort()
+      // Each writer's stamp carries ITS claim's tier — the page-backed press
+      // mission at page, the snippet mission at snippet — in both orders.
+      expect(stamps).toEqual(["m-directory:snippet", "m-press:page"])
+    }
+  })
+
+  it("identical {writer, tier} pairs dedupe; the same writer at a new tier is a new stamp", () => {
+    const s = seeded()
+    const ctx: RememberCtx = { map: s.map, evidence: s.evidence, ledger: ledger(), writer: "m-sweep" }
+    const claim = (evidence: Array<{ url: string; quote: string }>) =>
+      rememberTool(ctx, {
+        nodes: [{
+          name: "Roundup", domain: "third.com", kind: "community", what: "comparison blog", relation: "covers",
+          why: "ranks the vendors in this market", evidence,
+        }],
+        why: "t",
+      })
+    claim([{ url: "https://third.com/roundup", quote: "compared head to head" }])
+    claim([{ url: "https://third.com/roundup", quote: "on price and coverage" }])
+    // Same writer, same snippet tier: one stamp, not two.
+    expect(s.map.nodes.get("third.com")!.contributions).toEqual([{ writer: "m-sweep", tier: "snippet" }])
+    // The same writer coming back with page-tier proof is a new fact worth keeping.
+    claim([{ url: "https://rival.com/", quote: "collect structured web data at scale" }])
+    expect(s.map.nodes.get("third.com")!.contributions).toEqual([
+      { writer: "m-sweep", tier: "snippet" },
+      { writer: "m-sweep", tier: "page" },
+    ])
+  })
+
+  it("retraction leaves the contribution record — who wrote what stays auditable", () => {
+    const s = seeded()
+    const ctx: RememberCtx = { map: s.map, evidence: s.evidence, ledger: ledger(), writer: "m-rivals" }
+    rememberTool(ctx, {
+      nodes: [{
+        name: "Acme", domain: "rival.com", kind: "company", what: "scraping api", relation: "competitor",
+        why: "same job, same buyer, in its own words",
+        evidence: [{ url: "https://rival.com/", quote: "sells a scraping API" }],
+      }],
+      why: "t",
+    })
+    rememberTool(ctx, { retract: [{ node: "rival.com", why: "duplicate of the anchor's own product line" }], why: "critic" })
+    const node = s.map.nodes.get("rival.com")!
+    expect(node.retracted).toBeDefined()
+    expect(node.contributions).toEqual([{ writer: "m-rivals", tier: "own-page" }])
+  })
+
+  it("entities() does not emit contributions — the run-JSON shape is unchanged", () => {
+    const s = populated()
+    for (const row of s.map.entities()) {
+      expect(row).not.toHaveProperty("contributions")
+    }
+  })
+
+  it("pageTierByWriter answers the per-family page-tier count T3 folds into FamilyRow", () => {
+    const evidence = new RunEvidence()
+    const map = new MapState("anchor.com")
+    evidence.record({ url: "https://a.com/", text: "a.com sells a scraping api to developer teams worldwide", status: "found", tier: "page" })
+    evidence.record({ url: "https://press.com/story", text: "the story says a.com and c.com both sell scraping apis today", status: "found", tier: "page" })
+    evidence.record({ url: "https://finder.com/list", text: "a snippet naming b.com among the market's vendor roundups", status: "found", tier: "snippet" })
+    const write = (writer: string, node: Parameters<typeof rememberTool>[1]["nodes"]) =>
+      rememberTool({ map, evidence, ledger: ledger(), writer }, { nodes: node, why: "t" })
+
+    // m-pricing: page-tier on a.com, snippet-only on b.com — counts once.
+    write("m-pricing", [{
+      name: "A", domain: "a.com", kind: "company", what: "scraping api", relation: "competitor",
+      why: "a press story places it in the same market",
+      evidence: [{ url: "https://press.com/story", quote: "a.com and c.com both sell scraping apis" }],
+    }])
+    write("m-pricing", [{
+      name: "B", domain: "b.com", kind: "community", what: "vendor roundup", relation: "covers",
+      why: "a roundup the market reads", evidence: [{ url: "https://finder.com/list", quote: "among the market's vendor roundups" }],
+    }])
+    // lead: own-page upgrade merged onto a.com — page-or-better, counts.
+    write("lead", [{
+      name: "A", domain: "a.com", kind: "company", what: "scraping api", relation: "competitor",
+      why: "same job, same buyer, in its own words",
+      evidence: [{ url: "https://a.com/", quote: "sells a scraping api to developer teams" }],
+    }])
+    // m-rivals: page-tier on c.com, but the node was retracted — the live map
+    // is what the scorecard grades, so this contributes nothing to the count.
+    write("m-rivals", [{
+      name: "C", domain: "c.com", kind: "company", what: "scraping api", relation: "competitor",
+      why: "a press story places it in the same market",
+      evidence: [{ url: "https://press.com/story", quote: "both sell scraping apis" }],
+    }])
+    rememberTool({ map, evidence, ledger: ledger(), writer: "lead" }, {
+      retract: [{ node: "c.com", why: "resells the anchor, not a rival" }], why: "critic",
+    })
+
+    const counts = pageTierByWriter(map)
+    expect(counts.get("m-pricing")).toBe(1) // a.com yes (page), b.com no (snippet)
+    expect(counts.get("lead")).toBe(1) // a.com (own-page beats page — still page-or-better)
+    // A writer with no live page-or-better node is absent — T3 reads with ?? 0.
+    expect(counts.get("m-rivals") ?? 0).toBe(0)
   })
 })

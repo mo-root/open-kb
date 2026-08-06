@@ -23,8 +23,10 @@ export {
 export {
   MapState,
   nodeKey,
+  pageTierByWriter,
   SWARM_NODE_KINDS,
   SWARM_RELATIONS,
+  type Contribution,
   type MapNode,
   type MapEdge,
   type EntityRow,

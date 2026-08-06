@@ -383,6 +383,11 @@ export interface RememberCtx {
   /** Distinct outbound hosts before a company-shaped page reads as a directory.
    *  Null (the calibrated default) disables the rule rather than guessing. */
   aggregatorThreshold?: number | null
+  /** Who is writing: the mission dedupeKey for an investigator's remembers,
+   *  "lead" for the lead's own. Unset reads as "lead". Stamped run-local onto
+   *  every node this ctx adds or merges into (MapNode.contributions) so the
+   *  scorecard can count each family's page-tier landings; never serialized. */
+  writer?: string
 }
 
 const KINDS = new Set<string>(SWARM_NODE_KINDS)
@@ -425,6 +430,14 @@ function tierOf(key: string, evidence: Evidence[]): ProvenanceTier {
   return best
 }
 
+/** Append the writer's stamp at the claim's own tier, identical {writer, tier}
+ *  pairs deduped. The array is semantically a set — concurrent lanes make
+ *  arrival order meaningless, and the merge property test compares it order-free. */
+function stampContribution(node: MapNode, writer: string, tier: ProvenanceTier): void {
+  if (node.contributions.some((c) => c.writer === writer && c.tier === tier)) return
+  node.contributions.push({ writer, tier })
+}
+
 function dedupeEvidence(existing: Evidence[], incoming: Evidence[]): Evidence[] {
   const seen = new Set(existing.map((e) => `${e.url}\u0000${e.quote}`))
   const out = [...existing]
@@ -451,6 +464,7 @@ export function rememberTool(ctx: RememberCtx, input: RememberInput): RememberRe
   const downgraded: RememberReturn["downgraded"] = []
   const added = { nodes: 0, edges: 0, retractions: 0 }
   const merged = { nodes: 0, edges: 0 }
+  const writer = ctx.writer ?? "lead"
 
   // ── nodes ──
   for (const n of input.nodes ?? []) {
@@ -540,6 +554,7 @@ export function rememberTool(ctx: RememberCtx, input: RememberInput): RememberRe
         tier,
         evidence: minted.evidence,
         also: [],
+        contributions: [{ writer, tier }],
       })
       added.nodes += 1
       continue
@@ -549,8 +564,11 @@ export function rememberTool(ctx: RememberCtx, input: RememberInput): RememberRe
     // both sets of evidence whichever order they arrive in. The account with
     // the stronger provenance owns the scalar fields; the other survives in
     // `also` — its what, and its name when it had its own — rather than being
-    // discarded.
+    // discarded. The writer's stamp lands either way, at the incoming claim's
+    // OWN tier — attribution records what this claim proved, not what the
+    // merged node ended up wearing — so the stamp set commutes by construction.
     existing.evidence = dedupeEvidence(existing.evidence, minted.evidence)
+    stampContribution(existing, writer, tier)
     const incomingStronger = strongerTier(tier, existing.tier) === tier && tier !== existing.tier
     if (incomingStronger) {
       const survivorName = n.name || existing.name

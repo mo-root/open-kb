@@ -212,7 +212,11 @@ function makeReport(deps: SwarmAgentDeps) {
     })
 }
 
-function freeTools(deps: SwarmAgentDeps): ToolSet {
+/** `writer` is who these tools write as — "lead" for the lead's own remembers,
+ *  the mission dedupeKey for an investigator — stamped run-local onto every
+ *  node the writer adds or merges (MapNode.contributions), so the scorecard
+ *  can count each family's page-tier landings. */
+function freeTools(deps: SwarmAgentDeps, writer: string): ToolSet {
   const report = makeReport(deps)
   const readCtx: ReadCtx = { evidence: deps.evidence, ledger: deps.ledger }
   const recallCtx: RecallCtx = {
@@ -227,6 +231,7 @@ function freeTools(deps: SwarmAgentDeps): ToolSet {
     evidence: deps.evidence,
     ledger: deps.ledger,
     aggregatorThreshold: deps.aggregatorThreshold,
+    writer,
   }
 
   return {
@@ -584,7 +589,7 @@ export function runLead(deps: LeadDeps): LeadRunner {
     `You are the LEAD. Target: ${deps.domain}. Ceiling $${deps.ledger.ceilingUsd.toFixed(2)}. GO.` +
     `\n\n${deps.skill}`
   const messages: ModelMessage[] = []
-  const free = freeTools(deps)
+  const free = freeTools(deps, "lead")
   const closingTools: ToolSet = { ...free, finish: makeFinishTool(deps) }
   const control = leadControlTools(deps)
 
@@ -815,7 +820,7 @@ export async function runInvestigator(mission: Mission, deps: InvestigatorDeps):
 
   let consecutiveRefusals = 0
   const tools: ToolSet = {
-    ...freeTools(deps),
+    ...freeTools(deps, mission.dedupeKey),
     ...paidTools({
       deps,
       claimId: deps.claimId,
