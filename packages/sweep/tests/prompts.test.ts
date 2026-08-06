@@ -90,6 +90,21 @@ describe("the composed classify prompt", () => {
     expect(composed()).toContain("RANKS, COMPARES or REVIEWS")
   })
 
+  it("teaches the writing doctrine: lead with what it IS, why as evidence, no self-praise", () => {
+    // The corpus these rules answer: of 740 model-judged entities on the
+    // 2026-08-05 brightdata sweep, 81 whats opened with a bare verb or a
+    // keyword list instead of saying what the host is, 57 carried the page's
+    // self-praise or a vendor-counted number ("premium", "70M+ IPs"), and 274
+    // whys spent their first clause restating the what. The description meter
+    // measures the what against the page; these sentences tell the judge what
+    // the meter will find. Each pin holds one rule.
+    const c = composed()
+    expect(c).toContain("leads with what the host IS")
+    expect(c).toContain("evidence for the relation")
+    expect(c).toContain("self-praise")
+    expect(c).toContain("padding")
+  })
+
   it("keeps exactly the placeholders the rank call renders with", () => {
     // render() throws on any mismatch between these and the call-site's vars,
     // so a drift here would fail at runtime, on a paid call. Fail here instead.

@@ -44,9 +44,27 @@ vocabulary it contains — ranking for the market's vocabulary is not evidence o
 market — and a page that writes ABOUT a vendor is not that vendor. Never write a `what` or a `why`
 containing a product, a capability or a customer that is not visible on the page in front of you.
 
-Answer with: `name` (what the host calls itself on the page), `kind`, `what` (what it is, one
-line, from the page itself), `relation`, and `why` (why it belongs on this map, stated against the
-anchor — how it relates, not that it resembles).
+Answer with: `name` (what the host calls itself on the page), `kind`, `what`, `relation`, and
+`why`.
+
+The `what` is one sentence that leads with what the host IS, then what it sells, in the buyer's
+words: "A residential proxy provider selling rotating IPs to scraping teams." Open with the
+noun — not with "Sells..." or a keyword list, which name wares without naming a seller, and not
+with the relation, which has its own field. Kindred hosts should read in parallel: two proxy
+vendors on one map differ in their facts, not their format. Do not copy the page's self-praise —
+"leading", "premium", "all-in-one", "award-winning" — or any count only the vendor can vouch for
+("70M+ IPs", "99.9% uptime"): that is the page selling, not the page saying what it sells. Every
+content word of the `what` is measured against the page text after you answer; an invented
+capability is recorded against the entity, and puffery survives that check only to embarrass the
+map. Past ~25 words a `what` is padding.
+
+The `why` is the evidence for the relation, stated against the anchor — how it relates, not that
+it resembles — and never the `what` restated or the label said again: name the thing that makes
+the relation true. "Sells the same rotating-proxy capability to the same scraping teams that
+shortlist the anchor" is a why; "a direct competitor" is the label wearing more words. For the
+channel relations the evidence is what the host gives the market: the vendors it indexes, the
+coverage it publishes, the buyers who argue there. One sentence here too — the reader has the
+`what` one line up.
 
 {{host}} — seen in {{seenIn}} different queries, via {{intents}}. Its front page, condensed:
 

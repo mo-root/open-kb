@@ -60,6 +60,17 @@ describe("swarm skill", () => {
     expect(raw).toContain("feedback, not")
   })
 
+  it("teaches note-writing: the what says what the host IS, the why never restates it", () => {
+    // The swarm's own-page notes on run 3 (runs/swarm-brightdata-com-
+    // 202608060151.json): 6 of 12 whys were the relation label restated —
+    // "Primary direct enterprise competitor" — evidence of nothing. The
+    // classify prompt carries the long form of these rules; the skill carries
+    // the sentence-sized form, and this keeps it from being trimmed away.
+    expect(raw).toContain("A `what` says what the host IS")
+    expect(raw).toContain("praise is not a capability")
+    expect(raw).toContain("never the what again")
+  })
+
   it("downgrades rather than deletes, and retraction carries a why", () => {
     expect(raw).toContain("downgraded, not deleted")
     expect(raw).toContain("`retract` carries a why")
