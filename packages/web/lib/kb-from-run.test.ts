@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { graphOf, noteOf } from "./kb-from-run"
+import { graphOf, manifestOf, noteOf, viewOf } from "./kb-from-run"
 import type { StoredRun } from "./runs"
 
 /**
@@ -35,8 +35,14 @@ function run(entities: unknown[], edges: unknown[] = []): StoredRun {
 /** Object-shaped fixture for tests that want to name `entities`/`edges`
  *  together rather than positionally. Built on `run()` above, the smallest
  *  existing `StoredRun` fixture in this file, so both stay one shape. */
-function fixtureRun(overrides: { entities?: unknown[]; edges?: unknown[] }): StoredRun {
-  return run(overrides.entities ?? [], overrides.edges ?? [])
+function fixtureRun(overrides: {
+  entities?: unknown[]
+  edges?: unknown[]
+  report?: Record<string, unknown>
+}): StoredRun {
+  const r = run(overrides.entities ?? [], overrides.edges ?? [])
+  if (overrides.report) (r.result as { report: Record<string, unknown> }).report = overrides.report
+  return r
 }
 
 describe("graphOf, entity-to-entity edges", () => {
@@ -194,5 +200,133 @@ describe("validation kernel surfaces", () => {
     })
     const note = noteOf(run, "unplaced/x.com.md")
     expect(note?.because).toContain("its own site")
+  })
+})
+
+/**
+ * The run JSONs carry riches the frontend never showed: the scorecard a swarm
+ * run serialized at its ending (report.scorecard, T6), the evidence tier on
+ * each swarm entity, and the kernel's grounding meter on sweep runs. These
+ * cover the reading half — the fields must survive the run -> view translation
+ * byte-intact, because the surfaces render them verbatim.
+ */
+describe("scorecard passthrough (swarm runs)", () => {
+  /** Modeled field-for-field on runs/swarm-brightdata-com-202608060151.json —
+   *  a live ending whose gate never had to speak. Values are that run's own;
+   *  only the anchor inside the orientation dedupeKey is renamed to match
+   *  this file's fixture anchor. */
+  const liveScorecard = {
+    families: [
+      { lens: "orientation", dedupeKey: "orient:anchor.com", priority: 100, status: "landed", nodesAdded: 2, pageTierNodes: 2 },
+      { lens: "market_mapping", dedupeKey: "competitors_proxies_scraping", priority: 90, status: "landed", nodesAdded: 7, pageTierNodes: 6 },
+      { lens: "ecosystem_mapping", dedupeKey: "integrations_agents_mcp", priority: 85, status: "landed", nodesAdded: 2, pageTierNodes: 0 },
+    ],
+    familiesWithPageTier: { num: 2, den: 3, value: 0.6666666666666666 },
+    pageTier: { num: 12, den: 12, value: 1 },
+    singleSourced: { num: 12, den: 12, value: 1 },
+    poolUnspent: { num: 3.1303555, den: 5, value: 0.6260711 },
+    wall: { num: 235994, den: 600000, value: 0.39332333333333336 },
+    yield: { window: 3, recent: 11, before: null },
+    recall: { pooled: null, probes: [] },
+    costPerNodeUsd: 0.11413704166666666,
+    spentUsd: 1.3696445,
+    gate: { refusals: 0, objections: [], carriedObjections: [], refusedFinish: null },
+    config: { maxPoolUnspentFraction: 0.5, maxSingleSourcedFraction: 0.5, requirePageTierPerFamily: true },
+  }
+
+  it("carries the scorecard onto the view, fractions shipping their own arithmetic", () => {
+    const v = viewOf(fixtureRun({ report: { scorecard: liveScorecard } }))
+    expect(v.scorecard).toBeDefined()
+    expect(v.scorecard!.familiesWithPageTier).toEqual({ num: 2, den: 3, value: 0.6666666666666666 })
+    expect(v.scorecard!.poolUnspent.num).toBeCloseTo(3.1303555)
+    expect(v.scorecard!.poolUnspent.den).toBe(5)
+    expect(v.scorecard!.families).toHaveLength(3)
+    expect(v.scorecard!.families[1]).toMatchObject({ lens: "market_mapping", status: "landed", nodesAdded: 7, pageTierNodes: 6 })
+  })
+
+  it("carries the zero gate record whole rather than as a hole", () => {
+    const v = viewOf(fixtureRun({ report: { scorecard: liveScorecard } }))
+    expect(v.scorecard!.gate).toEqual({ refusals: 0, objections: [], carriedObjections: [], refusedFinish: null })
+  })
+
+  it("carries a nonzero gate's exchange verbatim — the sentences were written to be read", () => {
+    const objection = "2 of 3 planned families have zero page-tier nodes (competitors_x, integrations_y)"
+    const carried = "the pool holds $3.55 of $5.00"
+    const v = viewOf(
+      fixtureRun({
+        report: {
+          scorecard: {
+            ...liveScorecard,
+            gate: {
+              refusals: 1,
+              objections: [objection, carried],
+              carriedObjections: [carried],
+              refusedFinish: { reason: "mapped", summary: "Map completed within budget and time", unresolved: [] },
+            },
+          },
+        },
+      }),
+    )
+    const gate = v.scorecard!.gate
+    expect(gate.refusals).toBe(1)
+    expect(gate.objections).toEqual([objection, carried])
+    expect(gate.carriedObjections).toEqual([carried])
+    expect(gate.refusedFinish).toMatchObject({ summary: "Map completed within budget and time" })
+  })
+
+  it("leaves scorecard undefined on a run that never wrote one", () => {
+    expect(viewOf(fixtureRun({ report: {} })).scorecard).toBeUndefined()
+  })
+
+  it("refuses to invent a scorecard from a malformed one", () => {
+    expect(viewOf(fixtureRun({ report: { scorecard: "yes" } })).scorecard).toBeUndefined()
+    expect(viewOf(fixtureRun({ report: { scorecard: { families: [] } } })).scorecard).toBeUndefined()
+  })
+})
+
+describe("evidence tier and grounding", () => {
+  it("carries each entity's tier onto its NoteRef and NoteView", () => {
+    const r = fixtureRun({
+      entities: [
+        { ...entity("a.com", "competitor"), tier: "own-page" },
+        { ...entity("b.com", "competitor"), tier: "snippet" },
+      ],
+    })
+    const byPath = new Map(viewOf(r).notes.map((n) => [n.path, n]))
+    expect(byPath.get("players/a.com.md")?.tier).toBe("own-page")
+    expect(byPath.get("players/b.com.md")?.tier).toBe("snippet")
+    expect(noteOf(r, "players/a.com.md")?.tier).toBe("own-page")
+  })
+
+  it("leaves tier absent on a run recorded before tiers existed", () => {
+    const r = fixtureRun({ entities: [entity("a.com", "competitor")] })
+    expect(viewOf(r).notes.find((n) => n.path.includes("a.com"))?.tier).toBeUndefined()
+    expect(noteOf(r, "players/a.com.md")?.tier).toBeUndefined()
+  })
+
+  it("carries descGrounded per entity, and only when it is a number", () => {
+    const r = fixtureRun({
+      entities: [
+        { ...entity("a.com", "competitor"), descGrounded: 0.72 },
+        { ...entity("b.com", "competitor"), descGrounded: "high" },
+        entity("c.com", "competitor"),
+      ],
+    })
+    const byPath = new Map(viewOf(r).notes.map((n) => [n.path, n]))
+    expect(byPath.get("players/a.com.md")?.descGrounded).toBe(0.72)
+    expect(byPath.get("players/b.com.md")?.descGrounded).toBeUndefined()
+    expect(byPath.get("players/c.com.md")?.descGrounded).toBeUndefined()
+    expect(noteOf(r, "players/a.com.md")?.descGrounded).toBe(0.72)
+  })
+
+  it("surfaces the kernel's groundingMean on the manifest", () => {
+    const r = fixtureRun({ report: { kernel: { fetched: 10, groundingMean: 0.68 } } })
+    expect(manifestOf(r).groundingMean).toBe(0.68)
+  })
+
+  it("leaves groundingMean off a manifest whose kernel never measured it", () => {
+    expect(manifestOf(fixtureRun({ report: { kernel: { fetched: 10 } } })).groundingMean).toBeUndefined()
+    expect(manifestOf(fixtureRun({ report: {} })).groundingMean).toBeUndefined()
+    expect(manifestOf(fixtureRun({ report: { kernel: { groundingMean: null } } })).groundingMean).toBeUndefined()
   })
 })

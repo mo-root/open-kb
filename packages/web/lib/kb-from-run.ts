@@ -5,10 +5,13 @@ import type {
   GraphView,
   GraphViewNode,
   KbManifest,
+  KbScorecard,
   KbSummary,
   KbView,
   NoteRef,
   NoteView,
+  ScorecardFamilyView,
+  ScoreFraction,
   TypeCounts,
 } from "./viewTypes"
 import type { StoredRun } from "./runs"
@@ -123,6 +126,99 @@ function dedupe(entities: readonly Entity[]): Entity[] {
 const tally = (xs: string[]): Record<string, number> =>
   xs.reduce<Record<string, number>>((a, k) => ((a[k] = (a[k] ?? 0) + 1), a), {})
 
+/** The evidence tier a swarm run stamped on this entity, when one is there.
+ *  `Entity` is the sweep's type and the swarm writes the same row shape plus
+ *  `tier`, so the read goes through the same escape hatch `because` already
+ *  uses. Any non-empty string survives — a tier this reader has never heard of
+ *  is still a fact the run asserted, and the badge falls back to neutral. */
+function tierOf(e: Entity): string | undefined {
+  const t = (e as { tier?: unknown }).tier
+  return typeof t === "string" && t.trim() ? t : undefined
+}
+
+/** The kernel's grounding measurement, when this entity was model-judged.
+ *  Never coerced: a run that wrote `"0.72"` wrote a bug worth seeing. */
+function descGroundedOf(e: Entity): number | undefined {
+  const v = (e as { descGrounded?: unknown }).descGrounded
+  return typeof v === "number" && Number.isFinite(v) ? v : undefined
+}
+
+/** A `Fraction` as core serialized it, or null when the shape is not one.
+ *  `value` may honestly be null (den 0, "never NaN"); num and den may not. */
+function fractionOf(v: unknown): ScoreFraction | null {
+  if (!v || typeof v !== "object") return null
+  const f = v as Record<string, unknown>
+  if (typeof f.num !== "number" || typeof f.den !== "number") return null
+  return { num: f.num, den: f.den, value: typeof f.value === "number" ? f.value : null }
+}
+
+const strings = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []
+
+/**
+ * report.scorecard, read as the view's `KbScorecard` — or undefined when the
+ * run never wrote one (every sweep run, and swarm runs before T6) or wrote
+ * something that is not a scorecard. All four fractions must parse: a Coverage
+ * card missing half its instrument would render confidence the run never
+ * measured, so a malformed reading yields no card rather than a partial one.
+ */
+function scorecardOf(report: Record<string, unknown>): KbScorecard | undefined {
+  const raw = report.scorecard
+  if (!raw || typeof raw !== "object") return undefined
+  const s = raw as Record<string, unknown>
+
+  const familiesWithPageTier = fractionOf(s.familiesWithPageTier)
+  const pageTier = fractionOf(s.pageTier)
+  const singleSourced = fractionOf(s.singleSourced)
+  const poolUnspent = fractionOf(s.poolUnspent)
+  if (!familiesWithPageTier || !pageTier || !singleSourced || !poolUnspent) return undefined
+
+  const families: ScorecardFamilyView[] = (Array.isArray(s.families) ? s.families : []).flatMap(
+    (f): ScorecardFamilyView[] => {
+      if (!f || typeof f !== "object") return []
+      const r = f as Record<string, unknown>
+      if (typeof r.lens !== "string") return []
+      return [
+        {
+          lens: r.lens,
+          status: typeof r.status === "string" ? r.status : "unknown",
+          nodesAdded: typeof r.nodesAdded === "number" ? r.nodesAdded : 0,
+          pageTierNodes: typeof r.pageTierNodes === "number" ? r.pageTierNodes : 0,
+          because: typeof r.because === "string" ? r.because : undefined,
+        },
+      ]
+    },
+  )
+
+  // The gate record, defaulting to the zero record exactly as the serializer
+  // does ("a run whose finishes never met a scorecard thunk serializes the
+  // zero record rather than a hole").
+  const g = (s.gate && typeof s.gate === "object" ? s.gate : {}) as Record<string, unknown>
+  const rf = g.refusedFinish
+  const refusedFinish =
+    rf && typeof rf === "object"
+      ? {
+          reason: typeof (rf as { reason?: unknown }).reason === "string" ? (rf as { reason: string }).reason : "",
+          summary: typeof (rf as { summary?: unknown }).summary === "string" ? (rf as { summary: string }).summary : "",
+          unresolved: strings((rf as { unresolved?: unknown }).unresolved),
+        }
+      : null
+
+  return {
+    families,
+    familiesWithPageTier,
+    pageTier,
+    singleSourced,
+    poolUnspent,
+    gate: {
+      refusals: typeof g.refusals === "number" ? g.refusals : 0,
+      objections: strings(g.objections),
+      carriedObjections: strings(g.carriedObjections),
+      refusedFinish,
+    },
+  }
+}
+
 function emptyCounts(): TypeCounts {
   return { core: 0, product: 0, player: 0, community: 0 }
 }
@@ -197,6 +293,11 @@ function anchorRef(result: SweepResult): NoteRef {
 export function manifestOf(run: StoredRun): KbManifest {
   const r = run.result
   const report = (r.report ?? {}) as Record<string, unknown>
+  const kernel = report.kernel && typeof report.kernel === "object" ? (report.kernel as Record<string, unknown>) : null
+  const groundingMean =
+    typeof kernel?.groundingMean === "number" && Number.isFinite(kernel.groundingMean)
+      ? kernel.groundingMean
+      : undefined
   const { kept } = place(r)
   return {
     slug: run.id,
@@ -214,6 +315,10 @@ export function manifestOf(run: StoredRun): KbManifest {
     seconds: r.stats.seconds,
     results: r.stats.results,
     hosts: r.stats.hosts,
+    // The kernel's grounding meter (sweep runs). Absent when never measured —
+    // `manifestNum` returns undefined for a missing key, so the telemetry
+    // line simply does not render rather than claiming a zero.
+    groundingMean,
     sells: r.decomposition.sells,
     buyer: r.decomposition.buyer,
     products: r.decomposition.products.length,
@@ -258,6 +363,8 @@ export function viewOf(run: StoredRun): KbView {
         why: p.entity.why,
         foundBy: p.entity.foundBy,
         families: p.entity.families,
+        tier: tierOf(p.entity),
+        descGrounded: descGroundedOf(p.entity),
       }),
     ),
   ].sort((a, b) => b.relevance - a.relevance || a.path.localeCompare(b.path))
@@ -286,6 +393,7 @@ export function viewOf(run: StoredRun): KbView {
       (run.result.report?.strips as
         | { product: string; terms: string[]; generic: boolean; foundAt: string }[]
         | undefined) ?? [],
+    scorecard: scorecardOf((run.result.report ?? {}) as Record<string, unknown>),
   }
 }
 
@@ -324,6 +432,8 @@ export function noteOf(run: StoredRun, path: string): NoteView | null {
     domain: hit.entity.domain,
     families: hit.entity.families,
     because: (hit.entity as { because?: string }).because,
+    tier: tierOf(hit.entity),
+    descGrounded: descGroundedOf(hit.entity),
   }
 }
 

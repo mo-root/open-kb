@@ -60,6 +60,37 @@ export const FAMILY_TONE: Record<string, string> = {
   branded: "text-amber-300 border-amber-500/40 bg-amber-500/10",
 }
 
+/**
+ * The provenance ladder, glossed for a reader. `tier` is where an entity's
+ * best evidence came from (swarm runs): its own page, some retrieved page
+ * that names it, or only a search-result snippet. Lives here for the same
+ * reason as `RELATION_BLURB` — every consumer is a client component, and the
+ * badge must mean the same thing on every surface that wears it.
+ */
+export const TIER_BLURB: Record<string, string> = {
+  "own-page": "judged from this entity's own page — the strongest evidence a run collects",
+  page: "judged from a retrieved page that names it",
+  snippet: "seen only in search-result snippets — the lightest evidence this map accepts",
+}
+
+/**
+ * What `descGrounded` / `groundingMean` measure, in words that do not
+ * overclaim. The number is the fraction of a description's content terms the
+ * page the model read actually contains — a drift meter for embellished
+ * wording inside correctly-placed entities, established as RELATIVE: useful
+ * for comparing runs and spotting outliers, never a defect rate. A mean of
+ * 0.68 does not mean 68% of the descriptions are true, and no surface may
+ * imply it does.
+ */
+export const GROUNDING_MEAN_BLURB =
+  "Mean fraction of each description's content terms found on the page the model read. " +
+  "A relative drift meter for comparing runs and spotting embellished wording — " +
+  "not a defect rate: 0.68 does not mean 68% of the descriptions are true."
+
+export const GROUNDING_ENTITY_BLURB =
+  "The fraction of this description's content terms found on the page the model read. " +
+  "Low flags wording worth checking against the page — it is not the share of the description that is true."
+
 /* ------------------------------------------------------------------ manifest */
 
 /** Whatever a completed run recorded about itself.
@@ -80,7 +111,65 @@ export interface KbManifest {
   queries?: number
   violations?: number
   usd?: number
+  /** The kernel's grounding meter (sweep runs, report.kernel.groundingMean):
+   *  mean `descGrounded` across model-judged entities. See
+   *  `GROUNDING_MEAN_BLURB` for what it does and does not claim. */
+  groundingMean?: number
   [key: string]: unknown
+}
+
+/* ----------------------------------------------------------------- scorecard */
+
+/** core's `Fraction`, re-declared for the reader: a ratio that ships its own
+ *  arithmetic. `value` is `num / den`, or null when `den` is 0 — a fraction
+ *  that measured nothing, which renders as a dash, never as 0. */
+export interface ScoreFraction {
+  num: number
+  den: number
+  value: number | null
+}
+
+/** One planned question, as the swarm's family ledger recorded its life. */
+export interface ScorecardFamilyView {
+  lens: string
+  status: string
+  nodesAdded: number
+  /** Nodes this family backed with page-or-better evidence — what "this
+   *  question got a real answer" means on the scorecard. */
+  pageTierNodes: number
+  /** The lead's own reason, recorded at the kill. Present on killed rows. */
+  because?: string
+}
+
+/** The finish gate's record. The objection sentences are fact-sentences the
+ *  instrument wrote to be read, so they travel verbatim, never summarized. */
+export interface ScorecardGateView {
+  refusals: number
+  /** As the refusal delivered them — or, with no refusal, the sentences
+   *  standing at the accepted finish. */
+  objections: string[]
+  /** Still-standing objections the accepted finish's unresolved[] omitted. */
+  carriedObjections: string[]
+  /** The refused finish's own words, so a run that never reached a second
+   *  finish still ships the conclusion it would have ended on. */
+  refusedFinish: { reason: string; summary: string; unresolved: string[] } | null
+}
+
+/** The instrument reading a swarm run serialized at its ending
+ *  (report.scorecard). The reader carries the facts the Coverage card draws;
+ *  fields the card does not render (yield, recall, config) stay in the raw
+ *  report rather than riding here as furniture. */
+export interface KbScorecard {
+  families: ScorecardFamilyView[]
+  /** Families with at least one page-tier node, over families planned. */
+  familiesWithPageTier: ScoreFraction
+  /** Nodes whose best evidence is page-or-better, over nodes kept. */
+  pageTier: ScoreFraction
+  /** Nodes resting on a single source, over nodes kept. */
+  singleSourced: ScoreFraction
+  /** Spendable dollars over the caller-set ceiling. */
+  poolUnspent: ScoreFraction
+  gate: ScorecardGateView
 }
 
 /* --------------------------------------------------------------------- notes */
@@ -140,6 +229,14 @@ export interface NoteRef {
   what: string
   /** Why it belongs on this map, stated against the anchor. */
   why: string
+  /** Where this entity's best evidence came from (swarm runs): own-page,
+   *  page or snippet — see `TIER_BLURB`. Undefined on a run recorded before
+   *  tiers existed; an unknown value survives rather than being dropped, and
+   *  wears a neutral badge. */
+  tier?: string
+  /** The kernel's grounding measurement for this entity's description (sweep
+   *  runs, model-judged only). See `GROUNDING_ENTITY_BLURB`. */
+  descGrounded?: number
 }
 
 export interface KbView {
@@ -182,6 +279,10 @@ export interface KbView {
    *  trail behind the plain-family templates and the widening loop's reserve
    *  draws. Empty on a run recorded before this was tracked. */
   strips: { product: string; terms: string[]; generic: boolean; foundAt: string }[]
+  /** The instrument reading a swarm run serialized at its ending. Undefined
+   *  on sweep runs and on swarm runs recorded before T6 wrote it — absence
+   *  means "never measured", and the Coverage card simply does not appear. */
+  scorecard?: KbScorecard
 }
 
 /** One entity, whole. v1's equivalent carried a markdown `body`; an entity has
@@ -207,6 +308,12 @@ export interface NoteView {
   /** the kernel's refusal, when this claim was downgraded — rendered so a
    *  reader sees why the map does not trust it. */
   because?: string
+  /** Where this entity's best evidence came from (swarm runs) — see the
+   *  matching field on `NoteRef`. */
+  tier?: string
+  /** The grounding measurement for this entity's description (sweep runs) —
+   *  see the matching field on `NoteRef`. */
+  descGrounded?: number
 }
 
 /* --------------------------------------------------------------------- graph */
