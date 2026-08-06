@@ -1,5 +1,5 @@
 import {
-  sniff, condense, admit, outboundHosts, registrableHost, namesHost,
+  sniff, condense, admit, outboundHosts, registrableHost, namesHost, descriptionGrounding,
   type FetchPort, type JudgedPage,
 } from "@open-kb/core"
 
@@ -24,6 +24,11 @@ export interface Judged {
   /** Present only on downgraded claims: the refusal, as a sentence. */
   because?: string
   settledBy: "predicate" | "model"
+  /** Present only on model-judged entities: what fraction of `what`'s content
+   *  terms the page the model saw actually contains, 2 decimals. MEASUREMENT
+   *  ONLY — nothing gates on it. The residual error class it meters is an
+   *  embellished description inside a correctly-placed entity. */
+  descGrounded?: number
 }
 
 export interface KernelStats {
@@ -32,6 +37,10 @@ export interface KernelStats {
   aggregators: number
   modelJudged: number
   settledFree: number
+  /** Running mean of descGrounded across model-judged entities, 2 decimals.
+   *  Null until the first model judgement lands — a run that judged nothing
+   *  has no groundedness to report, and 0 would read as "everything invented". */
+  groundingMean: number | null
 }
 
 export interface JudgeDeps {
@@ -56,9 +65,14 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
   const threshold = deps.aggregatorThreshold
   const entities: Judged[] = []
   const probePages: Array<{ url: string; html: string }> = []
-  const stats: KernelStats = { fetched: 0, unreadable: 0, aggregators: 0, modelJudged: 0, settledFree: 0 }
+  const stats: KernelStats = { fetched: 0, unreadable: 0, aggregators: 0, modelJudged: 0, settledFree: 0, groundingMean: null }
   const anchorKey = registrableHost(deps.anchor)
   const queue = [...hosts]
+
+  // The running mean's raw ingredients — the mean itself is stored rounded,
+  // and rounding the addends before averaging would drift it.
+  let groundingSum = 0
+  let groundingN = 0
 
   const emit = (e: Judged) => {
     entities.push(e)
@@ -142,9 +156,10 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
 
     // Residue: one host, one judgement, from the page itself.
     stats.modelJudged += 1
+    const pageText = condense(s.text, 6_000).slice(0, 4_000)
     let out: Awaited<ReturnType<JudgeDeps["classify"]>>
     try {
-      out = await deps.classify(h, condense(s.text, 6_000).slice(0, 4_000))
+      out = await deps.classify(h, pageText)
     } catch (err) {
       emit({
         name: h.host, domain: h.host, kind: "unknown", what: "",
@@ -166,11 +181,21 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
     const gate = admit({ host: h.host, kind: out.kind, relation: out.relation }, page, {
       anchor: deps.anchor, aggregatorThreshold: threshold ?? Number.POSITIVE_INFINITY,
     })
+    // MEASUREMENT, not a gate: how much of the description the model just
+    // wrote is actually on the page it was written from. Computed against the
+    // exact text the model saw, so the number cannot be excused by a
+    // condensation difference. The score rides along on the entity and into
+    // the run's kernel stats; nothing downstream branches on it.
+    const grounding = descriptionGrounding(out.what, pageText)
+    groundingSum += grounding.score
+    groundingN += 1
+    stats.groundingMean = Math.round((groundingSum / groundingN) * 100) / 100
+    const descGrounded = Math.round(grounding.score * 100) / 100
     if (!gate.ok) {
-      emit({ ...out, domain: h.host, kind: gate.kind, relation: gate.relation, because: gate.because, settledBy: "model" })
+      emit({ ...out, domain: h.host, kind: gate.kind, relation: gate.relation, because: gate.because, settledBy: "model", descGrounded })
       return
     }
-    emit({ ...out, domain: h.host, settledBy: "model" })
+    emit({ ...out, domain: h.host, settledBy: "model", descGrounded })
   }
 
   const worker = async (): Promise<void> => {

@@ -1,6 +1,13 @@
 import { outboundHosts } from "./verdict.js"
 import { registrableHost } from "./url.js"
 
+/** Escape a string for literal use inside a RegExp. Shared by the host
+ *  matcher below and the description-grounding meter (grounding.ts), so the
+ *  two cannot drift on what counts as a literal. */
+export function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
 /**
  * Does this text name this host as a word of its own?
  *
@@ -12,10 +19,7 @@ import { registrableHost } from "./url.js"
  * pages shout, hosts do not.
  */
 export function namesHost(text: string, host: string): boolean {
-  return new RegExp(
-    `(^|[^a-z0-9-])${host.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9-]|$)`,
-    "i",
-  ).test(text)
+  return new RegExp(`(^|[^a-z0-9-])${escapeRe(host)}([^a-z0-9-]|$)`, "i").test(text)
 }
 
 export interface RecallProbe {

@@ -296,3 +296,87 @@ describe("judgeHosts pool", () => {
     expect(out.entities).toHaveLength(6)
   })
 })
+
+// MEASUREMENT ONLY — descGrounded rides along on model-judged entities and
+// nothing gates on it. The residual error class it meters: an embellished
+// description inside a correctly-placed entity (a real competitor whose `what`
+// invented "custom dataset delivery" its page nowhere offers). The page text
+// is already in hand at classify time, so the number costs $0.
+describe("judgeHosts description grounding", () => {
+  it("a model-judged entity carries descGrounded measured against the page the model saw", async () => {
+    const out = await judgeHosts([cand("acme.com")], {
+      fetcher: fakeFetcher({ "https://acme.com/": vendorHtml }),
+      // Every content term ("scraping", "api", "developers", "scraping api")
+      // appears on the page — fully grounded.
+      classify: async () => ({ name: "Acme", kind: "company", what: "a scraping api for developers", relation: "competitor", why: "same job" }),
+      anchor: "anchor.com",
+      aggregatorThreshold: 12,
+    })
+    expect(out.entities[0]!.descGrounded).toBe(1)
+    expect(out.stats.groundingMean).toBe(1)
+  })
+
+  it("an invented description scores low — the meter sees what the page never said", async () => {
+    const out = await judgeHosts([cand("acme.com")], {
+      fetcher: fakeFetcher({ "https://acme.com/": vendorHtml }),
+      // Nothing here appears on the vendor page: the quanticdata.io shape.
+      classify: async () => ({ name: "Acme", kind: "company", what: "custom dataset delivery for enterprises", relation: "competitor", why: "same job" }),
+      anchor: "anchor.com",
+      aggregatorThreshold: 12,
+    })
+    expect(out.entities[0]!.descGrounded).toBe(0)
+    expect(out.stats.groundingMean).toBe(0)
+  })
+
+  it("an unreadable page carries no descGrounded and does not move the mean", async () => {
+    const out = await judgeHosts([cand("dead.com")], {
+      fetcher: fakeFetcher({}),
+      classify: async () => ({ name: "x", kind: "company", what: "anything", relation: "competitor", why: "" }),
+      anchor: "anchor.com",
+      aggregatorThreshold: 12,
+    })
+    expect("descGrounded" in out.entities[0]!).toBe(false)
+    expect(out.stats.groundingMean).toBeNull()
+  })
+
+  it("groundingMean is the running mean across model-judged entities, 2 decimals, unreadables excluded", async () => {
+    const hosts = [cand("grounded.com"), cand("invented.com"), cand("dead.com")]
+    const pages: Record<string, string> = {
+      "https://grounded.com/": vendorHtml,
+      "https://invented.com/": vendorHtml,
+    }
+    const out = await judgeHosts(hosts, {
+      fetcher: fakeFetcher(pages),
+      classify: async (h) =>
+        h.host === "grounded.com"
+          ? // "browser rendering of datasets": browser, rendering and the
+            // 2-gram "browser rendering" appear on the page, "datasets" does
+            // not — 3 of 4, score 0.75.
+            { name: "G", kind: "company", what: "browser rendering of datasets", relation: "competitor", why: "" }
+          : // nothing grounded — score 0.
+            { name: "I", kind: "company", what: "custom dataset delivery", relation: "competitor", why: "" },
+      anchor: "anchor.com",
+      aggregatorThreshold: 12,
+      concurrency: 1,
+    })
+    const g = out.entities.find((e) => e.domain === "grounded.com")!
+    const i = out.entities.find((e) => e.domain === "invented.com")!
+    const d = out.entities.find((e) => e.domain === "dead.com")!
+    expect(g.descGrounded).toBe(0.75)
+    expect(i.descGrounded).toBe(0)
+    expect("descGrounded" in d).toBe(false)
+    // (0.75 + 0) / 2, rounded to 2 decimals.
+    expect(out.stats.groundingMean).toBe(0.38)
+  })
+
+  it("a classify failure leaves no descGrounded — there is no description to ground", async () => {
+    const out = await judgeHosts([cand("acme.com")], {
+      fetcher: fakeFetcher({ "https://acme.com/": vendorHtml }),
+      classify: async () => { throw new Error("model down") },
+      anchor: "anchor.com",
+      aggregatorThreshold: 12,
+    })
+    expect("descGrounded" in out.entities[0]!).toBe(false)
+    expect(out.stats.groundingMean).toBeNull()
+  })
+})

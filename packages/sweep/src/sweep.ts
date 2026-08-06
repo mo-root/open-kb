@@ -320,6 +320,11 @@ export type SweptQuery = PlannedQuery & { family: QueryFamily; product?: string;
 export type Entity = z.infer<typeof Entity> & { foundBy?: string[]; families?: QueryFamily[] } & {
   because?: string
   settledBy?: "predicate" | "model"
+  /** Model-judged entities only: what fraction of `what`'s content terms the
+   *  page the model saw actually contains, 2 decimals. Measurement, not a
+   *  gate — the kernel's residual error class is an embellished description
+   *  inside a correctly-placed entity, and this is its meter. */
+  descGrounded?: number
 }
 
 export interface SweepStats {
