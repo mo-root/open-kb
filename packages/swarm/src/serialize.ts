@@ -1,6 +1,5 @@
-import { answerKeyRecall, registrableHost, type RecallReport } from "@open-kb/core"
+import { registrableHost } from "@open-kb/core"
 import type { EntityEdgeRow, EntityRow } from "./map.js"
-import { recallProbePool } from "./run-evidence.js"
 import type { SwarmRun } from "./orchestrator.js"
 
 /**
@@ -71,19 +70,24 @@ export function serializeSwarmRun(
   const entities = run.map.entities().map((e) => ({ ...e, kind: KIND_FOLD[e.kind] ?? e.kind }))
   const edges = run.map.entityEdges()
 
-  // Recall grades the map's VENDORS, so hosts come from the map's own
-  // vocabulary (company/product), before the render-side fold could smuggle a
-  // folded capability in as a product.
-  const mapHosts = new Set(
-    [...run.map.nodes.values()]
-      .filter((n) => !n.retracted && (n.kind === "company" || n.kind === "product"))
-      .map((n) => registrableHost(n.domain || n.name)),
-  )
-  // The probe pool excludes the anchor's own pages (rung 0, the rule and its
-  // reasons on recallProbePool itself) — the same pool the orchestrator's
-  // in-run scorecard reads, so the report's recall is the number the lead saw.
-  const probePool = recallProbePool(run.evidence, run.map.anchor)
-  const recall: RecallReport = answerKeyRecall(probePool, { anchor: run.map.anchor, mapHosts })
+  // Recall is computed ONCE, at the run's ending (orchestrator endRun), over
+  // the same anchor-excluded probe pool the in-run scorecard read — so the
+  // report's recall is the number the lead saw. `report.recall` stays at its
+  // own key for web compat; the scorecard block references the same object.
+  const recall = run.scorecard.recall
+
+  // The gate record, whole. A run whose finishes never met a scorecard thunk
+  // serializes the zero record rather than a hole.
+  const gate = run.control.gate ?? { refusals: 0, objections: [], carried: [], refusedFinish: null }
+
+  // The reader-facing finish cannot claim ignorance: the lead's strings ship
+  // byte-identical and FIRST, then every still-standing objection the lead
+  // omitted, each prefixed so the instrument's words and the lead's stay
+  // distinguishable. `run.finish` itself keeps the raw array untouched.
+  const finish =
+    run.finish === null
+      ? null
+      : { ...run.finish, unresolved: [...run.finish.unresolved, ...gate.carried.map((c) => `[scorecard] ${c}`)] }
 
   const hosts = new Set<string>()
   for (const url of run.seen) {
@@ -135,7 +139,24 @@ export function serializeSwarmRun(
       recall,
       residue: run.ending.residue,
       ending: run.ending,
-      finish: run.finish,
+      finish,
+      // Amendment 2: a refused finish never evaporates. On ANY ending that is
+      // not the lead's own finish, the conclusion the run would have shipped
+      // survives at its own key, where a reader of the ending will find it.
+      ...(run.finish === null && gate.refusedFinish !== null ? { refusedFinish: gate.refusedFinish } : {}),
+      // T6: the full instrument reading at the ending — every fraction with
+      // its num/den beside the value (auditable like recall's probe list),
+      // the gate's record, and the thresholds the gate ran with.
+      scorecard: {
+        ...run.scorecard,
+        gate: {
+          refusals: gate.refusals,
+          objections: gate.objections,
+          carriedObjections: gate.carried,
+          refusedFinish: gate.refusedFinish,
+        },
+        config: run.scorecardConfig,
+      },
       missions: run.landings.map((l) => ({
         dedupeKey: l.mission.dedupeKey,
         lens: l.mission.lens,

@@ -14,6 +14,7 @@ import {
   type FetchPort,
   type Mission,
   type MissionTier,
+  type Scorecard,
   type ScorecardConfig,
   type ScorecardInput,
   type SearchPort,
@@ -122,8 +123,15 @@ export interface SwarmRun {
   landings: MissionLanding[]
   /** The planned questions — one row per lead-band mission, the seed included,
    *  killed rows kept with their because. Read off the family ledger at the
-   *  end, pageTierNodes from the map's writer stamps. */
+   *  end, pageTierNodes from the map's writer stamps. The SAME array
+   *  `scorecard.families` holds — one computation, one truth. */
   families: FamilyRow[]
+  /** T6: the scorecard computed ONCE at the ending, after the drain — the
+   *  same fold of live state (family rows, entities, ledger, landings,
+   *  recall) the in-band block read every think turn, frozen for the report. */
+  scorecard: Scorecard
+  /** The thresholds the finish gate ran with; serialized beside the numbers. */
+  scorecardConfig: ScorecardConfig
   tally: SwarmTally
   seconds: number
 }
@@ -740,6 +748,10 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
     await Promise.resolve()
     await Promise.resolve()
     closeClaims()
+    // The ending's scorecard: computed once, here, after the drain and the
+    // claim close — the same fold the last think turn read, now over settled
+    // money. Serialization ships THIS object; nothing recomputes downstream.
+    const scorecard = computeScorecard(scorecardInput())
     const ending = makeEnding(reason)
     say(ending.humanReason)
     say(
@@ -757,7 +769,9 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
       searches,
       seen,
       landings,
-      families: families.rows(map),
+      families: scorecard.families,
+      scorecard,
+      scorecardConfig,
       tally,
       seconds: sec(),
     }

@@ -1,7 +1,14 @@
 import { describe, it, expect } from "vitest"
 import { MockLanguageModelV4 } from "ai/test"
-import type { FetchPort, SearchPort } from "@open-kb/core"
-import { runSwarm, serializeSwarmRun } from "../src/index.js"
+import {
+  computeScorecard,
+  SCORECARD_DEFAULTS,
+  type FetchPort,
+  type Fraction,
+  type SearchPort,
+  type Scorecard,
+} from "@open-kb/core"
+import { runSwarm, serializeSwarmRun, type FinishState, type GateRecord } from "../src/index.js"
 
 /**
  * The whole pipe, offline: runSwarm end to end on scripted models and fake
@@ -333,4 +340,205 @@ describe("serializeSwarmRun renders through the web reader", () => {
     const v = kb.viewOf(stored)
     expect(v.counts).toEqual({ core: 1, player: 2, product: 1, community: 1 })
   }, 15_000)
+})
+
+// ── T6: the scorecard, the gate record and the refused finish in the report ──
+
+/** The serialized scorecard block: the Scorecard plus the gate and the config. */
+type ScorecardBlock = Scorecard & {
+  gate: { refusals: number; objections: string[]; carriedObjections: string[]; refusedFinish: FinishState | null }
+  config: typeof SCORECARD_DEFAULTS
+}
+
+/** A seed that only searches: its family lands zero page-tier nodes, run 2's shape. */
+const searchingSeed = () =>
+  new MockLanguageModelV4({
+    doGenerate: async ({ prompt }) => {
+      const turn = invTurnOf(prompt)
+      if (turn === 0) return reply(call("s1", "search", { queries: ["fraud scoring"], why: "orient" }), false)
+      return reply(text("done."), true)
+    },
+  })
+
+const zeroPricing = {
+  lead: { inUsdPerM: 0, outUsdPerM: 0 },
+  peek: { inUsdPerM: 0, outUsdPerM: 0 },
+  read: { inUsdPerM: 0, outUsdPerM: 0 },
+  dig: { inUsdPerM: 0, outUsdPerM: 0 },
+}
+
+describe("serializeSwarmRun: the gate exchange and the ending's scorecard", () => {
+  // The one family is the seed, and the searching seed leaves it at zero
+  // page-tier nodes — so the families objection is this exact sentence.
+  const FAMILIES_OBJECTION = "1 of 1 planned family has zero page-tier nodes (orient:anchor.com)"
+
+  it("a run ending lead-finished-after-refusal serializes the exchange completely", async () => {
+    const lead = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = prompt.filter((m) => m.role === "user").length
+        if (turn === 1) return reply(call("n1", "next", { after: { landings: 1 }, why: "wait for the seed" }), false)
+        if (turn === 2)
+          return reply(
+            call("f1", "finish", { reason: "mapped", summary: "an early conclusion", unresolved: ["my own gap"], why: "d" }),
+            false,
+          )
+        // The restated finish: one objection carried verbatim, the pool one omitted.
+        return reply(
+          call("f2", "finish", {
+            reason: "mapped with the readings in hand",
+            summary: "the map holds what the pool bought",
+            unresolved: [FAMILIES_OBJECTION, "my own gap"],
+            why: "restated",
+          }),
+          false,
+        )
+      },
+    })
+    const seed = searchingSeed()
+    const run = await runSwarm({
+      domain: "anchor.com",
+      skill: SKILL,
+      search,
+      fetch: fetchPort,
+      models: { lead, peek: seed, read: seed, dig: seed },
+      pricing: zeroPricing,
+    })
+    expect(run.ending.reason).toBe("lead-finished")
+
+    const out = serializeSwarmRun(run)
+    const report = out.report as {
+      finish: FinishState
+      refusedFinish?: FinishState
+      scorecard: ScorecardBlock
+      recall: unknown
+    }
+
+    // The gate record, whole: the refusal, its sentences, the carried split,
+    // and the refused conclusion.
+    expect(report.scorecard.gate.refusals).toBe(1)
+    expect(report.scorecard.gate.objections[0]).toBe(FAMILIES_OBJECTION)
+    expect(report.scorecard.gate.objections[1]).toMatch(/^the pool holds \$1\.\d{2} of \$1\.50$/)
+    expect(report.scorecard.gate.carriedObjections).toEqual([
+      expect.stringMatching(/^the pool holds \$1\.\d{2} of \$1\.50$/),
+    ])
+    expect(report.scorecard.gate.refusedFinish).toEqual({
+      reason: "mapped",
+      summary: "an early conclusion",
+      unresolved: ["my own gap"],
+    })
+    // A finished run does NOT hoist refusedFinish — that key is for endings
+    // that would otherwise lose the conclusion.
+    expect(report.refusedFinish).toBeUndefined()
+
+    // The labeling mechanism, exact: the lead's strings first and
+    // byte-identical (its verbatim carry included, unprefixed — those are the
+    // lead's own words), then each omitted objection wearing "[scorecard] ".
+    expect(report.finish.unresolved).toEqual([
+      FAMILIES_OBJECTION,
+      "my own gap",
+      `[scorecard] ${report.scorecard.gate.carriedObjections[0]}`,
+    ])
+    // The raw lead array survives untouched at run.finish, distinguishable.
+    expect(run.finish!.unresolved).toEqual([FAMILIES_OBJECTION, "my own gap"])
+
+    // The config the gate ran with ships beside the numbers.
+    expect(report.scorecard.config).toEqual(SCORECARD_DEFAULTS)
+  })
+
+  it("every shipped fraction carries num/den that recompute to its value, and the scorecard equals a recomputation from the same inputs", async () => {
+    const lead = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = prompt.filter((m) => m.role === "user").length
+        if (turn === 1) return reply(call("n1", "next", { after: { landings: 1 }, why: "wait for the seed" }), false)
+        return reply(call("f1", "finish", { reason: "mapped", summary: "s", unresolved: [], why: "d" }), false)
+      },
+    })
+    const seed = searchingSeed()
+    const run = await runSwarm({
+      domain: "anchor.com",
+      skill: SKILL,
+      search,
+      fetch: fetchPort,
+      models: { lead, peek: seed, read: seed, dig: seed },
+      pricing: zeroPricing,
+    })
+
+    const out = serializeSwarmRun(run)
+    const sc = (out.report as { scorecard: ScorecardBlock }).scorecard
+
+    for (const key of ["familiesWithPageTier", "pageTier", "singleSourced", "poolUnspent", "wall"] as const) {
+      const f = sc[key] as Fraction
+      expect(f.value).toBe(f.den === 0 ? null : f.num / f.den)
+    }
+
+    // Consistency: the serialize-time scorecard IS a recomputation from the
+    // same inputs — family rows, live entities, the settled ledger, the
+    // landings' yield history and the shared recall.
+    const live = [...run.map.nodes.values()].filter((n) => !n.retracted)
+    const recomputed = computeScorecard({
+      families: run.families,
+      entities: live.map((n) => ({ tier: n.tier, sources: new Set(n.evidence.map((e) => e.url)).size })),
+      spendableUsd: run.ledger.spendable(),
+      ceilingUsd: run.ledger.ceilingUsd,
+      spentUsd: run.ledger.spentUsd(),
+      elapsedMs: sc.wall.num,
+      wallMs: sc.wall.den,
+      yieldHistory: run.landings.map((l) => l.digest.added.nodes),
+      recall: sc.recall,
+    })
+    expect(sc).toMatchObject(recomputed as unknown as Record<string, unknown>)
+    // And report.recall is the same computed-once object the scorecard holds.
+    expect((out.report as { recall: unknown }).recall).toEqual(sc.recall)
+  })
+
+  it("a wall cancel during the refusal window serializes the refused finish — the conclusion survives", async () => {
+    const lead = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = prompt.filter((m) => m.role === "user").length
+        if (turn === 1)
+          return reply(
+            call("f1", "finish", {
+              reason: "early",
+              summary: "the conclusion the wall would have erased",
+              unresolved: ["half-checked rivals"],
+              why: "d",
+            }),
+            false,
+          )
+        return reply(call("n1", "next", { after: { seconds: 600 }, why: "the wall will end this" }), false)
+      },
+    })
+    // The seed hangs after its search; the wall's hard cancel cuts it off, so
+    // the run never reaches a second finish.
+    const seed = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = invTurnOf(prompt)
+        if (turn === 0) return reply(call("s1", "search", { queries: ["fraud scoring"], why: "orient" }), false)
+        return new Promise(() => {})
+      },
+    })
+    const run = await runSwarm({
+      domain: "anchor.com",
+      skill: SKILL,
+      search,
+      fetch: fetchPort,
+      models: { lead, peek: seed, read: seed, dig: seed },
+      pricing: zeroPricing,
+      wallClockMs: 150,
+      graceMs: 120,
+    })
+    expect(run.ending.reason).toBe("wall-clock")
+    expect(run.finish).toBeNull()
+
+    const out = serializeSwarmRun(run)
+    const report = out.report as { finish: null; refusedFinish?: FinishState; scorecard: { gate: GateRecord & { carriedObjections: string[] } } }
+    expect(report.finish).toBeNull()
+    expect(report.refusedFinish).toEqual({
+      reason: "early",
+      summary: "the conclusion the wall would have erased",
+      unresolved: ["half-checked rivals"],
+    })
+    expect(report.scorecard.gate.refusals).toBe(1)
+    expect(report.scorecard.gate.carriedObjections).toEqual([])
+  })
 })
