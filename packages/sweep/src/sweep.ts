@@ -487,6 +487,19 @@ export interface SweepOptions {
 
 const DEFAULT_PRICING: ModelPricing = { inUsdPerM: 1.5, outUsdPerM: 9.0 }
 
+/** $/M tokens by OpenRouter id, checked against their live models endpoint
+ *  2026-08-06. An id this table does not know prices at the most expensive
+ *  row — the meter must never flatter a model it has not met. */
+export const MODEL_PRICES: Record<string, ModelPricing> = {
+  "deepseek/deepseek-v4-flash": { inUsdPerM: 0.088, outUsdPerM: 0.176 },
+  "google/gemini-3-flash-preview": { inUsdPerM: 0.5, outUsdPerM: 3.0 },
+  "google/gemini-3.1-flash-lite": { inUsdPerM: 0.1, outUsdPerM: 0.4 },
+  "google/gemini-3.5-flash": { inUsdPerM: 1.5, outUsdPerM: 9.0 },
+}
+export function priceForModel(id: string): ModelPricing {
+  return MODEL_PRICES[id] ?? DEFAULT_PRICING
+}
+
 /** The five stage names the UI's rail knows. Emitting anything else freezes it
  *  on the stage before, so the mapping is a name, not a free-text label. */
 export type Phase = "understand" | "plan" | "sweep" | "rank" | "link" | "write"

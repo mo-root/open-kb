@@ -9,7 +9,7 @@
  */
 import { openrouter } from "@openrouter/ai-sdk-provider"
 import { SpanStream } from "../packages/core/src/index.js"
-import { sweep, readUi } from "../packages/sweep/src/index.js"
+import { sweep, readUi, priceForModel } from "../packages/sweep/src/index.js"
 
 const anchor = process.argv[2] ?? "resend.com"
 // Unset unless a third arg is given — the normal case, and now the same
@@ -46,6 +46,7 @@ const out = await sweep({
   },
   model: openrouter(MODEL),
   modelId: MODEL,
+  pricing: priceForModel(MODEL),
   runId: `cli-${Date.now()}`,
   onLog: (line) => console.log(`$${spans.totalUsd().toFixed(3)}  ${line}`),
 })

@@ -1,5 +1,5 @@
 import { openrouter, createOpenRouter } from "@openrouter/ai-sdk-provider"
-import { sweep } from "@open-kb/sweep"
+import { sweep, priceForModel } from "@open-kb/sweep"
 import { createRun, failRun, finishRun } from "@/lib/runs"
 
 /**
@@ -159,6 +159,7 @@ export async function POST(req: Request) {
         },
         model: provider()(modelId),
         modelId,
+        pricing: priceForModel(modelId),
         runId: record.id,
         // The same figure the guard above checked at request time. 0 means
         // unset (see `ceilingUsd()`'s own convention), which is honestly "no
