@@ -1,7 +1,7 @@
 {
   "name": "open-kb",
   "version": "0.1.0",
-  "description": "Domain in, market map out. Strips products of brand language and searches for what they do — every node and edge cited to a fetched page.",
+  "description": "Domain in, market map out. Strips products of brand language and searches for what they do \u2014 every node and edge cited to a fetched page.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -24,7 +24,8 @@
     "discover": "tsx scripts/discover.ts",
     "calibrate": "tsx scripts/calibrate-kernel.ts",
     "audit": "tsx scripts/audit.ts",
-    "export": "tsx scripts/export-kb.ts"
+    "export": "tsx scripts/export-kb.ts",
+    "bakeoff": "tsx scripts/bakeoff.ts"
   },
   "devDependencies": {
     "@openrouter/ai-sdk-provider": "^3.0.0",

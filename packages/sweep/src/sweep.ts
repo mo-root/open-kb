@@ -703,9 +703,16 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
      * way (budget eaten in secret, empty answer, retry). This pipeline's
      * thinking lives in the doctrine text, not in model rumination — a family
      * that honours the off switch runs it with the switch off. */
-    const reasoningFor = (think: string | undefined): { enabled: false } | { effort: string } =>
+    const reasoningFor = (
+      think: string | undefined,
+    ): { enabled: false } | { effort: string } | { max_tokens: number } =>
       modelId.startsWith("deepseek/")
-        ? { enabled: false }
+        ? process.env.OPENKB_DEEPSEEK_REASONING === "bounded"
+          ? // The bake-off's contestant: a thinking allowance that cannot eat
+            // the answer. Exists to be measured against off, not to be chosen
+            // by argument.
+            { max_tokens: 200 }
+          : { enabled: false }
         : { effort: think === "none" ? "minimal" : (think ?? "low") }
 
     /* DeepSeek routes across 23 providers of very different speeds — measured
