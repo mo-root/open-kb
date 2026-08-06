@@ -25,6 +25,49 @@ export interface FinishState {
 }
 
 /**
+ * What the finish gate reads at the moment finish is called — supplied as a
+ * thunk over live state because the gate is finishTool's own synchronous
+ * return (audit amendment 8): the refusal must reach the model in the same
+ * turn, and an orchestrator-side gate would overturn an ok:true the model
+ * was already told.
+ */
+export interface GateReading {
+  /** `scorecardObjections()` over the live scorecard: fact-sentences, never verdicts. */
+  objections: string[]
+  /** Lead turns used so far, counting the one in flight. */
+  turns: number
+  /** The loop detector's cap. Amendment 1: refuse only at turns <= cap - 2 —
+   *  a refusal whose answer would collide with the cap hands the ending to
+   *  `turn-cap` and discards the lead's summary, the exact substitution of
+   *  harness judgement for the lead's that the design forbids. */
+  turnCap: number
+  /** True once the harness itself told the lead to close (the wall warning,
+   *  the budget-floor wake, the free closing turn): refusing finish then
+   *  would fight the harness's own instruction. */
+  disarmed: boolean
+}
+
+/**
+ * The gate's record of what happened at finish, for serialization. `null`
+ * until a finish met a scorecard thunk.
+ */
+export interface GateRecord {
+  /** How many refusals the gate issued: 0 or 1 by construction. */
+  refusals: number
+  /** The objection sentences as the refusal delivered them — or, when no
+   *  refusal ever happened, the sentences standing at the accepted finish. */
+  objections: string[]
+  /** Still-standing objections the accepted finish's unresolved[] omitted.
+   *  Kept OUT of the lead's array; serialization prefixes each `[scorecard] `
+   *  so the instrument's words and the lead's stay distinguishable. */
+  carried: string[]
+  /** Amendment 2: the refused finish's own words, stashed whole, so a run
+   *  that never reaches a second finish (wall hard-cancel, turn-cap, fault)
+   *  still ships the conclusion it would have ended on. */
+  refusedFinish: FinishState | null
+}
+
+/**
  * What the run's steering looks like right now. The tools write it; the
  * orchestrator's loop reads it. Plain data on purpose — there is nothing to
  * serialize and nothing to checkpoint, it lives and dies with the run.
@@ -32,17 +75,19 @@ export interface FinishState {
 export interface RunControl {
   /** The lead's own re-entry condition; null means wake on the next landing. */
   next: NextCondition | null
-  /** Set once by finish(); the run is ending and nothing new is funded. */
+  /** Set once by an accepted finish(); the run is ending and nothing new is funded. */
   finished: FinishState | null
   /** Claim ids held for spawned missions, by dedupeKey. The orchestrator
    *  settles a claim when its mission lands, at actuals. */
   claims: Map<string, string>
   /** How many times an investigator's wake cleared the lead's condition. */
   wakes: number
+  /** The finish gate's record; null until a finish met a scorecard thunk. */
+  gate: GateRecord | null
 }
 
 export function newRunControl(): RunControl {
-  return { next: null, finished: null, claims: new Map(), wakes: 0 }
+  return { next: null, finished: null, claims: new Map(), wakes: 0, gate: null }
 }
 
 export interface ControlCtx {
@@ -59,6 +104,12 @@ export interface ControlCtx {
    * it behaves exactly as before.
    */
   onFamilyEvent?: (event: FamilyEvent) => void
+  /**
+   * The finish gate's reading (T5), taken synchronously inside finishTool.
+   * The orchestrator supplies it over live scorecard state; a ctx without it
+   * never refuses a finish and records nothing.
+   */
+  scorecard?: () => GateReading
 }
 
 // ── spawn ────────────────────────────────────────────────────────────────────
@@ -294,18 +345,68 @@ export type FinishReturn =
   | { ok: false; reason: string; poolLeftUsd: number }
 
 /**
+ * The teaching half of the one refusal, appended after the objection
+ * sentences. One string in one place: the skill (T8) quotes this shape, and
+ * the refusal must stay byte-stable for that byte-match to mean anything.
+ */
+export const GATE_REFUSAL_TAIL =
+  "; finishing now records these as unresolved — address them or carry them into unresolved verbatim; your next finish stands"
+
+/**
  * The intended ending: the context that watched the whole run says it is
- * done, in its own words. First finish stands; the summary and unresolved
- * questions print verbatim above the map, and residue ships beside them —
- * both the orchestrator's job to emit.
+ * done, in its own words. The first ACCEPTED finish stands; the summary and
+ * unresolved questions print verbatim above the map, and residue ships
+ * beside them — both the orchestrator's job to emit.
+ *
+ * The scorecard gate, when a `scorecard` thunk is present: an armed first
+ * finish is refused ONCE, in the instrument's fact-sentences — the finish
+ * does not take effect, spawn stays open (nothing is finishing), and the
+ * refused conclusion is stashed whole in `control.gate.refusedFinish` so no
+ * ending can lose it. The second finish ALWAYS stands, whatever the numbers:
+ * the lead's unresolved[] ships byte-identical, and any still-standing
+ * objection it omitted is recorded separately as `carried`. The gate never
+ * speaks when the thunk is absent, the objections are empty, the harness
+ * already told the lead to close (`disarmed`), or the lead's next turn would
+ * collide with the turn cap (refuse only at turns <= cap - 2).
  */
 export function finishTool(ctx: ControlCtx, input: FinishInput): FinishReturn {
   const poolLeftUsd = ctx.ledger.spendable()
   if (ctx.control.finished) {
     return {
       ok: false,
-      reason: `the run is already finishing (${ctx.control.finished.reason}); the first finish stands`,
+      reason: `the run is already finishing (${ctx.control.finished.reason}); the first accepted finish stands`,
       poolLeftUsd,
+    }
+  }
+  const reading = ctx.scorecard?.()
+  const objections = reading ? [...reading.objections] : []
+  const refuse =
+    reading !== undefined &&
+    objections.length > 0 &&
+    !reading.disarmed &&
+    reading.turns <= reading.turnCap - 2 &&
+    (ctx.control.gate?.refusals ?? 0) === 0
+  if (refuse) {
+    ctx.control.gate = {
+      refusals: 1,
+      objections,
+      carried: [],
+      refusedFinish: { reason: input.reason, summary: input.summary, unresolved: [...input.unresolved] },
+    }
+    // The lead's next turn is the answer to this refusal: clear any standing
+    // re-entry condition so the loop grants that turn immediately.
+    ctx.control.next = null
+    return { ok: false, reason: `${objections.join("; ")}${GATE_REFUSAL_TAIL}`, poolLeftUsd }
+  }
+  if (reading !== undefined) {
+    // The record, on every accepted finish that had an instrument to read:
+    // which standing sentences the lead's unresolved[] left out. The lead's
+    // array itself is never touched — serialization labels the carried ones.
+    const carried = objections.filter((o) => !input.unresolved.includes(o))
+    if (ctx.control.gate) {
+      ctx.control.gate.carried = carried // objections keep the refusal's record
+    } else {
+      ctx.control.gate = { refusals: 0, objections, carried, refusedFinish: null }
     }
   }
   ctx.control.finished = { reason: input.reason, summary: input.summary, unresolved: [...input.unresolved] }

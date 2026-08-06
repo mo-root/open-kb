@@ -154,10 +154,11 @@ describe("runSwarm: fill/think/wake", () => {
             }),
             false,
           )
-        if (turn === 2) {
+        if (turn >= 2) {
           // The lead THINKS: this turn refuses to end until m2's landing has
           // been narrated. If landings needed the lead to be idle, this would
-          // deadlock — the timeout below is the barrier detector.
+          // deadlock — the timeout below is the barrier detector. Turn 3 is
+          // the same script restating finish after the gate's one refusal.
           const t = Date.now()
           while (!logs.some((l) => l.includes("lane frees: rivals (m2)"))) {
             if (Date.now() - t > 3_000) throw new Error("no landing arrived while the lead was thinking")
@@ -218,7 +219,10 @@ describe("runSwarm: fill/think/wake", () => {
 
     expect(run.ending.reason).toBe("lead-finished")
     expect(logs.some((l) => / — spawned 1, refused 1$/.test(l) && l.includes("lead turn 1"))).toBe(true)
-    expect(logs.some((l) => l.includes("lead turn 2") && / — spawned 0, refused 0 — finish called$/.test(l))).toBe(true)
+    // Turn 2's finish met the gate's one refusal (no "finish called"); the
+    // restated finish on turn 3 stands — the exchange is visible on screen.
+    expect(logs.some((l) => l.includes("lead turn 2") && / — spawned 0, refused 0$/.test(l))).toBe(true)
+    expect(logs.some((l) => l.includes("lead turn 3") && / — spawned 0, refused 0 — finish called$/.test(l))).toBe(true)
     // Every landing narrates the lane freeing: lens, key, status, delta, dollars.
     expect(logs.some((l) => /lane frees: rivals \(m1\) — done, \+\d+ nodes \+\d+ edges, \$[\d.]+/.test(l))).toBe(true)
   })
@@ -635,7 +639,8 @@ describe("runSwarm: the family ledger", () => {
             ],
             false,
           )
-        return reply(text("idle."), true)
+        // The gate refused turn 2's finish (fat pool, empty families); restate.
+        return reply(call("f2", "finish", { reason: "done", summary: "s", unresolved: [], why: "d" }), false)
       },
     })
 
@@ -818,6 +823,140 @@ describe("runSwarm: the scorecard rides every think turn", () => {
   })
 })
 
+// ── the finish gate ─────────────────────────────────────────────────────────
+
+describe("runSwarm: the finish gate", () => {
+  /** A lead that finishes early over a fat pool with the seed's family at zero
+   *  page-tier nodes (the searching seed never fetches a page) — run 2's exact
+   *  shape — then answers the refusal by restating finish in its own words. */
+  const earlyFinisher = (unresolved: string[]) =>
+    new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = leadTurnOf(prompt)
+        if (turn === 1) return reply(call("n1", "next", { after: { landings: 1 }, why: "wait for the seed" }), false)
+        return reply(
+          call("f1", "finish", { reason: "mapped", summary: "the map holds it", unresolved, why: "done" }),
+          false,
+        )
+      },
+    })
+
+  it("refuse once, then the restated finish stands: the exchange crosses the loop in-band", async () => {
+    const lead = earlyFinisher(["what the seed never opened"])
+    const run = await runSwarm(mkOpts({ lead }))
+
+    expect(run.ending.reason).toBe("lead-finished")
+    expect(run.tally.leadTurns).toBe(3) // next, refused finish, accepted finish
+    const gate = run.control.gate!
+    expect(gate.refusals).toBe(1)
+    expect(gate.objections.length).toBeGreaterThan(0)
+    expect(gate.objections.some((o) => /planned famil/.test(o))).toBe(true)
+    expect(gate.objections.some((o) => /^the pool holds \$/.test(o))).toBe(true)
+    // The refusal reached the model in the SAME conversation, before turn 3.
+    const turn3 = JSON.stringify(lead.doGenerateCalls[2]?.prompt ?? "")
+    expect(turn3).toContain("finishing now records these as unresolved")
+    // The refused conclusion is stashed whole; the accepted one is the run's.
+    expect(gate.refusedFinish).toMatchObject({ reason: "mapped", summary: "the map holds it" })
+    expect(run.finish!.unresolved).toEqual(["what the seed never opened"]) // byte-identical, no merge
+    // Every still-standing objection the lead omitted is carried separately.
+    expect(gate.carried).toEqual(gate.objections)
+    expectEndingShape(run.ending, run.ledger)
+  })
+
+  it("an all-null config never refuses: the same early finish stands first time", async () => {
+    const run = await runSwarm(
+      mkOpts({
+        lead: earlyFinisher([]),
+        over: {
+          scorecardConfig: {
+            maxPoolUnspentFraction: null,
+            maxSingleSourcedFraction: null,
+            requirePageTierPerFamily: null,
+          },
+        },
+      }),
+    )
+
+    expect(run.ending.reason).toBe("lead-finished")
+    expect(run.tally.leadTurns).toBe(2)
+    expect(run.control.gate).toEqual({ refusals: 0, objections: [], carried: [], refusedFinish: null })
+  })
+
+  it("the free closing turn is never refused; objections still land on the record at acceptance", async () => {
+    // The budget-floor fixture: the seed's $0.16 search empties a $0.30 pool,
+    // so the lead's one closing turn carries a finish the gate must not touch.
+    const seedModel = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = invTurnOf(prompt)
+        if (turn === 0) return reply(call("s1", "search", { queries: ["fraud scoring"], why: "orient" }), false)
+        return reply(text("done."), true)
+      },
+    })
+    const lead = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const closing = JSON.stringify(prompt).includes("free closing turn")
+        if (closing)
+          return reply(
+            call("f1", "finish", { reason: "out of money", summary: "what the pool bought", unresolved: [], why: "c" }),
+            false,
+          )
+        return reply(call("n1", "next", { after: { landings: 1 }, why: "wait for the seed" }), false)
+      },
+    })
+
+    const run = await runSwarm(
+      mkOpts({
+        lead,
+        inv: seedModel,
+        over: {
+          ceilingUsd: 0.3,
+          search: fakeSearch({ usd: 0.16 }),
+          pricing: { lead: { inUsdPerM: 0, outUsdPerM: 50 }, peek: zero, read: zero, dig: zero },
+        },
+      }),
+    )
+
+    expect(run.ending.reason).toBe("budget-floor")
+    expect(run.finish?.reason).toBe("out of money") // the closing finish stood first time
+    const gate = run.control.gate!
+    expect(gate.refusals).toBe(0)
+    expect(gate.objections.some((o) => /planned famil/.test(o))).toBe(true) // the record kept them anyway
+    expect(gate.carried).toEqual(gate.objections)
+    expectEndingShape(run.ending, run.ledger)
+  })
+
+  it("after the wall warning the finish stands first time — the harness already said close", async () => {
+    // wallMs just past the 45s warn margin: the warning fires ~100ms in, the
+    // lead finishes on the woken turn, and the gate must not fight the wall.
+    // The seed stays in flight past the warning so no dry-board wake can hand
+    // the lead an earlier (still-armed) turn.
+    const lead = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = leadTurnOf(prompt)
+        if (turn === 1) return reply(call("n1", "next", { after: { seconds: 600 }, why: "quiet" }), false)
+        return reply(call("f1", "finish", { reason: "the wall says close", summary: "s", unresolved: [], why: "w" }), false)
+      },
+    })
+    const inv = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = invTurnOf(prompt)
+        if (turn === 0) return reply(call("s1", "search", { queries: ["fraud scoring"], why: "orient" }), false)
+        await sleep(200)
+        return reply(text("done."), true)
+      },
+    })
+
+    const run = await runSwarm(mkOpts({ lead, inv, over: { wallClockMs: 45_100 } }))
+
+    expect(run.ending.reason).toBe("lead-finished")
+    expect(run.seconds).toBeLessThan(40) // ended at the warning, not the wall
+    expect(run.tally.leadTurns).toBe(2) // no refusal turn
+    expect(run.control.gate!.refusals).toBe(0)
+    expect(run.control.gate!.objections.length).toBeGreaterThan(0)
+    expectEndingShape(run.ending, run.ledger)
+  })
+})
+
 // ── money ───────────────────────────────────────────────────────────────────
 
 describe("runSwarm: the ledger stays honest", () => {
@@ -879,8 +1018,19 @@ describe("runSwarm: the ledger stays honest", () => {
         return reply(call("fin", "finish", { reason: "enough", summary: "one lane was enough", unresolved: [], why: "d" }), false)
       },
     })
+    // A deliberately slow investigator: the gate's refuse-then-restate exchange
+    // (two instant lead turns) must complete before m1 can land and free the
+    // single lane, so m2 deterministically stays queued residue.
+    const inv = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = invTurnOf(prompt)
+        if (turn === 0) return reply(call("s1", "search", { queries: ["fraud scoring"], why: "orient" }), false)
+        await sleep(80)
+        return reply(text("done."), true)
+      },
+    })
 
-    const run = await runSwarm(mkOpts({ lead, over: { lanes: 1 } }))
+    const run = await runSwarm(mkOpts({ lead, inv, over: { lanes: 1 } }))
 
     expect(run.ending.reason).toBe("lead-finished")
     // m2 was claimed at spawn but never run: its reservation came back whole;

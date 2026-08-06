@@ -7,8 +7,10 @@ import {
   finishTool,
   reviewTool,
   newRunControl,
+  GATE_REFUSAL_TAIL,
   type ControlCtx,
   type FamilyEvent,
+  type GateReading,
 } from "../src/index.js"
 
 const mission = (dedupeKey: string, over: Partial<Mission> = {}): Mission => ({
@@ -340,13 +342,20 @@ describe("finishTool", () => {
     expect(ctx.control.next).toBeNull()
   })
 
-  it("the first finish stands; the second is told so", () => {
+  it("the first accepted finish stands; the second is told so", () => {
     const ctx = ctxOf()
     finishTool(ctx, { reason: "mapped", summary: "s", unresolved: [] })
     const again = finishTool(ctx, { reason: "changed my mind", summary: "x", unresolved: [] })
     expect(again).toMatchObject({ ok: false })
-    if (!again.ok) expect(again.reason).toBe("the run is already finishing (mapped); the first finish stands")
+    if (!again.ok) expect(again.reason).toBe("the run is already finishing (mapped); the first accepted finish stands")
     expect(ctx.control.finished!.reason).toBe("mapped")
+  })
+
+  it("without a scorecard thunk the gate record stays null and the finish stands first time", () => {
+    const ctx = ctxOf()
+    const r = finishTool(ctx, { reason: "mapped", summary: "s", unresolved: [] })
+    expect(r.ok).toBe(true)
+    expect(ctx.control.gate).toBeNull()
   })
 
   it("every control return carries poolLeftUsd", () => {
@@ -356,5 +365,122 @@ describe("finishTool", () => {
     expect(nextTool(ctx, { after: { landings: 1 }, why: "t" }).poolLeftUsd).toBeCloseTo(1.35)
     expect(reviewTool(ctx, { why: "t" }).poolLeftUsd).toBeCloseTo(1.35)
     expect(finishTool(ctx, { reason: "r", summary: "s", unresolved: [] }).poolLeftUsd).toBeCloseTo(1.35)
+  })
+})
+
+describe("finishTool: the scorecard gate", () => {
+  const OBJ_A = "2 of 3 planned families have zero page-tier nodes (m1, m2)"
+  const OBJ_B = "the pool holds $3.55 of $5.00"
+
+  /** A ctx whose gate reads whatever the test says the instrument saw. */
+  const gatedCtx = (readings: GateReading | GateReading[]): ControlCtx => {
+    const queue = Array.isArray(readings) ? [...readings] : [readings]
+    return {
+      ...ctxOf(),
+      scorecard: () => (queue.length > 1 ? queue.shift()! : queue[0]!),
+    }
+  }
+  const reading = (over: Partial<GateReading> = {}): GateReading => ({
+    objections: [OBJ_A, OBJ_B],
+    turns: 5,
+    turnCap: 24,
+    disarmed: false,
+    ...over,
+  })
+
+  it("an armed first finish is refused once: objection sentences verbatim, the finish does not take effect", () => {
+    const ctx = gatedCtx(reading())
+    nextTool(ctx, { after: { seconds: 30 }, why: "t" })
+    const r = finishTool(ctx, { reason: "mapped", summary: "done early", unresolved: ["my own gap"] })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.reason).toBe(`${OBJ_A}; ${OBJ_B}${GATE_REFUSAL_TAIL}`)
+    if (!r.ok) expect(r.reason).toContain("; finishing now records these as unresolved")
+    // The finish did NOT take effect; the lead's next turn answers the refusal.
+    expect(ctx.control.finished).toBeNull()
+    expect(ctx.control.next).toBeNull()
+    // The exchange is on the record, the refused conclusion stashed whole.
+    expect(ctx.control.gate).toEqual({
+      refusals: 1,
+      objections: [OBJ_A, OBJ_B],
+      carried: [],
+      refusedFinish: { reason: "mapped", summary: "done early", unresolved: ["my own gap"] },
+    })
+  })
+
+  it("spawn stays open after a refusal — nothing is finishing", () => {
+    const ctx = gatedCtx(reading())
+    finishTool(ctx, { reason: "mapped", summary: "s", unresolved: [] })
+    const r = spawnTool(ctx, { missions: [mission("late-lane")], why: "answer the objection with work" })
+    expect(r.queued).toHaveLength(1)
+    expect(r.refused).toEqual([])
+  })
+
+  it("the second finish always stands: the lead's words byte-identical, omitted objections carried separately", () => {
+    const ctx = gatedCtx(reading())
+    finishTool(ctx, { reason: "mapped", summary: "first try", unresolved: [] })
+    const unresolved = [OBJ_A, "who licenses the two firms without websites"]
+    const r = finishTool(ctx, { reason: "still mapped", summary: "second try", unresolved })
+    expect(r.ok).toBe(true)
+    expect(ctx.control.finished).toEqual({ reason: "still mapped", summary: "second try", unresolved })
+    // The lead carried OBJ_A verbatim and omitted OBJ_B: only the omission is
+    // carried, and it never enters the lead's own array.
+    expect(ctx.control.gate).toMatchObject({ refusals: 1, carried: [OBJ_B] })
+    expect(ctx.control.gate!.refusedFinish).toEqual({ reason: "mapped", summary: "first try", unresolved: [] })
+  })
+
+  it("carried holds only STILL-standing objections: one resolved between the two finishes drops out", () => {
+    const ctx = gatedCtx([reading(), reading({ objections: [OBJ_B] })])
+    finishTool(ctx, { reason: "mapped", summary: "s", unresolved: [] })
+    const r = finishTool(ctx, { reason: "mapped", summary: "s", unresolved: ["my own gap"] })
+    expect(r.ok).toBe(true)
+    expect(ctx.control.gate!.carried).toEqual([OBJ_B]) // OBJ_A resolved; not carried
+    expect(ctx.control.gate!.objections).toEqual([OBJ_A, OBJ_B]) // the refusal's record stays
+  })
+
+  it("cap boundary: at turns = cap-2 the gate still refuses; at cap-1 it never does", () => {
+    const atCapMinus2 = gatedCtx(reading({ turns: 22, turnCap: 24 }))
+    expect(finishTool(atCapMinus2, { reason: "r", summary: "s", unresolved: [] }).ok).toBe(false)
+    expect(atCapMinus2.control.finished).toBeNull()
+
+    const atCapMinus1 = gatedCtx(reading({ turns: 23, turnCap: 24 }))
+    const r = finishTool(atCapMinus1, { reason: "r", summary: "s", unresolved: [] })
+    expect(r.ok).toBe(true)
+    expect(atCapMinus1.control.finished).not.toBeNull()
+    // Accepted with the objections on the record, the omissions carried.
+    expect(atCapMinus1.control.gate).toEqual({
+      refusals: 0,
+      objections: [OBJ_A, OBJ_B],
+      carried: [OBJ_A, OBJ_B],
+      refusedFinish: null,
+    })
+  })
+
+  it("disarmed: the finish stands first time, objections recorded on acceptance for the record", () => {
+    const ctx = gatedCtx(reading({ disarmed: true }))
+    const r = finishTool(ctx, { reason: "closing as told", summary: "s", unresolved: [OBJ_B] })
+    expect(r.ok).toBe(true)
+    expect(ctx.control.finished!.unresolved).toEqual([OBJ_B])
+    expect(ctx.control.gate).toEqual({
+      refusals: 0,
+      objections: [OBJ_A, OBJ_B],
+      carried: [OBJ_A], // OBJ_B was carried by the lead itself
+      refusedFinish: null,
+    })
+  })
+
+  it("a clean scorecard passes the first finish silently, gate record zeroed", () => {
+    const ctx = gatedCtx(reading({ objections: [] }))
+    const r = finishTool(ctx, { reason: "mapped", summary: "s", unresolved: [] })
+    expect(r.ok).toBe(true)
+    expect(ctx.control.gate).toEqual({ refusals: 0, objections: [], carried: [], refusedFinish: null })
+  })
+
+  it("after the second finish stands, a third is told the first ACCEPTED finish stands", () => {
+    const ctx = gatedCtx(reading())
+    finishTool(ctx, { reason: "mapped", summary: "s", unresolved: [] })
+    finishTool(ctx, { reason: "mapped for real", summary: "s", unresolved: [] })
+    const third = finishTool(ctx, { reason: "again", summary: "s", unresolved: [] })
+    expect(third.ok).toBe(false)
+    if (!third.ok) expect(third.reason).toBe("the run is already finishing (mapped for real); the first accepted finish stands")
   })
 })

@@ -31,6 +31,7 @@ import {
   reviewTool,
   spawnTool,
   type ControlCtx,
+  type GateReading,
   type RunControl,
 } from "./tools-control.js"
 
@@ -148,6 +149,9 @@ export interface SwarmAgentDeps {
   /** The family ledger's ear (T3), wired into the LEAD's control ctx only —
    *  spawn and review are the family verbs, and propose must never open one. */
   onFamilyEvent?: (event: FamilyEvent) => void
+  /** The finish gate's reading (T5), supplied by the orchestrator on the
+   *  LEAD's deps only — investigators hold no finish tool to gate. */
+  scorecard?: () => GateReading
 }
 
 export interface LeadDeps extends SwarmAgentDeps {
@@ -444,10 +448,24 @@ function leadControlTools(deps: SwarmAgentDeps): ToolSet {
   }
 }
 
-/** finish stands alone so the free closing turn can offer it without spawn/next. */
-function makeFinishTool(deps: SwarmAgentDeps) {
+/**
+ * finish stands alone so the free closing turn can offer it without
+ * spawn/next. `disarm` is the closing turn's structural safety: that turn
+ * exists BECAUSE the harness asked the lead to close, and it is the only
+ * turn there is — a refusal there would spend the answer's own turn. The
+ * reading still flows, so acceptance records objections and the carried
+ * split; only the refusal is off the table.
+ */
+function makeFinishTool(deps: SwarmAgentDeps, opts: { disarm?: boolean } = {}) {
   const report = makeReport(deps)
-  const controlCtx: ControlCtx = { board: deps.board, ledger: deps.ledger, control: deps.control }
+  const thunk = deps.scorecard
+  const scorecard = thunk && opts.disarm ? () => ({ ...thunk(), disarmed: true }) : thunk
+  const controlCtx: ControlCtx = {
+    board: deps.board,
+    ledger: deps.ledger,
+    control: deps.control,
+    ...(scorecard ? { scorecard } : {}),
+  }
   return tool({
     description:
       "End the run in your own words. The summary prints verbatim above the map; unresolved is the honest residue, in your order.",
@@ -599,7 +617,7 @@ export function runLead(deps: LeadDeps): LeadRunner {
     `\n\n${deps.skill}`
   const messages: ModelMessage[] = []
   const free = freeTools(deps, "lead")
-  const closingTools: ToolSet = { ...free, finish: makeFinishTool(deps) }
+  const closingTools: ToolSet = { ...free, finish: makeFinishTool(deps, { disarm: true }) }
   const control = leadControlTools(deps)
 
   let turnsUsed = 0

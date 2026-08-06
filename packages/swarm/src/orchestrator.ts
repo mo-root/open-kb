@@ -6,12 +6,15 @@ import {
   computeScorecard,
   Ledger,
   registrableHost,
+  SCORECARD_DEFAULTS,
+  scorecardObjections,
   scorecardSentences,
   type BoardRow,
   type FamilyRow,
   type FetchPort,
   type Mission,
   type MissionTier,
+  type ScorecardConfig,
   type ScorecardInput,
   type SearchPort,
   type SpanKind,
@@ -147,6 +150,12 @@ export interface SwarmOptions {
    * per the skill.
    */
   aggregatorThreshold?: number | null
+  /**
+   * Thresholds that arm the finish gate (T5), merged over the measured
+   * defaults (SCORECARD_DEFAULTS). Set every field null to silence the gate
+   * entirely — the escape hatch the design priced at one config flag.
+   */
+  scorecardConfig?: Partial<ScorecardConfig>
   pendingAfterMs?: number
   spans?: SpanStream
   onLog?: (line: string) => void
@@ -393,6 +402,20 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
     (w) => w.length > 2,
   )
 
+  const scorecardConfig: ScorecardConfig = { ...SCORECARD_DEFAULTS, ...opts.scorecardConfig }
+
+  /** T5: the finish gate's synchronous reading. Everything here is read lazily
+   *  at the moment the lead calls finish — the live objections, the turn
+   *  arithmetic for amendment 1's cap guard, and the two disarm states: after
+   *  the wall warning or the budget-floor wake the harness has already told
+   *  the lead to close, and refusing finish then would fight its own words. */
+  const gateReading = () => ({
+    objections: scorecardObjections(computeScorecard(scorecardInput()), scorecardConfig),
+    turns: lead.turns,
+    turnCap: LEAD_TURN_CAP,
+    disarmed: wallWarned || floorWoken,
+  })
+
   const leadLandings: Promise<void>[] = []
   const lead = runLead({
     ...base,
@@ -400,6 +423,7 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
     domain: opts.domain,
     model: opts.models.lead,
     pricing: opts.pricing.lead,
+    scorecard: gateReading,
   })
 
   // ── the seed: the orient question, funded like any spawned mission ───────
