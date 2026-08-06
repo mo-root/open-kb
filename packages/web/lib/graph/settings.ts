@@ -36,6 +36,85 @@ export interface GraphSettings {
   linkForce: number
   /** Multiplies spring length. */
   linkDistance: number
+  /**
+   * Multiplies the empty space `forceCollide` keeps between two node edges.
+   *
+   * The air dial. Repulsion decides where the lobes go; this decides how
+   * tightly the nodes inside one are allowed to pack, and it is the difference
+   * between a lobe that reads as a rosette of distinct sites and one that reads
+   * as a single filled disc. Above 1 by default — the map was legible at 1 and
+   * noticeably easier to read (and to point at) with a little more room.
+   */
+  nodeSpacing: number
+  /**
+   * Bow in the edges. 0 draws straight lines.
+   *
+   * With one anchor carrying most of the wiring, straight edges stack into a
+   * solid ink starburst at the centre. A slight curve fans them apart. Off by
+   * default because straight is the honest reading of "A relates to B"; the
+   * curve is there for a reader who wants the hub legible.
+   */
+  linkCurve: number
+  /**
+   * How tightly a lobe holds itself together.
+   *
+   * A node's lobe is the fan it hangs off — see lib/graph/cluster.ts. Raise it
+   * and each market draws into a tight rosette; drop it to 0 and the springs
+   * alone decide, which is the layout as it was before lobes existed.
+   */
+  clusterPull: number
+  /**
+   * Clear space demanded between two lobes.
+   *
+   * The one force in the recipe that knows a lobe exists as a THING rather than
+   * as a set of nodes. `forceCollide` stops two nodes overlapping and is
+   * perfectly happy to let two whole markets interleave into one ambiguous
+   * mass; this measures each lobe as a disc and pushes overlapping discs apart.
+   * 0 turns it off and the lobes may sit on each other again.
+   */
+  clusterSpacing: number
+
+  /* ---- style: what the canvas actually draws -------------------------------
+     Obsidian's graph reads calm because it runs ONE visual encoding — a grey
+     dot sized by its links. Ours has more to say (four entity types, eleven
+     relations, a placement rank) and had been saying all of it at once: type
+     fill AND favicon AND a type-coloured rim AND size, over glowing cyan edges.
+     Four signals competing is why it read busy at 915 nodes.
+
+     So each encoding becomes a switch, and the shipped default keeps only the
+     two that carry something Obsidian's graph has no equivalent for — the type
+     colour and the size. The rest is there when a reader goes looking. */
+
+  /** Fill nodes by entity type. Off = one neutral ink, Obsidian-style. */
+  colorByType: boolean
+  /** Draw each site's favicon once the node is big enough on screen. */
+  showIcons: boolean
+  /** A type-coloured rim around the favicon chip. */
+  typeRings: boolean
+  /** Cyan bloom on hovered nodes and their edges. */
+  glow: boolean
+  /** Label size grows with zoom (Obsidian) instead of staying constant. */
+  labelsScaleWithZoom: boolean
+  /** Edge opacity at rest. */
+  linkOpacity: number
+
+  /* ---- what hovering is allowed to do -------------------------------------
+     Hover was doing the work of a click. Passing over a node dimmed every
+     non-neighbour, re-coloured every edge and re-planned the whole label set —
+     and on the way to anywhere the pointer crosses dozens of nodes, so the map
+     strobed between lit and dimmed while the reader was merely moving the
+     mouse. Nothing was being decided; it just looked like it was.
+
+     So the two jobs are separated. CLICK is the deliberate, sticky gesture and
+     it keeps focus mode. HOVER identifies one node — a ring on it, its own
+     edges lit, its card raised — and leaves the rest of the map exactly where
+     the reader's eye left it. */
+
+  /** Hover dims everything that is not a neighbour (the old behaviour). */
+  hoverDims: boolean
+  /** Hovering raises the detail card, so the pointer is a reading instrument
+   *  and nothing has to be clicked to find out what a dot is. */
+  hoverCard: boolean
 }
 
 export const DEFAULT_SETTINGS: GraphSettings = {
@@ -48,11 +127,41 @@ export const DEFAULT_SETTINGS: GraphSettings = {
   repelForce: 1,
   linkForce: 1,
   linkDistance: 1,
+  // Above 1. See `nodeSpacing` — the extra air is the cheapest legibility this
+  // map has, and it makes every node a larger target to point at.
+  // 1 now means "as designed" again: spacing became proportional to the drawn
+  // node (see seatRadius), so the old 1.25 nudge is baked into the shape.
+  nodeSpacing: 1,
+  linkCurve: 0,
+  clusterPull: 1,
+  clusterSpacing: 1,
+  // The quiet default: colour and size carry the meaning, nothing else
+  // competes. Every switch below turns detail back on.
+  colorByType: true,
+  showIcons: true,
+  typeRings: false,
+  glow: false,
+  labelsScaleWithZoom: false,
+  // Lighter than it was. With dense bundles now fading further by fan size
+  // (see bundleFade), 0.1 was drawing the wiring as the subject of the map.
+  linkOpacity: 0.07,
+  hoverDims: false,
+  hoverCard: true,
 }
 
 /** Slider bounds, so the panel and the clamp cannot drift apart. */
 export const RANGES: Record<
-  keyof Omit<GraphSettings, "arrows">,
+  keyof Omit<
+    GraphSettings,
+    | "arrows"
+    | "colorByType"
+    | "showIcons"
+    | "typeRings"
+    | "glow"
+    | "labelsScaleWithZoom"
+    | "hoverDims"
+    | "hoverCard"
+  >,
   { min: number; max: number; step: number }
 > = {
   nodeScale: { min: 0.4, max: 2.5, step: 0.05 },
@@ -63,6 +172,11 @@ export const RANGES: Record<
   repelForce: { min: 0.2, max: 4, step: 0.05 },
   linkForce: { min: 0, max: 3, step: 0.05 },
   linkDistance: { min: 0.3, max: 3, step: 0.05 },
+  nodeSpacing: { min: 0.4, max: 3.5, step: 0.05 },
+  linkCurve: { min: 0, max: 0.6, step: 0.02 },
+  clusterPull: { min: 0, max: 3, step: 0.05 },
+  clusterSpacing: { min: 0, max: 3, step: 0.05 },
+  linkOpacity: { min: 0.02, max: 0.6, step: 0.01 },
 }
 
 const KEY = "kb-graph-settings"
@@ -107,6 +221,31 @@ export function loadSettings(): GraphSettings {
         RANGES.linkDistance,
         DEFAULT_SETTINGS.linkDistance,
       ),
+      nodeSpacing: clampNum(o.nodeSpacing, RANGES.nodeSpacing, DEFAULT_SETTINGS.nodeSpacing),
+      linkCurve: clampNum(o.linkCurve, RANGES.linkCurve, DEFAULT_SETTINGS.linkCurve),
+      clusterPull: clampNum(o.clusterPull, RANGES.clusterPull, DEFAULT_SETTINGS.clusterPull),
+      clusterSpacing: clampNum(
+        o.clusterSpacing,
+        RANGES.clusterSpacing,
+        DEFAULT_SETTINGS.clusterSpacing,
+      ),
+      // `?? default` rather than `=== true`: these are opt-OUT switches, so a
+      // settings blob written before they existed must keep the shipped look
+      // instead of silently turning every one of them off.
+      colorByType: typeof o.colorByType === "boolean" ? o.colorByType : DEFAULT_SETTINGS.colorByType,
+      showIcons: typeof o.showIcons === "boolean" ? o.showIcons : DEFAULT_SETTINGS.showIcons,
+      typeRings: typeof o.typeRings === "boolean" ? o.typeRings : DEFAULT_SETTINGS.typeRings,
+      glow: typeof o.glow === "boolean" ? o.glow : DEFAULT_SETTINGS.glow,
+      labelsScaleWithZoom:
+        typeof o.labelsScaleWithZoom === "boolean"
+          ? o.labelsScaleWithZoom
+          : DEFAULT_SETTINGS.labelsScaleWithZoom,
+      linkOpacity: clampNum(o.linkOpacity, RANGES.linkOpacity, DEFAULT_SETTINGS.linkOpacity),
+      // `=== true`, not `?? default`: hover-dimming is opt-IN, so a blob
+      // written before it became a setting must land on the calm behaviour.
+      hoverDims: o.hoverDims === true,
+      hoverCard:
+        typeof o.hoverCard === "boolean" ? o.hoverCard : DEFAULT_SETTINGS.hoverCard,
     }
   } catch {
     return DEFAULT_SETTINGS

@@ -28,16 +28,23 @@ export function GraphLegend({
   counts,
   visible,
   onToggle,
+  onHighlight,
 }: {
   types: NodeType[];
   counts: Record<NodeType, number>;
   visible: Record<NodeType, boolean>;
   onToggle: (t: NodeType) => void;
+  /** Pointer resting on a row — the canvas lifts that type and recedes the
+   *  rest. A key that only toggled was a key you had to DESTROY the map to
+   *  read: the sole way to find out which dots were communities was to hide
+   *  the other three and put them back. */
+  onHighlight: (t: NodeType | null) => void;
 }) {
   if (types.length === 0) return null;
   return (
     <div /* max-h + scroll: a map with every type present, with the notes open, must
          never grow past the canvas it is labelling. */
+      onPointerLeave={() => onHighlight(null)}
       className="absolute bottom-3 left-3 z-10 max-h-[calc(100%-1.5rem)] w-44 overflow-y-auto rounded-md border border-slate-800 bg-slate-950/85 px-2 pb-2 pt-2 shadow-lg">
       <p className="mb-1.5 px-1 font-mono text-[9px] uppercase tracking-[0.18em] text-slate-500">
         signal key
@@ -49,8 +56,12 @@ export function GraphLegend({
             <li key={t}>
               <button
                 onClick={() => onToggle(t)}
+                onPointerEnter={() => on && onHighlight(t)}
+                onPointerLeave={() => onHighlight(null)}
+                onFocus={() => on && onHighlight(t)}
+                onBlur={() => onHighlight(null)}
                 aria-pressed={on}
-                title={`${on ? "hide" : "show"} ${TYPE_LABEL[t]}`}
+                title={`hover to pick them out · click to ${on ? "hide" : "show"} ${TYPE_LABEL[t]}`}
                 className="flex w-full items-center gap-2 rounded px-1 py-[3px] text-left text-[11px] transition-colors hover:bg-slate-800/40"
               >
                 <span
