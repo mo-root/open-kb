@@ -18,7 +18,10 @@
  *
  *   OPENKB_SWARM_LEAD_MODEL   default google/gemini-3-flash-preview — the one
  *     growing transcript; its input price is what matters ($0.50/M measured
- *     at ~$0.10 per run in the design).
+ *     at ~$0.10 per run in the design). Live run 3 (runs/swarm-brightdata-
+ *     com-202608060151.json) watched this default sit 14 spawn-less,
+ *     finish-less turns on a dry board with the scorecard armed — a
+ *     stronger lead is this one env var away.
  *   OPENKB_SWARM_PEEK_MODEL   default google/gemini-3.1-flash-lite —
  *     verification and demotion, the cheapest honest look.
  *   OPENKB_SWARM_READ_MODEL   default OPENKB_MODEL, then google/gemini-3.5-flash.
