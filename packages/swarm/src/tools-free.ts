@@ -1,5 +1,6 @@
 import {
   admit,
+  descriptionGrounding,
   extractText,
   isHtml,
   outboundHosts,
@@ -506,6 +507,22 @@ export function rememberTool(ctx: RememberCtx, input: RememberInput): RememberRe
     }
 
     const tier = tierOf(key, minted.evidence)
+    const own = ctx.evidence.ownPage(key)
+
+    // The swarm's half of span-bound descriptions. The mint above already
+    // proved every quote; this measures whether the WHAT draws its vocabulary
+    // from that verified material — the claim's quotes plus the host's own
+    // stored page — the same meter the kernel keeps as its regression canary.
+    // MEASUREMENT ONLY: recorded on the node, never gated. The full span
+    // requirement on remember is a contract change the skill's byte budget
+    // cannot teach yet; it is filed as a designed follow-on.
+    const descGrounded =
+      Math.round(
+        descriptionGrounding(
+          n.what,
+          [...minted.evidence.map((ev) => ev.quote), own?.text ?? ""].join(" "),
+        ).score * 100,
+      ) / 100
 
     // The kernel's gate: the model still says what a host is; this refuses
     // claims whose evidence does not support them. A refusal downgrades, it
@@ -514,7 +531,6 @@ export function rememberTool(ctx: RememberCtx, input: RememberInput): RememberRe
     let relation = n.relation
     let because: string | undefined
     {
-      const own = ctx.evidence.ownPage(key)
       const page = own
         ? { url: own.url, readable: true, outboundHosts: outboundHosts(own.raw ?? own.text, own.url) }
         : null
@@ -551,6 +567,7 @@ export function rememberTool(ctx: RememberCtx, input: RememberInput): RememberRe
         relation,
         why: n.why,
         ...(because ? { because } : {}),
+        descGrounded,
         tier,
         evidence: minted.evidence,
         also: [],
@@ -580,6 +597,8 @@ export function rememberTool(ctx: RememberCtx, input: RememberInput): RememberRe
       }
       existing.name = survivorName
       existing.what = n.what
+      // The measurement follows the what it measured.
+      existing.descGrounded = descGrounded
       existing.why = n.why
       // An unknown never outranks a supported claim, even arriving stronger:
       // a downgraded account contributes its evidence and its tier, but the

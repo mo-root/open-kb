@@ -809,6 +809,131 @@ describe("rememberTool", () => {
   })
 })
 
+// ── span-bound measurement: descGrounded on remember ─────────────────────────
+// The swarm's half of span-bound descriptions. The mint already proves every
+// quote; the open question was whether the WHAT draws its capabilities from
+// them. Measured here as grounding of the what against the claim's verified
+// quotes plus the host's own stored page, recorded on the node and in the run
+// rows. MEASUREMENT ONLY — the gate lives in the sweep kernel; the full span
+// requirement on remember is a contract change the skill's byte budget
+// (12,985 of 13,000) cannot teach yet.
+
+describe("span-bound measurement on remember (descGrounded)", () => {
+  it("a what drawn from its verified quotes measures fully grounded", () => {
+    const s = seeded()
+    rememberTool(ctxOf(s), {
+      nodes: [{
+        name: "Acme", domain: "rival.com", kind: "company", what: "a scraping api for developers",
+        relation: "competitor", why: "same job, same buyer",
+        evidence: [{ url: "https://rival.com/", quote: "sells a scraping API to developers" }],
+      }],
+      why: "t",
+    })
+    expect(s.map.nodes.get("rival.com")!.descGrounded).toBe(1)
+  })
+
+  it("the quanticdata shape still lands — but wearing 0, visible to any reader", () => {
+    const s = seeded()
+    const r = rememberTool(ctxOf(s), {
+      nodes: [{
+        // A real quote proves the node; the what claims a capability neither
+        // the quote nor the page says. Measurement, not a gate: the node
+        // lands, the number tells on it.
+        name: "Acme", domain: "rival.com", kind: "company", what: "custom dataset delivery",
+        relation: "competitor", why: "same buyer",
+        evidence: [{ url: "https://rival.com/", quote: "collect structured web data at scale" }],
+      }],
+      why: "t",
+    })
+    expect(r.added.nodes).toBe(1)
+    expect(s.map.nodes.get("rival.com")!.descGrounded).toBe(0)
+  })
+
+  it("the host's own stored page grounds terms the quotes alone do not", () => {
+    const s = seeded()
+    rememberTool(ctxOf(s), {
+      nodes: [{
+        // "scale" is nowhere in the quote but on rival.com's own stored page
+        // ("web data at scale") — the verified material is quotes PLUS that page.
+        name: "Acme", domain: "rival.com", kind: "company", what: "a scraping api at scale",
+        relation: "competitor", why: "same job",
+        evidence: [{ url: "https://rival.com/", quote: "sells a scraping API" }],
+      }],
+      why: "t",
+    })
+    expect(s.map.nodes.get("rival.com")!.descGrounded).toBe(1)
+  })
+
+  it("a snippet-only node measures against its quotes alone, and a stray what shows it", () => {
+    const s = seeded()
+    rememberTool(ctxOf(s), {
+      nodes: [{
+        // Terms: price, tracking, dashboards, "price tracking",
+        // "tracking dashboards" — the snippet quote says only "price". 1/5.
+        name: "Roundup", domain: "third.com", kind: "community", what: "price tracking dashboards",
+        relation: "covers", why: "ranks the vendors",
+        evidence: [{ url: "https://third.com/roundup", quote: "head to head on price" }],
+      }],
+      why: "t",
+    })
+    expect(s.map.nodes.get("third.com")!.descGrounded).toBe(0.2)
+  })
+
+  it("on merge the measurement follows the what: a stronger account re-measures, a weaker one leaves it", () => {
+    const s = seeded()
+    const ctx = ctxOf(s)
+    // Snippet-tier account first: what grounded 0 against its own quote.
+    rememberTool(ctx, {
+      nodes: [{
+        name: "Acme", domain: "rival.com", kind: "company", what: "custom dataset delivery",
+        relation: "competitor", why: "same buyer",
+        evidence: [{ url: "https://third.com/roundup", quote: "Acme and anchor compared head to head" }],
+      }],
+      why: "t",
+    })
+    expect(s.map.nodes.get("rival.com")!.descGrounded).toBe(0)
+    // Own-page account arrives stronger: its what owns the node, and the
+    // measurement is that what's, not the displaced one's.
+    rememberTool(ctx, {
+      nodes: [{
+        name: "Acme", domain: "rival.com", kind: "company", what: "a scraping api for developers",
+        relation: "competitor", why: "same job, in its own words",
+        evidence: [{ url: "https://rival.com/", quote: "sells a scraping API to developers" }],
+      }],
+      why: "t",
+    })
+    const node = s.map.nodes.get("rival.com")!
+    expect(node.what).toBe("a scraping api for developers")
+    expect(node.descGrounded).toBe(1)
+    // A weaker account after that: its what goes to `also`, the standing
+    // measurement stays the standing what's.
+    rememberTool(ctx, {
+      nodes: [{
+        name: "Acme", domain: "rival.com", kind: "company", what: "custom dataset delivery",
+        relation: "competitor", why: "same buyer",
+        evidence: [{ url: "https://third.com/roundup", quote: "compared head to head" }],
+      }],
+      why: "t",
+    })
+    expect(s.map.nodes.get("rival.com")!.what).toBe("a scraping api for developers")
+    expect(s.map.nodes.get("rival.com")!.descGrounded).toBe(1)
+  })
+
+  it("the measurement rides the run rows so a reader can see it", () => {
+    const s = seeded()
+    rememberTool(ctxOf(s), {
+      nodes: [{
+        name: "Acme", domain: "rival.com", kind: "company", what: "a scraping api for developers",
+        relation: "competitor", why: "same job",
+        evidence: [{ url: "https://rival.com/", quote: "sells a scraping API to developers" }],
+      }],
+      why: "t",
+    })
+    const row = s.map.entities().find((r) => r.domain === "rival.com")!
+    expect(row.descGrounded).toBe(1)
+  })
+})
+
 // ── writer attribution: contributions ────────────────────────────────────────
 
 describe("writer attribution (contributions)", () => {

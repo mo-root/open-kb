@@ -53,6 +53,12 @@ export interface MapNode {
   why: string
   /** Present when the kernel downgraded the claim; the node wears its refusal. */
   because?: string
+  /** How much of the standing `what`'s vocabulary its verified material — the
+   *  claim's minted quotes plus the host's own stored page — actually says,
+   *  2 decimals, measured when that what landed. The swarm's half of
+   *  span-bound descriptions: MEASUREMENT ONLY, recorded by `remember`; the
+   *  gate lives in the sweep kernel. */
+  descGrounded?: number
   /** Computed from the evidence, never asserted: own-page > page > snippet. */
   tier: ProvenanceTier
   evidence: Evidence[]
@@ -90,6 +96,10 @@ export interface EntityRow {
   relation: string
   why: string
   because?: string
+  /** `MapNode.descGrounded`, carried into the run JSON under the same name the
+   *  sweep's entities already use — the reader's view model picks it up with
+   *  no new vocabulary. */
+  descGrounded?: number
   tier: ProvenanceTier
   /** The merged-away accounts, when a collision kept them (`MapNode.also`).
    *  Present only when non-empty, so a node that never merged keeps the exact
@@ -143,6 +153,7 @@ export class MapState {
         relation: n.relation,
         why: n.why,
         ...(n.because ? { because: n.because } : {}),
+        ...(n.descGrounded !== undefined ? { descGrounded: n.descGrounded } : {}),
         tier: n.tier,
         ...(n.also.length ? { also: n.also.map((a) => ({ ...a })) } : {}),
       })
