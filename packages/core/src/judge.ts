@@ -280,6 +280,10 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
     // sentence that says so, because the downgrade doctrine holds here too:
     // the entity survives, wearing the refusal, and an invention dies where
     // a reader would have believed it.
+    //
+    // The gate's honest scope: containment proves each span is FROM the page
+    // — that the span SUPPORTS the what beside it is still the model's claim,
+    // and descGrounded above stays that claim's meter.
     const { spans: claimed, ...judged } = out
     const verified = claimed.filter((sp) => checkQuote(pageText, sp) === "ok")
     const descSpans = { verified: verified.length, claimed: claimed.length }

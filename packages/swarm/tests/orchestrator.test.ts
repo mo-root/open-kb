@@ -1113,3 +1113,118 @@ describe("runSwarm: the ledger stays honest", () => {
     expectEndingShape(run.ending, run.ledger)
   })
 })
+
+// ── the harvest tier through the whole loop ─────────────────────────────────
+
+describe("runSwarm: a harvest mission over fake ports", () => {
+  const fakeHarvestClassify = async () => ({
+    out: {
+      name: "Rival",
+      kind: "company",
+      what: "fraud scoring api for merchants",
+      relation: "competitor",
+      why: "sells the same step to the same buyer",
+      spans: ["Rival sells a fraud scoring API"],
+    },
+    usd: 0.001,
+  })
+
+  it("a scripted investigator harvests a wave: judged hosts land as its writes, the tally reaches the report", async () => {
+    const lead = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = leadTurnOf(prompt)
+        if (turn === 1)
+          return reply(
+            call("1", "spawn", { missions: [mission("harvest-wave", 90, "harvest")], why: "judge the wave whole" }),
+            false,
+          )
+        return reply(call("f1", "finish", { reason: "mapped", summary: "s", unresolved: [], why: "done" }), false)
+      },
+    })
+    // One inv model serves every tier: the seed (orientation) searches once;
+    // the harvest mission calls harvest with a readable and a dead host.
+    const inv = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const sys = prompt.find((m) => m.role === "system")
+        const sysText = typeof sys?.content === "string" ? sys.content : JSON.stringify(sys?.content ?? "")
+        const turn = invTurnOf(prompt)
+        if (sysText.includes("harvest-wave")) {
+          if (turn === 0)
+            return reply(call("h1", "harvest", { hosts: ["rival.com", "dead.com"], why: "judge the wave" }), false)
+          return reply(text("harvested."), true)
+        }
+        if (turn === 0) return reply(call("s1", "search", { queries: ["fraud scoring"], why: "orient" }), false)
+        return reply(text("done."), true)
+      },
+    })
+
+    const run = await runSwarm(
+      mkOpts({
+        lead,
+        inv,
+        over: {
+          harvestClassify: fakeHarvestClassify,
+          // Explicit rows: rival.com's apex is readable, dead.com's 404s —
+          // this file's fakeFetch DEFAULTS to a readable page, so the dead
+          // host must be spelled out.
+          fetch: fakeFetch({
+            "https://rival.com/": { httpStatus: 200, body: rivalHtml },
+            "https://dead.com/": { httpStatus: 404, body: "" },
+          }),
+        },
+      }),
+    )
+
+    expect(run.ending.reason).toBe("lead-finished")
+    expectEndingShape(run.ending, run.ledger)
+
+    // The judged host is on the map as the MISSION's write — attribution free.
+    const node = run.map.nodes.get("rival.com")!
+    expect(node).toBeDefined()
+    expect(node.relation).toBe("competitor")
+    expect(node.settledBy).toBe("model")
+    expect(node.tier).toBe("own-page")
+    expect(node.contributions).toEqual([{ writer: "harvest-wave", tier: "own-page" }])
+
+    // The kernel's accounting reached the run and the report, kernel-style.
+    expect(run.harvest).toEqual({
+      calls: 1,
+      hosts: 2,
+      fetched: 2,
+      settledFree: 1,
+      modelJudged: 1,
+      unreadable: 1,
+      unreadableByReason: { "http-404": 1 },
+    })
+    const out = serializeSwarmRun(run)
+    expect((out.report as { harvest?: unknown }).harvest).toEqual(run.harvest)
+    // The stamps survive serialization into the entity rows.
+    const rival = out.entities.find((e) => e.domain === "rival.com")!
+    expect(rival.settledBy).toBe("model")
+
+    // The mission settled at actuals: the classify call's dollars drew on its
+    // claim as the host landed, and the landing's number carries them.
+    const landing = run.landings.find((l) => l.mission.dedupeKey === "harvest-wave")!
+    expect(landing).toBeDefined()
+    expect(landing.actualUsd).toBeCloseTo(0.001, 6)
+  })
+
+  it("a run that never harvested reports the zero tally — absent and clean must not look alike", async () => {
+    const lead = new MockLanguageModelV4({
+      doGenerate: async () =>
+        reply(call("f1", "finish", { reason: "done", summary: "s", unresolved: [], why: "d" }), false),
+    })
+    const run = await runSwarm(mkOpts({ lead }))
+    expect(run.harvest).toEqual({
+      calls: 0,
+      hosts: 0,
+      fetched: 0,
+      settledFree: 0,
+      modelJudged: 0,
+      unreadable: 0,
+      unreadableByReason: {},
+    })
+    const out = serializeSwarmRun(run)
+    expect((out.report as { harvest?: unknown }).harvest).toEqual(run.harvest)
+  })
+})

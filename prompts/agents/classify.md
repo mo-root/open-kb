@@ -63,7 +63,9 @@ from the page below — each a phrase of at least 8 characters, around 120 at mo
 back what the `what` says this host is and sells. Copy, never paraphrase: each span is checked in
 code as a literal substring of this exact page, a span that fails the check is dropped, and a
 `what` with no surviving span never reaches the reader — it is replaced by a sentence saying the
-description could not be tied to the page. Quote the line that sells, not the slogan.
+description could not be tied to the page. The check proves a span came from the page; that it
+supports the `what` is your claim, and the term-level meter still measures that claim. Quote the
+line that sells, not the slogan.
 
 The `why` is the evidence for the relation, stated against the anchor — how it relates, not that
 it resembles — and never the `what` restated or the label said again: name the thing that makes

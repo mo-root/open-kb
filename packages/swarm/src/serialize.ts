@@ -144,6 +144,11 @@ export function serializeSwarmRun(
       // not the lead's own finish, the conclusion the run would have shipped
       // survives at its own key, where a reader of the ending will find it.
       ...(run.finish === null && gate.refusedFinish !== null ? { refusedFinish: gate.refusedFinish } : {}),
+      // Kernel-style harvest accounting, beside the scorecard: what the judge
+      // did across every harvest call — fetched, settled-free vs model-judged,
+      // the unreadable split by reason code. Zeros when nothing harvested; a
+      // clean run and a missing block must not look alike in a stored report.
+      harvest: run.harvest,
       // T6: the full instrument reading at the ending — every fraction with
       // its num/den beside the value (auditable like recall's probe list),
       // the gate's record, and the thresholds the gate ran with.

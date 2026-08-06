@@ -106,6 +106,13 @@ export interface EntityRow {
   relation: string
   why: string
   because?: string
+  /** Harvested unknowns only: the sniffer's stable code beside the because —
+   *  the same field the sweep's entities persist, so a stored swarm map can
+   *  say "3 bot-walled, 2 JS-only" instead of "5 unknown". */
+  unreadableReason?: UnreadableReason
+  /** Harvested nodes only: HOW the judge settled the host — predicate
+   *  arithmetic or a model call — exactly as judgeHosts stamped it. */
+  settledBy?: "predicate" | "model"
   /** `MapNode.descGrounded`, carried into the run JSON under the same name the
    *  sweep's entities already use — the reader's view model picks it up with
    *  no new vocabulary. */
@@ -163,6 +170,8 @@ export class MapState {
         relation: n.relation,
         why: n.why,
         ...(n.because ? { because: n.because } : {}),
+        ...(n.unreadableReason ? { unreadableReason: n.unreadableReason } : {}),
+        ...(n.settledBy ? { settledBy: n.settledBy } : {}),
         ...(n.descGrounded !== undefined ? { descGrounded: n.descGrounded } : {}),
         tier: n.tier,
         ...(n.also.length ? { also: n.also.map((a) => ({ ...a })) } : {}),

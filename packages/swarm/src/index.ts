@@ -120,6 +120,7 @@ export {
   type SwarmEnding,
   type SwarmEndReason,
   type SwarmTally,
+  type HarvestTally,
   type MissionLanding,
 } from "./orchestrator.js"
 

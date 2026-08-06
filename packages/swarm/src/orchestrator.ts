@@ -20,6 +20,7 @@ import {
   type SearchPort,
   type SpanKind,
   type SpanStream,
+  type UnreadableReason,
 } from "@open-kb/core"
 import type { LanguageModel } from "ai"
 import { RunEvidence, recallProbePool } from "./run-evidence.js"
@@ -103,6 +104,26 @@ export interface MissionLanding {
   atSec: number
 }
 
+/**
+ * The run's harvest accounting, kernel-style: what the judge did across every
+ * harvest call, accumulated as each call's KernelStats lands — fetched,
+ * settled-free vs model-judged, and the unreadable split by the sniffer's
+ * reason codes. Ships as `report.harvest` beside the scorecard, zeros
+ * included: a run that never harvested and a missing block must not look
+ * alike in a stored report.
+ */
+export interface HarvestTally {
+  /** Harvest calls that reached the judge (entry refusals count nothing). */
+  calls: number
+  /** Hosts handed to the kernel across those calls. */
+  hosts: number
+  fetched: number
+  settledFree: number
+  modelJudged: number
+  unreadable: number
+  unreadableByReason: Partial<Record<UnreadableReason, number>>
+}
+
 /** Counters accumulated as the run spends, never reconstructed afterwards. */
 export interface SwarmTally {
   tokIn: number
@@ -138,6 +159,8 @@ export interface SwarmRun {
   /** The thresholds the finish gate ran with; serialized beside the numbers. */
   scorecardConfig: ScorecardConfig
   tally: SwarmTally
+  /** Kernel-style harvest accounting, zeros when nothing harvested. */
+  harvest: HarvestTally
   seconds: number
 }
 
@@ -329,6 +352,15 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
     unlockerCalls: 0,
     leadTurns: 0,
   }
+  const harvest: HarvestTally = {
+    calls: 0,
+    hosts: 0,
+    fetched: 0,
+    settledFree: 0,
+    modelJudged: 0,
+    unreadable: 0,
+    unreadableByReason: {},
+  }
 
   /** The run's own abort: the wall's hard cancel, stillborn, and the caller's
    *  signal all land here, and every lane and model call hears it. */
@@ -495,6 +527,20 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
     // closure) was wired — runInvestigator offers the tool exactly then, and
     // the lead never composes it at all.
     ...(harvestClassify ? { harvestClassify } : {}),
+    // Each harvest call's kernel stats fold into the run tally as they land —
+    // accumulated while the run spends, never reconstructed afterwards.
+    onHarvest: (stats, hosts) => {
+      harvest.calls += 1
+      harvest.hosts += hosts
+      harvest.fetched += stats.fetched
+      harvest.settledFree += stats.settledFree
+      harvest.modelJudged += stats.modelJudged
+      harvest.unreadable += stats.unreadable
+      for (const [reason, n] of Object.entries(stats.unreadableByReason)) {
+        const key = reason as UnreadableReason
+        harvest.unreadableByReason[key] = (harvest.unreadableByReason[key] ?? 0) + (n ?? 0)
+      }
+    },
   }
 
   /** The anchor's own words, banned from every investigator's queries. The
@@ -963,6 +1009,7 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
       scorecard,
       scorecardConfig,
       tally,
+      harvest,
       seconds: sec(),
     }
   }

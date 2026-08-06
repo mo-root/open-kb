@@ -790,3 +790,24 @@ describe("harvestTool: per-host settlement honesty", () => {
     for (const row of r.rows) expect(row.reason).toContain("allowance spent")
   })
 })
+
+describe("harvestTool: the stamps survive into the run-JSON entity rows", () => {
+  it("settledBy and the reason code ride entities(); rows without them keep their exact shape", async () => {
+    const { ctx } = harvestCtx({ fetch: fakeFetcher({ "https://acme.com/": vendorHtml }) })
+    ctx.evidence.record({
+      url: "https://dead.com/",
+      text: "Dead — fraud scoring for online merchants\nDead sells fraud scoring to online merchants",
+      status: "found",
+      tier: "snippet",
+    })
+    await harvestTool(ctx, { hosts: ["acme.com", "dead.com"], why: "t" })
+
+    const rows = ctx.map.entities()
+    const acme = rows.find((r) => r.domain === "acme.com")!
+    const dead = rows.find((r) => r.domain === "dead.com")!
+    expect(acme.settledBy).toBe("model")
+    expect("unreadableReason" in acme).toBe(false)
+    expect(dead).toMatchObject({ settledBy: "predicate", unreadableReason: "empty-body", relation: "unknown" })
+    expect(dead.because).toBe("its front page could not be read this run (blocked)")
+  })
+})
