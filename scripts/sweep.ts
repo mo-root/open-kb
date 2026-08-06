@@ -34,6 +34,9 @@ const out = await sweep({
   domain: anchor,
   queries: TARGET,
   pages: Number(process.env.OPENKB_PAGES ?? 4),
+  // Search-wave width. The provider adapter obeys retry-afters, so pushing
+  // this is observable-safe: too wide answers as 429s and pacing, never loss.
+  concurrency: Number(process.env.OPENKB_SEARCH_CONCURRENCY ?? 0) || undefined,
   skipModelLinking: process.env.OPENKB_SKIP_MODEL_LINKING === "1",
   spans,
   creds: {

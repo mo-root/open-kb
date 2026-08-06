@@ -149,6 +149,8 @@ export async function POST(req: Request) {
       const result = await sweep({
         domain,
         queries,
+        // Search-wave width, same dial the CLI takes; retry-afters keep it honest.
+        concurrency: Number(process.env.OPENKB_SEARCH_CONCURRENCY ?? 0) || undefined,
         spans: record.spans,
         creds: {
           token: process.env.BRIGHTDATA_API_TOKEN!,

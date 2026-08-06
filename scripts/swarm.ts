@@ -181,6 +181,10 @@ const run = await runSwarm({
   domain,
   ceilingUsd,
   wallClockMs,
+  // Lane count. Six was the design's number; the env widens the pool when the
+  // model provider's rate allows — an idle lane costs nothing, a missing one
+  // queues work behind the clock.
+  lanes: Number(process.env.OPENKB_SWARM_LANES ?? 0) || undefined,
   ...(familyFloor === undefined ? {} : { familyFloor }),
   ...(fromSweep === undefined ? {} : { fromSweep }),
   skill,
