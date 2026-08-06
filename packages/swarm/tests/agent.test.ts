@@ -521,8 +521,46 @@ describe("runInvestigator", () => {
     expect(longWhat.length).toBeGreaterThan(DIGEST_TOKEN_CAP * 4)
   })
 
-  it("ships tier deadlines as the design's wall clocks", () => {
-    expect(TIER_DEADLINE_MS).toEqual({ peek: 45_000, read: 90_000, dig: 150_000 })
+  it("ships tier deadlines measured on the 2026-08-05 live runs, not the design's 45/90/150s", () => {
+    expect(TIER_DEADLINE_MS).toEqual({ peek: 60_000, read: 180_000, dig: 300_000 })
+  })
+
+  it("the 1.5x overrun bound is advisory at the boundary: the crossing turn's cost stands, only the NEXT turn is stopped", async () => {
+    // The measured shape from runs/swarm-brightdata-com-202608052348.json:
+    // the enterprise_competitors read stood at $0.145 of its $0.10 allowance
+    // after turn 8 (under the $0.15 bound, so the check passed) and turn 9
+    // alone cost $0.045, landing the mission at $0.189 — 1.9x — before any
+    // boundary could see it. Here each turn costs $0.04 (1000 in at $38/M +
+    // 50 out at $40/M), so the read allowance's bound at $0.15 passes turn 3
+    // ($0.12 — already past the allowance itself, and the loop honestly
+    // continues: model turns have no pre-call gate) and turn 4 crosses to
+    // $0.16, 1.6x, where the mission stops as "spent".
+    const h = harness(5)
+    const held = h.ledger.reserve(ALLOWANCES.read)
+    if (!held.ok) throw new Error("reserve failed")
+
+    const model = new MockLanguageModelV4({
+      doGenerate: async () => reply(call("1", "recall", { op: "stats", why: "one more look" }), false),
+    })
+
+    const digest = await runInvestigator(mission, {
+      ...investigatorDeps(h, model, held.claimId),
+      pricing: {
+        peek: { inUsdPerM: 38, outUsdPerM: 40 },
+        read: { inUsdPerM: 38, outUsdPerM: 40 },
+        dig: { inUsdPerM: 38, outUsdPerM: 40 },
+      },
+    })
+
+    expect(digest.status).toBe("spent")
+    // The overshoot stands: the bound never caps the total, it stops the next turn.
+    expect(digest.spentUsd).toBeCloseTo(0.16, 6)
+    expect(digest.spentUsd).toBeGreaterThan(1.5 * ALLOWANCES.read)
+    expect(model.doGenerateCalls.length).toBe(4)
+    // The claim's sub-ledger carries the honest negative.
+    const room = h.ledger.draw(held.claimId, 0)
+    if (!room.ok) throw new Error("claim gone")
+    expect(room.remainingUsd).toBeCloseTo(ALLOWANCES.read - 0.16, 6)
   })
 })
 

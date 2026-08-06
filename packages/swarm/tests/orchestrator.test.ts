@@ -957,6 +957,79 @@ describe("runSwarm: the finish gate", () => {
   })
 })
 
+// ── tier deadlines and the wall ─────────────────────────────────────────────
+
+describe("runSwarm: tier deadlines and the wall", () => {
+  it("opts.deadlines reaches each lane by tier — a dig and a read both die at their configured wall, not the defaults", async () => {
+    // Both investigators prove the run alive (one search), then hang forever.
+    // With deadlines {dig: 200, read: 150} the seed dig and the spawned read
+    // must both land as timeouts within a couple of seconds — if either lane
+    // ran on TIER_DEADLINE_MS's measured defaults (300s / 180s) this test
+    // would sit at its own 15s timeout instead.
+    const hangAfterSearch = () =>
+      new MockLanguageModelV4({
+        doGenerate: async ({ prompt }) => {
+          const turn = invTurnOf(prompt)
+          if (turn === 0) return reply(call("s1", "search", { queries: ["fraud scoring"], why: "orient" }), false)
+          return new Promise(() => {})
+        },
+      })
+    const lead = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = leadTurnOf(prompt)
+        if (turn === 1)
+          return reply(
+            [
+              ...call("1", "spawn", { missions: [mission("m1", 90, "read")], why: "one read lane" }),
+              ...call("2", "next", { after: { landings: 2 }, why: "wait out both walls" }),
+            ],
+            false,
+          )
+        // Restated on the turn after the gate's one refusal, same words.
+        return reply(call("f1", "finish", { reason: "walls held", summary: "s", unresolved: [], why: "d" }), false)
+      },
+    })
+
+    const run = await runSwarm(
+      mkOpts({
+        lead,
+        tiers: { dig: hangAfterSearch(), read: hangAfterSearch() },
+        over: { deadlines: { dig: 200, read: 150 } },
+      }),
+    )
+
+    expect(run.ending.reason).toBe("lead-finished")
+    const byKey = new Map(run.landings.map((l) => [l.mission.dedupeKey, l]))
+    expect(byKey.get("orient:anchor.com")!.digest.status).toBe("timeout")
+    expect(byKey.get("m1")!.digest.status).toBe("timeout")
+    for (const l of run.landings) expect(l.atSec).toBeLessThan(10)
+    expect(run.seconds).toBeLessThan(10)
+    expectEndingShape(run.ending, run.ledger)
+  }, 15_000)
+
+  it("a 600s wall stays relative: no T-45s warning fires in a fast run, and the configured wall reaches the scorecard", async () => {
+    const logs: string[] = []
+    const turns: Record<number, string> = {}
+    const lead = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = leadTurnOf(prompt)
+        turns[turn] = JSON.stringify(prompt.filter((m) => m.role === "user").at(-1)?.content ?? "")
+        return reply(call("f1", "finish", { reason: "quick", summary: "s", unresolved: [], why: "d" }), false)
+      },
+    })
+
+    const run = await runSwarm(mkOpts({ lead, logs, over: { wallClockMs: 600_000 } }))
+
+    expect(run.ending.reason).toBe("lead-finished")
+    // The warning deadline is t0 + wallMs - 45s: at 600s nothing fires in a
+    // sub-second run. (The 45.1s-wall gate test pins the firing side.)
+    expect(logs.some((l) => l.includes("45 seconds left"))).toBe(false)
+    expect(turns[1]!).not.toContain("call finish")
+    // The scorecard's wall sentence carries the configured figure, not a default.
+    expect(turns[1]!).toMatch(/\ds of the 600s wall elapsed/)
+  })
+})
+
 // ── money ───────────────────────────────────────────────────────────────────
 
 describe("runSwarm: the ledger stays honest", () => {

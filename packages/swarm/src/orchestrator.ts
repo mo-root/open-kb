@@ -29,6 +29,7 @@ import { newRunControl, type FinishState, type RunControl } from "./tools-contro
 import type { SearchTrace } from "./tools-free.js"
 import {
   LEAD_TURN_CAP,
+  TIER_DEADLINE_MS,
   runInvestigator,
   runLead,
   type AgentHooks,
@@ -150,6 +151,12 @@ export interface SwarmOptions {
   graceMs?: number
   stillbornWindowMs?: number
   /**
+   * Per-tier investigator deadlines (ms), merged over TIER_DEADLINE_MS's
+   * measured defaults (60s peek / 180s read / 300s dig — the citations live
+   * on the record itself). The tier walls are config, not law.
+   */
+  deadlines?: Partial<Record<MissionTier, number>>
+  /**
    * The directory-shape gate's N (outbound hosts before a front page reads as
    * a document). DEFAULT NULL: calibration found no separation between vendor
    * and directory front pages on the measured sample, so the rule ships off
@@ -234,6 +241,8 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
   const wallMs = opts.wallClockMs ?? DEFAULT_WALL_MS
   const graceMs = opts.graceMs ?? DEFAULT_GRACE_MS
   const stillbornMs = opts.stillbornWindowMs ?? DEFAULT_STILLBORN_MS
+  /** Each tier's wall, caller-tuned over the measured defaults. */
+  const tierDeadlineMs: Record<MissionTier, number> = { ...TIER_DEADLINE_MS, ...opts.deadlines }
 
   const anchor = registrableHost(opts.domain) || opts.domain
   const ledger = new Ledger(ceilingUsd)
@@ -551,6 +560,7 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
       coinages,
       models: { peek: opts.models.peek, read: opts.models.read, dig: opts.models.dig },
       pricing: { peek: opts.pricing.peek, read: opts.pricing.read, dig: opts.pricing.dig },
+      deadlineMs: tierDeadlineMs[mission.tier],
     }
     const p: Promise<Wake> = runInvestigator(mission, deps)
       .catch(

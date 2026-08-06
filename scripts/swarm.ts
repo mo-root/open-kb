@@ -8,7 +8,9 @@
  * Usage:  set -a && . ./.env && set +a && npx tsx scripts/swarm.ts brightdata.com [ceilingUsd]
  *
  * Ceiling defaults to $1.50 — the design's reference budget, split at t=0
- * into the finish reserve and the work pool by the ledger itself.
+ * into the finish reserve and the work pool by the ledger itself. The wall
+ * defaults to 600s, overridable via OPENKB_SWARM_WALL (ms) — reasons at the
+ * constant below.
  *
  * Models come from OPENKB_MODEL-style envs, one per tier, ids as OpenRouter
  * spells them. The agents themselves never see these names — tiers are the
@@ -45,6 +47,20 @@ Object.assign(globalThis, {
 
 const domain = process.argv[2] ?? "resend.com"
 const ceilingUsd = process.argv[3] !== undefined ? Number(process.argv[3]) : 1.5
+
+/**
+ * The wall: 600s default, overridable via OPENKB_SWARM_WALL (milliseconds).
+ * The library default is still 300s; this CLI overrides it because the live
+ * runs measured that wall as half a map: 300s with the old 45/90/150s tier
+ * deadlines produced runs/swarm-brightdata-com-202608052348.json — 8 nodes at
+ * 288s with $3.55 of $5.00 unspent — and 4 of the 5 read missions across both
+ * live runs (that file and runs/swarm-resend-com-202608052353.json) died
+ * `timeout` at their deadline. Measured investigator turns run 2-20s of model
+ * latency with 25-40s SERP waves inside them; the measured tier deadlines
+ * (60/180/300s) need a wall that can hold a dig plus the lead's own closing.
+ */
+const wallRaw = Number(process.env.OPENKB_SWARM_WALL ?? 600_000)
+const wallClockMs = Number.isFinite(wallRaw) && wallRaw > 0 ? wallRaw : 600_000
 
 const LEAD = process.env.OPENKB_SWARM_LEAD_MODEL ?? "google/gemini-3-flash-preview"
 const PEEK = process.env.OPENKB_SWARM_PEEK_MODEL ?? "google/gemini-3.1-flash-lite"
@@ -85,6 +101,7 @@ const spanPump = (async () => {
 const run = await runSwarm({
   domain,
   ceilingUsd,
+  wallClockMs,
   skill,
   search: brightDataSearch(creds),
   fetch: brightDataFetch(creds),

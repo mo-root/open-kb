@@ -151,7 +151,11 @@ export class Ledger {
    * rather than the drawn total because the harness at a tool boundary holds
    * the authoritative number, and an abort decision should never trust the
    * lagging copy. Everything already written stands; aborting is the caller's
-   * act.
+   * act. Advisory at the boundary, by construction: the caller can only hand
+   * over spend it has already paid, so this stops the NEXT call, never the
+   * increment that crossed — measured 2026-08-05, one read mission closed at
+   * 1.9x its allowance ($0.189 on $0.10) because the boundary before its
+   * final turn read $0.145 and that turn alone cost $0.045.
    */
   overrunAbort(claimId: string, spentSoFarUsd: number): boolean {
     const claim = this.#claims.get(claimId)

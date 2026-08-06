@@ -75,11 +75,22 @@ export const LEAD_TURN_CAP = 24
 /** The same detector for an investigator, behind its wall clock and allowance. */
 export const INVESTIGATOR_TURN_CAP = 24
 
-/** Hard wall per tier, from the design: 45s peek / 90s read / 150s dig. */
+/**
+ * Hard wall per tier — config with measured defaults, no longer the design's
+ * 45/90/150s. The design's numbers priced ~2s model turns; measured
+ * investigator turns run 2-20s of model latency with 25-40s SERP waves inside
+ * them, and a read mission needs a search, a fetch and 2-4 write turns. At
+ * 90s the wall killed 2 of 3 reads in runs/swarm-brightdata-com-202608052348.json
+ * (both `timeout` at launch+90s, ~1 node each) and 2 of 2 reads in
+ * runs/swarm-resend-com-202608052353.json (both `timeout` at 131.75s, 0 nodes).
+ * Override per run via SwarmOptions.deadlines; the orchestrator resolves each
+ * mission's figure into InvestigatorDeps.deadlineMs, and this record is the
+ * fallback when neither speaks.
+ */
 export const TIER_DEADLINE_MS: Record<MissionTier, number> = {
-  peek: 45_000,
-  read: 90_000,
-  dig: 150_000,
+  peek: 60_000,
+  read: 180_000,
+  dig: 300_000,
 }
 
 /** A digest is a note to the lead, not a deliverable. Enforced by truncation. */
@@ -168,7 +179,9 @@ export interface InvestigatorDeps extends SwarmAgentDeps {
   /** Tier -> model. The prompt only ever says the tier word. */
   models: Record<MissionTier, LanguageModel>
   pricing: Record<MissionTier, ModelPricing>
-  /** Test override; live runs take the tier's wall from TIER_DEADLINE_MS. */
+  /** This mission's resolved wall. The orchestrator supplies it from
+   *  SwarmOptions.deadlines merged over TIER_DEADLINE_MS; absent, the tier's
+   *  measured default applies. Also the single-mission override in tests. */
   deadlineMs?: number
 }
 
@@ -903,6 +916,19 @@ export async function runInvestigator(mission: Mission, deps: InvestigatorDeps):
       // The tool boundary: overrun aborts, 80% warns once, two consecutive
       // paid refusals say the allowance is gone — all in-band, as the skill
       // teaches the model to expect.
+      //
+      // The 1.5x bound is advisory-at-boundary BY CONSTRUCTION: a turn's cost
+      // — the model call's own usage, and any paid batch its tools drew — is
+      // only knowable after the turn lands, so this check stops the NEXT
+      // turn, never the increment that crossed. Measured, not hypothesized:
+      // in runs/swarm-brightdata-com-202608052348.json the
+      // enterprise_competitors read stood at $0.1449 of its $0.10 allowance
+      // after turn 8 — under the $0.15 bound, so the check passed — and turn
+      // 9's model call alone cost $0.0446 (the transcript grows every turn),
+      // landing the mission at $0.1894, 1.9x, the moment this line first saw
+      // it. Every dollar was model spend drawn at the line above; the same
+      // post-hoc shape holds for a paid wave, whose claimRoom gate refuses
+      // only once remaining hits $0. Worst case = bound + one full turn.
       if (deps.ledger.overrunAbort(deps.claimId, spentSoFar())) {
         status = "spent"
         break
