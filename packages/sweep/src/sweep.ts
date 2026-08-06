@@ -698,8 +698,13 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
      * "minimal" as "reason a little", which measured at 471 hidden tokens
      * eating the whole answer budget: 11.1s and a truncated reply against
      * 4.9s clean with reasoning off. `none` must mean none where it can. */
+    /* DeepSeek gets reasoning off at EVERY level, not only classify: the
+     * probe showed think:"low" understand and assess calls stalling the same
+     * way (budget eaten in secret, empty answer, retry). This pipeline's
+     * thinking lives in the doctrine text, not in model rumination — a family
+     * that honours the off switch runs it with the switch off. */
     const reasoningFor = (think: string | undefined): { enabled: false } | { effort: string } =>
-      modelId.startsWith("deepseek/") && (think === "none" || think === undefined)
+      modelId.startsWith("deepseek/")
         ? { enabled: false }
         : { effort: think === "none" ? "minimal" : (think ?? "low") }
 
