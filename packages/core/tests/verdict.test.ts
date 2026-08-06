@@ -22,6 +22,16 @@ describe("outboundHosts", () => {
   it("counts protocol-relative links", () => {
     expect(outboundHosts(`<a href="//b.com/x">`, "https://self.com/")).toEqual(["b.com"])
   })
+  it("stops the host at a query string when no path precedes it", () => {
+    // The shipped bug: bestscrapingtools.com links vendors as
+    // https://scrapingdog.com?ref=bestscrapingtools.com — no slash before the
+    // `?`. The capture must yield the real host, not "com?ref=…" junk.
+    const html = `<a href="https://scrapingdog.com?ref=bestscrapingtools.com">Scrapingdog</a>`
+    expect(outboundHosts(html, "https://bestscrapingtools.com/")).toEqual(["scrapingdog.com"])
+  })
+  it("stops the host at a fragment when no path precedes it", () => {
+    expect(outboundHosts(`<a href="https://a.com#pricing">`, "https://self.com/")).toEqual(["a.com"])
+  })
 })
 
 describe("admit", () => {

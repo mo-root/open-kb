@@ -37,7 +37,7 @@ export function outboundHosts(html: string, pageUrl: string): string[] {
   let self = ""
   try { self = registrableHost(new URL(pageUrl).hostname) || "" } catch { /* unparseable: no self to exclude */ }
   const hosts = new Set<string>()
-  for (const m of html.matchAll(/href=["'](?:https?:)?\/\/([^/"'\s:]+)/gi)) {
+  for (const m of html.matchAll(/href=["'](?:https?:)?\/\/([^/"'\s:?#]+)/gi)) {
     const h = registrableHost(m[1]!)
     if (h && h !== self) hosts.add(h)
   }
