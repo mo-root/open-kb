@@ -1,4 +1,15 @@
 export { canonicalUrl, registrableHost } from "./url.js"
+export {
+  diffMaps,
+  driftSentences,
+  entityKey,
+  type DriftEntityRow,
+  type DriftEdgeRow,
+  type DriftMap,
+  type DriftField,
+  type FieldChange,
+  type MapDrift,
+} from "./drift.js"
 export { outboundHosts, admit, type Claim, type JudgedPage, type VerdictCtx, type Admission } from "./verdict.js"
 export { answerKeyRecall, namesHost, type RecallProbe, type RecallReport } from "./coverage.js"
 export { descriptionGrounding, type Grounding } from "./grounding.js"

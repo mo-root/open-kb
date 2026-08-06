@@ -15,6 +15,7 @@
   "scripts": {
     "test": "vitest run",
     "check": "node scripts/check-core-purity.mjs && tsc -b && pnpm --filter @open-kb/web exec tsc --noEmit && tsc -p packages/core/tsconfig.tests.json && tsc -p packages/sweep/tsconfig.tests.json && tsc -p packages/swarm/tsconfig.tests.json",
+    "diff": "tsx scripts/diff-runs.ts",
     "sweep": "tsx scripts/sweep.ts",
     "swarm": "tsx scripts/swarm.ts",
     "overnight": "tsx scripts/overnight.ts",
