@@ -21,3 +21,18 @@ export {
   type DrawOutcome,
 } from "./ledger.js"
 export { BreakerTable, type BreakerState, type StrikeCount } from "./breaker.js"
+export {
+  computeScorecard,
+  scorecardSentences,
+  scorecardObjections,
+  fraction,
+  SCORECARD_DEFAULTS,
+  type Fraction,
+  type FamilyRow,
+  type FamilyStatus,
+  type ScorecardNode,
+  type ScorecardInput,
+  type Scorecard,
+  type ScorecardConfig,
+  type YieldWindow,
+} from "./scorecard.js"
