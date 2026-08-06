@@ -645,7 +645,7 @@ async function oneTurn(o: {
     // "minimal" — 9-11s a call vs 4.9s off). Gemini refuses `enabled: false`,
     // so it gets no override and keeps its own floor.
     ...((typeof o.model === "string" ? o.model : (o.model as { modelId?: string }).modelId ?? "").startsWith("deepseek/")
-      ? { providerOptions: { openrouter: { reasoning: { enabled: false }, provider: { sort: "throughput" } } } }
+      ? { providerOptions: { openrouter: { reasoning: { enabled: false }, provider: { order: ["parasail", "novita", "siliconflow"], allow_fallbacks: true } } } }
       : {}),
   })
   const wall = o.signal ? abortRejection(o.signal) : null
@@ -1144,7 +1144,7 @@ export function makeHarvestClassify(deps: HarvestClassifyDeps): HarvestClassify 
         // labelling call, and DeepSeek left to default thinks in secret
         // (measured 314 hidden tokens, 9.2s a call against 4.9s off).
         ...((typeof deps.model === "string" ? deps.model : (deps.model as { modelId?: string }).modelId ?? "").startsWith("deepseek/")
-          ? { providerOptions: { openrouter: { reasoning: { enabled: false }, provider: { sort: "throughput" } } } }
+          ? { providerOptions: { openrouter: { reasoning: { enabled: false }, provider: { order: ["parasail", "novita", "siliconflow"], allow_fallbacks: true } } } }
           : {}),
       })
       const tokensIn = out.usage?.inputTokens ?? 0

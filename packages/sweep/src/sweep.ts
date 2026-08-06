@@ -714,7 +714,12 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
      * where it was measured to matter. */
     const openrouterOpts = (think: string | undefined) => ({
       reasoning: reasoningFor(think),
-      ...(modelId.startsWith("deepseek/") ? { provider: { sort: "throughput" } } : {}),
+      // Measured spread across DeepSeek's hosts: 1.3s on Parasail to 6.3s on
+      // the default pick, same call. Preference order with fallbacks open —
+      // a preferred host going down degrades to the next, never to a failure.
+      ...(modelId.startsWith("deepseek/")
+        ? { provider: { order: ["parasail", "novita", "siliconflow"], allow_fallbacks: true } }
+        : {}),
     })
 
     const attempt = async (maxOut: number, think: string | undefined) =>
