@@ -13,6 +13,7 @@ export {
 export { outboundHosts, admit, type Claim, type JudgedPage, type VerdictCtx, type Admission } from "./verdict.js"
 export { answerKeyRecall, namesHost, type RecallProbe, type RecallReport } from "./coverage.js"
 export { descriptionGrounding, type Grounding } from "./grounding.js"
+export { judgeHosts, type HostCandidate, type Judged, type JudgeDeps, type KernelStats } from "./judge.js"
 export * from "./sniff.js"
 export * from "./evidence.js"
 export * from "./spans.js"
