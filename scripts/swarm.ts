@@ -5,17 +5,28 @@
  * models and a console, nothing else — the sweep CLI's voice, pointed at the
  * swarm. What you see here is what any future web route will drive.
  *
- * Usage:  set -a && . ./.env && set +a && npx tsx scripts/swarm.ts brightdata.com [ceilingUsd]
+ * Usage:  set -a && . ./.env && set +a && npx tsx scripts/swarm.ts brightdata.com [ceilingUsd] [--from-sweep runs/sweep-….json]
  *
  * Ceiling defaults to $1.50 — the design's reference budget, split at t=0
  * into the finish reserve and the work pool by the ledger itself. The wall
  * defaults to 600s, overridable via OPENKB_SWARM_WALL (ms) — reasons at the
  * constant below.
  *
+ * --from-sweep <path>: the sweep→swarm handoff. Loads a prior sweep run of
+ * the SAME domain (validated; a different market is refused by name) and
+ * seeds the board from it when orientation lands: peek missions that verify
+ * the sweep's head on the vendors' own pages, read missions that chase what
+ * the sweep left unknown, and a recall-gap mission when the sweep's own
+ * probes say the map under-reached. The sweep run is context — the mission
+ * brief — never imported claims: the swarm's map starts empty and re-proves
+ * everything it keeps.
+ *
  * The family floor (code-seeded family missions pushed when orientation
  * lands) defaults ON at 4; OPENKB_SWARM_FAMILIES sizes or disables it:
  * "0" / "off" / "false" disables, "1".."5" sizes, anything else keeps the
- * library default.
+ * library default. Under --from-sweep the unset default flips OFF — the
+ * sweep already asked the family questions; set OPENKB_SWARM_FAMILIES to
+ * force it back on.
  *
  * Models come from OPENKB_MODEL-style envs, one per tier, ids as OpenRouter
  * spells them. The agents themselves never see these names — tiers are the
@@ -40,7 +51,13 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { openrouter } from "@openrouter/ai-sdk-provider"
 import { SpanStream, type Span } from "../packages/core/src/index.js"
 import { brightDataFetch, brightDataSearch } from "../packages/providers/src/index.js"
-import { runSwarm, serializeSwarmRun } from "../packages/swarm/src/index.js"
+import {
+  fromSweepArgv,
+  runSwarm,
+  serializeSwarmRun,
+  validateSweepRun,
+  type SweepRunLike,
+} from "../packages/swarm/src/index.js"
 
 // The AI SDK's warning hook, installed as a function: real SDK warnings still
 // print (prefixed, once per event), while the OpenRouter provider's per-turn
@@ -53,8 +70,34 @@ Object.assign(globalThis, {
   },
 })
 
-const domain = process.argv[2] ?? "resend.com"
-const ceilingUsd = process.argv[3] !== undefined ? Number(process.argv[3]) : 1.5
+const argv = fromSweepArgv(process.argv.slice(2))
+if (argv.problem) {
+  console.error(argv.problem)
+  process.exit(1)
+}
+const domain = argv.rest[0] ?? "resend.com"
+const ceilingUsd = argv.rest[1] !== undefined ? Number(argv.rest[1]) : 1.5
+
+/** The handoff's run file, loaded and validated here — the library never
+ *  reads disk. A file that is not a sweep run of THIS domain is refused
+ *  before any money moves. */
+let fromSweep: SweepRunLike | undefined
+if (argv.path) {
+  let raw: unknown
+  try {
+    raw = JSON.parse(readFileSync(argv.path, "utf8"))
+  } catch (e) {
+    console.error(`could not read ${argv.path}: ${(e as Error).message}`)
+    process.exit(1)
+  }
+  const v = validateSweepRun(raw, domain)
+  if (!v.ok) {
+    console.error(`--from-sweep refused: ${v.reason}`)
+    process.exit(1)
+  }
+  fromSweep = v.run
+  console.log(`seeding from sweep ${argv.path}: ${fromSweep.entities.length} entities in the brief`)
+}
 
 /**
  * The wall: 600s default, overridable via OPENKB_SWARM_WALL (milliseconds).
@@ -128,6 +171,7 @@ const run = await runSwarm({
   ceilingUsd,
   wallClockMs,
   ...(familyFloor === undefined ? {} : { familyFloor }),
+  ...(fromSweep === undefined ? {} : { fromSweep }),
   skill,
   search: brightDataSearch(creds),
   fetch: brightDataFetch(creds),

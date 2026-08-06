@@ -128,6 +128,8 @@ export {
 
 export {
   sweepSeedMissions,
+  fromSweepArgv,
+  validateSweepRun,
   DEFAULT_VERIFY_COUNT,
   DEFAULT_RECALL_GAP_THRESHOLD,
   GAP_CLUSTER_CAP,

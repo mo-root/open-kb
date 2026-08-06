@@ -137,6 +137,81 @@ interface Weighted {
   seenIn: number
 }
 
+// ── the CLI seam ─────────────────────────────────────────────────────────────
+// Pure argv/JSON logic lives here so it is testable; the script keeps the I/O
+// (readFileSync, process.exit) and nothing else — the sweep CLI's division of
+// labor, kept.
+
+/**
+ * Pull `--from-sweep <path>` (or `--from-sweep=<path>`) out of an argv,
+ * leaving the positionals in order. A flag without a path is a problem in
+ * words, never a silent nothing.
+ */
+export function fromSweepArgv(argv: readonly string[]): {
+  rest: string[]
+  path: string | null
+  problem: string | null
+} {
+  const NEEDS_PATH = "--from-sweep needs a path to a sweep run JSON"
+  const rest: string[] = []
+  let path: string | null = null
+  let problem: string | null = null
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!
+    if (a === "--from-sweep") {
+      const v = argv[i + 1]
+      if (v === undefined || v.startsWith("--")) problem = NEEDS_PATH
+      else {
+        path = v
+        i += 1
+      }
+    } else if (a.startsWith("--from-sweep=")) {
+      const v = a.slice("--from-sweep=".length)
+      if (v === "") problem = NEEDS_PATH
+      else path = v
+    } else {
+      rest.push(a)
+    }
+  }
+  return { rest, path, problem }
+}
+
+/**
+ * Is this parsed JSON a sweep run the handoff can seed from, for THIS domain?
+ * Shape first (anchor, non-empty entities with domain+relation), then the one
+ * semantic gate: the sweep must have mapped the same market — seeding a
+ * resend swarm from a stripe sweep is a mistake, refused by name.
+ */
+export function validateSweepRun(
+  raw: unknown,
+  domain: string,
+): { ok: true; run: SweepRunLike } | { ok: false; reason: string } {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return { ok: false, reason: "not a run object — the file did not parse to a sweep run" }
+  }
+  const r = raw as Record<string, unknown>
+  if (typeof r.anchor !== "string" || r.anchor.trim() === "") {
+    return { ok: false, reason: "no anchor field — is this a sweep run file?" }
+  }
+  if (!Array.isArray(r.entities) || r.entities.length === 0) {
+    return { ok: false, reason: "no entities — the sweep run has nothing to hand off" }
+  }
+  for (const [i, e] of (r.entities as Array<Record<string, unknown>>).entries()) {
+    if (typeof e?.domain !== "string" || typeof e?.relation !== "string") {
+      return { ok: false, reason: `entity ${i} has no domain/relation — not a sweep run shape` }
+    }
+  }
+  const swept = registrableHost(r.anchor)
+  const aimed = registrableHost(domain)
+  if (swept !== aimed) {
+    return {
+      ok: false,
+      reason: `the sweep mapped ${swept}; this swarm is aimed at ${aimed} — a handoff verifies the same market, not a different one`,
+    }
+  }
+  return { ok: true, run: raw as unknown as SweepRunLike }
+}
+
 /**
  * Mint the handoff's missions from a sweep run. Deterministic: find-weight
  * (how many of the sweep's query lanes found the host) ranks first, seenIn

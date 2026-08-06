@@ -6,11 +6,13 @@ import type { FetchPort, Ledger, SearchPort } from "@open-kb/core"
 import {
   DEFAULT_RECALL_GAP_THRESHOLD,
   DEFAULT_VERIFY_COUNT,
+  fromSweepArgv,
   GAP_CLUSTER_CAP,
   GAP_CLUSTER_SIZE,
   RECALL_GAP_NAMES,
   runSwarm,
   sweepSeedMissions,
+  validateSweepRun,
   type SwarmOptions,
   type SweepRunLike,
 } from "../src/index.js"
@@ -446,5 +448,91 @@ describe("runSwarm: fromSweep seeds the board when orientation lands", () => {
     expect(run.ending.reason).toBe("lead-finished")
     expect(run.families.map((f) => f.dedupeKey)).toEqual(["orient:anchor.com"])
     expect(logs.some((l) => l.includes("sweep handoff: the sweep run offered nothing to verify or chase"))).toBe(true)
+  })
+})
+
+// ── the CLI seam: argv and run-file validation ───────────────────────────────
+
+describe("fromSweepArgv: the --from-sweep flag, out of a positional argv", () => {
+  it("pulls the flag and its path, leaving the positionals in order", () => {
+    expect(fromSweepArgv(["brightdata.com", "--from-sweep", "runs/sweep.json", "2.5"])).toEqual({
+      rest: ["brightdata.com", "2.5"],
+      path: "runs/sweep.json",
+      problem: null,
+    })
+    expect(fromSweepArgv(["--from-sweep", "runs/sweep.json", "brightdata.com"])).toEqual({
+      rest: ["brightdata.com"],
+      path: "runs/sweep.json",
+      problem: null,
+    })
+  })
+
+  it("accepts the = spelling", () => {
+    expect(fromSweepArgv(["brightdata.com", "--from-sweep=runs/sweep.json"])).toEqual({
+      rest: ["brightdata.com"],
+      path: "runs/sweep.json",
+      problem: null,
+    })
+  })
+
+  it("no flag means no path and untouched positionals", () => {
+    expect(fromSweepArgv(["brightdata.com", "1.5"])).toEqual({ rest: ["brightdata.com", "1.5"], path: null, problem: null })
+    expect(fromSweepArgv([])).toEqual({ rest: [], path: null, problem: null })
+  })
+
+  it("a flag without a path is a problem in words, not a silent nothing", () => {
+    expect(fromSweepArgv(["brightdata.com", "--from-sweep"]).problem).toBe(
+      "--from-sweep needs a path to a sweep run JSON",
+    )
+    expect(fromSweepArgv(["--from-sweep", "--something", "brightdata.com"]).problem).toBe(
+      "--from-sweep needs a path to a sweep run JSON",
+    )
+    expect(fromSweepArgv(["--from-sweep=", "brightdata.com"]).problem).toBe(
+      "--from-sweep needs a path to a sweep run JSON",
+    )
+  })
+})
+
+describe("validateSweepRun: the run file must be a sweep run of the same market", () => {
+  const good = (): unknown => ({
+    anchor: "brightdata.com",
+    entities: [{ name: "r", domain: "rival.com", kind: "company", relation: "competitor", why: "same job" }],
+  })
+
+  it("accepts a sweep-shaped run of the same domain, www and subdomain spellings included", () => {
+    const v = validateSweepRun(good(), "brightdata.com")
+    expect(v.ok).toBe(true)
+    if (v.ok) expect(v.run.anchor).toBe("brightdata.com")
+    expect(validateSweepRun(good(), "www.brightdata.com").ok).toBe(true)
+  })
+
+  it("refuses a different market by name — a handoff verifies the same market", () => {
+    const v = validateSweepRun(good(), "resend.com")
+    expect(v).toEqual({
+      ok: false,
+      reason: "the sweep mapped brightdata.com; this swarm is aimed at resend.com — a handoff verifies the same market, not a different one",
+    })
+  })
+
+  it("refuses non-run shapes with the missing piece named", () => {
+    expect(validateSweepRun(null, "x.com")).toMatchObject({ ok: false, reason: expect.stringContaining("not a run object") })
+    expect(validateSweepRun([], "x.com")).toMatchObject({ ok: false, reason: expect.stringContaining("not a run object") })
+    expect(validateSweepRun({ entities: [] }, "x.com")).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("no anchor"),
+    })
+    expect(validateSweepRun({ anchor: "x.com", entities: [] }, "x.com")).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("no entities"),
+    })
+    expect(validateSweepRun({ anchor: "x.com", entities: [{ name: "a" }] }, "x.com")).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("entity 0"),
+    })
+  })
+
+  it("the committed brightdata fixture validates as-is", () => {
+    const v = validateSweepRun(JSON.parse(readFileSync(FIXTURE, "utf8")), "brightdata.com")
+    expect(v.ok).toBe(true)
   })
 })
