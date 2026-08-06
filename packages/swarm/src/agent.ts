@@ -640,6 +640,13 @@ async function oneTurn(o: {
     tools: o.tools,
     stopWhen: stepCountIs(1),
     abortSignal: o.signal,
+    // DeepSeek honours the reasoning off switch and, left to default, spends
+    // hundreds of hidden tokens per turn (measured: 314 by default, 471 at
+    // "minimal" — 9-11s a call vs 4.9s off). Gemini refuses `enabled: false`,
+    // so it gets no override and keeps its own floor.
+    ...((typeof o.model === "string" ? o.model : (o.model as { modelId?: string }).modelId ?? "").startsWith("deepseek/")
+      ? { providerOptions: { openrouter: { reasoning: { enabled: false } } } }
+      : {}),
   })
   const wall = o.signal ? abortRejection(o.signal) : null
   try {

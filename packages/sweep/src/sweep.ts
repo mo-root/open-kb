@@ -692,18 +692,28 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
      * cause from both sides, and it happens once: a second failure is a real
      * one and should surface.
      */
-    const attempt = async (maxOut: number, effort: string) =>
+    /* Reasoning is model-family business. Gemini refuses `enabled: false`
+     * ("Reasoning is mandatory for this endpoint"), so `none` maps to the
+     * minimal effort floor. DeepSeek honours the off switch — and treats
+     * "minimal" as "reason a little", which measured at 471 hidden tokens
+     * eating the whole answer budget: 11.1s and a truncated reply against
+     * 4.9s clean with reasoning off. `none` must mean none where it can. */
+    const reasoningFor = (think: string | undefined): { enabled: false } | { effort: string } =>
+      modelId.startsWith("deepseek/") && (think === "none" || think === undefined)
+        ? { enabled: false }
+        : { effort: think === "none" ? "minimal" : (think ?? "low") }
+
+    const attempt = async (maxOut: number, think: string | undefined) =>
       generateObject({
         model,
         schema,
         prompt,
         abortSignal: signal,
         maxOutputTokens: maxOut,
-        providerOptions: { openrouter: { reasoning: { effort } } },
+        providerOptions: { openrouter: { reasoning: reasoningFor(think) } },
       })
 
     const ceiling = Math.max(6_000, opts.maxOutputTokens ?? 8_192)
-    const effort = opts.think === "none" ? "minimal" : (opts.think ?? "low")
 
     try {
       const out = await generateObject({
@@ -719,12 +729,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         // credit on every call.
         maxOutputTokens: Math.max(6_000, opts.maxOutputTokens ?? 8_192),
         providerOptions: {
-          openrouter: {
-            // `enabled: false` is refused by some models: "Reasoning is
-            // mandatory for this endpoint and cannot be disabled." Turning it
-            // down is the most that is on offer, so `none` means the floor.
-            reasoning: { effort: opts.think === "none" ? "minimal" : (opts.think ?? "low") },
-          },
+          openrouter: { reasoning: reasoningFor(opts.think) },
         },
       })
       const inTok = out.usage?.inputTokens ?? 0
@@ -755,7 +760,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       if (empty) {
         say(agent, `  ${label}: the model returned nothing, retrying with more room`)
         try {
-          const out = await attempt(ceiling * 2, "minimal")
+          const out = await attempt(ceiling * 2, opts.think)
           const inTok = out.usage?.inputTokens ?? 0
           const outTok = out.usage?.outputTokens ?? 0
           tokIn += inTok
