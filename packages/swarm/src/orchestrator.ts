@@ -792,7 +792,12 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
       elapsedMs: Date.now() - t0,
       wallMs,
       yieldHistory: landings.map((l) => l.digest.added.nodes),
-      recall: answerKeyRecall(recallProbePool(evidence, anchor), { anchor: map.anchor, mapHosts }),
+      recall: (() => {
+        // Pool and alias set from ONE call, so the hosts excluded from the
+        // pool and the hosts subtracted from vendor lists cannot drift apart.
+        const pool = recallProbePool(evidence, anchor)
+        return answerKeyRecall(pool.pages, { anchor: map.anchor, mapHosts, anchorAliases: pool.anchorAliases })
+      })(),
     }
   }
 

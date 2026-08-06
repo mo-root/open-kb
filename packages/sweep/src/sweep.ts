@@ -36,6 +36,7 @@ import {
   companyHand,
   banned,
   answerKeyRecall,
+  anchorAliasSet,
   registrableHost,
   type PageFacts,
   type SearchResult,
@@ -786,6 +787,12 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   say("understand", `reading ${anchor}`)
   const pages: string[] = []
   const readPages: string[] = []
+  // The anchor's own pages, raw bytes kept: the anchor's half of the alias
+  // reciprocity check (alias.ts) — its hreflang/canonical assertions live in
+  // markup that `condense` strips from `pages`. The candidate half arrives
+  // later for free, in `judged.probePages` (a reciprocating alias page names
+  // the anchor by its backlink, so the rank probe gate keeps it).
+  const anchorPages: Array<{ url: string; html: string }> = []
 
   const read = async (url: string, mode: "direct" | "unlocked") => {
     const raw = await fetcher.get(url, mode)
@@ -820,6 +827,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       const kept = condense(s.text)
       pages.push(`--- ${url} ---\n${kept}`)
       readPages.push(url)
+      anchorPages.push({ url, html: raw.body })
       say(
         "understand",
         `  ${url} -> ${s.text.length} chars${kept.length < s.text.length ? ` (condensed to ${kept.length})` : ""}`,
@@ -1988,7 +1996,18 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       .filter((e) => e.kind === "company" || e.kind === "product")
       .map((e) => registrableHost(e.domain || e.name)),
   )
-  const recall = answerKeyRecall(judged.probePages, { anchor, mapHosts })
+  // The anchor's structural alias set, both halves from pages already paid
+  // for: the anchor's assertions out of `anchorPages` (understand kept the
+  // raw bytes), the reciprocation out of `judged.probePages` (an alias's
+  // front page names the anchor, so rung 0 kept it as a probe candidate).
+  // Reciprocity or nothing — one-sided is forgeable. The scorer then drops
+  // alias-hosted probes and alias vendors in one place; the rise this causes
+  // against un-aliased runs is a bug fix in the instrument, not a coverage
+  // improvement, and `recall.aliasExclusion.note` ships that sentence.
+  // Map identity is untouched: an alias stays its own entity row.
+  const anchorAliases = anchorAliasSet([...anchorPages, ...judged.probePages], anchor)
+  const recall = answerKeyRecall(judged.probePages, { anchor, mapHosts, anchorAliases })
+  if (recall.aliasExclusion) say("write", `recall: ${recall.aliasExclusion.note}`)
 
   const report: Record<string, unknown> = {
     domain: anchor,

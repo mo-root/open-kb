@@ -1,5 +1,6 @@
 import {
   EvidenceStore,
+  anchorAliasSet,
   canonicalUrl,
   registrableHost,
   type Evidence,
@@ -253,20 +254,35 @@ export class RunEvidence {
 
 /**
  * The recall probe pool: every readable page this run bought, minus the
- * anchor's own — they name the anchor by definition and would let the map
- * grade itself against the anchor's marketing. Same rung-0 rule as the
- * sweep's probe gate (rank.ts); registrable host, not hostname, so www. and
- * subdomains fold in with it. ONE function shared by serialize.ts and the
- * orchestrator's in-run scorecard, so the report's recall and the number the
- * lead saw mid-run cannot drift apart.
+ * anchor's own AND its structural aliases — they name the anchor by
+ * definition and would let the map grade itself against the anchor's
+ * marketing, in translation included. The alias set is computed from the
+ * pages already in the store (the anchor's own pages are there — hreflang
+ * out of them; a reciprocating alias page was stored when some mission
+ * opened it), never fetched for: nothing extra is ever bought to grade a
+ * map. Same rung-0 rule as the sweep's probe gate (rank.ts); registrable
+ * host, not hostname, so www. and subdomains fold in. ONE function shared
+ * by serialize.ts and the orchestrator's in-run scorecard, so the report's
+ * recall and the number the lead saw mid-run cannot drift apart — and the
+ * alias set rides out beside the pool so answerKeyRecall subtracts the SAME
+ * hosts from every probe's vendor list. The recall rise the exclusion causes
+ * is a bug fix in the instrument, not a coverage improvement; the recall
+ * report says so itself (RecallReport.aliasExclusion).
  */
-export function recallProbePool(evidence: RunEvidence, anchor: string): Array<{ url: string; html: string }> {
-  const anchorKey = registrableHost(anchor)
-  return evidence.pages().filter((p) => {
+export function recallProbePool(
+  evidence: RunEvidence,
+  anchor: string,
+): { pages: Array<{ url: string; html: string }>; anchorAliases: ReadonlySet<string> } {
+  const all = evidence.pages()
+  // Always contains the anchor's registrable key, so one set is both the old
+  // anchor exclusion and the alias exclusion.
+  const anchorAliases = anchorAliasSet(all, anchor)
+  const pages = all.filter((p) => {
     try {
-      return registrableHost(new URL(p.url).hostname) !== anchorKey
+      return !anchorAliases.has(registrableHost(new URL(p.url).hostname))
     } catch {
       return false
     }
   })
+  return { pages, anchorAliases }
 }

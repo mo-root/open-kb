@@ -33,6 +33,15 @@ export interface RecallReport {
   /** Sum(|found|) / Sum(|vendors|) across probes; null when no page qualified. */
   pooled: number | null
   probes: RecallProbe[]
+  /**
+   * Present only when a structural alias set (alias.ts) excluded hosts from
+   * the key: which hosts, and the sentence the report must carry. It rides
+   * INSIDE the recall object so it serializes wherever recall serializes —
+   * both engines ship this object verbatim, and a reader comparing this run's
+   * recall against an older one must see, beside the number, that the rise
+   * is the instrument corrected, not the map improved.
+   */
+  aliasExclusion?: { hosts: string[]; note: string }
 }
 
 /**
@@ -46,19 +55,61 @@ export interface RecallReport {
  */
 export function answerKeyRecall(
   pages: ReadonlyArray<{ url: string; html: string }>,
-  opts: { anchor: string; mapHosts: ReadonlySet<string>; minVendors?: number },
+  opts: {
+    anchor: string
+    mapHosts: ReadonlySet<string>
+    minVendors?: number
+    /**
+     * The anchor's structural alias set (alias.ts `anchorAliasSet`) — hosts
+     * the anchor's own pages and theirs mutually assert as one publisher.
+     * When present, "minus the anchor" becomes "minus the alias set", in both
+     * places the anchor was already subtracted: an alias-hosted page cannot
+     * be a probe (the anchor must not grade itself in translation), and an
+     * alias host cannot be a vendor (the anchor's own foreign property is
+     * not a company the map missed). The recall rise this causes is
+     * MECHANICAL — a bug fix in the instrument, not a coverage improvement —
+     * and the returned `aliasExclusion.note` says so beside the number.
+     */
+    anchorAliases?: ReadonlySet<string>
+  },
 ): RecallReport {
   const minVendors = opts.minVendors ?? 5
   const anchor = registrableHost(opts.anchor)
+  const excluded = new Set([anchor, ...[...(opts.anchorAliases ?? [])].map(registrableHost)])
   const probes: RecallProbe[] = []
   for (const p of pages) {
+    if (opts.anchorAliases) {
+      let probeHost = ""
+      try {
+        probeHost = registrableHost(new URL(p.url).hostname)
+      } catch {
+        /* unparseable probe URL: nothing to exclude by host */
+      }
+      if (probeHost && excluded.has(probeHost)) continue
+    }
     if (!namesHost(p.html, anchor)) continue
-    const vendors = outboundHosts(p.html, p.url).filter((h) => h !== anchor)
+    const vendors = outboundHosts(p.html, p.url).filter((h) => !excluded.has(h))
     if (vendors.length < minVendors) continue
     const found = vendors.filter((v) => opts.mapHosts.has(v))
     probes.push({ url: p.url, vendors, found, recall: vendors.length ? found.length / vendors.length : 0 })
   }
   const total = probes.reduce((n, p) => n + p.vendors.length, 0)
   const hit = probes.reduce((n, p) => n + p.found.length, 0)
-  return { pooled: total ? hit / total : null, probes }
+  const aliasHosts = [...excluded].filter((h) => h !== anchor).sort()
+  return {
+    pooled: total ? hit / total : null,
+    probes,
+    ...(aliasHosts.length
+      ? {
+          aliasExclusion: {
+            hosts: aliasHosts,
+            note:
+              `recall excludes ${aliasHosts.join(", ")}: the run's pages mutually assert ` +
+              `${aliasHosts.length === 1 ? "it" : "them"} and the anchor as one publisher ` +
+              `(reciprocal hreflang or mutual canonical). Any rise against runs without this ` +
+              `exclusion is a bug fix in the instrument, not a coverage improvement.`,
+          },
+        }
+      : {}),
+  }
 }

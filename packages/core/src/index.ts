@@ -12,6 +12,7 @@ export {
 } from "./drift.js"
 export { outboundHosts, admit, type Claim, type JudgedPage, type VerdictCtx, type Admission } from "./verdict.js"
 export { answerKeyRecall, namesHost, type RecallProbe, type RecallReport } from "./coverage.js"
+export { aliasSignals, aliasSets, anchorAliasSet, type AliasSignals } from "./alias.js"
 export { descriptionGrounding, type Grounding } from "./grounding.js"
 export {
   judgeHosts,
