@@ -13,7 +13,15 @@ export {
 export { outboundHosts, admit, type Claim, type JudgedPage, type VerdictCtx, type Admission } from "./verdict.js"
 export { answerKeyRecall, namesHost, type RecallProbe, type RecallReport } from "./coverage.js"
 export { descriptionGrounding, type Grounding } from "./grounding.js"
-export { judgeHosts, type HostCandidate, type Judged, type JudgeDeps, type KernelStats } from "./judge.js"
+export {
+  judgeHosts,
+  JUDGED_KINDS,
+  JUDGED_RELATIONS,
+  type HostCandidate,
+  type Judged,
+  type JudgeDeps,
+  type KernelStats,
+} from "./judge.js"
 export * from "./sniff.js"
 export * from "./evidence.js"
 export * from "./spans.js"
@@ -28,6 +36,9 @@ export { Board, type Mission, type MissionTier, type BoardRow, type BoardOutcome
 export {
   Ledger,
   ALLOWANCES,
+  HARVEST_BASE_USD,
+  HARVEST_PER_HOST_USD,
+  HARVEST_HOST_CAP,
   type ReserveOutcome,
   type SettleOutcome,
   type DrawOutcome,

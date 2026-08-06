@@ -1,15 +1,22 @@
 import {
+  HARVEST_HOST_CAP,
   canonicalUrl,
   isHtml,
+  judgeHosts,
+  registrableHost,
   sniff,
   type BreakerTable,
   type FetchPort,
+  type HostCandidate,
+  type Judged,
+  type KernelStats,
   type Ledger,
   type SearchPort,
   type UnreadableReason,
 } from "@open-kb/core"
 import { RunEvidence, originKey } from "./run-evidence.js"
-import { SLICE, linksOf, type SearchTrace } from "./tools-free.js"
+import { SLICE, linksOf, rememberTool, type EvidenceRef, type RememberCtx, type SearchTrace } from "./tools-free.js"
+import type { MapState } from "./map.js"
 
 /**
  * The two paid tools: search and fetch. Both spend real money through ports,
@@ -391,4 +398,354 @@ export async function fetchTool(ctx: PaidCtx, input: FetchInput): Promise<FetchR
 
   const docs = await Promise.all(ran.map(one))
   return { docs: [...docs, ...overflow], spentUsd, poolLeftUsd: ctx.ledger.spendable() }
+}
+
+// ── harvest ──────────────────────────────────────────────────────────────────
+
+/** Hosts one harvest call carries — the kernel's own cap, one source of truth. */
+export const MAX_HARVEST_HOSTS = HARVEST_HOST_CAP
+
+/**
+ * The classify contract a harvest needs: the same call shape judgeHosts
+ * injects, plus the dollars the call cost so the tool can draw them against
+ * the mission's claim as each host lands. The swarm builds this closure at
+ * wiring time (agent.ts makeHarvestClassify) from the SAME doctrine file the
+ * sweep renders — prompts/agents/classify.md via core's composePrompt — the
+ * prompt is shared doctrine, not sweep code, and packages/swarm never imports
+ * packages/sweep.
+ */
+export type HarvestClassify = (
+  h: HostCandidate,
+  pageText: string,
+  opts?: { signal?: AbortSignal },
+) => Promise<{
+  out: { name: string; kind: string; what: string; relation: string; why: string; spans: string[] }
+  usd: number
+}>
+
+export interface HarvestCtx {
+  fetch: FetchPort
+  evidence: RunEvidence
+  ledger: Ledger
+  /** The mission's claim: every fetch and every classify call draws on it AS
+   *  IT LANDS — per host, never batched to the end — so a harvest that dies
+   *  at host 12 of 40 has drawn 12 hosts' worth and the books stay honest. */
+  claimId: string
+  map: MapState
+  seen: Set<string>
+  /** Who these judgements are written as: the mission dedupeKey. */
+  writer: string
+  aggregatorThreshold?: number | null
+  classify: HarvestClassify
+  /** The run's search traces, when the caller has them: `seenIn` on each
+   *  candidate is computed from how many distinct queries surfaced the host. */
+  searches?: ReadonlyArray<SearchTrace>
+  /** The kernel pool's width; the kernel's own default when unset. Tests pin
+   *  it to 1 for deterministic mid-kill accounting. */
+  concurrency?: number
+  signal?: AbortSignal
+  /** Observe the call's kernel stats, for the run-level harvest tally. */
+  onStats?: (stats: KernelStats, hosts: number) => void
+}
+
+export interface HarvestInput {
+  hosts: string[]
+  why: string
+}
+
+export interface HarvestRow {
+  host: string
+  /** True when the host was judged AND landed on the map through remember. */
+  ok: boolean
+  kind?: string
+  relation?: string
+  settledBy?: "predicate" | "model"
+  /** The judge's or the gate's refusal sentence, when the node wears one. */
+  because?: string
+  /** Why the host did NOT land: a refusal, the mint's sentence, or a verdict
+   *  (noise, none) the map draws no node for. */
+  reason?: string
+}
+
+export interface HarvestReturn {
+  rows: HarvestRow[]
+  /** The kernel's own accounting for this call; null when nothing was judged. */
+  stats: KernelStats | null
+  landed: { nodes: number; merged: number }
+  spentUsd: number
+  poolLeftUsd: number
+}
+
+/**
+ * The judge kernel's vocabulary folded into the map's. The swarm map has no
+ * publisher/directory/unknown KIND — a publisher is a firm whose relation
+ * (`covers`) says the rest, a directory-shaped claim is re-derived by the
+ * admit gate itself (which CAN install kind "directory" — the gate writes
+ * what a writer may not claim), and an unreadable host lands company-shaped
+ * with relation `unknown` plus the reason code carrying the refusal.
+ */
+const SWARM_KIND_OF: Record<string, string> = {
+  company: "company",
+  product: "product",
+  community: "community",
+  publisher: "company",
+  directory: "company",
+  unknown: "company",
+}
+
+/** Mechanical quote length when no verified span exists: enough to prove the
+ *  bytes were read, short enough to stay a receipt. */
+const MECHANICAL_QUOTE = 160
+
+/** A model may hand hostnames wearing schemes, paths or www — normalize to
+ *  the bare host the kernel fetches. Null when nothing host-shaped remains. */
+function cleanHost(raw: string): string | null {
+  let s = raw.trim().toLowerCase()
+  if (!s) return null
+  s = s.replace(/^https?:\/\//, "").split("/")[0]!.split("?")[0]!.split("#")[0]!
+  s = s.replace(/^www\./, "")
+  if (!/^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/.test(s)) return null
+  return s
+}
+
+/**
+ * Buy one bulk judgement: up to MAX_HARVEST_HOSTS hosts, each fetched from
+ * its own front page by the kernel's judgeHosts — predicates settle the
+ * unreadable and aggregator-shaped ones by arithmetic for $0, one model call
+ * judges each residue host — and EVERY judged host lands on the map through
+ * rememberTool's mint+admit seam. No side door into MapState: the quotes are
+ * proven against bytes this tool just recorded, the admit gate re-derives
+ * downgrades, and the writer stamp is the mission's own.
+ *
+ * The load-bearing integration is the port wrapper: core's judgeHosts takes a
+ * bare FetchPort and records nothing, so this tool wraps the mission's port
+ * with one that (a) draws each fetch's real dollars on the claim the moment
+ * they are known and (b) records every response into RunEvidence BEFORE the
+ * verdict — remember cites by URL, and a cite can only succeed against bytes
+ * already in the store.
+ *
+ * Settlement is per host by construction: fetch dollars draw at the wrapper,
+ * classify dollars draw as each call returns, and the moment the claim runs
+ * dry the pool is aborted — hosts already judged stand, the rest come back as
+ * rows saying so. `spendable()` never lies mid-harvest: the mission's whole
+ * allowance was held at spawn, and the settle-at-actuals path returns what
+ * the dead or thrifty harvest did not spend.
+ */
+export async function harvestTool(ctx: HarvestCtx, input: HarvestInput): Promise<HarvestReturn> {
+  const done = (rows: HarvestRow[], stats: KernelStats | null, landed: { nodes: number; merged: number }, spentUsd: number): HarvestReturn => ({
+    rows,
+    stats,
+    landed,
+    spentUsd,
+    poolLeftUsd: ctx.ledger.spendable(),
+  })
+  const refuseAll = (reason: string) =>
+    done(input.hosts.map((host) => ({ host, ok: false, reason })), null, { nodes: 0, merged: 0 }, 0)
+
+  if (input.hosts.length === 0) return done([], null, { nodes: 0, merged: 0 }, 0)
+  if (ctx.signal?.aborted) return refuseAll("the run was cancelled; nothing was judged")
+  const room = claimRoom(ctx.ledger, ctx.claimId)
+  if (!room.ok) return refuseAll(room.reason)
+
+  // ── the roster: normalize, refuse the anchor and duplicates, cap at 40 ────
+  const rows: HarvestRow[] = []
+  const candidates: HostCandidate[] = []
+  const inCall = new Set<string>()
+  const seenInOf = (host: string): number => {
+    let n = 0
+    for (const s of ctx.searches ?? []) {
+      if (s.urls.some((u) => originKey(u) === registrableHost(host))) n += 1
+    }
+    return n
+  }
+  for (const raw of input.hosts) {
+    const host = cleanHost(raw)
+    if (!host) {
+      rows.push({ host: raw, ok: false, reason: `"${raw}" is not a hostname this tool can judge` })
+      continue
+    }
+    if (registrableHost(host) === ctx.map.anchor) {
+      rows.push({ host, ok: false, reason: "that is the anchor — the map exists to explain it; it is already here" })
+      continue
+    }
+    if (inCall.has(host)) {
+      rows.push({ host, ok: false, reason: "already in this call; one judgement per host" })
+      continue
+    }
+    if (candidates.length >= MAX_HARVEST_HOSTS) {
+      rows.push({ host, ok: false, reason: `only ${MAX_HARVEST_HOSTS} hosts fit in one harvest; call harvest again with this one` })
+      continue
+    }
+    inCall.add(host)
+    candidates.push({ host, seenIn: seenInOf(host), intents: [], titles: [], desc: "" })
+  }
+  if (candidates.length === 0) return done(rows, null, { nodes: 0, merged: 0 }, 0)
+
+  // ── the port wrapper: draw at the wire, record before the verdict ─────────
+  let spentUsd = 0
+  const draw = (usd: number) => {
+    if (usd <= 0) return
+    ctx.ledger.draw(ctx.claimId, usd)
+    spentUsd += usd
+  }
+  const pageTextOf = new Map<string, string>()
+  const recordingFetch: FetchPort = {
+    get: async (url, mode, o) => {
+      const raw = await ctx.fetch.get(url, mode, o)
+      draw(raw.usd)
+      const s = sniff(raw)
+      if (s.status === "found") {
+        ctx.evidence.record({ url, text: s.text, raw: raw.body, status: "found", tier: "page" })
+        ctx.seen.add(canonicalUrl(url))
+        try {
+          pageTextOf.set(new URL(url).hostname, s.text)
+        } catch {
+          /* the kernel only fetches urls it built; unreachable */
+        }
+      } else {
+        ctx.evidence.record({ url, text: s.text, status: s.status, reason: s.reason, tier: "page" })
+      }
+      return raw
+    },
+  }
+
+  // ── per-host landing, synchronous in the kernel's own stream ──────────────
+  const controller = new AbortController()
+  const onOuterAbort = () => controller.abort()
+  if (ctx.signal) {
+    if (ctx.signal.aborted) controller.abort()
+    else ctx.signal.addEventListener("abort", onOuterAbort, { once: true })
+  }
+  let ranDry = false
+
+  const remCtx: RememberCtx = {
+    map: ctx.map,
+    evidence: ctx.evidence,
+    ledger: ctx.ledger,
+    aggregatorThreshold: ctx.aggregatorThreshold,
+    writer: ctx.writer,
+  }
+  const landed = { nodes: 0, merged: 0 }
+  /** Hosts a verdict actually reached — the roster's refusal rows share the
+   *  rows array, so membership there cannot stand in for "was judged". */
+  const judgedHosts = new Set<string>()
+
+  const landOne = (e: Judged) => {
+    judgedHosts.add(e.domain)
+    const row: HarvestRow = {
+      host: e.domain,
+      ok: false,
+      kind: e.kind,
+      relation: e.relation,
+      settledBy: e.settledBy,
+      ...(e.because ? { because: e.because } : {}),
+    }
+    rows.push(row)
+    if (e.kind === "noise") {
+      row.reason = "judged noise — genuinely unrelated to this market; noise leaves the map"
+      return
+    }
+    if (e.relation === "none") {
+      row.reason = "judged none — no relation to the anchor; the map draws no node for it"
+      return
+    }
+
+    // Evidence, strongest first: the verified spans ARE the receipts; a page
+    // with no surviving span still proves it was read (a mechanical opening
+    // quote of its stored text); an unreadable host can only cite the search
+    // snippet that surfaced it. A host the run holds no bytes for cannot land
+    // — that is the mint's rule, and the row says so.
+    const url = `https://${e.domain}/`
+    let refs: EvidenceRef[] = []
+    if (e.spans?.length) {
+      refs = e.spans.map((quote) => ({ url, quote }))
+    } else {
+      const page = pageTextOf.get(e.domain)
+      if (page) refs = [{ url, quote: page.slice(0, MECHANICAL_QUOTE) }]
+      else {
+        const snip = ctx.evidence.snippetFor(registrableHost(e.domain))
+        if (snip) refs = [{ url: snip.url, quote: snip.text.slice(0, MECHANICAL_QUOTE) }]
+      }
+    }
+
+    const out = rememberTool(remCtx, {
+      nodes: [
+        {
+          name: e.name || e.domain,
+          domain: e.domain,
+          kind: SWARM_KIND_OF[e.kind] ?? "company",
+          what: e.what,
+          relation: e.relation,
+          why: e.why,
+          evidence: refs,
+          settledBy: e.settledBy,
+          ...(e.because ? { because: e.because } : {}),
+          ...(e.unreadableReason ? { unreadableReason: e.unreadableReason } : {}),
+        },
+      ],
+      why: input.why,
+    })
+    if (out.rejected.length > 0) {
+      row.reason = out.rejected[0]!.reason
+      return
+    }
+    row.ok = true
+    if (out.downgraded.length > 0) row.because = out.downgraded[0]!.because
+    landed.nodes += out.added.nodes
+    landed.merged += out.merged.nodes
+
+    // Per-host settlement honesty: the instant the claim runs dry, stop the
+    // pool. Everything already judged stands; the unjudged rest is reported.
+    const r = ctx.ledger.draw(ctx.claimId, 0)
+    if (r.ok && r.remainingUsd <= EPSILON && !ranDry) {
+      ranDry = true
+      controller.abort()
+    }
+  }
+
+  // ── run the kernel; an abort mid-pool is a partial harvest, never a throw ─
+  let stats: KernelStats | null = null
+  let failure: string | null = null
+  try {
+    const out = await judgeHosts(candidates, {
+      fetcher: recordingFetch,
+      classify: async (h, pageText) => {
+        const { out: judged, usd } = await ctx.classify(h, pageText, { signal: controller.signal })
+        draw(usd)
+        return judged
+      },
+      anchor: ctx.map.anchor,
+      aggregatorThreshold: ctx.aggregatorThreshold ?? null,
+      concurrency: ctx.concurrency,
+      signal: controller.signal,
+      onJudged: landOne,
+    })
+    stats = out.stats
+  } catch (err) {
+    // The kernel only throws on abort (its own contract); anything else is
+    // still a sentence to the model, never a stack — the tool does not throw.
+    if (!controller.signal.aborted) {
+      failure = `the harvest itself failed (${err instanceof Error ? err.message : String(err)})`
+    }
+  } finally {
+    ctx.signal?.removeEventListener("abort", onOuterAbort)
+  }
+
+  // Hosts the abort (or a failure) left unjudged get their own sentence — a
+  // dead harvest's report still accounts for every host it was handed.
+  for (const c of candidates) {
+    if (judgedHosts.has(c.host)) continue
+    rows.push({
+      host: c.host,
+      ok: false,
+      reason:
+        failure ??
+        (ranDry
+          ? "the allowance ran dry mid-harvest; this host was not judged — everything already judged stands"
+          : "the run was cancelled mid-harvest; this host was not judged — everything already judged stands"),
+    })
+  }
+
+  if (stats) ctx.onStats?.(stats, candidates.length)
+  return done(rows, stats, landed, spentUsd)
 }

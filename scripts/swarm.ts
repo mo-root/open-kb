@@ -48,8 +48,10 @@
  * default row (the read/dig model's prices, the conservative guess).
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { fileURLToPath } from "node:url"
+import { join } from "node:path"
 import { openrouter } from "@openrouter/ai-sdk-provider"
-import { SpanStream, type Span } from "../packages/core/src/index.js"
+import { SpanStream, composePrompt, type Span } from "../packages/core/src/index.js"
 import { brightDataFetch, brightDataSearch } from "../packages/providers/src/index.js"
 import {
   fromSweepArgv,
@@ -145,6 +147,12 @@ const priceOf = (id: string) => PRICES[id] ?? { inUsdPerM: 1.5, outUsdPerM: 9.0 
 
 const skill = readFileSync(new URL("../prompts/swarm/skill.md", import.meta.url), "utf8")
 
+// The harvest tier's doctrine: the SAME classify.md the sweep renders,
+// composed here and handed in as text the way the skill is — the library
+// never reads disk. This is what arms the investigators' harvest tool.
+const promptsDir = fileURLToPath(new URL("../prompts", import.meta.url))
+const classifyPrompt = composePrompt("classify", join(promptsDir, "agents"), join(promptsDir, "doctrine"))
+
 const creds = {
   token: process.env.BRIGHTDATA_API_TOKEN!,
   serpZone: process.env.BRIGHTDATA_SERP_ZONE!,
@@ -173,6 +181,7 @@ const run = await runSwarm({
   ...(familyFloor === undefined ? {} : { familyFloor }),
   ...(fromSweep === undefined ? {} : { fromSweep }),
   skill,
+  classifyPrompt,
   search: brightDataSearch(creds),
   fetch: brightDataFetch(creds),
   models: { lead: openrouter(LEAD), peek: openrouter(PEEK), read: openrouter(READ), dig: openrouter(DIG) },

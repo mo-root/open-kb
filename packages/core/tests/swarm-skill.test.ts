@@ -97,7 +97,7 @@ describe("swarm skill", () => {
   })
 
   it("names cost as tiers and never as models", () => {
-    for (const tier of ["peek", "read", "dig"]) expect(raw).toContain(`**${tier}**`)
+    for (const tier of ["peek", "read", "dig", "harvest"]) expect(raw).toContain(`**${tier}**`)
     // "Model choice is exposed to the lead only as a cost word, never as a model id" — the
     // design's sentence. A model name here would pin the skill to a vendor and teach the
     // agent to reason about rates instead of sizes.

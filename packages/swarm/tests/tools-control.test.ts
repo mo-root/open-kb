@@ -90,7 +90,7 @@ describe("spawnTool", () => {
   it("a tier money does not know is refused in words", () => {
     const ctx = ctxOf()
     const r = spawnTool(ctx, { missions: [mission("x", { tier: "excavate" as MissionTier })], why: "t" })
-    expect(r.refused[0]!.reason).toBe('"excavate" is not a tier money knows; use peek, read or dig')
+    expect(r.refused[0]!.reason).toBe('"excavate" is not a tier money knows; use peek, read, dig or harvest')
   })
 
   it("nothing is funded after finish", () => {

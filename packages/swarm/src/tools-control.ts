@@ -143,7 +143,7 @@ export function spawnTool(ctx: ControlCtx, input: SpawnInput): SpawnReturn {
     }
     const allowanceUsd = (ALLOWANCES as Record<string, number>)[m.tier]
     if (allowanceUsd === undefined) {
-      refused.push({ i, reason: `"${m.tier}" is not a tier money knows; use peek, read or dig` })
+      refused.push({ i, reason: `"${m.tier}" is not a tier money knows; use peek, read, dig or harvest` })
       continue
     }
     const held = ctx.ledger.reserve(allowanceUsd)

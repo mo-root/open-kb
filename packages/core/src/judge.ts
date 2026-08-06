@@ -15,6 +15,40 @@ import type { FetchPort } from "./ports.js"
  * re-exports it from its old path; both engines now judge with one implementation.
  */
 
+/**
+ * The judge's answer vocabulary — what a classify closure may say a host IS
+ * and how it stands to the anchor. The doctrine file
+ * (prompts/agents/classify.md) teaches exactly these words; the sweep's
+ * reader-facing schema (sweep.ts ENTITY_KINDS / RELATIONS) carries the same
+ * sets at its own call site. Exported so any caller building a classify
+ * closure for judgeHosts enums the doctrine's vocabulary instead of retyping
+ * it.
+ */
+export const JUDGED_KINDS = [
+  "company",
+  "product",
+  "community",
+  "publisher",
+  "directory",
+  "noise",
+  "unknown",
+] as const
+
+export const JUDGED_RELATIONS = [
+  "competitor",
+  "substitute",
+  "dependency",
+  "integration",
+  "shaper",
+  "buyer",
+  "target",
+  "covers",
+  "lists",
+  "discusses",
+  "unknown",
+  "none",
+] as const
+
 export interface HostCandidate {
   host: string
   seenIn: number

@@ -449,3 +449,344 @@ describe("fetchTool", () => {
     expect((r.docs[0] as FetchDocFail).hint).toContain("cancelled")
   })
 })
+
+// ── harvest ──────────────────────────────────────────────────────────────────
+
+import { MapState, harvestTool, MAX_HARVEST_HOSTS, type HarvestClassify, type HarvestCtx } from "../src/index.js"
+
+const aggregatorHtml =
+  "<html><body><p>anchor.com is our #1 pick for this job, chosen after comparing dozens of vendors across pricing, reliability, and support quality so buyers do not have to run their own bake-off before choosing a tool.</p>" +
+  Array.from({ length: 25 }, (_, i) => `<a href="https://vendor${i}.com/">v${i}</a>`).join(" ") +
+  "</body></html>"
+
+/** A classify that judges every page a competitor and quotes the vendor page's
+ *  real sentence — the shape the live closure returns, dollars included. */
+const okClassify =
+  (usd = 0): HarvestClassify =>
+  async () => ({
+    out: {
+      name: "Acme",
+      kind: "company",
+      what: "a scraping api for developers",
+      relation: "competitor",
+      why: "sells the same job to the same buyer",
+      spans: ["We sell a scraping API to developers"],
+    },
+    usd,
+  })
+
+function harvestCtx(over: Partial<HarvestCtx> = {}): { ctx: HarvestCtx; ledger: Ledger; claimId: string } {
+  const ledger = new Ledger(5)
+  const r = ledger.reserve(ALLOWANCES.harvest)
+  if (!r.ok) throw new Error("reserve failed in fixture")
+  const ctx: HarvestCtx = {
+    fetch: fakeFetcher({}),
+    evidence: new RunEvidence(),
+    ledger,
+    claimId: r.claimId,
+    map: new MapState("anchor.com"),
+    seen: new Set(),
+    writer: "rivals-fraud-scoring",
+    aggregatorThreshold: null,
+    classify: okClassify(),
+    ...over,
+  }
+  return { ctx, ledger, claimId: r.claimId }
+}
+
+describe("harvestTool: the port-recording wrapper", () => {
+  it("records the page BEFORE the verdict, so remember's cite-by-URL succeeds and the node lands own-page", async () => {
+    const { ctx } = harvestCtx({ fetch: fakeFetcher({ "https://acme.com/": vendorHtml }) })
+    const r = await harvestTool(ctx, { hosts: ["acme.com"], why: "judge the wave" })
+
+    expect(r.rows[0]).toMatchObject({ host: "acme.com", ok: true, kind: "company", relation: "competitor", settledBy: "model" })
+    expect(r.stats).toMatchObject({ fetched: 1, modelJudged: 1, settledFree: 0 })
+    expect(r.landed).toEqual({ nodes: 1, merged: 0 })
+
+    // The map row is real, cited to the host's own apex, at the own-page tier,
+    // written as the mission — no side door into MapState.
+    const node = ctx.map.nodes.get("acme.com")!
+    expect(node).toBeDefined()
+    expect(node.relation).toBe("competitor")
+    expect(node.tier).toBe("own-page")
+    expect(node.settledBy).toBe("model")
+    expect(node.evidence[0]).toMatchObject({ url: "https://acme.com/", quote: "We sell a scraping API to developers" })
+    expect(node.contributions).toEqual([{ writer: "rivals-fraud-scoring", tier: "own-page" }])
+
+    // The wrapper's whole point: the page is in the store, citable by URL.
+    const cite = ctx.evidence.cite("https://acme.com/", "scraping API to developers")
+    expect(cite.ok).toBe(true)
+    if (cite.ok) expect(cite.evidence.tier).toBe("page")
+  })
+
+  it("normalizes model-handed urls to hosts, refuses the anchor and duplicates by name", async () => {
+    const { ctx } = harvestCtx({ fetch: fakeFetcher({ "https://acme.com/": vendorHtml }) })
+    const r = await harvestTool(ctx, {
+      hosts: ["https://www.acme.com/pricing", "acme.com", "anchor.com", "not a host"],
+      why: "t",
+    })
+    const by = (h: string) => r.rows.find((x) => x.host === h)!
+    expect(r.rows.filter((x) => x.host === "acme.com" && x.ok)).toHaveLength(1)
+    expect(r.rows.filter((x) => x.host === "acme.com" && !x.ok)[0]!.reason).toContain("already in this call")
+    expect(by("anchor.com").reason).toContain("that is the anchor")
+    expect(by("not a host").reason).toContain("not a hostname")
+    expect(ctx.map.nodes.size).toBe(1)
+  })
+
+  it("host forty-one is refused with a sentence and never fetched", async () => {
+    let portCalls = 0
+    const port: FetchPort = {
+      async get(url) {
+        portCalls++
+        return { url, httpStatus: 200, body: "", contentType: "text/html", ms: 1, usd: 0 }
+      },
+    }
+    const { ctx } = harvestCtx({ fetch: port })
+    const hosts = Array.from({ length: MAX_HARVEST_HOSTS + 1 }, (_, i) => `host${i}.com`)
+    const r = await harvestTool(ctx, { hosts, why: "t" })
+    expect(portCalls).toBe(MAX_HARVEST_HOSTS)
+    const overflow = r.rows.find((x) => x.host === `host${MAX_HARVEST_HOSTS}.com`)!
+    expect(overflow.reason).toContain(`only ${MAX_HARVEST_HOSTS} hosts fit in one harvest`)
+  })
+})
+
+describe("harvestTool: mint and admit still gate — no side door", () => {
+  it("an unreadable harvested host lands unknown wearing the sniffer's code, cited to the snippet that surfaced it", async () => {
+    const { ctx } = harvestCtx() // fakeFetcher({}) answers empty bodies: blocked/empty-body
+    // The run saw this host in a search wave; the snippet is the citable bytes.
+    ctx.evidence.record({
+      url: "https://dead.com/",
+      text: "Dead — fraud scoring for online merchants\nDead sells fraud scoring to online merchants",
+      status: "found",
+      tier: "snippet",
+    })
+    const r = await harvestTool(ctx, { hosts: ["dead.com"], why: "t" })
+
+    expect(r.rows[0]).toMatchObject({ host: "dead.com", ok: true, settledBy: "predicate" })
+    expect(r.stats!.unreadableByReason).toEqual({ "empty-body": 1 })
+
+    const node = ctx.map.nodes.get("dead.com")!
+    expect(node.kind).toBe("company")
+    expect(node.relation).toBe("unknown")
+    expect(node.because).toBe("its front page could not be read this run (blocked)")
+    expect(node.unreadableReason).toBe("empty-body")
+    expect(node.settledBy).toBe("predicate")
+    expect(node.tier).toBe("snippet")
+  })
+
+  it("an unreadable host the run holds no bytes for cannot land — the mint's rule, reported in the row", async () => {
+    const { ctx } = harvestCtx()
+    const r = await harvestTool(ctx, { hosts: ["ghost.com"], why: "t" })
+    expect(r.rows[0]!.ok).toBe(false)
+    expect(r.rows[0]!.reason).toContain("at least one quote")
+    expect(ctx.map.nodes.size).toBe(0)
+    // The judge still counted it: the stats and the map answer different questions.
+    expect(r.stats!.unreadable).toBe(1)
+  })
+
+  it("an aggregator-shaped harvest lands as the gate's own directory verdict, wearing the refusal", async () => {
+    const { ctx } = harvestCtx({
+      fetch: fakeFetcher({ "https://listicle.com/": aggregatorHtml }),
+      aggregatorThreshold: 12,
+    })
+    let modelCalls = 0
+    ctx.classify = async () => {
+      modelCalls++
+      throw new Error("unreachable — the predicate settles this host")
+    }
+    const r = await harvestTool(ctx, { hosts: ["listicle.com"], why: "t" })
+    expect(modelCalls).toBe(0)
+    expect(r.stats!.aggregators).toBe(1)
+    expect(r.rows[0]!.ok).toBe(true)
+
+    // The claim went through remember and the ADMIT GATE re-derived the
+    // downgrade from the recorded page — the node's directory kind is the
+    // gate's writing, not the harvest's claim.
+    const node = ctx.map.nodes.get("listicle.com")!
+    expect(node.kind).toBe("directory")
+    expect(node.relation).toBe("lists")
+    expect(node.because).toContain("distinct vendor domains")
+  })
+
+  it("with the threshold null the aggregator page reaches the model — the live default path", async () => {
+    let modelCalls = 0
+    const { ctx } = harvestCtx({
+      fetch: fakeFetcher({ "https://listicle.com/": aggregatorHtml }),
+      aggregatorThreshold: null,
+    })
+    ctx.classify = async () => {
+      modelCalls++
+      return {
+        out: { name: "Listicle", kind: "directory", what: "ranks vendors", relation: "lists", why: "indexes the market", spans: ["chosen after comparing dozens of vendors"] },
+        usd: 0,
+      }
+    }
+    const r = await harvestTool(ctx, { hosts: ["listicle.com"], why: "t" })
+    expect(modelCalls).toBe(1)
+    expect(r.rows[0]).toMatchObject({ ok: true, settledBy: "model" })
+    expect(r.stats!.aggregators).toBe(0)
+  })
+
+  it("noise and relation-none verdicts do not land — the map draws no node for them, and the row says so", async () => {
+    const { ctx } = harvestCtx({
+      fetch: fakeFetcher({ "https://noise.com/": vendorHtml, "https://nothing.com/": vendorHtml }),
+    })
+    ctx.classify = async (h) => ({
+      out:
+        h.host === "noise.com"
+          ? { name: "N", kind: "noise", what: "", relation: "none", why: "", spans: ["We sell a scraping API"] }
+          : { name: "X", kind: "company", what: "a scraping api", relation: "none", why: "", spans: ["We sell a scraping API"] },
+      usd: 0,
+    })
+    const r = await harvestTool(ctx, { hosts: ["noise.com", "nothing.com"], why: "t" })
+    expect(r.rows.find((x) => x.host === "noise.com")!.reason).toContain("noise")
+    expect(r.rows.find((x) => x.host === "nothing.com")!.reason).toContain("none")
+    expect(ctx.map.nodes.size).toBe(0)
+  })
+})
+
+describe("harvestTool: span discipline through the harvest path", () => {
+  it("the quanticdata shape: an invented what lands wearing the fallback sentence, cited only to bytes actually on the page", async () => {
+    const { ctx } = harvestCtx({ fetch: fakeFetcher({ "https://quanticdata.io/": vendorHtml }) })
+    ctx.classify = async () => ({
+      out: {
+        name: "Quantic",
+        kind: "company",
+        what: "custom dataset delivery for enterprises",
+        relation: "competitor",
+        why: "same buyer",
+        spans: ["custom dataset delivery"], // nowhere on the page — fails containment
+      },
+      usd: 0,
+    })
+    const r = await harvestTool(ctx, { hosts: ["quanticdata.io"], why: "t" })
+    expect(r.rows[0]!.ok).toBe(true)
+
+    const node = ctx.map.nodes.get("quanticdata.io")!
+    // The invention never reaches the reader; the entity survives wearing the refusal.
+    expect(node.what).toBe("Quantic — company whose description could not be tied to its page this run")
+    // No verified span exists, so the citation is a mechanical opening quote
+    // of the page's own stored text — literal bytes, proven by the mint.
+    expect(node.evidence).toHaveLength(1)
+    expect(node.evidence[0]!.url).toBe("https://quanticdata.io/")
+    const cite = ctx.evidence.cite("https://quanticdata.io/", node.evidence[0]!.quote)
+    expect(cite.ok).toBe(true)
+  })
+
+  it("verified spans ARE the node's quotes — the receipts land on the map", async () => {
+    const { ctx } = harvestCtx({ fetch: fakeFetcher({ "https://acme.com/": vendorHtml }) })
+    ctx.classify = async () => ({
+      out: {
+        name: "Acme",
+        kind: "company",
+        what: "a scraping api handling proxies",
+        relation: "competitor",
+        why: "same job",
+        spans: ["We sell a scraping API", "handling proxies", "with white-glove onboarding"],
+      },
+      usd: 0,
+    })
+    await harvestTool(ctx, { hosts: ["acme.com"], why: "t" })
+    const node = ctx.map.nodes.get("acme.com")!
+    expect(node.what).toBe("a scraping api handling proxies")
+    // The failing span was dropped by the kernel; only verified quotes landed.
+    expect(node.evidence.map((e) => e.quote)).toEqual(["We sell a scraping API", "handling proxies"])
+  })
+})
+
+describe("harvestTool: per-host settlement honesty", () => {
+  it("every fetch and classify dollar draws on the claim as its host lands", async () => {
+    const pages: Record<string, string> = {}
+    for (const h of ["a.com", "b.com", "c.com"]) pages[`https://${h}/`] = vendorHtml
+    const { ctx, ledger, claimId } = harvestCtx({
+      fetch: fakeFetcher(pages, { usd: 0.01 }),
+      classify: okClassify(0.02),
+    })
+    const r = await harvestTool(ctx, { hosts: ["a.com", "b.com", "c.com"], why: "t" })
+    expect(r.spentUsd).toBeCloseTo(3 * 0.03, 6)
+    const room = ledger.draw(claimId, 0)
+    if (!room.ok) throw new Error(room.reason)
+    expect(room.remainingUsd).toBeCloseTo(ALLOWANCES.harvest - 3 * 0.03, 6)
+  })
+
+  it("a kill at host N keeps the N judged hosts on the map and the ledger holds exactly their cost", async () => {
+    // Serial pool; the port hard-aborts on its FOURTH call the way a wall
+    // kill lands: the fetch in flight dies aborted, judged hosts stand.
+    const ctl = new AbortController()
+    let calls = 0
+    const port: FetchPort = {
+      async get(url) {
+        calls++
+        if (calls === 4) {
+          ctl.abort()
+          const e = new Error("This operation was aborted")
+          e.name = "AbortError"
+          throw e
+        }
+        return { url, httpStatus: 200, body: vendorHtml, contentType: "text/html", ms: 1, usd: 0.01 }
+      },
+    }
+    const { ctx, ledger, claimId } = harvestCtx({
+      fetch: port,
+      classify: okClassify(0.02),
+      concurrency: 1,
+      signal: ctl.signal,
+    })
+    const hosts = ["h1.com", "h2.com", "h3.com", "h4.com", "h5.com"]
+    const r = await harvestTool(ctx, { hosts, why: "t" })
+
+    const judged = r.rows.filter((x) => x.ok)
+    const cut = r.rows.filter((x) => x.reason?.includes("cancelled mid-harvest"))
+    expect(judged).toHaveLength(3)
+    expect(cut).toHaveLength(2)
+    expect(ctx.map.nodes.size).toBe(3)
+    // Honest books: exactly three hosts' fetch+classify dollars drawn, no more.
+    expect(r.spentUsd).toBeCloseTo(3 * 0.03, 6)
+    const room = ledger.draw(claimId, 0)
+    if (!room.ok) throw new Error(room.reason)
+    expect(room.remainingUsd).toBeCloseTo(ALLOWANCES.harvest - 3 * 0.03, 6)
+  })
+
+  it("the allowance running dry aborts the pool: judged hosts stand, the rest come back saying why", async () => {
+    const pages: Record<string, string> = {}
+    for (const h of ["h1.com", "h2.com", "h3.com", "h4.com"]) pages[`https://${h}/`] = vendorHtml
+    const ledger = new Ledger(5)
+    const held = ledger.reserve(0.05) // a claim two hosts exhaust
+    if (!held.ok) throw new Error("reserve failed")
+    const { ctx } = harvestCtx({
+      fetch: fakeFetcher(pages, { usd: 0.01 }),
+      classify: okClassify(0.02),
+      concurrency: 1,
+      ledger,
+      claimId: held.claimId,
+    })
+    const r = await harvestTool(ctx, { hosts: ["h1.com", "h2.com", "h3.com", "h4.com"], why: "t" })
+
+    const judged = r.rows.filter((x) => x.ok)
+    const dry = r.rows.filter((x) => x.reason?.includes("allowance ran dry"))
+    expect(judged).toHaveLength(2)
+    expect(dry).toHaveLength(2)
+    expect(ctx.map.nodes.size).toBe(2)
+    expect(r.spentUsd).toBeCloseTo(2 * 0.03, 6)
+    // The claim's sub-ledger carries the honest number: 0.05 - 0.06 = -0.01.
+    const room = ledger.draw(held.claimId, 0)
+    if (!room.ok) throw new Error(room.reason)
+    expect(room.remainingUsd).toBeCloseTo(0.05 - 2 * 0.03, 6)
+  })
+
+  it("a spent allowance refuses the whole call before any money moves, in the skill's sentence", async () => {
+    let called = 0
+    const port: FetchPort = {
+      async get(url) {
+        called++
+        return { url, httpStatus: 200, body: vendorHtml, contentType: "text/html", ms: 1, usd: 0 }
+      },
+    }
+    const { ctx, ledger, claimId } = harvestCtx({ fetch: port })
+    ledger.draw(claimId, ALLOWANCES.harvest)
+    const r = await harvestTool(ctx, { hosts: ["a.com", "b.com"], why: "t" })
+    expect(called).toBe(0)
+    expect(r.stats).toBeNull()
+    for (const row of r.rows) expect(row.reason).toContain("allowance spent")
+  })
+})

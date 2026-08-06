@@ -73,6 +73,7 @@ Every paid action wears a tier. Tiers are the only names cost has — never a mo
   real answer.
 - **dig** (~$0.25) — about seven turns: an expensive unlocked page ranged over with free reads.
   Only for a page that will name many things at once.
+- **harvest** (~$0.45) — one bulk judgement: up to 40 hosts read from their own front pages; unreadable ones settle free.
 
 `read` (the tool), `recall` and `remember` are free and make no provider call — a 65KB page you
 already fetched re-reads for nothing, so reach for that before fetching anything again. Every tool

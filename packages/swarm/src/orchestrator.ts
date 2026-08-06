@@ -32,6 +32,7 @@ import type { SearchTrace } from "./tools-free.js"
 import {
   LEAD_TURN_CAP,
   TIER_DEADLINE_MS,
+  makeHarvestClassify,
   runInvestigator,
   runLead,
   type AgentHooks,
@@ -41,6 +42,7 @@ import {
   type ModelPricing,
   type SwarmAgentDeps,
 } from "./agent.js"
+import type { HarvestClassify } from "./tools-paid.js"
 
 /**
  * The orchestrator. It is a while loop: FILL lanes greedily, THINK when the
@@ -145,8 +147,10 @@ export interface SwarmOptions {
   skill: string
   search: SearchPort
   fetch: FetchPort
-  models: { lead: LanguageModel } & Record<MissionTier, LanguageModel>
-  pricing: { lead: ModelPricing } & Record<MissionTier, ModelPricing>
+  /** `harvest` is optional in both records and falls back to the read tier —
+   *  bulk labeling wants the cheap model; the harvest DEADLINE borrows dig's. */
+  models: { lead: LanguageModel; harvest?: LanguageModel } & Record<Exclude<MissionTier, "harvest">, LanguageModel>
+  pricing: { lead: ModelPricing; harvest?: ModelPricing } & Record<Exclude<MissionTier, "harvest">, ModelPricing>
   ceilingUsd?: number
   lanes?: number
   wallClockMs?: number
@@ -184,6 +188,22 @@ export interface SwarmOptions {
    * re-rank or kill the floor's rows — they are ordinary board items.
    */
   familyFloor?: boolean | number
+  /**
+   * The harvest tier's classify doctrine: prompts/agents/classify.md COMPOSED
+   * through core's composePrompt, handed in as text the way `skill` is — the
+   * orchestrator never reads disk. When present, investigators hold the
+   * `harvest` tool wired over this doctrine and the harvest tier's model.
+   * When absent (and no `harvestClassify` override), no harvest tool is
+   * offered: the tier still exists to money and the board, but nothing can
+   * judge residue hosts. The prompt file is shared doctrine, not sweep code.
+   */
+  classifyPrompt?: string
+  /**
+   * DI override for the classify closure — wins over `classifyPrompt`. This
+   * is the same injection seam judgeHosts itself has: offline tests script a
+   * classify the way the kernel's own tests do.
+   */
+  harvestClassify?: HarvestClassify
   /**
    * The sweep→swarm handoff: a prior sweep run of the SAME domain, as its
    * JSON serialized it. When present, the orchestrator mints board missions
@@ -235,6 +255,7 @@ export function seedMission(domain: string): Mission {
 const TOOL_SPAN_KIND: Record<string, SpanKind> = {
   search: "search",
   fetch: "fetch",
+  harvest: "fetch",
   read: "read",
   recall: "read",
   remember: "remember",
@@ -432,6 +453,22 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
 
   // ── shared state, one instance of everything ─────────────────────────────
 
+  /** The harvest tier's model and prices: the read tier's unless overridden —
+   *  bulk labeling is the cheap tier's whole point. */
+  const harvestModel = opts.models.harvest ?? opts.models.read
+  const harvestPricing = opts.pricing.harvest ?? opts.pricing.read
+  const harvestClassify: HarvestClassify | undefined =
+    opts.harvestClassify ??
+    (opts.classifyPrompt
+      ? makeHarvestClassify({
+          template: opts.classifyPrompt,
+          model: harvestModel,
+          pricing: harvestPricing,
+          map,
+          hooks,
+        })
+      : undefined)
+
   const base: SwarmAgentDeps = {
     skill: opts.skill,
     ledger,
@@ -454,6 +491,10 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
     // kill closes one wearing the lead's because. Claim and landing
     // transitions are this loop's own observations, called where they happen.
     onFamilyEvent: (e) => families.apply(e),
+    // The harvest seam: present only when a classify doctrine (or a DI
+    // closure) was wired — runInvestigator offers the tool exactly then, and
+    // the lead never composes it at all.
+    ...(harvestClassify ? { harvestClassify } : {}),
   }
 
   /** The anchor's own words, banned from every investigator's queries. The
@@ -602,8 +643,8 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
       trackPending: (p) => missionLandings.push(p),
       claimId,
       coinages,
-      models: { peek: opts.models.peek, read: opts.models.read, dig: opts.models.dig },
-      pricing: { peek: opts.pricing.peek, read: opts.pricing.read, dig: opts.pricing.dig },
+      models: { peek: opts.models.peek, read: opts.models.read, dig: opts.models.dig, harvest: harvestModel },
+      pricing: { peek: opts.pricing.peek, read: opts.pricing.read, dig: opts.pricing.dig, harvest: harvestPricing },
       deadlineMs: tierDeadlineMs[mission.tier],
     }
     const p: Promise<Wake> = runInvestigator(mission, deps)

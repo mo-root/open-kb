@@ -1,10 +1,14 @@
-import { generateText, stepCountIs, tool, type LanguageModel, type ModelMessage, type ToolSet } from "ai"
+import { generateObject, generateText, stepCountIs, tool, type LanguageModel, type ModelMessage, type ToolSet } from "ai"
 import { z } from "zod"
 import {
   ALLOWANCES,
+  JUDGED_KINDS,
+  JUDGED_RELATIONS,
+  render,
   type Board,
   type BreakerTable,
   type FetchPort,
+  type KernelStats,
   type Ledger,
   type Mission,
   type MissionTier,
@@ -23,7 +27,14 @@ import {
   type RememberCtx,
   type SearchTrace,
 } from "./tools-free.js"
-import { fetchTool, searchTool, type PaidCtx } from "./tools-paid.js"
+import {
+  fetchTool,
+  harvestTool,
+  searchTool,
+  type HarvestClassify,
+  type HarvestCtx,
+  type PaidCtx,
+} from "./tools-paid.js"
 import {
   finishTool,
   nextTool,
@@ -91,6 +102,10 @@ export const TIER_DEADLINE_MS: Record<MissionTier, number> = {
   peek: 60_000,
   read: 180_000,
   dig: 300_000,
+  // A harvest borrows dig's wall: 40 front pages through a bounded pool plus
+  // a model call per residue host is the run's longest single tool call, and
+  // the tool settles per host, so a wall kill keeps everything already judged.
+  harvest: 300_000,
 }
 
 /** A digest is a note to the lead, not a deliverable. Enforced by truncation. */
@@ -163,6 +178,18 @@ export interface SwarmAgentDeps {
   /** The finish gate's reading (T5), supplied by the orchestrator on the
    *  LEAD's deps only — investigators hold no finish tool to gate. */
   scorecard?: () => GateReading
+  /**
+   * The harvest tier's classify closure, built by the orchestrator's wiring
+   * (makeHarvestClassify over the classify doctrine's composed text). When
+   * absent, investigators hold no harvest tool — a run without the doctrine
+   * cannot judge residue hosts, and offering a tool that refuses every call
+   * would teach the model a dead verb. The lead NEVER holds harvest either
+   * way: the lead delegates, and bulk judging from the lead's chair is the
+   * one-context-buys-everything failure the skill forbids.
+   */
+  harvestClassify?: HarvestClassify
+  /** Observe each harvest call's kernel stats, for the run-level tally. */
+  onHarvest?: (stats: KernelStats, hosts: number) => void
 }
 
 export interface LeadDeps extends SwarmAgentDeps {
@@ -176,9 +203,12 @@ export interface InvestigatorDeps extends SwarmAgentDeps {
   claimId: string
   /** The anchor's own words, banned from queries. */
   coinages: string[]
-  /** Tier -> model. The prompt only ever says the tier word. */
-  models: Record<MissionTier, LanguageModel>
-  pricing: Record<MissionTier, ModelPricing>
+  /** Tier -> model. The prompt only ever says the tier word. `harvest` is
+   *  optional and falls back to the read tier's model — a harvest mission's
+   *  own conversation is bulk-labeling work, and the cheap tier's economics
+   *  are the whole point; the deadline is what borrows dig's. */
+  models: Record<Exclude<MissionTier, "harvest">, LanguageModel> & { harvest?: LanguageModel }
+  pricing: Record<Exclude<MissionTier, "harvest">, ModelPricing> & { harvest?: ModelPricing }
   /** This mission's resolved wall. The orchestrator supplies it from
    *  SwarmOptions.deadlines merged over TIER_DEADLINE_MS; absent, the tier's
    *  measured default applies. Also the single-mission override in tests. */
@@ -199,7 +229,7 @@ const missionField = z.object({
   brief: z.string(),
   why: z.string(),
   priority: z.number(),
-  tier: z.string().describe("a cost word: peek, read or dig"),
+  tier: z.string().describe("a cost word: peek, read, dig or harvest"),
   dedupeKey: z.string(),
   seeds: z.array(z.string()).optional(),
 })
@@ -396,6 +426,50 @@ function paidTools(wire: WireOpts): ToolSet {
           )
         wire.onPaid?.(out.spentUsd, refused)
         report("fetch", why, { urls: urls.length, mode }, started, !refused)
+        return out
+      },
+    }),
+  }
+}
+
+/**
+ * The harvest tool — INVESTIGATOR-ONLY by construction: only runInvestigator
+ * composes this set, and the lead's toolsets (leadControlTools + free + paid)
+ * never include it. The lead delegates; a lead bulk-judging from its own
+ * chair is the one-context-buys-everything failure the skill forbids. Absent
+ * a wired classify closure the set is empty — a tool that refuses every call
+ * teaches a dead verb.
+ */
+function harvestTools(wire: WireOpts, writer: string): ToolSet {
+  const { deps } = wire
+  const classify = deps.harvestClassify
+  if (!classify) return {}
+  const report = makeReport(deps)
+  const ctx: HarvestCtx = {
+    fetch: deps.fetch,
+    evidence: deps.evidence,
+    ledger: deps.ledger,
+    claimId: wire.claimId,
+    map: deps.map,
+    seen: deps.seen,
+    writer,
+    aggregatorThreshold: deps.aggregatorThreshold,
+    classify,
+    searches: deps.searches,
+    signal: wire.signal ?? deps.signal,
+    onStats: deps.onHarvest,
+  }
+  return {
+    harvest: tool({
+      description:
+        "Buy one bulk judgement: up to 40 hosts, each read from its own front page — unreadable and aggregator-shaped hosts settle free, one model call judges each residue host, and every judged host lands on the map through remember with its page-backed quote. Costs draw per host; a harvest that dies keeps everything already judged.",
+      inputSchema: z.object({ hosts: z.array(z.string()), why: whyField }),
+      execute: async ({ hosts, why }) => {
+        const started = Date.now()
+        const out = await harvestTool(ctx, { hosts, why })
+        const refused = out.rows.length > 0 && out.rows.every((r) => r.reason?.includes("allowance spent"))
+        wire.onPaid?.(out.spentUsd, refused)
+        report("harvest", why, { hosts: hosts.length }, started, !refused)
         return out
       },
     }),
@@ -822,8 +896,8 @@ function mapSlice(map: MapState, mission: Mission, cap = 12): string {
  * and the ledger — counts and dollars are never taken from the model's words.
  */
 export async function runInvestigator(mission: Mission, deps: InvestigatorDeps): Promise<InvestigatorDigest> {
-  const model = deps.models[mission.tier]
-  const pricing = deps.pricing[mission.tier]
+  const model = deps.models[mission.tier] ?? deps.models.read
+  const pricing = deps.pricing[mission.tier] ?? deps.pricing.read
   const allowanceUsd = ALLOWANCES[mission.tier]
   const system =
     `You are an INVESTIGATOR. One mission, tier ${mission.tier}, allowance $${allowanceUsd.toFixed(2)}. ` +
@@ -859,17 +933,22 @@ export async function runInvestigator(mission: Mission, deps: InvestigatorDeps):
   }
 
   let consecutiveRefusals = 0
+  const wire: WireOpts = {
+    deps,
+    claimId: deps.claimId,
+    signal: controller.signal,
+    onPaid: (spentUsd, refused) => {
+      runnerSpent += spentUsd
+      consecutiveRefusals = refused ? consecutiveRefusals + 1 : 0
+    },
+  }
   const tools: ToolSet = {
     ...freeTools(deps, mission.dedupeKey),
-    ...paidTools({
-      deps,
-      claimId: deps.claimId,
-      signal: controller.signal,
-      onPaid: (spentUsd, refused) => {
-        runnerSpent += spentUsd
-        consecutiveRefusals = refused ? consecutiveRefusals + 1 : 0
-      },
-    }),
+    ...paidTools(wire),
+    // Investigator-only: the lead never composes this set. Harvest writes as
+    // this mission, so its judged hosts carry the same writer stamp remember
+    // gives every other claim from this lane.
+    ...harvestTools(wire, mission.dedupeKey),
     ...proposeToolFor(deps),
   }
 
@@ -982,4 +1061,103 @@ export async function runInvestigator(mission: Mission, deps: InvestigatorDeps):
   }
 
   return digest
+}
+
+// ── the harvest classify closure ─────────────────────────────────────────────
+
+/**
+ * The classify answer's output ceiling, floored the way the sweep floors its
+ * calls: some models spend mandatory reasoning out of the same output budget,
+ * and a cap sized only for the ~450-token answer starves them into returning
+ * nothing. The point of the cap is to stop reserving 65,536 tokens of credit
+ * per call, never to be tight.
+ */
+const HARVEST_CLASSIFY_MAX_OUT = 6_000
+
+export interface HarvestClassifyDeps {
+  /** The classify doctrine's COMPOSED text — prompts/agents/classify.md
+   *  through core's composePrompt, handed in as text the way the skill is:
+   *  the runner never reads disk. */
+  template: string
+  model: LanguageModel
+  pricing: ModelPricing
+  /** sells/buyer context is read mechanically off the map's own orientation
+   *  nodes at call time — the swarm has no decomposition pre-pass. */
+  map: MapState
+  hooks?: AgentHooks
+}
+
+/**
+ * Build the harvest tier's classify closure from the SAME doctrine file the
+ * sweep renders. The prompt is shared doctrine, not sweep code — this is what
+ * lets packages/swarm judge residue hosts without importing packages/sweep.
+ * Each call is one generateObject over the mission tier's model, billed
+ * through hooks and returned WITH its dollars so the harvest tool can draw
+ * them on the mission's claim the moment the call lands.
+ */
+export function makeHarvestClassify(deps: HarvestClassifyDeps): HarvestClassify {
+  const schema = z.object({
+    name: z.string(),
+    kind: z.enum(JUDGED_KINDS),
+    what: z.string().describe("what it is, one line, from the page itself"),
+    relation: z.enum(JUDGED_RELATIONS),
+    why: z.string().describe("why it belongs on this map, stated against the anchor"),
+    spans: z
+      .array(z.string())
+      .min(1)
+      .max(3)
+      .describe("1-3 short quotes copied character-for-character from the page, together backing the what"),
+  })
+  return async (h, pageText, opts) => {
+    const started = Date.now()
+    // The doctrine's {{sells}}/{{buyer}} slots: whatever orientation has put
+    // on the map so far, mechanically — a capability node is the de-branded
+    // "what the anchor sells", a buyer node is who pays. Absent either, the
+    // slot says so rather than inventing context.
+    const live = [...deps.map.nodes.values()].filter((n) => !n.retracted)
+    const cap = live.find((n) => n.kind === "capability")
+    const buyer = live.find((n) => n.kind === "buyer")
+    const prompt = render(deps.template, {
+      anchor: deps.map.anchor,
+      sells: cap ? `${cap.name}${cap.what ? ` — ${cap.what}` : ""}` : "(not recorded on the map yet)",
+      buyer: buyer ? `${buyer.name}${buyer.what ? ` — ${buyer.what}` : ""}` : "(not recorded on the map yet)",
+      host: h.host,
+      seenIn: String(h.seenIn),
+      intents: h.intents.join(",") || "harvest",
+      page: pageText,
+    })
+    try {
+      const out = await generateObject({
+        model: deps.model,
+        schema,
+        prompt,
+        abortSignal: opts?.signal,
+        maxOutputTokens: HARVEST_CLASSIFY_MAX_OUT,
+      })
+      const tokensIn = out.usage?.inputTokens ?? 0
+      const tokensOut = out.usage?.outputTokens ?? 0
+      const usd = (tokensIn * deps.pricing.inUsdPerM + tokensOut * deps.pricing.outUsdPerM) / 1e6
+      deps.hooks?.onModel?.({
+        role: "investigator",
+        label: `classify ${h.host}`,
+        ms: Date.now() - started,
+        ok: true,
+        tokensIn,
+        tokensOut,
+        usd,
+      })
+      return { out: out.object, usd }
+    } catch (e) {
+      deps.hooks?.onModel?.({
+        role: "investigator",
+        label: `classify ${h.host}`,
+        ms: Date.now() - started,
+        ok: false,
+        tokensIn: 0,
+        tokensOut: 0,
+        usd: 0,
+      })
+      throw e
+    }
+  }
 }

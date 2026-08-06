@@ -1,4 +1,4 @@
-import { registrableHost, type Evidence } from "@open-kb/core"
+import { registrableHost, type Evidence, type UnreadableReason } from "@open-kb/core"
 import { type ProvenanceTier } from "./run-evidence.js"
 
 /**
@@ -53,6 +53,16 @@ export interface MapNode {
   why: string
   /** Present when the kernel downgraded the claim; the node wears its refusal. */
   because?: string
+  /** Harvested unknowns only: WHY the front page could not be read, as the
+   *  sniffer's stable code — the sentence in `because` is for the reader,
+   *  this is for arithmetic. Stamped by the judge kernel, landed through
+   *  remember's passthrough; never claimable by a model (the tool schema
+   *  does not offer it). */
+  unreadableReason?: UnreadableReason
+  /** Harvested nodes only: HOW the judge settled this host — predicate
+   *  arithmetic ($0) or a model call. Metadata about the judging, not a
+   *  claim about the market; same passthrough rule as above. */
+  settledBy?: "predicate" | "model"
   /** How much of the standing `what`'s vocabulary its verified material — the
    *  claim's minted quotes plus the host's own stored page — actually says,
    *  2 decimals, measured when that what landed. The swarm's half of

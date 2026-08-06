@@ -195,6 +195,25 @@ export class RunEvidence {
   }
 
   /**
+   * The newest found snippet-tier record from a registrable host, for the
+   * harvest path's one hard case: an unreadable host still lands on the map
+   * (downgraded, wearing its reason code), and the only citable bytes the run
+   * holds for it are the search snippet that surfaced it. Newest first — the
+   * engine's latest words about the host. Null when the run never saw the
+   * host in a search, in which case the host cannot land at all: that is the
+   * mint's rule working, not a gap.
+   */
+  snippetFor(hostKey: string): { url: string; text: string } | null {
+    for (let i = this.#all.length - 1; i >= 0; i--) {
+      const rec = this.#all[i]!
+      if (rec.status !== "found" || rec.tier !== "snippet") continue
+      if (originKey(rec.canonical) !== hostKey) continue
+      return { url: rec.url, text: rec.text }
+    }
+    return null
+  }
+
+  /**
    * Every readable page this run bought, one row per URL, rawest bytes held —
    * the probe pool for answerKeyRecall, which applies its own namesHost and
    * min-vendors gates. Nothing extra is ever fetched to grade a map.

@@ -23,6 +23,7 @@ import {
   DIGEST_TOKEN_CAP,
   type LeadDeps,
   type InvestigatorDeps,
+  type HarvestClassify,
   type SearchTrace,
 } from "../src/index.js"
 
@@ -522,7 +523,9 @@ describe("runInvestigator", () => {
   })
 
   it("ships tier deadlines measured on the 2026-08-05 live runs, not the design's 45/90/150s", () => {
-    expect(TIER_DEADLINE_MS).toEqual({ peek: 60_000, read: 180_000, dig: 300_000 })
+    // harvest borrows dig's wall: 40 front pages plus per-residue model calls
+    // are the run's longest single tool call, and the tool settles per host.
+    expect(TIER_DEADLINE_MS).toEqual({ peek: 60_000, read: 180_000, dig: 300_000, harvest: 300_000 })
   })
 
   it("the 1.5x overrun bound is advisory at the boundary: the crossing turn's cost stands, only the NEXT turn is stopped", async () => {
@@ -561,6 +564,102 @@ describe("runInvestigator", () => {
     const room = h.ledger.draw(held.claimId, 0)
     if (!room.ok) throw new Error("claim gone")
     expect(room.remainingUsd).toBeCloseTo(ALLOWANCES.read - 0.16, 6)
+  })
+})
+
+// ── the harvest seat ────────────────────────────────────────────────────────
+
+describe("the harvest tool's seat", () => {
+  const fakeHarvestClassify: HarvestClassify = async () => ({
+    out: {
+      name: "Rival",
+      kind: "company",
+      what: "fraud scoring api for merchants",
+      relation: "competitor",
+      why: "sells the same step to the same buyer",
+      spans: ["Rival sells a fraud scoring API"],
+    },
+    usd: 0.002,
+  })
+
+  it("investigators hold harvest exactly when the classify closure is wired; the lead NEVER holds it", async () => {
+    const h = harness(5)
+    // The lead, closure wired and all: still the same nine tools, no harvest —
+    // the lead delegates, and bulk judging from its chair is the
+    // one-context-buys-everything failure the skill forbids.
+    const leadModel = new MockLanguageModelV4({
+      doGenerate: async () => reply([{ type: "text" as const, text: "done." }], true),
+    })
+    const lead = runLead({
+      ...h,
+      harvestClassify: fakeHarvestClassify,
+      domain: "anchor.com",
+      model: leadModel,
+      pricing: { inUsdPerM: 0, outUsdPerM: 0 },
+    })
+    await lead.leadTurn()
+    expect(toolNames(leadModel.doGenerateCalls[0]!)).toEqual(
+      ["search", "fetch", "read", "recall", "remember", "spawn", "review", "next", "finish"].sort(),
+    )
+    expect(toolNames(leadModel.doGenerateCalls[0]!)).not.toContain("harvest")
+
+    // An investigator with the closure: harvest joins its seat.
+    const invModel = new MockLanguageModelV4({
+      doGenerate: async () => reply([{ type: "text" as const, text: "done." }], true),
+    })
+    const held = h.ledger.reserve(ALLOWANCES.read)
+    if (!held.ok) throw new Error("reserve failed")
+    await runInvestigator(mission, {
+      ...investigatorDeps(h, invModel, held.claimId),
+      harvestClassify: fakeHarvestClassify,
+    })
+    expect(toolNames(invModel.doGenerateCalls[0]!)).toEqual(
+      ["search", "fetch", "read", "recall", "remember", "propose", "harvest"].sort(),
+    )
+  })
+
+  it("a harvest mission runs end to end through the SDK path: judged hosts land as the mission's own writes", async () => {
+    const h = harness(5)
+    const held = h.ledger.reserve(ALLOWANCES.harvest)
+    if (!held.ok) throw new Error("reserve failed")
+
+    const model = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = prompt.filter((m) => m.role === "tool").length
+        if (turn === 0)
+          return reply(
+            call("1", "harvest", { hosts: ["rival.com", "dead.com"], why: "judge the whole wave at once" }),
+            false,
+          )
+        return reply([{ type: "text" as const, text: "harvested." }], true)
+      },
+    })
+
+    const digest = await runInvestigator(
+      { ...mission, tier: "harvest", dedupeKey: "harvest-rivals" },
+      {
+        ...investigatorDeps(h, model, held.claimId),
+        harvestClassify: fakeHarvestClassify,
+        // The kernel fetches each host's apex with the trailing slash; the
+        // harness fixture's key has none, and dead.com must stay unreadable.
+        fetch: fakeFetch({ "https://rival.com/": { httpStatus: 200, body: rivalHtml } }),
+      },
+    )
+
+    // rival.com had a readable page and landed; dead.com was unreadable with
+    // no citable bytes anywhere in the run, so the mint refused it.
+    expect(digest.status).toBe("done")
+    expect(digest.added.nodes).toBe(1)
+    const node = h.map.nodes.get("rival.com")!
+    expect(node).toBeDefined()
+    expect(node.relation).toBe("competitor")
+    expect(node.settledBy).toBe("model")
+    expect(node.tier).toBe("own-page")
+    // The writer stamp is the mission's dedupeKey — attribution came free.
+    expect(node.contributions).toEqual([{ writer: "harvest-rivals", tier: "own-page" }])
+    // The books: two model turns at the harness's prices plus the classify
+    // call's dollars, all drawn on the mission's claim as they landed.
+    expect(digest.spentUsd).toBeCloseTo(2 * 0.0105 + 0.002, 4)
   })
 })
 

@@ -10,13 +10,45 @@ import type { MissionTier } from "./board.js"
  */
 
 /**
+ * The harvest tier's pricing pieces. The other tiers are flat caps; a
+ * harvest's cost is a function of host count, so its allowance is the one
+ * derived number here: base + perHost × cap.
+ *
+ * Derived, not guessed. Post-trim classify measures ≈ $0.002–0.004/host on
+ * the input side (a 4,000-char condensed page plus the doctrine), and the
+ * ~450-token answer billed at the ~6× output rate adds ≈ $0.002–0.004 more —
+ * a model-judged residue host really costs ≈ $0.004–0.008, and the
+ * predicate-settled ones (unreadable, aggregator-shaped) cost ~$0 on direct
+ * fetches. $0.01/host is the measured figure with the reserve-generously
+ * headroom this file's own doctrine demands. The base covers the harvest
+ * investigator's own conversation around the call — a search wave and two to
+ * three model turns, well under measured read actuals (~$0.070).
+ *
+ * The allowance is reserved whole at spawn like any tier, but it SETTLES per
+ * host: the harvest tool draws every fetch's and every classify call's real
+ * dollars against the mission's claim as each host lands, so a harvest dying
+ * at host 12 of 40 has drawn 12 hosts' worth and the settle-at-actuals path
+ * returns the rest. `spendable()` never lies mid-harvest — the full
+ * reservation is held out of it from the start.
+ */
+export const HARVEST_BASE_USD = 0.05
+export const HARVEST_PER_HOST_USD = 0.01
+/** Hosts one harvest call carries. More than this is another call. */
+export const HARVEST_HOST_CAP = 40
+
+/**
  * Tier allowances in dollars. Caps, not estimates: reserving generously and
  * settling fast is strictly better than reserving tightly, because an
  * over-reservation costs milliseconds and an under-reservation costs a killed
  * mission. Measured typical actuals sit well under each cap: peek ~$0.008,
- * read ~$0.070, dig ~$0.161.
+ * read ~$0.070, dig ~$0.161. `harvest` is derived above, never a flat guess.
  */
-export const ALLOWANCES: Record<MissionTier, number> = { peek: 0.03, read: 0.1, dig: 0.25 }
+export const ALLOWANCES: Record<MissionTier, number> = {
+  peek: 0.03,
+  read: 0.1,
+  dig: 0.25,
+  harvest: HARVEST_BASE_USD + HARVEST_PER_HOST_USD * HARVEST_HOST_CAP,
+}
 
 /** Fraction of an allowance consumed before `warnAt` answers true. */
 const WARN_FRACTION = 0.8

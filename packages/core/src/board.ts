@@ -4,7 +4,10 @@
  * job is arithmetic over this structure — argmax, set membership, nothing else.
  */
 
-export type MissionTier = "peek" | "read" | "dig"
+/** The cost words. `harvest` is the bulk tier: one mission whose investigator
+ *  may hand up to HARVEST_HOST_CAP hosts to the judge kernel in a single call
+ *  — sized per host in the ledger, settled per host as judgements stream. */
+export type MissionTier = "peek" | "read" | "dig" | "harvest"
 
 export interface Mission {
   /** The angle the question is asked from ("rivals", "suppliers", "the category's own words"). */

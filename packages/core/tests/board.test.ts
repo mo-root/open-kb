@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest"
 import { Board, type Mission, type MissionTier } from "../src/board.js"
 
-const ALLOWANCES: Record<MissionTier, number> = { peek: 0.03, read: 0.1, dig: 0.25 }
+const ALLOWANCES: Record<MissionTier, number> = { peek: 0.03, read: 0.1, dig: 0.25, harvest: 0.45 }
 
 function mission(over: Partial<Mission> = {}): Mission {
   return {

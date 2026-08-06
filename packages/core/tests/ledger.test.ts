@@ -1,11 +1,19 @@
 import { describe, it, expect } from "vitest"
-import { Ledger, ALLOWANCES } from "../src/ledger.js"
+import { Ledger, ALLOWANCES, HARVEST_BASE_USD, HARVEST_PER_HOST_USD, HARVEST_HOST_CAP } from "../src/ledger.js"
 
 describe("ALLOWANCES", () => {
-  it("prices the three cost words", () => {
+  it("prices the four cost words", () => {
     expect(ALLOWANCES.peek).toBeCloseTo(0.03)
     expect(ALLOWANCES.read).toBeCloseTo(0.1)
     expect(ALLOWANCES.dig).toBeCloseTo(0.25)
+    expect(ALLOWANCES.harvest).toBeCloseTo(0.45)
+  })
+
+  it("derives harvest from its per-host pieces, never a flat guess", () => {
+    // base + perHost × cap: the one tier whose work is counted in hosts. The
+    // pieces are exported so the tool's cap and the price cannot drift apart.
+    expect(ALLOWANCES.harvest).toBeCloseTo(HARVEST_BASE_USD + HARVEST_PER_HOST_USD * HARVEST_HOST_CAP)
+    expect(HARVEST_HOST_CAP).toBe(40)
   })
 })
 

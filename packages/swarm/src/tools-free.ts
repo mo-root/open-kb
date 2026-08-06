@@ -7,6 +7,7 @@ import {
   registrableHost,
   type Evidence,
   type Ledger,
+  type UnreadableReason,
 } from "@open-kb/core"
 import { RunEvidence, originKey, strongerTier, type ProvenanceTier } from "./run-evidence.js"
 import {
@@ -337,6 +338,22 @@ export interface RememberNodeInput {
   relation: string
   why: string
   evidence: EvidenceRef[]
+  /**
+   * Judge-kernel passthrough, code writers only — the model-facing zod schema
+   * in agent.ts deliberately never offers these three, so a model cannot
+   * claim them; the harvest tool passes them so a judgeHosts verdict survives
+   * onto the map exactly as stamped.
+   *
+   * `settledBy` records HOW the judgement happened (predicate arithmetic or
+   * a model call) — metadata about the judging, not a claim about the market.
+   * `because` and `unreadableReason` are a claim that ARRIVES wearing its own
+   * refusal: adopted only when the claim itself stands down (relation
+   * "unknown") and this call's own gate did not speak — the gate's refusal
+   * always outranks a writer's account of one.
+   */
+  settledBy?: "predicate" | "model"
+  because?: string
+  unreadableReason?: UnreadableReason
 }
 
 export interface RememberEdgeInput {
@@ -556,6 +573,16 @@ export function rememberTool(ctx: RememberCtx, input: RememberInput): RememberRe
       }
     }
 
+    // The judge-kernel passthrough: a claim may ARRIVE already standing down
+    // (relation "unknown") wearing the judge's own refusal sentence and the
+    // sniffer's reason code — the harvest path lands unreadable hosts this
+    // way. Adopted only when this call's own gate did not speak: the gate's
+    // because outranks any writer's account of one, and a readable page the
+    // gate refused cannot also claim to have been unreadable.
+    const selfDowngraded = because === undefined && n.relation === "unknown"
+    if (selfDowngraded && n.because) because = n.because
+    const unreadableReason = selfDowngraded ? n.unreadableReason : undefined
+
     const existing = ctx.map.nodes.get(key)
     if (!existing || existing.retracted) {
       ctx.map.nodes.set(key, {
@@ -567,6 +594,8 @@ export function rememberTool(ctx: RememberCtx, input: RememberInput): RememberRe
         relation,
         why: n.why,
         ...(because ? { because } : {}),
+        ...(unreadableReason ? { unreadableReason } : {}),
+        ...(n.settledBy ? { settledBy: n.settledBy } : {}),
         descGrounded,
         tier,
         evidence: minted.evidence,
@@ -600,6 +629,8 @@ export function rememberTool(ctx: RememberCtx, input: RememberInput): RememberRe
       // The measurement follows the what it measured.
       existing.descGrounded = descGrounded
       existing.why = n.why
+      // The judging stamp follows the account that owns the scalar fields.
+      if (n.settledBy) existing.settledBy = n.settledBy
       // An unknown never outranks a supported claim, even arriving stronger:
       // a downgraded account contributes its evidence and its tier, but the
       // standing supported kind/relation hold and the refusal is dropped —
@@ -611,6 +642,9 @@ export function rememberTool(ctx: RememberCtx, input: RememberInput): RememberRe
         existing.relation = relation
         if (because) existing.because = because
         else delete existing.because
+        // The reason code rides with the because it explains, never without it.
+        if (unreadableReason) existing.unreadableReason = unreadableReason
+        else delete existing.unreadableReason
       }
       existing.tier = tier
     } else {
@@ -626,6 +660,8 @@ export function rememberTool(ctx: RememberCtx, input: RememberInput): RememberRe
         existing.relation = relation
         existing.kind = kind
         delete existing.because
+        // The refusal lifts whole: a recovered node no longer wears its code.
+        delete existing.unreadableReason
       }
       existing.tier = strongerTier(existing.tier, tier)
     }
