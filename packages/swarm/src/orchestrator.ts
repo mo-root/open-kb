@@ -25,7 +25,8 @@ import type { LanguageModel } from "ai"
 import { RunEvidence, recallProbePool } from "./run-evidence.js"
 import { MapState } from "./map.js"
 import { FamilyLedger } from "./family-ledger.js"
-import { newRunControl, type FinishState, type RunControl } from "./tools-control.js"
+import { DEFAULT_FAMILY_FLOOR, FAMILY_FLOOR_MAX, familyProfileFrom, seedFamilyMissions } from "./seed-families.js"
+import { newRunControl, spawnTool, type FinishState, type RunControl } from "./tools-control.js"
 import type { SearchTrace } from "./tools-free.js"
 import {
   LEAD_TURN_CAP,
@@ -171,6 +172,17 @@ export interface SwarmOptions {
    * entirely — the escape hatch the design priced at one config flag.
    */
   scorecardConfig?: Partial<ScorecardConfig>
+  /**
+   * The family floor ("families survive as a code floor"): when the seed
+   * landing arrives, the orchestrator templates this many band-61..70 read
+   * missions from the orient answer and funds them through the normal spawn
+   * economics — questions that exist regardless of what the lead chooses to
+   * spawn (run 3's board went dry: 12 nodes, 3 of 6 lanes ever used). `true`
+   * or absent means DEFAULT_FAMILY_FLOOR (4); a number sizes it (clamped to
+   * the 5-template deck); `false` or 0 disables it. The lead can review,
+   * re-rank or kill the floor's rows — they are ordinary board items.
+   */
+  familyFloor?: boolean | number
   pendingAfterMs?: number
   spans?: SpanStream
   onLog?: (line: string) => void
@@ -181,9 +193,10 @@ export interface SwarmOptions {
 // ── the seed ─────────────────────────────────────────────────────────────────
 
 /**
- * The one mission the harness itself writes: the orient question, the design's
- * p100 dig. Everything else de-brands from its answer — this template is the
- * families-as-code-floor, and it is deliberately a question, not a plan.
+ * The first mission the harness itself writes: the orient question, the
+ * design's p100 dig. Everything else de-brands from its answer — when it
+ * lands, the family floor (seed-families.ts) templates the market's boring
+ * questions from whatever it left. Deliberately a question, not a plan.
  */
 export function seedMission(domain: string): Mission {
   const host = registrableHost(domain) || domain
@@ -243,6 +256,13 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
   const stillbornMs = opts.stillbornWindowMs ?? DEFAULT_STILLBORN_MS
   /** Each tier's wall, caller-tuned over the measured defaults. */
   const tierDeadlineMs: Record<MissionTier, number> = { ...TIER_DEADLINE_MS, ...opts.deadlines }
+  /** The family floor's size: default ON at DEFAULT_FAMILY_FLOOR, clamped to the deck. */
+  const familyFloorCount =
+    opts.familyFloor === false
+      ? 0
+      : opts.familyFloor === true || opts.familyFloor === undefined
+        ? DEFAULT_FAMILY_FLOOR
+        : Math.max(0, Math.min(FAMILY_FLOOR_MAX, Math.floor(opts.familyFloor)))
 
   const anchor = registrableHost(opts.domain) || opts.domain
   const ledger = new Ledger(ceilingUsd)
@@ -683,6 +703,53 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
     return notes
   }
 
+  // ── the family floor ─────────────────────────────────────────────────────
+
+  /**
+   * "Families survive as a code floor": fired once, on the seed's landing.
+   * The profile is read mechanically off what the orient landing left on the
+   * map (no model call — this IS the floor), the missions are templated from
+   * core's family shapes, and the funding goes through spawnTool — the same
+   * reserve-at-push economics, the same board band, the same family-ledger
+   * rows, the same refusal sentences — so a floor mission is indistinguishable
+   * from a lead spawn everywhere downstream, including the scorecard's
+   * denominator. Partial funding is narrated per mission, in priority order,
+   * on screen and in the lead's next notes.
+   */
+  let floorOpened = false
+  const openFamilyFloor = () => {
+    if (floorOpened || familyFloorCount === 0) return
+    floorOpened = true
+    const profile = familyProfileFrom(map, { writers: [seed.dedupeKey, "lead"], coinages })
+    if (!profile) {
+      say("family floor: the orient landing left no de-branded text on the map; there is nothing to template from")
+      return
+    }
+    const missions = seedFamilyMissions(profile, { count: familyFloorCount })
+    const out = spawnTool(
+      { board, ledger, control, onFamilyEvent: (e) => families.apply(e) },
+      { missions, why: "the family floor: questions that exist regardless of what the lead chooses to spawn" },
+    )
+    for (const f of out.queued) {
+      const m = missions[f.i]!
+      say(`family floor: p${m.priority} ${m.dedupeKey} funded (${m.tier}) — templated from "${profile.category}" (${profile.source})`)
+    }
+    for (const r of out.refused) {
+      const m = missions[r.i]!
+      say(`family floor: ${m.dedupeKey} not funded — ${r.reason}`)
+    }
+    const queuedKeys = out.queued.map((f) => missions[f.i]!.dedupeKey)
+    if (queuedKeys.length > 0) {
+      digestNotes.push(
+        `the family floor opened ${queuedKeys.length} code-seeded ${queuedKeys.length === 1 ? "question" : "questions"} ` +
+          `from "${profile.category}" (${queuedKeys.join(", ")}); they are ordinary board items — review, re-rank or kill them`,
+      )
+    }
+    for (const r of out.refused) {
+      digestNotes.push(`the family floor could not fund ${missions[r.i]!.dedupeKey}: ${r.reason}`)
+    }
+  }
+
   // ── endings ──────────────────────────────────────────────────────────────
 
   const humanFor = (reason: SwarmEndReason): string => {
@@ -923,7 +990,13 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
     if (winner.type === "mission") {
       inflight.delete(winner.key)
       landingsSince += 1
-      if (winner.key === seed.dedupeKey) seedLanded = true
+      if (winner.key === seed.dedupeKey) {
+        seedLanded = true
+        // The floor opens the moment orientation lands — before this
+        // iteration's fill, so the floor's missions ride the same pop the
+        // landing freed a lane for. A stopping or finishing run funds nothing.
+        if (!stopping && !control.finished) openFamilyFloor()
+      }
       const d = winner.digest
       const line =
         `${winner.key} landed: ${d.status}, +${d.added.nodes} nodes +${d.added.edges} edges, ` +

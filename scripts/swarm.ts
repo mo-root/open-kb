@@ -12,6 +12,11 @@
  * defaults to 600s, overridable via OPENKB_SWARM_WALL (ms) — reasons at the
  * constant below.
  *
+ * The family floor (code-seeded family missions pushed when orientation
+ * lands) defaults ON at 4; OPENKB_SWARM_FAMILIES sizes or disables it:
+ * "0" / "off" / "false" disables, "1".."5" sizes, anything else keeps the
+ * library default.
+ *
  * Models come from OPENKB_MODEL-style envs, one per tier, ids as OpenRouter
  * spells them. The agents themselves never see these names — tiers are the
  * only words cost has inside the run:
@@ -65,6 +70,23 @@ const ceilingUsd = process.argv[3] !== undefined ? Number(process.argv[3]) : 1.5
 const wallRaw = Number(process.env.OPENKB_SWARM_WALL ?? 600_000)
 const wallClockMs = Number.isFinite(wallRaw) && wallRaw > 0 ? wallRaw : 600_000
 
+/**
+ * The family floor, from the environment. Undefined keeps the library default
+ * (ON at 4); "0"/"off"/"false" disables; a number 1-5 sizes it (the library
+ * clamps to its 5-template deck).
+ */
+const famRaw = (process.env.OPENKB_SWARM_FAMILIES ?? "").trim().toLowerCase()
+const familyFloor: boolean | number | undefined =
+  famRaw === ""
+    ? undefined
+    : famRaw === "off" || famRaw === "false"
+      ? false
+      : famRaw === "on" || famRaw === "true"
+        ? true
+        : Number.isFinite(Number(famRaw))
+          ? Number(famRaw)
+          : undefined
+
 const LEAD = process.env.OPENKB_SWARM_LEAD_MODEL ?? "google/gemini-3-flash-preview"
 const PEEK = process.env.OPENKB_SWARM_PEEK_MODEL ?? "google/gemini-3.1-flash-lite"
 const READ = process.env.OPENKB_SWARM_READ_MODEL ?? process.env.OPENKB_MODEL ?? "google/gemini-3.5-flash"
@@ -105,6 +127,7 @@ const run = await runSwarm({
   domain,
   ceilingUsd,
   wallClockMs,
+  ...(familyFloor === undefined ? {} : { familyFloor }),
   skill,
   search: brightDataSearch(creds),
   fetch: brightDataFetch(creds),

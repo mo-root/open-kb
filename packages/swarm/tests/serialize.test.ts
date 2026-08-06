@@ -262,6 +262,10 @@ describe("serializeSwarmRun renders through the web reader", () => {
         read: { inUsdPerM: 0, outUsdPerM: 0 },
         dig: { inUsdPerM: 0, outUsdPerM: 0 },
       },
+      // The orienting seed leaves a capability, so the family floor would add
+      // its own missions here; this fixture pins exact landing counts and the
+      // serialized shape, and the floor has its own tests (seed-families).
+      familyFloor: false,
     })
 
     expect(run.ending.reason).toBe("lead-finished")
