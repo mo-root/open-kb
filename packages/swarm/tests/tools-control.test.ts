@@ -8,6 +8,7 @@ import {
   reviewTool,
   newRunControl,
   type ControlCtx,
+  type FamilyEvent,
 } from "../src/index.js"
 
 const mission = (dedupeKey: string, over: Partial<Mission> = {}): Mission => ({
@@ -233,6 +234,71 @@ describe("reviewTool", () => {
     const again = proposeTool(ctx, { missions: [mission("q", { priority: 40 })] })
     expect(again.queued).toBe(1)
     expect(again.deduped).toEqual([])
+  })
+})
+
+describe("the family seam: onFamilyEvent", () => {
+  const listening = (ceilingUsd = 1.5): { ctx: ControlCtx; events: FamilyEvent[] } => {
+    const events: FamilyEvent[] = []
+    const ctx = { ...ctxOf(ceilingUsd), onFamilyEvent: (e: FamilyEvent) => events.push(e) }
+    return { ctx, events }
+  }
+
+  it("spawn emits opened for each queued mission, in the lead's order, and nothing for a refusal", () => {
+    // Ceiling 0.30: spendable 0.18 — the read funds, the dig is refused.
+    const { ctx, events } = listening(0.3)
+    spawnTool(ctx, {
+      missions: [
+        mission("m-rivals", { lens: "rivals", priority: 90 }),
+        mission("m-deep", { lens: "depth", tier: "dig", priority: 85 }),
+      ],
+      why: "t",
+    })
+    expect(events).toEqual([{ kind: "opened", lens: "rivals", dedupeKey: "m-rivals", priority: 90 }])
+  })
+
+  it("review kill emits killed carrying the lead's because; a refused kill emits nothing", () => {
+    const { ctx, events } = listening()
+    spawnTool(ctx, { missions: [mission("dead"), mission("running")], why: "t" })
+    ctx.board.claim("running")
+    events.length = 0
+    reviewTool(ctx, {
+      kill: [
+        { dedupeKey: "dead", because: "the rivals lens already asks this" },
+        { dedupeKey: "running", because: "changed my mind" }, // claimed: refused, no event
+        { dedupeKey: "ghost", because: "x" }, // unknown: refused, no event
+      ],
+      why: "t",
+    })
+    expect(events).toEqual([{ kind: "killed", dedupeKey: "dead", because: "the rivals lens already asks this" }])
+  })
+
+  it("promote into the lead band emits opened with the row's own lens and its NEW priority", () => {
+    const { ctx, events } = listening()
+    proposeTool(ctx, { missions: [mission("found", { lens: "vendors", priority: 30 })] })
+    expect(events).toEqual([]) // a proposal is not a family
+    reviewTool(ctx, { promote: [{ dedupeKey: "found", priority: 70 }], why: "the whole map says so" })
+    expect(events).toEqual([{ kind: "opened", lens: "vendors", dedupeKey: "found", priority: 70 }])
+  })
+
+  it("a refused promote emits nothing — the band sentence already answered", () => {
+    const { ctx, events } = listening()
+    proposeTool(ctx, { missions: [mission("found", { priority: 30 })] })
+    reviewTool(ctx, {
+      promote: [
+        { dedupeKey: "found", priority: 50 }, // out of the lead's band
+        { dedupeKey: "ghost", priority: 80 }, // unknown key
+      ],
+      why: "t",
+    })
+    expect(events).toEqual([])
+  })
+
+  it("a ctx without the hook behaves exactly as before", () => {
+    const ctx = ctxOf()
+    const r = spawnTool(ctx, { missions: [mission("a")], why: "t" })
+    expect(r.queued).toHaveLength(1)
+    expect(reviewTool(ctx, { kill: [{ dedupeKey: "a", because: "b" }], why: "t" }).killed[0]!.ok).toBe(true)
   })
 })
 

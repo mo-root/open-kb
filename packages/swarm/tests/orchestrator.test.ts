@@ -511,6 +511,183 @@ describe("runSwarm: endings", () => {
   })
 })
 
+// ── the family ledger ───────────────────────────────────────────────────────
+
+describe("runSwarm: the family ledger", () => {
+  it("a seed-only run holds exactly one family row — the run-1 shape", async () => {
+    const lead = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = leadTurnOf(prompt)
+        if (turn === 1) return reply(call("n1", "next", { after: { landings: 1 }, why: "wait for the seed" }), false)
+        return reply(call("f1", "finish", { reason: "done", summary: "s", unresolved: [], why: "d" }), false)
+      },
+    })
+
+    const run = await runSwarm(mkOpts({ lead }))
+
+    expect(run.ending.reason).toBe("lead-finished")
+    expect(run.families).toEqual([
+      {
+        lens: "orientation",
+        dedupeKey: "orient:anchor.com",
+        priority: 100,
+        status: "landed",
+        nodesAdded: 0,
+        pageTierNodes: 0,
+      },
+    ])
+  })
+
+  it("spawning three missions opens three families beside the seed — four rows", async () => {
+    const lead = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = leadTurnOf(prompt)
+        if (turn === 1)
+          return reply(
+            [
+              ...call("1", "spawn", {
+                missions: [mission("m1", 90, "read"), mission("m2", 85, "read"), mission("m3", 80, "read")],
+                why: "three angles",
+              }),
+              ...call("2", "next", { after: { landings: 4 }, why: "let everything land" }),
+            ],
+            false,
+          )
+        return reply(call("f1", "finish", { reason: "done", summary: "s", unresolved: [], why: "d" }), false)
+      },
+    })
+
+    const run = await runSwarm(mkOpts({ lead }))
+
+    expect(run.families.map((f) => f.dedupeKey)).toEqual(["orient:anchor.com", "m1", "m2", "m3"])
+    expect(run.families.every((f) => f.status === "landed")).toBe(true)
+  })
+
+  it("a killed family survives in the rows with the lead's because", async () => {
+    const lead = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = leadTurnOf(prompt)
+        if (turn === 1)
+          return reply(
+            [
+              ...call("1", "spawn", { missions: [mission("m1", 90, "read"), mission("m2", 80, "read")], why: "two angles" }),
+              ...call("2", "next", { after: { landings: 1 }, why: "come back on the first landing" }),
+            ],
+            false,
+          )
+        return reply(
+          [
+            ...call("k1", "review", {
+              kill: [{ dedupeKey: "m2", because: "the rivals lens already asks this" }],
+              why: "duplicate angle",
+            }),
+            ...call("f1", "finish", { reason: "done", summary: "s", unresolved: [], why: "d" }),
+          ],
+          false,
+        )
+      },
+    })
+
+    const run = await runSwarm(mkOpts({ lead, over: { lanes: 1 } }))
+
+    const m2 = run.families.find((f) => f.dedupeKey === "m2")
+    expect(m2).toMatchObject({ status: "killed", because: "the rivals lens already asks this" })
+    expect(run.families).toHaveLength(3) // the killed row stays in the denominator
+  })
+
+  it("promotion creates the family; an unpromoted proposal never opens one", async () => {
+    const seedModel = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = invTurnOf(prompt)
+        if (turn === 0) return reply(call("s1", "search", { queries: ["fraud scoring"], why: "orient" }), false)
+        if (turn === 1)
+          return reply(
+            call("p1", "propose", {
+              missions: [
+                { ...mission("p-promoted", 50, "peek"), lens: "vendors" },
+                mission("p-ignored", 40, "peek"),
+              ],
+              why: "two finds I cannot chase",
+            }),
+            false,
+          )
+        await sleep(400) // stay in flight: the single lane is busy, so fill cannot pop the proposals before the review
+        return reply(text("done."), true)
+      },
+    })
+    const lead = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = leadTurnOf(prompt)
+        if (turn === 1) return reply(call("n1", "next", { after: { seconds: 0.05 }, why: "review the board soon" }), false)
+        if (turn === 2)
+          return reply(
+            [
+              ...call("r1", "review", { promote: [{ dedupeKey: "p-promoted", priority: 70 }], why: "the map says so" }),
+              ...call("f1", "finish", { reason: "done", summary: "s", unresolved: [], why: "d" }),
+            ],
+            false,
+          )
+        return reply(text("idle."), true)
+      },
+    })
+
+    const run = await runSwarm(mkOpts({ lead, inv: seedModel, over: { lanes: 1 } }))
+
+    expect(run.families.map((f) => f.dedupeKey)).toEqual(["orient:anchor.com", "p-promoted"])
+    expect(run.families[1]).toMatchObject({ lens: "vendors", priority: 70, status: "queued" })
+  })
+
+  it("pageTierNodes flows from the writer stamps: the family that read a page carries the count", async () => {
+    const pageWriter = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = invTurnOf(prompt)
+        if (turn === 0)
+          return reply(call("f1", "fetch", { urls: ["https://rival.com"], mode: "direct", why: "the rival's own words" }), false)
+        if (turn === 1)
+          return reply(
+            call("r1", "remember", {
+              nodes: [
+                {
+                  name: "Rival",
+                  domain: "rival.com",
+                  kind: "company",
+                  what: "fraud scoring",
+                  relation: "competitor",
+                  why: "same capability sold to the same buyer, per its own page",
+                  evidence: [{ url: "https://rival.com", quote: "flags stolen cards before authorization" }],
+                },
+              ],
+              why: "record as I go",
+            }),
+            false,
+          )
+        return reply(text("done."), true)
+      },
+    })
+    const lead = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = leadTurnOf(prompt)
+        if (turn === 1)
+          return reply(
+            [
+              ...call("1", "spawn", { missions: [mission("m1", 90, "read")], why: "one page mission" }),
+              ...call("2", "next", { after: { landings: 2 }, why: "let both land" }),
+            ],
+            false,
+          )
+        return reply(call("f1", "finish", { reason: "done", summary: "s", unresolved: [], why: "d" }), false)
+      },
+    })
+
+    const run = await runSwarm(mkOpts({ lead, tiers: { read: pageWriter } }))
+
+    const m1 = run.families.find((f) => f.dedupeKey === "m1")
+    expect(m1).toMatchObject({ status: "landed", nodesAdded: 1, pageTierNodes: 1 })
+    // The seed only searched: zero page-tier answers, and the row says so.
+    expect(run.families.find((f) => f.dedupeKey === "orient:anchor.com")!.pageTierNodes).toBe(0)
+  })
+})
+
 // ── money ───────────────────────────────────────────────────────────────────
 
 describe("runSwarm: the ledger stays honest", () => {

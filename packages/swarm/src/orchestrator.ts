@@ -5,6 +5,7 @@ import {
   Ledger,
   registrableHost,
   type BoardRow,
+  type FamilyRow,
   type FetchPort,
   type Mission,
   type MissionTier,
@@ -15,6 +16,7 @@ import {
 import type { LanguageModel } from "ai"
 import { RunEvidence } from "./run-evidence.js"
 import { MapState } from "./map.js"
+import { FamilyLedger } from "./family-ledger.js"
 import { newRunControl, type FinishState, type RunControl } from "./tools-control.js"
 import type { SearchTrace } from "./tools-free.js"
 import {
@@ -113,6 +115,10 @@ export interface SwarmRun {
   searches: SearchTrace[]
   seen: Set<string>
   landings: MissionLanding[]
+  /** The planned questions — one row per lead-band mission, the seed included,
+   *  killed rows kept with their because. Read off the family ledger at the
+   *  end, pageTierNodes from the map's writer stamps. */
+  families: FamilyRow[]
   tally: SwarmTally
   seconds: number
 }
@@ -215,6 +221,7 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
   const board = new Board()
   const evidence = new RunEvidence()
   const map = new MapState(opts.domain)
+  const families = new FamilyLedger()
   const control = newRunControl()
   const breaker = new BreakerTable()
   const seen = new Set<string>()
@@ -371,6 +378,10 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
     pendingAfterMs: opts.pendingAfterMs,
     signal: aborter.signal,
     hooks,
+    // The family verbs report here: spawn and promote open a row, a review
+    // kill closes one wearing the lead's because. Claim and landing
+    // transitions are this loop's own observations, called where they happen.
+    onFamilyEvent: (e) => families.apply(e),
   }
 
   /** The anchor's own words, banned from every investigator's queries. The
@@ -402,6 +413,7 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
       seed.tier = tier
       board.push(seed, "lead")
       control.claims.set(seed.dedupeKey, held.claimId)
+      families.opened(seed.lens, seed.dedupeKey, seed.priority) // family zero — the code floor
       break
     }
     if (!control.claims.has(seed.dedupeKey)) {
@@ -499,6 +511,8 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
 
   const launch = (mission: BoardRow, claimId: string) => {
     startedInfo.set(mission.dedupeKey, { claimId, tier: mission.tier })
+    families.claimed(mission.dedupeKey) // a proposal's key is not a family; the ledger ignores it
+
     const missionLandings: Promise<void>[] = []
     const deps: InvestigatorDeps = {
       ...base,
@@ -529,6 +543,7 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
         // Recorded here, not in the wake handler: a mission that lands during
         // the final drain still belongs to the run's record.
         landings.push({ mission, digest, actualUsd, atSec: sec() })
+        families.landed(mission.dedupeKey, digest.added.nodes)
         say(
           `lane frees: ${mission.lens} (${mission.dedupeKey}) — ${digest.status}, ` +
             `+${digest.added.nodes} nodes +${digest.added.edges} edges, $${actualUsd.toFixed(3)}`,
@@ -703,6 +718,7 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
       searches,
       seen,
       landings,
+      families: families.rows(map),
       tally,
       seconds: sec(),
     }

@@ -115,6 +115,8 @@ export {
 
 export { serializeSwarmRun, type SerializedSwarmRun } from "./serialize.js"
 
+export { FamilyLedger, type FamilyEvent } from "./family-ledger.js"
+
 export {
   spawnTool,
   proposeTool,

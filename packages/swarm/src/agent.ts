@@ -12,6 +12,7 @@ import {
 } from "@open-kb/core"
 import { RunEvidence } from "./run-evidence.js"
 import { MapState } from "./map.js"
+import type { FamilyEvent } from "./family-ledger.js"
 import {
   readTool,
   recallTool,
@@ -144,6 +145,9 @@ export interface SwarmAgentDeps {
   trackPending?: (landing: Promise<void>) => void
   signal?: AbortSignal
   hooks?: AgentHooks
+  /** The family ledger's ear (T3), wired into the LEAD's control ctx only —
+   *  spawn and review are the family verbs, and propose must never open one. */
+  onFamilyEvent?: (event: FamilyEvent) => void
 }
 
 export interface LeadDeps extends SwarmAgentDeps {
@@ -383,7 +387,12 @@ function paidTools(wire: WireOpts): ToolSet {
 
 function leadControlTools(deps: SwarmAgentDeps): ToolSet {
   const report = makeReport(deps)
-  const controlCtx: ControlCtx = { board: deps.board, ledger: deps.ledger, control: deps.control }
+  const controlCtx: ControlCtx = {
+    board: deps.board,
+    ledger: deps.ledger,
+    control: deps.control,
+    onFamilyEvent: deps.onFamilyEvent,
+  }
 
   return {
     spawn: tool({

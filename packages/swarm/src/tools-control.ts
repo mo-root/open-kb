@@ -1,4 +1,5 @@
 import { ALLOWANCES, type Board, type Ledger, type Mission } from "@open-kb/core"
+import type { FamilyEvent } from "./family-ledger.js"
 
 /**
  * The control tools: spawn, propose, review, next, finish. No model call, no
@@ -48,6 +49,16 @@ export interface ControlCtx {
   board: Board
   ledger: Ledger
   control: RunControl
+  /**
+   * The family ledger's ear (T3): a lead-band open (spawn, or a promote into
+   * the band — reviewTool band-validates first, so every successful promote
+   * qualifies) and a review kill with the lead's because. The hook exists
+   * because the kill's reason reaches the orchestrator no other way —
+   * board.kill discards it by documented contract ("the caller records"),
+   * and this caller is where the recording happens. Optional: a ctx without
+   * it behaves exactly as before.
+   */
+  onFamilyEvent?: (event: FamilyEvent) => void
 }
 
 // ── spawn ────────────────────────────────────────────────────────────────────
@@ -97,6 +108,7 @@ export function spawnTool(ctx: ControlCtx, input: SpawnInput): SpawnReturn {
     }
     ctx.control.claims.set(m.dedupeKey, held.claimId)
     queued.push({ i, allowanceUsd })
+    ctx.onFamilyEvent?.({ kind: "opened", lens: m.lens, dedupeKey: m.dedupeKey, priority: m.priority })
   }
 
   return { queued, refused, poolLeftUsd: ctx.ledger.spendable() }
@@ -197,6 +209,13 @@ export function reviewTool(ctx: ControlCtx, input: ReviewInput): ReviewReturn {
     }
     const out = ctx.board.promote(p.dedupeKey, p.priority)
     promoted.push(out.ok ? { dedupeKey: p.dedupeKey, ok: true } : { dedupeKey: p.dedupeKey, ok: false, reason: out.reason })
+    if (out.ok && ctx.onFamilyEvent) {
+      // Promotion into the lead band is what CREATES a family — the row needs
+      // the mission's own lens, and promote only succeeds on a queued item, so
+      // the board's residue still holds it (now wearing the new priority).
+      const row = ctx.board.residue().find((r) => r.dedupeKey === p.dedupeKey)
+      if (row) ctx.onFamilyEvent({ kind: "opened", lens: row.lens, dedupeKey: row.dedupeKey, priority: row.priority })
+    }
   }
 
   for (const k of input.kill ?? []) {
@@ -216,6 +235,7 @@ export function reviewTool(ctx: ControlCtx, input: ReviewInput): ReviewReturn {
       ctx.control.claims.delete(k.dedupeKey)
     }
     killed.push({ dedupeKey: k.dedupeKey, ok: true })
+    ctx.onFamilyEvent?.({ kind: "killed", dedupeKey: k.dedupeKey, because: k.because })
   }
 
   return { promoted, killed, poolLeftUsd: ctx.ledger.spendable() }
