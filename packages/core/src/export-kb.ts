@@ -113,6 +113,10 @@ export function exportKbFiles(run: ExportRunLike): ExportedFile[] {
     )
     lines.push(`# ${e.name}\n`)
     if (e.what) lines.push(`${e.what}\n`)
+    const lane = e.foundBy?.length
+      ? `surfaced by the ${e.foundBy[0]} lane's de-branded queries`
+      : `surfaced by this run's queries`
+    lines.push(`**Route:** ${lane} → judged ${e.tier ?? "untiered"} → ${e.relation} to ${anchor}.\n`)
     if (e.why) lines.push(`**Why it's on the map:** ${e.why}\n`)
     if (e.because) lines.push(`**Downgraded:** ${e.because}\n`)
     if (e.spans?.length) {
@@ -237,6 +241,61 @@ Reading rules, in the map's own vocabulary:
   by the provenance lane that surfaced each entity; straddlers legitimately
   appear between segments.
 `,
+  })
+
+  // SKILL.md — the agent door: consumption recipes in the vocabulary the
+  // knowledge-base MCP already chose (battlecard, ecosystem, coverage), as
+  // plain file operations so any agent that can read files can walk the map.
+  const competitorCount = counts.get("competitor") ?? 0
+  const unknownCount = counts.get("unknown") ?? 0
+  files.push({
+    path: "SKILL.md",
+    content: `---
+name: kb-${anchor.replace(/\W+/g, "-")}
+description: Walk the ${anchor} market map — competitors, substitutes, segments, buyers and the evidence behind every claim. Use when asked who competes with ${anchor}, for a battlecard, an ecosystem overview, why an entity is on this map, or how much of it to trust. Every answer should carry the note's receipts.
+---
+
+# Swimming in this map
+
+${kept.length} entities around **${anchor}**${run.decomposition?.sells ? ` (${run.decomposition.sells.replace(/\.$/, "").toLowerCase()})` : ""}, every one carrying its evidence. You never need the app that built this — the files are the database.
+
+## Recipes
+
+**Battlecard (top rivals):** read \`relations/competitor.md\` — already ordered by evidence
+tier, strongest first. For each rival open \`entities/<key>.md\`: the *what* is the pitch,
+the *why* is the evidence for the rivalry, the receipts are quotable verbatim. ${competitorCount} competitors here.
+
+**Ecosystem overview:** read \`README.md\` then every file in \`segments/\` — the market's
+structure from provenance, with straddlers marked (entities legitimately in two segments
+are often the most strategically interesting).
+
+**Why is X on this map:** open \`entities/<key>.md\` — the *route* line says which market
+lane surfaced it and how it stands to the anchor; the edges are wikilinks you can follow;
+the receipts are the proof. If the relation is \`unknown\`, the *because* is the refusal —
+treat it as "not proven", never "not a competitor". ${unknownCount} refusals here.
+
+**Who buys / where they argue:** \`relations/buyer.md\` and \`relations/discusses.md\` →
+the community entities.
+
+**Search:** grep \`entities/\` frontmatter (\`relation:\`, \`tier:\`, \`segment:\`) — it is the
+index. \`manifest.json\` has every key for programmatic access.
+
+## Trust rules (measured, not disclaimers)
+
+- Trust by **tier**: own-page > page > snippet. A tier is where the evidence came from.
+- **Receipts prove provenance, not support**: the quote is verbatim from the entity's own
+  fetched page; that it supports the description is the model's claim, metered by
+  \`descGrounded\` (a relative drift meter — 0.68 is a normal honest score, not 68% true).
+- The head of each relation list is solid; treat the snippet-tier tail as leads to check.
+- Never repeat a *why* about an unfamiliar entity as established fact — quote its receipt
+  or go fetch its page.
+`,
+  })
+
+  // llms.txt — the product is built on reading these; its own export speaks one.
+  files.push({
+    path: "llms.txt",
+    content: `# ${anchor} market map\n\n> ${kept.length} entities with evidence-tiered relations to ${anchor}: ${countLine}.\n\n- [README.md](README.md): the map at a glance and run health\n- [SKILL.md](SKILL.md): recipes for walking this map as an agent\n- [AGENTS.md](AGENTS.md): the honesty rules\n- [relations/competitor.md](relations/competitor.md): rivals by evidence tier\n- [manifest.json](manifest.json): programmatic index\n`,
   })
 
   // manifest.json

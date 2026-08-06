@@ -106,3 +106,35 @@ describe("slugOf", () => {
     expect(slugOf({ name: "Data Teams", kind: "buyer" })).toBe("buyer-data-teams")
   })
 })
+
+describe("the agent door", () => {
+  const files = exportKbFiles(run)
+  const get = (p: string) => files.find((f) => f.path === p)?.content ?? ""
+
+  it("ships a SKILL.md with real frontmatter, the recipes, and the trust rules", () => {
+    const skill = get("SKILL.md")
+    expect(skill).toMatch(/^---\nname: kb-brightdata-com\n/)
+    expect(skill).toContain("Battlecard")
+    expect(skill).toContain("relations/competitor.md")
+    expect(skill).toContain("own-page > page > snippet")
+    expect(skill).toContain("not proven")
+  })
+
+  it("speaks llms.txt at the root", () => {
+    const llms = get("llms.txt")
+    expect(llms).toMatch(/^# brightdata\.com market map/)
+    expect(llms).toContain("[SKILL.md](SKILL.md)")
+  })
+
+  it("every entity note carries its route from lane to relation", () => {
+    expect(get("entities/oxylabs-io.md")).toContain(
+      "**Route:** surfaced by the Proxy Networks lane's de-branded queries → judged own-page → competitor to brightdata.com.",
+    )
+    expect(get("entities/x-example.md")).toBe("") // not in this fixture
+  })
+
+  it("counts in the skill body match the run", () => {
+    expect(get("SKILL.md")).toContain("1 competitors here")
+    expect(get("SKILL.md")).toContain("1 refusals here")
+  })
+})
