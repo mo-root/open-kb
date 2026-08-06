@@ -1671,7 +1671,12 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     fetcher,
     anchor,
     aggregatorThreshold: KERNEL_THRESHOLD,
-    concurrency: 8,
+    // The rank pool is the run's longest phase: free direct fetches plus one
+    // short model call per residue host. 8 was the kernel's launch width;
+    // OPENKB_RANK_CONCURRENCY raises it when the model provider's rate allows
+    // — doubling the pool roughly halves the phase, and a provider that
+    // objects answers with 429s the caller will see, not silent loss.
+    concurrency: Math.max(1, Math.floor(Number(process.env.OPENKB_RANK_CONCURRENCY ?? 8) || 8)),
     signal,
     onFetch: (url, ok, ms) => {
       bill("fetch", "rank", 0, ms, ok)
