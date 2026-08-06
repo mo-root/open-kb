@@ -20,6 +20,9 @@
  * Usage:
  *   pnpm run audit runs/<run>.json [--n 30] [--relations competitor,substitute]
  *   pnpm run audit --score runs/experiments/audit-<run>-<N>.json
+ *
+ * It must be `pnpm run audit` — bare `pnpm audit` invokes pnpm's own
+ * dependency auditor, not this script.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { basename } from "node:path"
