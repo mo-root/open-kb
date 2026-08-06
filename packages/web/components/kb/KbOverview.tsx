@@ -14,6 +14,7 @@ import {
   GROUNDING_MEAN_BLURB,
   RELATION_BLURB,
   type KbScorecard,
+  type KbSegment,
   type KbView,
   type NoteRef,
 } from "@/lib/viewTypes";
@@ -611,6 +612,64 @@ function CoveragePanel({ scorecard }: { scorecard: KbScorecard }) {
   );
 }
 
+/* The market segments provenance already drew. Every kept entity records which
+   market's queries surfaced it (`foundBy`), so the segmentation ships in the
+   envelope pre-derived — rendered here, inferred nowhere. A straddler is an
+   entity another market's queries ALSO surfaced: on the graph it hangs between
+   its segments (the extra lanes draw dashed), and this row counts them per
+   segment. The reserved "unattributed" segment holds entities carrying no
+   attribution at all — mostly hosts whose pages could not be read — and wears
+   the advisory amber the rest of the app uses for "the run did not answer
+   this". Kernel-era runs (no `foundBy` on any entity) derive an empty array
+   and the card does not render: no segmentation measured, none shown. */
+function SegmentsPanel({ segments }: { segments: KbSegment[] }) {
+  const straddlers = segments.reduce((n, s) => n + s.straddlers, 0);
+  return (
+    <Card className="reveal reveal-2">
+      <PanelHead
+        title="Segments"
+        count={segments.length}
+        right={
+          <span className="font-mono text-[10px] lowercase tracking-wide text-slate-600">
+            by the market that found each entity
+          </span>
+        }
+      />
+      <dl className="space-y-1.5">
+        {segments.map((s) => (
+          <div key={s.name} className="flex items-baseline justify-between gap-3">
+            <dt
+              className={`text-[11px] ${
+                s.name === "unattributed" ? "text-amber-300" : "text-slate-400"
+              }`}
+              title={
+                s.name === "unattributed"
+                  ? "entities the run kept but could not attribute to any market's queries"
+                  : undefined
+              }
+            >
+              {s.name}
+            </dt>
+            <dd className="tnum shrink-0 font-mono text-[11px] text-slate-300">
+              {s.size} <span className="text-slate-600">·</span>{" "}
+              <span className={s.straddlers > 0 ? "text-slate-100" : "text-slate-600"}>
+                {s.straddlers} straddle
+              </span>
+            </dd>
+          </div>
+        ))}
+      </dl>
+      {straddlers > 0 && (
+        <p className="mt-3 border-t border-slate-800 pt-2.5 text-[10px] leading-4 text-slate-500">
+          a straddler was surfaced by more than one market&apos;s queries — on the
+          graph it sits between its segments, a dashed lane marking each extra
+          market that found it.
+        </p>
+      )}
+    </Card>
+  );
+}
+
 /* Skeleton mirroring the dashboard shape, no spinners. */
 function OverviewSkeleton() {
   return (
@@ -828,6 +887,14 @@ export function KbOverview({
           Absent on sweep runs and on runs recorded before it existed —
           absence means "never measured", so no card rather than an empty one. */}
       {envelope.scorecard && <CoveragePanel scorecard={envelope.scorecard} />}
+
+      {/* Runs whose entities carry foundBy only: the segmentation provenance
+          drew. Kernel-era runs derive an empty array — no row, same rule as
+          the scorecard: never measured, never shown. The `?? []` guards a
+          stale server still sending pre-segments envelopes. */}
+      {(envelope.segments ?? []).length > 0 && (
+        <SegmentsPanel segments={envelope.segments} />
+      )}
 
       {/* Composition + placement. */}
       <div className="grid gap-4 md:grid-cols-2">

@@ -182,6 +182,23 @@ export interface KbScorecard {
 /** Substantive entities per type. */
 export type TypeCounts = Record<NodeType, number>
 
+/**
+ * One market segment, read straight off provenance. Every kept entity records
+ * which market's queries surfaced it (`foundBy`, strongest first), so the
+ * segmentation already exists in the run — this shape only renders it, it
+ * infers nothing. An entity sits in the segment of its first recorded lane;
+ * `straddlers` counts how many of them were also surfaced by another market.
+ * The reserved name `"unattributed"` holds entities carrying no `foundBy` at
+ * all (a blocked host the kernel refused, mostly) — an honest bucket rather
+ * than a market nobody measured them into. A run recorded before `foundBy`
+ * existed derives an empty array, and the segments row simply does not render.
+ */
+export interface KbSegment {
+  name: string
+  size: number
+  straddlers: number
+}
+
 export interface KbSummary {
   slug: string
   manifest: KbManifest | null
@@ -194,6 +211,9 @@ export interface KbSummary {
   unplaced: number
   /** Hosts the run paid for and the classifier threw away as `kind: "noise"`. */
   noise: number
+  /** The market segments provenance already drew, largest first, unattributed
+   *  last. Empty on a run recorded before `foundBy` existed. */
+  segments: KbSegment[]
 }
 
 /** An entity as it appears in a list: enough to sort, group and label it
@@ -294,6 +314,11 @@ export interface KbView {
    *  on sweep runs and on swarm runs recorded before T6 wrote it — absence
    *  means "never measured", and the Coverage card simply does not appear. */
   scorecard?: KbScorecard
+  /** The market segments provenance already drew — same derivation as
+   *  `KbSummary.segments`, riding the envelope so the overview's segments row
+   *  needs no second request. Empty on a run recorded before `foundBy`
+   *  existed, and the row does not render. */
+  segments: KbSegment[]
 }
 
 /** One entity, whole. v1's equivalent carried a markdown `body`; an entity has

@@ -1,5 +1,8 @@
+import { existsSync, readFileSync } from "node:fs"
+import { dirname, join } from "node:path"
+import { fileURLToPath } from "node:url"
 import { describe, it, expect } from "vitest"
-import { graphOf, manifestOf, noteOf, viewOf } from "./kb-from-run"
+import { graphOf, manifestOf, noteOf, summaryOf, viewOf } from "./kb-from-run"
 import type { StoredRun } from "./runs"
 
 /**
@@ -354,5 +357,200 @@ describe("evidence tier and grounding", () => {
     expect(manifestOf(fixtureRun({ report: { kernel: { fetched: 10 } } })).groundingMean).toBeUndefined()
     expect(manifestOf(fixtureRun({ report: {} })).groundingMean).toBeUndefined()
     expect(manifestOf(fixtureRun({ report: { kernel: { groundingMean: null } } })).groundingMean).toBeUndefined()
+  })
+})
+
+/**
+ * Segments: provenance rendered as segmentation, nothing inferred. Every kept
+ * entity carries `foundBy` — which market's queries surfaced it — so the map's
+ * segments already exist in the data; this derivation only counts them. An
+ * entity whose `foundBy` names several markets straddles them, and one that
+ * carries no `foundBy` at all lands in an honest "unattributed" segment rather
+ * than being folded into a market nobody measured it into.
+ */
+describe("segments, provenance rendered as segmentation", () => {
+  const cap = (name: string) => ({ name, does: `does ${name}`, centrality: "core", covers: [] })
+  const segRun = (entities: unknown[]) => {
+    const r = run(entities)
+    ;(r.result.decomposition as { capabilities?: unknown[] }).capabilities = [cap("Proxy Networks"), cap("Web Scraping APIs")]
+    return r
+  }
+  const found = (domain: string, foundBy: string[], relation = "competitor") => ({ ...entity(domain, relation), foundBy })
+
+  it("derives one segment per first foundBy market, largest first", () => {
+    const v = viewOf(segRun([
+      found("a.com", ["Web Scraping APIs"]),
+      found("b.com", ["Web Scraping APIs"]),
+      found("c.com", ["Proxy Networks"]),
+    ]))
+    expect(v.segments).toEqual([
+      { name: "Web Scraping APIs", size: 2, straddlers: 0 },
+      { name: "Proxy Networks", size: 1, straddlers: 0 },
+    ])
+  })
+
+  it("rides on the summary too, same derivation", () => {
+    const s = summaryOf(segRun([found("a.com", ["Proxy Networks"])]))
+    expect(s.segments).toEqual([{ name: "Proxy Networks", size: 1, straddlers: 0 }])
+  })
+
+  it("counts an entity with several lanes as a straddler of its first segment", () => {
+    const v = viewOf(segRun([
+      found("oxylabs.io", ["Proxy Networks", "Web Scraping APIs"]),
+      found("b.com", ["Proxy Networks"]),
+    ]))
+    expect(v.segments).toEqual([{ name: "Proxy Networks", size: 2, straddlers: 1 }])
+  })
+
+  it("does not call repeated spellings of one lane a straddle", () => {
+    const v = viewOf(segRun([found("a.com", ["Proxy Networks", "  proxy networks "])]))
+    expect(v.segments[0]!.straddlers).toBe(0)
+  })
+
+  it("names a segment in the decomposition's spelling when the lane matches a market", () => {
+    const v = viewOf(segRun([found("a.com", ["proxy networks"])]))
+    expect(v.segments[0]!.name).toBe("Proxy Networks")
+  })
+
+  it("keeps a lane the planner invented mid-run as its own segment, in its recorded spelling", () => {
+    const v = viewOf(segRun([found("a.com", ["captcha solvers"])]))
+    expect(v.segments).toEqual([{ name: "captcha solvers", size: 1, straddlers: 0 }])
+  })
+
+  it("counts no-foundBy entities into an unattributed segment, last regardless of size", () => {
+    const v = viewOf(segRun([
+      found("a.com", ["Web Scraping APIs"]),
+      entity("blocked-1.com", "unknown", "unknown"),
+      entity("blocked-2.com", "unknown", "unknown"),
+    ]))
+    expect(v.segments).toEqual([
+      { name: "Web Scraping APIs", size: 1, straddlers: 0 },
+      { name: "unattributed", size: 2, straddlers: 0 },
+    ])
+  })
+
+  it("derives no segments at all for a run recorded before foundBy existed", () => {
+    // Kernel-era runs carry no foundBy on any entity. All-unattributed would be
+    // furniture, not a fact — so the overview's segments row simply does not
+    // render (it conditions on this array being non-empty).
+    const v = viewOf(segRun([entity("a.com", "competitor"), entity("b.com", "substitute")]))
+    expect(v.segments).toEqual([])
+    expect(summaryOf(segRun([entity("a.com", "competitor")])).segments).toEqual([])
+  })
+})
+
+/**
+ * Straddler edges: the one real structure `foundBy` adds to the map. The edge
+ * builder used to keep only the first resolvable lane, so an entity found by
+ * two markets sat wholly inside one. The remaining resolvable lanes now draw
+ * as `found` edges with confidence `inferred` — the canvas already dashes
+ * inferred, so a straddler visibly sits between its segments purely from data.
+ */
+describe("graphOf, straddler edges", () => {
+  const cap = (name: string) => ({ name, does: `does ${name}`, centrality: "core", covers: [] })
+  const withMarkets = (entities: unknown[]) => {
+    const r = run(entities)
+    ;(r.result.decomposition as { capabilities?: unknown[] }).capabilities = [cap("proxy network"), cap("search api"), cap("datasets")]
+    return r
+  }
+
+  it("emits each remaining resolvable lane as an inferred found edge", () => {
+    const g = graphOf(withMarkets([{ ...entity("oxylabs.io", "competitor"), foundBy: ["proxy network", "search api", "datasets"] }]))
+    const mine = g.edges.filter((e) => e.target === "players/oxylabs.io.md")
+    expect(mine).toHaveLength(3)
+    const primary = mine.find((e) => e.source === "markets/proxy-network.md")
+    expect(primary).toMatchObject({ label: "competitor" })
+    expect(primary!.confidence).toBeUndefined()
+    const rest = mine.filter((e) => e !== primary)
+    expect(rest.map((e) => e.source).sort()).toEqual(["markets/datasets.md", "markets/search-api.md"])
+    for (const e of rest) expect(e).toMatchObject({ label: "found", confidence: "inferred" })
+  })
+
+  it("does not duplicate the primary lane however it is spelled", () => {
+    const g = graphOf(withMarkets([{ ...entity("a.com", "competitor"), foundBy: ["proxy network", " Proxy Network ", "search api"] }]))
+    const mine = g.edges.filter((e) => e.target === "players/a.com.md")
+    expect(mine).toHaveLength(2)
+    expect(mine.filter((e) => e.source === "markets/proxy-network.md")).toHaveLength(1)
+  })
+
+  it("skips an extra lane the planner invented mid-run", () => {
+    const g = graphOf(withMarkets([{ ...entity("a.com", "competitor"), foundBy: ["proxy network", "captcha solvers"] }]))
+    expect(g.edges.filter((e) => e.target === "players/a.com.md")).toHaveLength(1)
+  })
+
+  it("draws a relation-none straddler as found in every lane, only the extras inferred", () => {
+    const g = graphOf(withMarkets([{ ...entity("quiet.com", "none"), foundBy: ["datasets", "search api"] }]))
+    const mine = g.edges.filter((e) => e.target === "players/quiet.com.md")
+    expect(mine).toHaveLength(2)
+    expect(mine.every((e) => e.label === "found")).toBe(true)
+    expect(mine.find((e) => e.source === "markets/datasets.md")!.confidence).toBeUndefined()
+    expect(mine.find((e) => e.source === "markets/search-api.md")!.confidence).toBe("inferred")
+  })
+
+  it("changes nothing for a single-lane entity", () => {
+    const g = graphOf(withMarkets([{ ...entity("solo.com", "substitute"), foundBy: ["datasets"] }]))
+    const mine = g.edges.filter((e) => e.target === "players/solo.com.md")
+    expect(mine).toHaveLength(1)
+    expect(mine[0]!.confidence).toBeUndefined()
+  })
+})
+
+/**
+ * The demonstration corpus, following drift.test.ts's walk-up: the validation
+ * kernel's big brightdata sweep, whose provenance this feature renders.
+ * `runs/` is gitignored and CI will not have it, so the suite skips honestly
+ * when the file is absent instead of green-lighting numbers it never derived.
+ */
+const runsDir = (() => {
+  let dir = dirname(fileURLToPath(import.meta.url))
+  for (let i = 0; i < 8; i++) {
+    if (existsSync(join(dir, "runs", "sweep-brightdata-com-202608051650.json"))) return join(dir, "runs")
+    dir = dirname(dir)
+  }
+  return null
+})()
+
+describe.skipIf(runsDir === null)("segments of the real brightdata run", () => {
+  const stored = (): StoredRun => ({
+    id: "22222222-2222-4222-8222-222222222222",
+    domain: "brightdata.com",
+    queries: 0,
+    startedAt: 0,
+    endedAt: 1,
+    status: "complete",
+    result: JSON.parse(readFileSync(join(runsDir!, "sweep-brightdata-com-202608051650.json"), "utf8")),
+  })
+
+  it("derives the run's five markets plus the 13 unattributed, straddlers riding each", () => {
+    const v = viewOf(stored())
+    expect(v.segments.map((s) => s.name)).toEqual([
+      "Web Scraping APIs",
+      "Retail Competitive Intelligence",
+      "Proxy Networks",
+      "Pre-collected Datasets",
+      "Managed Web Scraping Services",
+      "unattributed",
+    ])
+    // The night's own numbers, pinned as windows: the derivation dedupes hosts
+    // and drops the anchor and noise, so it counts a shade under the raw file.
+    const by = new Map(v.segments.map((s) => [s.name, s]))
+    expect(by.get("Web Scraping APIs")!.size).toBeGreaterThanOrEqual(285)
+    expect(by.get("Web Scraping APIs")!.size).toBeLessThanOrEqual(300)
+    expect(by.get("unattributed")).toEqual({ name: "unattributed", size: 13, straddlers: 0 })
+    const straddlers = v.segments.reduce((n, s) => n + s.straddlers, 0)
+    expect(straddlers).toBeGreaterThanOrEqual(140)
+    expect(straddlers).toBeLessThanOrEqual(155)
+    const sized = v.segments.reduce((n, s) => n + s.size, 0)
+    expect(sized).toBe(v.notes.length - 1) // every kept entity sits in exactly one segment
+  })
+
+  it("draws every extra lane as an inferred found edge", () => {
+    const g = graphOf(stored())
+    const inferredFound = g.edges.filter((e) => e.label === "found" && e.confidence === "inferred")
+    expect(inferredFound.length).toBeGreaterThanOrEqual(140)
+    // oxylabs, the canonical straddler: one primary lane, the rest inferred.
+    const oxylabs = g.edges.filter((e) => e.target === "players/oxylabs.io.md" && e.source.startsWith("markets/"))
+    expect(oxylabs.length).toBeGreaterThanOrEqual(2)
+    expect(oxylabs.filter((e) => e.confidence === "inferred")).toHaveLength(oxylabs.length - 1)
   })
 })

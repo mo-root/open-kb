@@ -6,6 +6,7 @@ import type {
   GraphViewNode,
   KbManifest,
   KbScorecard,
+  KbSegment,
   KbSummary,
   KbView,
   NoteRef,
@@ -290,6 +291,69 @@ function place(result: SweepResult): { kept: Placed[]; noise: Entity[] } {
   return { kept, noise }
 }
 
+/** An entity's provenance lanes: its `foundBy` entries trimmed, blanks
+ *  dropped, and repeated spellings folded onto one case-insensitive key,
+ *  order kept — the run wrote them strongest first. */
+function lanesOf(e: Entity): { key: string; label: string }[] {
+  const seen = new Set<string>()
+  const lanes: { key: string; label: string }[] = []
+  for (const raw of e.foundBy ?? []) {
+    if (typeof raw !== "string") continue
+    const label = raw.trim()
+    if (!label) continue
+    const key = label.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    lanes.push({ key, label })
+  }
+  return lanes
+}
+
+/**
+ * The segmentation provenance already drew (see `KbSegment` in viewTypes.ts):
+ * render `foundBy`, infer nothing. Each kept entity sits in the segment of its
+ * first recorded lane — the strongest attribution the run made — and counts as
+ * a straddler there when another market's queries surfaced it too. A lane the
+ * planner invented mid-run is still provenance and keeps its own segment; an
+ * entity with no `foundBy` at all lands in `unattributed` rather than in a
+ * market nobody measured it into. When NO entity carries `foundBy` the run
+ * predates the field, and the honest answer is no segmentation at all — an
+ * empty array — not one all-"unattributed" bucket dressed up as a finding.
+ */
+function segmentsOf(result: SweepResult, kept: Placed[]): KbSegment[] {
+  const bySeg = new Map<string, { label: string; size: number; straddlers: number }>()
+  let unattributed = 0
+  for (const p of kept) {
+    const lanes = lanesOf(p.entity)
+    if (lanes.length === 0) {
+      unattributed += 1
+      continue
+    }
+    const first = lanes[0]!
+    const seg = bySeg.get(first.key) ?? { label: first.label, size: 0, straddlers: 0 }
+    seg.size += 1
+    if (lanes.length > 1) seg.straddlers += 1
+    bySeg.set(first.key, seg)
+  }
+  if (bySeg.size === 0) return []
+
+  // The market names come free from the decomposition: a lane that matches a
+  // planned market wears the decomposition's own spelling, not the (possibly
+  // case-drifted) spelling some entity happened to record first.
+  for (const c of result.decomposition?.capabilities ?? []) {
+    const seg = bySeg.get(c.name.trim().toLowerCase())
+    if (seg) seg.label = c.name.trim()
+  }
+
+  const segments: KbSegment[] = [...bySeg.values()]
+    .map((s) => ({ name: s.label, size: s.size, straddlers: s.straddlers }))
+    .sort((a, b) => b.size - a.size || a.name.localeCompare(b.name))
+  // Unattributed always closes the list: it is the run's honest remainder, not
+  // a market, and sorting it into the middle would dress it up as one.
+  if (unattributed > 0) segments.push({ name: "unattributed", size: unattributed, straddlers: 0 })
+  return segments
+}
+
 /** The anchor itself, as a node. It is the hub the whole map hangs off, so it
  *  is core-typed and carries the top placement, nothing on the map is more
  *  firmly placed than the company the map is OF. */
@@ -356,6 +420,7 @@ export function summaryOf(run: StoredRun): KbSummary {
     notes: kept.length + 1,
     unplaced: kept.filter((p) => p.entity.relation === "none").length,
     noise: noise.length,
+    segments: segmentsOf(run.result, kept),
   }
 }
 
@@ -412,6 +477,7 @@ export function viewOf(run: StoredRun): KbView {
         | { product: string; terms: string[]; generic: boolean; foundAt: string }[]
         | undefined) ?? [],
     scorecard: scorecardOf((run.result.report ?? {}) as Record<string, unknown>),
+    segments: segmentsOf(run.result, kept),
   }
 }
 
@@ -534,17 +600,31 @@ export function graphOf(run: StoredRun): GraphView {
   }))
 
   // Each entity hangs off the market whose queries surfaced it. `foundBy` is
-  // strongest-first, so the first name that resolves to a real market wins; a
-  // market the planner invented mid-run resolves to nothing and the entity
+  // strongest-first, so the first name that resolves to a real market is home;
+  // a market the planner invented mid-run resolves to nothing and the entity
   // falls back to the anchor, exactly as every entity did before this existed.
   //
   // `relation: none` with a known market still gets an edge, labelled `found`:
   // the classifier declining to place something against the anchor does not
   // un-happen the retrieval that surfaced it.
+  //
+  // The REMAINING resolvable lanes are the straddle — several markets' queries
+  // surfaced the same host, which is the run measuring that the host sits
+  // between segments. Each draws as a `found` edge (the vocabulary the home
+  // edge already uses for pure retrieval; the home edge carries the relation)
+  // wearing confidence `inferred`, so the canvas's existing dashed-for-inferred
+  // style keeps them visibly subordinate to the home lane. No new rendering:
+  // the straddle is pure data.
   for (const p of kept) {
-    const marketId = (p.entity.foundBy ?? []).map((m) => marketIds.get(marketKey(m))).find(Boolean)
-    if (marketId) {
-      edges.push({ source: marketId, target: p.path, label: p.entity.relation === "none" ? "found" : p.entity.relation })
+    const lanes = [
+      ...new Set((p.entity.foundBy ?? []).map((m) => marketIds.get(marketKey(m))).filter((id): id is string => Boolean(id))),
+    ]
+    const home = lanes[0]
+    if (home) {
+      edges.push({ source: home, target: p.path, label: p.entity.relation === "none" ? "found" : p.entity.relation })
+      for (const lane of lanes.slice(1)) {
+        edges.push({ source: lane, target: p.path, label: "found", confidence: "inferred" })
+      }
     } else if (p.entity.relation !== "none") {
       edges.push({ source: ANCHOR_PATH, target: p.path, label: p.entity.relation })
     }
