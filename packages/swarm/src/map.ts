@@ -91,6 +91,12 @@ export interface EntityRow {
   why: string
   because?: string
   tier: ProvenanceTier
+  /** The merged-away accounts, when a collision kept them (`MapNode.also`).
+   *  Present only when non-empty, so a node that never merged keeps the exact
+   *  row shape it always had. Without this the "a product folded into its host
+   *  node stays recoverable by name" promise was true only in memory — the
+   *  run JSON dropped the fold and no reader could ever show it. */
+  also?: Array<{ name?: string; what: string }>
 }
 
 /** A sweep-shaped edge row, exactly what run-JSON `edges` carries. */
@@ -138,6 +144,7 @@ export class MapState {
         why: n.why,
         ...(n.because ? { because: n.because } : {}),
         tier: n.tier,
+        ...(n.also.length ? { also: n.also.map((a) => ({ ...a })) } : {}),
       })
     }
     return out

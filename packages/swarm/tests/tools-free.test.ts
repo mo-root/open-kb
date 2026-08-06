@@ -920,6 +920,44 @@ describe("writer attribution (contributions)", () => {
     }
   })
 
+  it("entities() carries the merged-away accounts — a folded product is recoverable by name in the run JSON", () => {
+    const s = seeded()
+    const ctx: RememberCtx = { map: s.map, evidence: s.evidence, ledger: ledger(), writer: "m-a" }
+    rememberTool(ctx, {
+      nodes: [{
+        name: "Acme", domain: "rival.com", kind: "company", what: "scraping api platform", relation: "competitor",
+        why: "sells the same collection job to the same engineering buyer, as its core product",
+        evidence: [{ url: "https://rival.com/", quote: "sells a scraping API to developers" }],
+      }],
+      why: "t",
+    })
+    // A second writer lands the company's PRODUCT on the same host: the merge
+    // folds it into the company node and keeps the displaced account in
+    // `also`. Before this rode the entity row, the fold survived only in
+    // memory — the run JSON dropped the product's name and no reader could
+    // ever show it.
+    rememberTool(ctx, {
+      nodes: [{
+        name: "Acme Scraper", domain: "rival.com", kind: "product",
+        what: "a scraper the roundups compare against the anchor", relation: "competitor",
+        why: "the roundup compares it against the anchor head to head",
+        evidence: [{ url: "https://third.com/roundup", quote: "compared head to head" }],
+      }],
+      why: "t",
+    })
+    const row = s.map.entities().find((e) => e.domain === "rival.com")!
+    expect(row.also).toEqual([
+      { name: "Acme Scraper", what: "a scraper the roundups compare against the anchor" },
+    ])
+  })
+
+  it("a node that never merged carries no also key — its row shape is unchanged", () => {
+    const s = populated()
+    for (const row of s.map.entities()) {
+      expect(row).not.toHaveProperty("also")
+    }
+  })
+
   it("pageTierByWriter answers the per-family page-tier count T3 folds into FamilyRow", () => {
     const evidence = new RunEvidence()
     const map = new MapState("anchor.com")

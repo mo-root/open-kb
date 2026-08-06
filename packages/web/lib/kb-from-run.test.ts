@@ -319,6 +319,32 @@ describe("evidence tier and grounding", () => {
     expect(noteOf(r, "players/a.com.md")?.descGrounded).toBe(0.72)
   })
 
+  it("carries the merged-away accounts (also) onto NoteRef and NoteView", () => {
+    const also = [
+      { name: "Scrapy Cloud", what: "a hosted scrapy runner" },
+      { what: "an account that lost only its wording, not a name" },
+    ]
+    const r = fixtureRun({ entities: [{ ...entity("zyte.com", "competitor"), also }] })
+    expect(viewOf(r).notes.find((n) => n.path.includes("zyte.com"))?.also).toEqual(also)
+    expect(noteOf(r, "players/zyte.com.md")?.also).toEqual(also)
+  })
+
+  it("leaves also absent when the row never merged, and drops malformed entries", () => {
+    const r = fixtureRun({
+      entities: [
+        entity("a.com", "competitor"),
+        { ...entity("b.com", "competitor"), also: [] },
+        { ...entity("c.com", "competitor"), also: [{ name: "no what at all" }, "not an object"] },
+        { ...entity("d.com", "competitor"), also: [{ name: 7, what: "kept, name was not a string" }] },
+      ],
+    })
+    const byPath = new Map(viewOf(r).notes.map((n) => [n.path, n]))
+    expect(byPath.get("players/a.com.md")?.also).toBeUndefined()
+    expect(byPath.get("players/b.com.md")?.also).toBeUndefined()
+    expect(byPath.get("players/c.com.md")?.also).toBeUndefined()
+    expect(byPath.get("players/d.com.md")?.also).toEqual([{ what: "kept, name was not a string" }])
+  })
+
   it("surfaces the kernel's groundingMean on the manifest", () => {
     const r = fixtureRun({ report: { kernel: { fetched: 10, groundingMean: 0.68 } } })
     expect(manifestOf(r).groundingMean).toBe(0.68)

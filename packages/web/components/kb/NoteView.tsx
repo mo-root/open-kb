@@ -278,6 +278,35 @@ export function NoteView({
         <p>{note.what}</p>
       </div>
 
+      {/* The accounts a swarm merge folded into this node and kept (`also` on
+          the run's entity row). Two writers colliding on one host is usually
+          two true descriptions of one company — most visibly a product landing
+          on the company that sells it — and until the row carried them, the
+          folded product's name survived only in the run's memory. Named
+          entries lead with the name they lost. */}
+      {(note.also?.length ?? 0) > 0 && (
+        <section className="mt-6 border-t border-slate-800 pt-4">
+          <div className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">
+            also recorded here ({note.also!.length})
+          </div>
+          <p className="mb-2 max-w-2xl text-xs text-slate-500">
+            Accounts merged into this node when two writers landed on the same
+            host — kept, not discarded. A product folded into the company that
+            sells it stays recoverable by name.
+          </p>
+          <ul className="space-y-1.5">
+            {note.also!.map((a, i) => (
+              <li key={i} className="text-sm text-slate-400">
+                {a.name && (
+                  <span className="mr-2 font-medium text-slate-200">{a.name}</span>
+                )}
+                {a.what}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {(anchor || strongest.length > 0) && (
         <section className="mt-6 border-t border-slate-800 pt-4">
           <div className="mb-2 text-[11px] uppercase tracking-wide text-slate-500">

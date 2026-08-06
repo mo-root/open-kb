@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import type { NoteRef } from "@/lib/viewTypes";
 import { RELATION_BLURB } from "@/lib/viewTypes";
+import { relationFacets } from "@/lib/notes-view";
 import { KindChip, RelevanceBadge, SectionHead } from "@/components/ui";
 import { SiteIcon } from "@/components/SiteIcon";
 import { NodeGlyph, type GlyphKind } from "@/components/icons";
@@ -136,6 +137,7 @@ export function ProductsTab({
   openNote: (p: string) => void;
 }) {
   const products = useMemo(() => notes.filter((n) => n.type === "product"), [notes]);
+  const productFacets = useMemo(() => relationFacets(products), [products]);
 
   /* The ecosystem is everything that is not a product and not the anchor:
      companies, communities, publishers and directories alike. v1 listed only
@@ -285,6 +287,25 @@ export function ProductsTab({
               Other companies&rsquo; products, grouped by which of the markets above was being
               searched when each one turned up.
             </p>
+            {/* How those products stand to the anchor, tallied. On the live
+                brightdata map 83 of 124 sell AGAINST the anchor (competitor +
+                substitute) and 26 plug into it — a difference the grid hid
+                until every card was opened. Strongest placement first, same
+                order the cards inside each market already follow. */}
+            <p className="mt-2 font-mono text-[11px] text-slate-500">
+              {productFacets.map((f, i) => (
+                <span key={f.relation} title={RELATION_BLURB[f.relation]}>
+                  {i > 0 && " · "}
+                  <span
+                    className="tnum"
+                    style={IS_RIVAL.test(f.relation) ? { color: "var(--highlight, #EB368C)" } : undefined}
+                  >
+                    {f.count}
+                  </span>{" "}
+                  {f.relation === "none" ? "unplaced" : f.relation}
+                </span>
+              ))}
+            </p>
           </div>
         )}
 
@@ -319,7 +340,21 @@ export function ProductsTab({
                       {p.title}
                     </span>
                   </span>
-                  <RelevanceBadge value={p.relevance} />
+                  {/* The relation, in words, beside the placement number that
+                      encodes it — "place 85" told a reader nothing until they
+                      knew the weight table. Same vocabulary and amber-unplaced
+                      rule as the entities sidebar rows. */}
+                  <span className="flex shrink-0 items-center gap-1.5">
+                    <span
+                      title={RELATION_BLURB[p.relation]}
+                      className={`font-mono text-[10px] ${
+                        p.relation === "none" ? "text-amber-400/80" : "text-slate-500"
+                      }`}
+                    >
+                      {p.relation === "none" ? "unplaced" : p.relation}
+                    </span>
+                    <RelevanceBadge value={p.relevance} />
+                  </span>
                 </div>
                 <p className="mt-2 text-sm text-slate-400">{p.what}</p>
               </button>

@@ -41,6 +41,11 @@ export const RELATION_BLURB: Record<string, string> = {
   shaper: "sets the terms this market is played under",
   buyer: "buys in this market",
   target: "the anchor is trying to sell to it",
+  // The channel relations, so a facet chip or edge wearing one can explain
+  // itself the same way the commercial ones do.
+  lists: "a venue that lists this market's players",
+  covers: "a venue that writes about this market",
+  discusses: "a venue where this market gets discussed",
   none: "the classifier saw it and would not place it",
   unknown: "claimed but not confirmed by the available evidence",
   anchor: "the company this map is of",
@@ -237,6 +242,12 @@ export interface NoteRef {
   /** The kernel's grounding measurement for this entity's description (sweep
    *  runs, model-judged only). See `GROUNDING_ENTITY_BLURB`. */
   descGrounded?: number
+  /** The accounts a swarm merge folded into this node and kept (`also` on the
+   *  run's entity row): each entry is the displaced one-liner, plus the
+   *  displaced name when it had its own — a product folded into its host
+   *  company. Riding the list ref (not only the full note) is what lets the
+   *  entities filter find a host by the product name it absorbed. */
+  also?: { name?: string; what: string }[]
 }
 
 export interface KbView {
@@ -314,6 +325,8 @@ export interface NoteView {
   /** The grounding measurement for this entity's description (sweep runs) —
    *  see the matching field on `NoteRef`. */
   descGrounded?: number
+  /** The merged-away accounts a swarm collision kept — see `NoteRef.also`. */
+  also?: { name?: string; what: string }[]
 }
 
 /* --------------------------------------------------------------------- graph */

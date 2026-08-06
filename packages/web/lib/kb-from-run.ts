@@ -143,6 +143,23 @@ function descGroundedOf(e: Entity): number | undefined {
   return typeof v === "number" && Number.isFinite(v) ? v : undefined
 }
 
+/** The merged-away accounts a swarm collision kept on this row (`also`), read
+ *  through the same escape hatch as `tier`. Only well-formed entries survive —
+ *  each needs its displaced `what`, and `name` rides when it was a string —
+ *  and an empty or absent array reads as undefined, so a row that never
+ *  merged carries no field rather than empty furniture. */
+function alsoOf(e: Entity): { name?: string; what: string }[] | undefined {
+  const raw = (e as { also?: unknown }).also
+  if (!Array.isArray(raw)) return undefined
+  const entries = raw.flatMap((a): { name?: string; what: string }[] => {
+    if (!a || typeof a !== "object") return []
+    const r = a as Record<string, unknown>
+    if (typeof r.what !== "string" || !r.what.trim()) return []
+    return [{ ...(typeof r.name === "string" && r.name.trim() ? { name: r.name } : {}), what: r.what }]
+  })
+  return entries.length ? entries : undefined
+}
+
 /** A `Fraction` as core serialized it, or null when the shape is not one.
  *  `value` may honestly be null (den 0, "never NaN"); num and den may not. */
 function fractionOf(v: unknown): ScoreFraction | null {
@@ -365,6 +382,7 @@ export function viewOf(run: StoredRun): KbView {
         families: p.entity.families,
         tier: tierOf(p.entity),
         descGrounded: descGroundedOf(p.entity),
+        also: alsoOf(p.entity),
       }),
     ),
   ].sort((a, b) => b.relevance - a.relevance || a.path.localeCompare(b.path))
@@ -434,6 +452,7 @@ export function noteOf(run: StoredRun, path: string): NoteView | null {
     because: (hit.entity as { because?: string }).because,
     tier: tierOf(hit.entity),
     descGrounded: descGroundedOf(hit.entity),
+    also: alsoOf(hit.entity),
   }
 }
 

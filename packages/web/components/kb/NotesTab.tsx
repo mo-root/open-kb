@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { NoteRef } from "@/lib/viewTypes";
+import { RELATION_BLURB } from "@/lib/viewTypes";
+import { filterNotes, orderNotes, relationFacets } from "@/lib/notes-view";
 import { groupLabel, nodeTypeOf, TYPE_CSS } from "@/lib/nodeTypes";
 import { NodeGlyph, glyphForNotePath } from "@/components/icons";
 import { NoteView } from "./NoteView";
@@ -11,7 +13,11 @@ import { NoteView } from "./NoteView";
    a bare number, because "competitor" is what a reader is scanning for and the
    number is only a rank derived from it (see lib/kb-from-run.ts). Entities the
    classifier would not place sort last inside their group rather than being
-   hidden — same rule as the graph. */
+   hidden — same rule as the graph.
+
+   The organization logic itself (what a query matches, what a facet narrows,
+   what order a group reads in) lives in lib/notes-view.ts, tested — this file
+   only renders it. */
 
 function groupOf(path: string): string {
   const idx = path.indexOf("/");
@@ -34,22 +40,33 @@ export function NotesTab({
   /* The sidebar filter.
      A map with two hundred entities in it is a list you scroll, not a list you
      read, and the group headings only help once you already know which group a
-     company is in. The filter matches the entity's NAME, its DOMAIN and its
-     RELATION together, so "competitor" narrows to the rivals and "postmark"
-     goes straight to one host — the two ways a reader actually arrives.
+     company is in. The filter matches the entity's NAME, its DOMAIN, its
+     RELATION and any name a swarm merge folded into it (lib/notes-view.ts's
+     haystack), so "competitor" narrows to the rivals and "postmark" goes
+     straight to one host — the two ways a reader actually arrives.
+
+     The facet row under the box exists because the typed filter demands the
+     classifier's vocabulary. On the live brightdata map, "show me the rivals"
+     meant already knowing to type "competitor" and then "substitute" — the
+     chips show every relation this map actually contains, counted, strongest
+     placement first, and one click narrows to it. Clicking the active chip
+     clears it.
 
      Groups with nothing left in them disappear rather than sitting empty: a
      heading over no rows reads as a loading state that never finished. */
   const [filter, setFilter] = useState("");
+  const [relation, setRelation] = useState<string | null>(null);
   const boxRef = useRef<HTMLInputElement>(null);
 
-  const matches = useMemo(() => {
-    const q = filter.trim().toLowerCase();
-    if (!q) return notes;
-    return notes.filter((n) =>
-      `${n.title} ${n.domain} ${n.relation}`.toLowerCase().includes(q),
-    );
-  }, [notes, filter]);
+  /* Counted over the WHOLE map, not the query-matched rows: the chip row is
+     this map's relation tally (the same facts KbView.relations counts), and a
+     count that shrank while you typed would read as the map changing. */
+  const facets = useMemo(() => relationFacets(notes), [notes]);
+
+  const matches = useMemo(
+    () => filterNotes(notes, { query: filter, relation }),
+    [notes, filter, relation],
+  );
 
   const groups = useMemo(() => {
     const map = new Map<string, NoteRef[]>();
@@ -63,12 +80,12 @@ export function NotesTab({
       if (b === "overview") return 1;
       return a.localeCompare(b);
     });
+    /* orderNotes: placement first, then evidence tier — on a swarm run a
+       competitor judged from its own page lists above one seen only in a
+       snippet; on a sweep run (no tiers anywhere) the order is unchanged. */
     return order.map((g) => ({
       name: g,
-      items: map
-        .get(g)!
-        .slice()
-        .sort((x, y) => y.relevance - x.relevance || x.title.localeCompare(y.title)),
+      items: orderNotes(map.get(g)!),
     }));
   }, [matches]);
 
@@ -91,9 +108,11 @@ export function NotesTab({
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       step(-1);
-    } else if (e.key === "Escape" && filter) {
+    } else if (e.key === "Escape" && (filter || relation)) {
+      // Peel the narrower filter first: the typed query, then the facet.
       e.preventDefault();
-      setFilter("");
+      if (filter) setFilter("");
+      else setRelation(null);
     }
   };
 
@@ -122,15 +141,55 @@ export function NotesTab({
             className="w-full rounded-md border border-slate-800 bg-slate-900/50 py-1.5 pl-2.5 pr-16 text-sm text-slate-200 outline-none transition-colors placeholder:text-slate-500 focus:border-sky-500/50"
           />
           <span className="tnum pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 font-mono text-[10px] text-slate-500">
-            {filter ? `${matches.length}/${notes.length}` : notes.length}
+            {filter || relation ? `${matches.length}/${notes.length}` : notes.length}
           </span>
         </div>
+        {/* The map's relations, counted, as one-click facets. Strongest
+            placement first (competitor leads), so the row itself answers "who
+            is after this company" before anything is clicked. */}
+        {facets.length > 1 && (
+          <div
+            role="group"
+            aria-label="Filter entities by relation"
+            className="mb-3 flex shrink-0 flex-wrap gap-1"
+          >
+            {facets.map((f) => {
+              const active = relation === f.relation;
+              const label = f.relation === "none" ? "unplaced" : f.relation;
+              return (
+                <button
+                  key={f.relation}
+                  onClick={() => setRelation(active ? null : f.relation)}
+                  aria-pressed={active}
+                  title={RELATION_BLURB[f.relation]}
+                  className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[10px] transition-colors ${
+                    active
+                      ? "border-sky-400 bg-sky-500/10 text-sky-300"
+                      : "border-slate-800 bg-slate-900/40 text-slate-400 hover:border-slate-700 hover:text-slate-300"
+                  }`}
+                >
+                  {label}
+                  <span className={`tnum ${active ? "text-sky-400/80" : "text-slate-500"}`}>
+                    {f.count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
         <nav className="space-y-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
           {flat.length === 0 && (
             <p className="px-2 py-6 text-xs text-slate-500">
-              No entity matches “{filter}”.{" "}
+              {filter ? (
+                <>No entity matches “{filter}”{relation ? ` under ${relation === "none" ? "unplaced" : relation}` : ""}. </>
+              ) : (
+                <>No entity is placed as {relation === "none" ? "unplaced" : relation}. </>
+              )}
               <button
-                onClick={() => setFilter("")}
+                onClick={() => {
+                  setFilter("");
+                  setRelation(null);
+                }}
                 className="text-sky-400 hover:text-sky-300"
               >
                 Clear the filter
