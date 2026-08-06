@@ -703,6 +703,15 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         ? { enabled: false }
         : { effort: think === "none" ? "minimal" : (think ?? "low") }
 
+    /* DeepSeek routes across 23 providers of very different speeds — measured
+     * 6.3s on the default pick against 3.5s sorted by throughput, same call.
+     * Single-provider families are unaffected by the sort, so it only rides
+     * where it was measured to matter. */
+    const openrouterOpts = (think: string | undefined) => ({
+      reasoning: reasoningFor(think),
+      ...(modelId.startsWith("deepseek/") ? { provider: { sort: "throughput" } } : {}),
+    })
+
     const attempt = async (maxOut: number, think: string | undefined) =>
       generateObject({
         model,
@@ -710,7 +719,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         prompt,
         abortSignal: signal,
         maxOutputTokens: maxOut,
-        providerOptions: { openrouter: { reasoning: reasoningFor(think) } },
+        providerOptions: { openrouter: openrouterOpts(think) },
       })
 
     const ceiling = Math.max(6_000, opts.maxOutputTokens ?? 8_192)
@@ -729,7 +738,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         // credit on every call.
         maxOutputTokens: Math.max(6_000, opts.maxOutputTokens ?? 8_192),
         providerOptions: {
-          openrouter: { reasoning: reasoningFor(opts.think) },
+          openrouter: openrouterOpts(opts.think),
         },
       })
       const inTok = out.usage?.inputTokens ?? 0
