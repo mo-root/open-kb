@@ -147,6 +147,17 @@ export const ENTITY_KINDS = [
 ] as const
 
 /**
+ * The classify answer's size, output tokens. 350 before span-bound
+ * descriptions; the spans field adds up to three ~120-char verbatim quotes
+ * (~100 tokens, billed at six times the input rate — the reason the receipts
+ * are capped at three spans and 360 stored chars, not "as many as help").
+ * Note `call()` floors the wire ceiling at 6,000 because mandatory reasoning
+ * spends from the same budget — this constant documents the answer's size and
+ * feeds that max(); it is not itself the wire cap.
+ */
+export const CLASSIFY_MAX_OUTPUT_TOKENS = 450
+
+/**
  * How an entity stands to the anchor.
  *
  * Seven are commercial stances. Three cover hosts that have no commercial
@@ -352,11 +363,17 @@ export type SweptQuery = PlannedQuery & { family: QueryFamily; product?: string;
 export type Entity = z.infer<typeof Entity> & { foundBy?: string[]; families?: QueryFamily[] } & {
   because?: string
   settledBy?: "predicate" | "model"
-  /** Model-judged entities only: what fraction of `what`'s content terms the
-   *  page the model saw actually contains, 2 decimals. Measurement, not a
-   *  gate — the kernel's residual error class is an embellished description
-   *  inside a correctly-placed entity, and this is its meter. */
+  /** Model-judged entities only: what fraction of the content terms in the
+   *  what the model WROTE the page it saw actually contains, 2 decimals.
+   *  The regression canary — the span ledger below is the gate. */
   descGrounded?: number
+  /** Model-judged entities only: how many of the verbatim page quotes the
+   *  model claimed back its what were literal substrings of the page it saw,
+   *  checked in code. A what with zero verified spans shipped as the span-free
+   *  fallback sentence, never as the model's prose. */
+  descSpans?: { verified: number; claimed: number }
+  /** The verified quotes — the receipts, capped at 360 chars total. */
+  spans?: string[]
 }
 
 export interface SweepStats {
@@ -1669,13 +1686,18 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           what: z.string().describe("what it is, one line, from the page itself"),
           relation: z.enum(RELATIONS),
           why: z.string().describe("why it belongs on this map, stated against the anchor"),
+          spans: z
+            .array(z.string())
+            .min(1)
+            .max(3)
+            .describe("1-3 short quotes copied character-for-character from the page, together backing the what"),
         }),
         prompt("classify", {
           anchor, sells: decomp.sells, buyer: decomp.buyer,
           host: h.host, seenIn: String(h.seenIn), intents: h.intents.join(","),
           page: pageText,
         }),
-        { think: "none", maxOutputTokens: 350 },
+        { think: "none", maxOutputTokens: CLASSIFY_MAX_OUTPUT_TOKENS },
       )
       return out
     },

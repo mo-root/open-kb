@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { EvidenceStore, CitationError } from "../src/evidence.js"
+import { EvidenceStore, CitationError, checkQuote } from "../src/evidence.js"
 
 const NOW = () => "2026-08-03T10:00:00.000Z"
 
@@ -105,5 +105,42 @@ describe("EvidenceStore", () => {
     const rec = s.record({ url: "https://a.com/p", text: "Acme sells anti-bot bypass APIs.", status: "found" })
     // Raw length is 9 (>= 8), but it squashes down to "a b" (3 chars), the length that matters.
     expect(() => s.cite(rec.handle, "a       b")).toThrow(CitationError)
+  })
+})
+
+/**
+ * The mint's containment check, exported on its own so the sweep's span
+ * verification and the mint stay ONE implementation. If these two ever
+ * disagree, a span the kernel verified could fail the mint or vice versa —
+ * the exact drift the export exists to prevent.
+ */
+describe("checkQuote", () => {
+  const text = "Acme sells anti-bot bypass APIs.\n  We also   resell proxies."
+
+  it("accepts a quote that is a literal substring", () => {
+    expect(checkQuote(text, "anti-bot bypass APIs")).toBe("ok")
+  })
+
+  it("matches with the mint's own squash: case and wrapped whitespace do not matter", () => {
+    expect(checkQuote(text, "ALSO RESELL proxies")).toBe("ok")
+    expect(checkQuote(text, "also\n  resell   proxies")).toBe("ok")
+  })
+
+  it("refuses a paraphrase — containment is literal, not semantic", () => {
+    expect(checkQuote(text, "sells proxy products")).toBe("absent")
+  })
+
+  it("refuses a quote under the mint's minimum, measured after squashing", () => {
+    expect(checkQuote(text, "Acme se")).toBe("too-short")
+    expect(checkQuote(text, "a       b")).toBe("too-short")
+  })
+
+  it("agrees with cite() on both edges of the minimum", () => {
+    const s = new EvidenceStore(NOW)
+    const rec = s.record({ url: "https://a.com/p", text, status: "found" })
+    expect(checkQuote(text, "Acme sel")).toBe("ok")
+    expect(() => s.cite(rec.handle, "Acme sel")).not.toThrow()
+    expect(checkQuote(text, "Acme se")).toBe("too-short")
+    expect(() => s.cite(rec.handle, "Acme se")).toThrow(CitationError)
   })
 })

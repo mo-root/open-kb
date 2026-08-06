@@ -30,7 +30,7 @@ describe("judgeHosts", () => {
     let modelCalls = 0
     const out = await judgeHosts([cand("listicle.com")], {
       fetcher: fakeFetcher({ "https://listicle.com/": aggregatorHtml }),
-      classify: async () => { modelCalls++; return { name: "x", kind: "company", what: "", relation: "competitor", why: "" } },
+      classify: async () => { modelCalls++; return { name: "x", kind: "company", what: "", relation: "competitor", why: "", spans: [] } },
       anchor: "anchor.com",
       aggregatorThreshold: 12,
     })
@@ -44,7 +44,7 @@ describe("judgeHosts", () => {
     let modelCalls = 0
     const out = await judgeHosts([cand("dead.com")], {
       fetcher: fakeFetcher({}),
-      classify: async () => { modelCalls++; return { name: "x", kind: "company", what: "", relation: "competitor", why: "" } },
+      classify: async () => { modelCalls++; return { name: "x", kind: "company", what: "", relation: "competitor", why: "", spans: [] } },
       anchor: "anchor.com",
       aggregatorThreshold: 12,
     })
@@ -58,7 +58,7 @@ describe("judgeHosts", () => {
       fetcher: fakeFetcher({ "https://acme.com/": vendorHtml }),
       classify: async (_h, text) => {
         expect(text).toContain("scraping API")
-        return { name: "Acme", kind: "company", what: "scraping api", relation: "competitor", why: "sells the same job" }
+        return { name: "Acme", kind: "company", what: "scraping api", relation: "competitor", why: "sells the same job", spans: ["We sell a scraping API"] }
       },
       anchor: "anchor.com",
       aggregatorThreshold: 12,
@@ -70,7 +70,7 @@ describe("judgeHosts", () => {
   it("keeps anchor-naming pages as recall probes", async () => {
     const out = await judgeHosts([cand("listicle.com")], {
       fetcher: fakeFetcher({ "https://listicle.com/": aggregatorHtml }),
-      classify: async () => ({ name: "", kind: "noise", what: "", relation: "none", why: "" }),
+      classify: async () => ({ name: "", kind: "noise", what: "", relation: "none", why: "", spans: [] }),
       anchor: "anchor.com",
       aggregatorThreshold: 12,
     })
@@ -84,7 +84,7 @@ describe("judgeHosts", () => {
     // semantics as core's answerKeyRecall, now shared.
     const out = await judgeHosts([cand("acme.com")], {
       fetcher: fakeFetcher({ "https://acme.com/": vendorHtml.replace("</p>", " As covered on radio.com last week.</p>") }),
-      classify: async () => ({ name: "Acme", kind: "company", what: "scraping api", relation: "competitor", why: "same job" }),
+      classify: async () => ({ name: "Acme", kind: "company", what: "scraping api", relation: "competitor", why: "same job", spans: ["We sell a scraping API"] }),
       anchor: "io.com",
       aggregatorThreshold: 12,
     })
@@ -94,7 +94,7 @@ describe("judgeHosts", () => {
   it("a page naming the anchor on a word boundary still becomes a probe", async () => {
     const out = await judgeHosts([cand("acme.com")], {
       fetcher: fakeFetcher({ "https://acme.com/": vendorHtml.replace("</p>", " We benchmark against io.com/pricing weekly.</p>") }),
-      classify: async () => ({ name: "Acme", kind: "company", what: "scraping api", relation: "competitor", why: "same job" }),
+      classify: async () => ({ name: "Acme", kind: "company", what: "scraping api", relation: "competitor", why: "same job", spans: ["We sell a scraping API"] }),
       anchor: "io.com",
       aggregatorThreshold: 12,
     })
@@ -121,7 +121,7 @@ describe("judgeHosts", () => {
     let modelCalls = 0
     const out = await judgeHosts([cand("listicle.com")], {
       fetcher: fakeFetcher({ "https://listicle.com/": aggregatorHtml }),
-      classify: async () => { modelCalls++; return { name: "x", kind: "directory", what: "", relation: "lists", why: "" } },
+      classify: async () => { modelCalls++; return { name: "x", kind: "directory", what: "", relation: "lists", why: "", spans: [] } },
       anchor: "anchor.com",
       aggregatorThreshold: null,
     })
@@ -175,7 +175,7 @@ describe("judgeHosts pool", () => {
     })
     const out = await judgeHosts(hosts, {
       fetcher: fakeFetcher(pages),
-      classify: async () => ({ name: "x", kind: "company", what: "", relation: "competitor", why: "" }),
+      classify: async () => ({ name: "x", kind: "company", what: "", relation: "competitor", why: "", spans: [] }),
       anchor: "anchor.com",
       aggregatorThreshold: 12,
       concurrency: 4,
@@ -196,7 +196,7 @@ describe("judgeHosts pool", () => {
     const hosts = [cand("a.com"), cand("b.com"), cand("c.com")]
     const out = await judgeHosts(hosts, {
       fetcher,
-      classify: async () => ({ name: "x", kind: "company", what: "", relation: "competitor", why: "" }),
+      classify: async () => ({ name: "x", kind: "company", what: "", relation: "competitor", why: "", spans: [] }),
       anchor: "anchor.com",
       aggregatorThreshold: 12,
       // Every worker checks `deps.signal?.aborted` at the top of its loop,
@@ -222,7 +222,7 @@ describe("judgeHosts pool", () => {
     }
     const out = await judgeHosts(hosts, {
       fetcher,
-      classify: async (h) => ({ name: h.host, kind: "company", what: "", relation: "competitor", why: "" }),
+      classify: async (h) => ({ name: h.host, kind: "company", what: "", relation: "competitor", why: "", spans: [] }),
       anchor: "anchor.com",
       aggregatorThreshold: 12,
       onFetch: (url, ok) => fetches.push({ url, ok }),
@@ -254,7 +254,7 @@ describe("judgeHosts pool", () => {
     await expect(
       judgeHosts([cand("a.com"), cand("b.com")], {
         fetcher,
-        classify: async () => ({ name: "x", kind: "company", what: "", relation: "competitor", why: "" }),
+        classify: async () => ({ name: "x", kind: "company", what: "", relation: "competitor", why: "", spans: [] }),
         anchor: "anchor.com",
         aggregatorThreshold: 12,
         signal: ctl.signal,
@@ -270,7 +270,7 @@ describe("judgeHosts pool", () => {
         "https://anchor.com/": aggregatorHtml,
         "https://listicle.com/": aggregatorHtml,
       }),
-      classify: async () => ({ name: "", kind: "noise", what: "", relation: "none", why: "" }),
+      classify: async () => ({ name: "", kind: "noise", what: "", relation: "none", why: "", spans: [] }),
       anchor: "anchor.com",
       aggregatorThreshold: 12,
     })
@@ -286,7 +286,7 @@ describe("judgeHosts pool", () => {
       fetcher: fakeFetcher(pages),
       classify: async (h) => {
         await new Promise((resolve) => setTimeout(resolve, 1 + Math.random() * 9))
-        return { name: `Name-${h.host}`, kind: "company", what: "scraping api", relation: "competitor", why: "sells the same job" }
+        return { name: `Name-${h.host}`, kind: "company", what: "scraping api", relation: "competitor", why: "sells the same job", spans: ["We sell a scraping API"] }
       },
       anchor: "anchor.com",
       aggregatorThreshold: 12,
@@ -308,7 +308,7 @@ describe("judgeHosts description grounding", () => {
       fetcher: fakeFetcher({ "https://acme.com/": vendorHtml }),
       // Every content term ("scraping", "api", "developers", "scraping api")
       // appears on the page — fully grounded.
-      classify: async () => ({ name: "Acme", kind: "company", what: "a scraping api for developers", relation: "competitor", why: "same job" }),
+      classify: async () => ({ name: "Acme", kind: "company", what: "a scraping api for developers", relation: "competitor", why: "same job", spans: ["a scraping API to developers"] }),
       anchor: "anchor.com",
       aggregatorThreshold: 12,
     })
@@ -320,7 +320,7 @@ describe("judgeHosts description grounding", () => {
     const out = await judgeHosts([cand("acme.com")], {
       fetcher: fakeFetcher({ "https://acme.com/": vendorHtml }),
       // Nothing here appears on the vendor page: the quanticdata.io shape.
-      classify: async () => ({ name: "Acme", kind: "company", what: "custom dataset delivery for enterprises", relation: "competitor", why: "same job" }),
+      classify: async () => ({ name: "Acme", kind: "company", what: "custom dataset delivery for enterprises", relation: "competitor", why: "same job", spans: ["custom dataset delivery"] }),
       anchor: "anchor.com",
       aggregatorThreshold: 12,
     })
@@ -331,7 +331,7 @@ describe("judgeHosts description grounding", () => {
   it("an unreadable page carries no descGrounded and does not move the mean", async () => {
     const out = await judgeHosts([cand("dead.com")], {
       fetcher: fakeFetcher({}),
-      classify: async () => ({ name: "x", kind: "company", what: "anything", relation: "competitor", why: "" }),
+      classify: async () => ({ name: "x", kind: "company", what: "anything", relation: "competitor", why: "", spans: [] }),
       anchor: "anchor.com",
       aggregatorThreshold: 12,
     })
@@ -352,9 +352,9 @@ describe("judgeHosts description grounding", () => {
           ? // "browser rendering of datasets": browser, rendering and the
             // 2-gram "browser rendering" appear on the page, "datasets" does
             // not — 3 of 4, score 0.75.
-            { name: "G", kind: "company", what: "browser rendering of datasets", relation: "competitor", why: "" }
+            { name: "G", kind: "company", what: "browser rendering of datasets", relation: "competitor", why: "", spans: ["browser rendering, retries"] }
           : // nothing grounded — score 0.
-            { name: "I", kind: "company", what: "custom dataset delivery", relation: "competitor", why: "" },
+            { name: "I", kind: "company", what: "custom dataset delivery", relation: "competitor", why: "", spans: ["custom dataset delivery"] },
       anchor: "anchor.com",
       aggregatorThreshold: 12,
       concurrency: 1,
@@ -378,5 +378,171 @@ describe("judgeHosts description grounding", () => {
     })
     expect("descGrounded" in out.entities[0]!).toBe(false)
     expect(out.stats.groundingMean).toBeNull()
+  })
+})
+
+// THE GUARANTEE, not a meter: a what must carry 1-3 verbatim quotes from the
+// page the model saw, each verified in code as a literal substring (the
+// evidence mint's own containment check), or the what does not reach the
+// reader. The class this converts from measured to impossible: the audit's
+// one residual error, quanticdata.io — a real rival whose what invented
+// "custom dataset delivery" its page nowhere offers. descGrounded stays as
+// the regression canary; it still meters the model's own prose.
+describe("judgeHosts span-bound descriptions", () => {
+  it("a what whose spans all verify ships unchanged, wearing its receipts", async () => {
+    const out = await judgeHosts([cand("acme.com")], {
+      fetcher: fakeFetcher({ "https://acme.com/": vendorHtml }),
+      classify: async () => ({
+        name: "Acme", kind: "company", what: "a scraping api for developers",
+        relation: "competitor", why: "same job",
+        spans: ["We sell a scraping API to developers", "handling proxies, browser rendering"],
+      }),
+      anchor: "anchor.com",
+      aggregatorThreshold: 12,
+    })
+    const e = out.entities[0]!
+    expect(e.what).toBe("a scraping api for developers")
+    expect(e.spans).toEqual(["We sell a scraping API to developers", "handling proxies, browser rendering"])
+    expect(e.descSpans).toEqual({ verified: 2, claimed: 2 })
+  })
+
+  it("the quanticdata shape: an invented what loses every span and is replaced by the fallback — the entity survives", async () => {
+    const out = await judgeHosts([cand("quanticdata.io")], {
+      fetcher: fakeFetcher({ "https://quanticdata.io/": vendorHtml }),
+      // The page sells a scraping API; the what invents a capability. The one
+      // span backing it fails containment, so the what cannot ship.
+      classify: async () => ({
+        name: "Quantic", kind: "company", what: "custom dataset delivery for enterprises",
+        relation: "competitor", why: "same buyer",
+        spans: ["custom dataset delivery"],
+      }),
+      anchor: "anchor.com",
+      aggregatorThreshold: 12,
+    })
+    const e = out.entities[0]!
+    // The kind and relation survive — admit() gated those; only the prose drops.
+    expect(e).toMatchObject({ kind: "company", relation: "competitor", settledBy: "model" })
+    expect(e.what).toBe("Quantic — company whose description could not be tied to its page this run")
+    expect(e.descSpans).toEqual({ verified: 0, claimed: 1 })
+    expect("spans" in e).toBe(false)
+    // The canary still meters the model's own prose, not the fallback.
+    expect(e.descGrounded).toBe(0)
+  })
+
+  it("a partial failure drops the unverified span and keeps the what", async () => {
+    const out = await judgeHosts([cand("acme.com")], {
+      fetcher: fakeFetcher({ "https://acme.com/": vendorHtml }),
+      classify: async () => ({
+        name: "Acme", kind: "company", what: "a scraping api handling proxies",
+        relation: "competitor", why: "same job",
+        spans: ["We sell a scraping API", "handling proxies", "with white-glove onboarding"],
+      }),
+      anchor: "anchor.com",
+      aggregatorThreshold: 12,
+    })
+    const e = out.entities[0]!
+    expect(e.what).toBe("a scraping api handling proxies")
+    expect(e.spans).toEqual(["We sell a scraping API", "handling proxies"])
+    expect(e.descSpans).toEqual({ verified: 2, claimed: 3 })
+  })
+
+  it("verification matches the mint's squash: case and wrapped whitespace do not defeat a real quote", async () => {
+    const out = await judgeHosts([cand("acme.com")], {
+      fetcher: fakeFetcher({ "https://acme.com/": vendorHtml }),
+      classify: async () => ({
+        name: "Acme", kind: "company", what: "a scraping api",
+        relation: "competitor", why: "same job",
+        spans: ["we SELL a scraping api", "structured web\n   data at scale"],
+      }),
+      anchor: "anchor.com",
+      aggregatorThreshold: 12,
+    })
+    expect(out.entities[0]!.descSpans).toEqual({ verified: 2, claimed: 2 })
+  })
+
+  it("a span under the mint's 8-char minimum counts as claimed but never as verified", async () => {
+    const out = await judgeHosts([cand("acme.com")], {
+      fetcher: fakeFetcher({ "https://acme.com/": vendorHtml }),
+      classify: async () => ({
+        name: "Acme", kind: "company", what: "proxies",
+        relation: "competitor", why: "same job",
+        // "proxies" is 7 chars and a genuine substring — length alone refuses
+        // it, same rule as the evidence mint's MIN_QUOTE_LENGTH.
+        spans: ["proxies"],
+      }),
+      anchor: "anchor.com",
+      aggregatorThreshold: 12,
+    })
+    const e = out.entities[0]!
+    expect(e.descSpans).toEqual({ verified: 0, claimed: 1 })
+    expect(e.what).toBe("Acme — company whose description could not be tied to its page this run")
+  })
+
+  it("an empty what claims nothing — no fallback fires, descSpans records 0/0", async () => {
+    const out = await judgeHosts([cand("acme.com")], {
+      fetcher: fakeFetcher({ "https://acme.com/": vendorHtml }),
+      classify: async () => ({ name: "Acme", kind: "company", what: "", relation: "competitor", why: "same job", spans: [] }),
+      anchor: "anchor.com",
+      aggregatorThreshold: 12,
+    })
+    const e = out.entities[0]!
+    expect(e.what).toBe("")
+    expect(e.descSpans).toEqual({ verified: 0, claimed: 0 })
+  })
+
+  it("stored receipts are capped at 360 chars total — whole spans kept while they fit, all still verified", async () => {
+    // Three long sentences on the page; the model quotes all three (~150 chars
+    // each). All verify, but only the first two fit the 360-char budget, so
+    // the third is dropped from storage — the COUNT still says 3/3.
+    const s1 = "Our managed extraction pipeline renders every page in a real browser and retries through residential exits until the content is fully loaded and parsed."
+    const s2 = "Enterprise customers schedule recurring crawls from a dashboard and receive structured records in their own warehouse within minutes of each run finishing."
+    const s3 = "A dedicated solutions team tunes selectors and anti-bot settings for every new target site so scraping keeps working when the target changes its markup."
+    const longHtml = `<html><body><h1>Acme</h1><p>${s1} ${s2} ${s3}</p></body></html>`
+    const out = await judgeHosts([cand("acme.com")], {
+      fetcher: fakeFetcher({ "https://acme.com/": longHtml }),
+      classify: async () => ({
+        name: "Acme", kind: "company", what: "a managed extraction pipeline",
+        relation: "competitor", why: "same job",
+        spans: [s1, s2, s3],
+      }),
+      anchor: "anchor.com",
+      aggregatorThreshold: 12,
+    })
+    const e = out.entities[0]!
+    expect(e.descSpans).toEqual({ verified: 3, claimed: 3 })
+    expect(e.spans).toEqual([s1, s2])
+    expect(e.spans!.reduce((n, sp) => n + sp.length, 0)).toBeLessThanOrEqual(360)
+  })
+
+  it("a single verified span longer than the budget is cut to it — a prefix of a literal substring is still literal", async () => {
+    const long =
+      "Our managed extraction pipeline renders every page in a real browser and retries through residential exits until the content is fully loaded, then normalises the markup, deduplicates records against previous runs, ships the rows to the customer warehouse, and alerts the on-call engineer whenever a target site changes its structure badly enough that selectors need attention."
+    const longHtml = `<html><body><h1>Acme</h1><p>${long}</p></body></html>`
+    const out = await judgeHosts([cand("acme.com")], {
+      fetcher: fakeFetcher({ "https://acme.com/": longHtml }),
+      classify: async () => ({
+        name: "Acme", kind: "company", what: "a managed extraction pipeline",
+        relation: "competitor", why: "same job",
+        spans: [long],
+      }),
+      anchor: "anchor.com",
+      aggregatorThreshold: 12,
+    })
+    const e = out.entities[0]!
+    expect(e.descSpans).toEqual({ verified: 1, claimed: 1 })
+    expect(e.spans).toEqual([long.slice(0, 360)])
+  })
+
+  it("predicate-settled and failed-classify entities carry no span ledger — there was no judgement to back", async () => {
+    const out = await judgeHosts([cand("dead.com"), cand("broken.com")], {
+      fetcher: fakeFetcher({ "https://broken.com/": vendorHtml }),
+      classify: async () => { throw new Error("model down") },
+      anchor: "anchor.com",
+      aggregatorThreshold: 12,
+    })
+    for (const e of out.entities) {
+      expect("descSpans" in e).toBe(false)
+      expect("spans" in e).toBe(false)
+    }
   })
 })

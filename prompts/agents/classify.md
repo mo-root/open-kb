@@ -44,8 +44,8 @@ vocabulary it contains — ranking for the market's vocabulary is not evidence o
 market — and a page that writes ABOUT a vendor is not that vendor. Never write a `what` or a `why`
 containing a product, a capability or a customer that is not visible on the page in front of you.
 
-Answer with: `name` (what the host calls itself on the page), `kind`, `what`, `relation`, and
-`why`.
+Answer with: `name` (what the host calls itself on the page), `kind`, `what`, `relation`, `why`,
+and `spans`.
 
 The `what` is one sentence that leads with what the host IS, then what it sells, in the buyer's
 words: "A residential proxy provider selling rotating IPs to scraping teams." Open with the
@@ -57,6 +57,13 @@ vendors on one map differ in their facts, not their format. Do not copy the page
 content word of the `what` is measured against the page text after you answer; an invented
 capability is recorded against the entity, and puffery survives that check only to embarrass the
 map. Past ~25 words a `what` is padding.
+
+The `spans` are the `what`'s receipts: one to three short quotes copied character-for-character
+from the page below — each a phrase of at least 8 characters, around 120 at most — that together
+back what the `what` says this host is and sells. Copy, never paraphrase: each span is checked in
+code as a literal substring of this exact page, a span that fails the check is dropped, and a
+`what` with no surviving span never reaches the reader — it is replaced by a sentence saying the
+description could not be tied to the page. Quote the line that sells, not the slogan.
 
 The `why` is the evidence for the relation, stated against the anchor — how it relates, not that
 it resembles — and never the `what` restated or the label said again: name the thing that makes

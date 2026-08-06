@@ -3,7 +3,7 @@ import { readFileSync, existsSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { composePrompt } from "@open-kb/core"
-import { RELATIONS, ENTITY_KINDS, makePrompt } from "../src/sweep.js"
+import { RELATIONS, ENTITY_KINDS, CLASSIFY_MAX_OUTPUT_TOKENS, makePrompt } from "../src/sweep.js"
 
 /**
  * The prompts are the product.
@@ -103,6 +103,24 @@ describe("the composed classify prompt", () => {
     expect(c).toContain("evidence for the relation")
     expect(c).toContain("self-praise")
     expect(c).toContain("padding")
+  })
+
+  it("teaches the span contract: verbatim receipts, checked in code, or the what drops", () => {
+    // The guarantee's other half lives in rank.ts; this half tells the judge
+    // the check exists so it copies instead of paraphrasing. Each pin holds
+    // one clause of the contract.
+    const c = composed()
+    expect(c).toContain("character-for-character")
+    expect(c).toContain("literal substring")
+    expect(c).toContain("`spans`")
+  })
+
+  it("pins the classify output ceiling — sized for the answer plus its receipts", () => {
+    // 350 before spans; spans add up to three ~120-char verbatim quotes
+    // (~100 output tokens, priced 6x input), so the ceiling grows once, here,
+    // deliberately. Note the wire floor in call() is 6,000 either way — this
+    // number documents the answer's size, not the reasoning budget.
+    expect(CLASSIFY_MAX_OUTPUT_TOKENS).toBe(450)
   })
 
   it("keeps exactly the placeholders the rank call renders with", () => {

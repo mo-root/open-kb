@@ -51,6 +51,22 @@ const squash = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase()
  */
 const MIN_QUOTE_LENGTH = 8
 
+export type QuoteCheck = "ok" | "too-short" | "absent"
+
+/**
+ * The mint's containment check on its own: is this quote long enough to prove
+ * anything, and is it literally in the text, whitespace squashed and case
+ * folded? Exported because the sweep's span verification asks the exact same
+ * question of the page a classification was written from — one implementation,
+ * so a span the kernel verifies is a quote the mint would also accept.
+ * `cite` below stays the only way to turn a passing check into an Evidence.
+ */
+export function checkQuote(text: string, quote: string): QuoteCheck {
+  const squashedQuote = squash(quote)
+  if (squashedQuote.length < MIN_QUOTE_LENGTH) return "too-short"
+  return squash(text).includes(squashedQuote) ? "ok" : "absent"
+}
+
 /**
  * Every byte the run fetched, and the only way to turn those bytes into a citation.
  *
@@ -113,11 +129,11 @@ export class EvidenceStore {
     if (rec.status !== "found") {
       throw new CitationError(`cannot cite ${handle}: page was ${rec.status}${rec.reason ? ` (${rec.reason})` : ""}`)
     }
-    const squashedQuote = squash(quote)
-    if (squashedQuote.length < MIN_QUOTE_LENGTH) {
+    const check = checkQuote(rec.text, quote)
+    if (check === "too-short") {
       throw new CitationError(`quote too short to prove anything (minimum ${MIN_QUOTE_LENGTH} characters)`)
     }
-    if (!squash(rec.text).includes(squashedQuote)) {
+    if (check === "absent") {
       throw new CitationError(`quote not present in ${rec.url}`)
     }
     return { url: rec.url, quote, fetchedAt: rec.fetchedAt, status: rec.status, tier: rec.tier }

@@ -1,5 +1,5 @@
 import {
-  sniff, condense, admit, outboundHosts, registrableHost, namesHost, descriptionGrounding,
+  sniff, condense, admit, outboundHosts, registrableHost, namesHost, descriptionGrounding, checkQuote,
   type FetchPort, type JudgedPage,
 } from "@open-kb/core"
 
@@ -24,12 +24,27 @@ export interface Judged {
   /** Present only on downgraded claims: the refusal, as a sentence. */
   because?: string
   settledBy: "predicate" | "model"
-  /** Present only on model-judged entities: what fraction of `what`'s content
-   *  terms the page the model saw actually contains, 2 decimals. MEASUREMENT
-   *  ONLY — nothing gates on it. The residual error class it meters is an
-   *  embellished description inside a correctly-placed entity. */
+  /** Present only on model-judged entities: what fraction of the content terms
+   *  in the what THE MODEL WROTE the page it saw actually contains, 2 decimals.
+   *  The span check below is the gate now; this stays as the regression canary,
+   *  and it meters the model's own prose even when the fallback replaced it. */
   descGrounded?: number
+  /** Present only on model-judged entities: the span ledger. Of the verbatim
+   *  page quotes the model claimed back its `what`, how many were literal
+   *  substrings of the exact page text it saw — checked by code (the evidence
+   *  mint's own containment), never by another model. A what with zero
+   *  verified spans does not reach the reader. */
+  descSpans?: { verified: number; claimed: number }
+  /** The verified quotes themselves — receipts a reader can hold against the
+   *  page. Whole spans, in the model's order, total capped at SPAN_BUDGET
+   *  chars. Absent when nothing verified. */
+  spans?: string[]
 }
+
+/** The receipts' storage cap. Spans are output tokens at six times the input
+ *  price and ride every entity into the run JSON, so they stay small: three
+ *  short quotes, not a transcript. */
+const SPAN_BUDGET = 360
 
 export interface KernelStats {
   fetched: number
@@ -45,7 +60,7 @@ export interface KernelStats {
 
 export interface JudgeDeps {
   fetcher: FetchPort
-  classify: (h: HostCandidate, pageText: string) => Promise<{ name: string; kind: string; what: string; relation: string; why: string }>
+  classify: (h: HostCandidate, pageText: string) => Promise<{ name: string; kind: string; what: string; relation: string; why: string; spans: string[] }>
   anchor: string
   aggregatorThreshold: number | null
   concurrency?: number
@@ -181,21 +196,54 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
     const gate = admit({ host: h.host, kind: out.kind, relation: out.relation }, page, {
       anchor: deps.anchor, aggregatorThreshold: threshold ?? Number.POSITIVE_INFINITY,
     })
-    // MEASUREMENT, not a gate: how much of the description the model just
-    // wrote is actually on the page it was written from. Computed against the
-    // exact text the model saw, so the number cannot be excused by a
-    // condensation difference. The score rides along on the entity and into
-    // the run's kernel stats; nothing downstream branches on it.
+    // The canary, kept: how much of the description the model just wrote is
+    // actually on the page it was written from. Computed against the exact
+    // text the model saw, on the model's own prose — before any fallback —
+    // so the meter keeps metering the model when the span gate below has
+    // already replaced what the reader sees.
     const grounding = descriptionGrounding(out.what, pageText)
     groundingSum += grounding.score
     groundingN += 1
     stats.groundingMean = Math.round((groundingSum / groundingN) * 100) / 100
     const descGrounded = Math.round(grounding.score * 100) / 100
+
+    // THE GUARANTEE. Every span the model claimed is checked in code as a
+    // literal substring of the SAME condensed text it was just handed — the
+    // evidence mint's own containment, not a second implementation, not a
+    // second model pass. A span that fails is dropped; a non-empty what with
+    // no surviving span never reaches the reader — it is replaced by a
+    // sentence that says so, because the downgrade doctrine holds here too:
+    // the entity survives, wearing the refusal, and an invention dies where
+    // a reader would have believed it.
+    const { spans: claimed, ...judged } = out
+    const verified = claimed.filter((sp) => checkQuote(pageText, sp) === "ok")
+    const descSpans = { verified: verified.length, claimed: claimed.length }
+    // Receipts: whole verified spans while they fit the budget; a first span
+    // longer than the whole budget is cut to it — a prefix of a literal
+    // substring is still a literal substring.
+    const receipts: string[] = []
+    let receiptChars = 0
+    for (const sp of verified) {
+      if (receiptChars + sp.length > SPAN_BUDGET) {
+        if (receipts.length === 0) receipts.push(sp.slice(0, SPAN_BUDGET))
+        break
+      }
+      receipts.push(sp)
+      receiptChars += sp.length
+    }
+    // An empty what claims nothing, so there is nothing to refuse; the
+    // fallback names the kind the entity actually ships with.
+    const whatFor = (kind: string) =>
+      judged.what.trim() !== "" && verified.length === 0
+        ? `${judged.name || h.host} — ${kind} whose description could not be tied to its page this run`
+        : judged.what
+    const spanFields = { descSpans, ...(receipts.length ? { spans: receipts } : {}) }
+
     if (!gate.ok) {
-      emit({ ...out, domain: h.host, kind: gate.kind, relation: gate.relation, because: gate.because, settledBy: "model", descGrounded })
+      emit({ ...judged, what: whatFor(gate.kind), domain: h.host, kind: gate.kind, relation: gate.relation, because: gate.because, settledBy: "model", descGrounded, ...spanFields })
       return
     }
-    emit({ ...out, domain: h.host, settledBy: "model", descGrounded })
+    emit({ ...judged, what: whatFor(judged.kind), domain: h.host, settledBy: "model", descGrounded, ...spanFields })
   }
 
   const worker = async (): Promise<void> => {

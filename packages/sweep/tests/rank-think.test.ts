@@ -76,7 +76,7 @@ describe("rank think frames", () => {
     const { spans, emitted } = capturingStream()
     await judgeHosts(hosts, {
       fetcher: fakeFetcher(pages),
-      classify: async (h) => ({ name: names[h.host]!, kind: "company", what: "a scraping api", relation: "competitor", why: "sells the same job" }),
+      classify: async (h) => ({ name: names[h.host]!, kind: "company", what: "a scraping api", relation: "competitor", why: "sells the same job", spans: ["We sell a scraping API"] }),
       anchor: "anchor.com",
       aggregatorThreshold: 12,
       onJudged: thinkJudged(spans, "run-1"),
@@ -121,7 +121,7 @@ describe("rank think frames", () => {
     const { spans, emitted } = capturingStream()
     await judgeHosts([cand("spam.com")], {
       fetcher: fakeFetcher({ "https://spam.com/": vendorHtml }),
-      classify: async () => ({ name: "Spam", kind: "noise", what: "", relation: "none", why: "" }),
+      classify: async () => ({ name: "Spam", kind: "noise", what: "", relation: "none", why: "", spans: [] }),
       anchor: "anchor.com",
       aggregatorThreshold: 12,
       onJudged: thinkJudged(spans, "run-1"),
@@ -139,8 +139,8 @@ describe("rank think frames", () => {
       }),
       classify: async (h) =>
         h.host === "spam.com"
-          ? { name: "Spam", kind: "noise", what: "", relation: "none", why: "" }
-          : { name: "Acme", kind: "company", what: "a scraping api", relation: "competitor", why: "same job" },
+          ? { name: "Spam", kind: "noise", what: "", relation: "none", why: "", spans: [] }
+          : { name: "Acme", kind: "company", what: "a scraping api", relation: "competitor", why: "same job", spans: ["We sell a scraping API"] },
       anchor: "anchor.com",
       aggregatorThreshold: 12,
       onJudged: thinkJudged(spans, "run-1"),
