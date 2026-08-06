@@ -75,3 +75,11 @@ export {
   type ScorecardConfig,
   type YieldWindow,
 } from "./scorecard.js"
+export {
+  exportKbFiles,
+  slugOf,
+  type ExportEntity,
+  type ExportEdge,
+  type ExportRunLike,
+  type ExportedFile,
+} from "./export-kb.js"

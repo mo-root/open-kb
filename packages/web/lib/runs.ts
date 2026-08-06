@@ -259,6 +259,10 @@ const FILE_PREFIX = "run-"
  * reads one as the other deliberately, rather than by accident.
  */
 const CLI_PREFIX = "sweep-"
+// The swarm's CLI writes the same shape under its own name; a run costing real
+// money should not be invisible in the browser purely because of which engine
+// produced it. Both prefixes adopt through the same reader.
+const SWARM_PREFIX = "swarm-"
 
 function adoptCliRun(filename: string, parsed: unknown): StoredRun | null {
   if (!parsed || typeof parsed !== "object") return null
@@ -267,7 +271,12 @@ function adoptCliRun(filename: string, parsed: unknown): StoredRun | null {
   // registry names the thing a run was asked about. Same value, different word.
   if (typeof r.anchor !== "string" || !Array.isArray(r.entities)) return null
 
-  const id = filename.slice(CLI_PREFIX.length, -".json".length)
+  const prefix = filename.startsWith(SWARM_PREFIX) ? SWARM_PREFIX : CLI_PREFIX
+  // A swarm run keeps its prefix in the id so the two engines' runs of one
+  // anchor stay distinct in the gallery instead of colliding on the stamp.
+  const id = filename.startsWith(SWARM_PREFIX)
+    ? filename.slice(0, -".json".length)
+    : filename.slice(prefix.length, -".json".length)
   const seconds = r.stats?.seconds ?? 0
   // The CLI stamps its filenames `<domain>-yyyymmddhhmm`, so the run's real end
   // time is recoverable from the id and the gallery can order CLI runs against
@@ -373,7 +382,7 @@ export async function listStoredRuns(): Promise<StoredRun[]> {
   }
   for (const name of names) {
     if (!name.endsWith(".json")) continue
-    if (!name.startsWith(FILE_PREFIX) && !name.startsWith(CLI_PREFIX)) continue
+    if (!name.startsWith(FILE_PREFIX) && !name.startsWith(CLI_PREFIX) && !name.startsWith(SWARM_PREFIX)) continue
     try {
       const parsed: unknown = JSON.parse(await readFile(path.join(runsDir(), name), "utf8"))
       const stored = isStoredRun(parsed) ? parsed : adoptCliRun(name, parsed)
@@ -405,12 +414,15 @@ export async function getStoredRun(id: string): Promise<StoredRun | null> {
   } catch {
     // not a browser-started run, fall through and try the CLI's shape
   }
-  const name = `${CLI_PREFIX}${id}.json`
-  try {
-    const parsed: unknown = JSON.parse(await readFile(path.join(runsDir(), name), "utf8"))
-    return adoptCliRun(name, parsed)
-  } catch {
-    // not on disk either
+  for (const name of id.startsWith(SWARM_PREFIX)
+    ? [`${id}.json`]
+    : [`${CLI_PREFIX}${id}.json`]) {
+    try {
+      const parsed: unknown = JSON.parse(await readFile(path.join(runsDir(), name), "utf8"))
+      return adoptCliRun(name, parsed)
+    } catch {
+      // not on disk either, keep looking
+    }
   }
   return db.getRunRow(id)
 }

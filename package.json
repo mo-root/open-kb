@@ -23,7 +23,8 @@
     "experiment": "tsx scripts/experiment.ts",
     "discover": "tsx scripts/discover.ts",
     "calibrate": "tsx scripts/calibrate-kernel.ts",
-    "audit": "tsx scripts/audit.ts"
+    "audit": "tsx scripts/audit.ts",
+    "export": "tsx scripts/export-kb.ts"
   },
   "devDependencies": {
     "@openrouter/ai-sdk-provider": "^3.0.0",

@@ -191,6 +191,14 @@ export function KbBrowser({
               all placed
             </span>
           )}
+          <a
+            href={`/api/kb/${slug}/export`}
+            download
+            title="Download this knowledge base as a folder of markdown — one note per entity with its receipts, wikilinks as edges, and AGENTS.md explaining how to read it honestly. What an agent needs to walk the map without this app."
+            className="ml-auto rounded border border-sky-500/40 bg-sky-500/10 px-2 py-0.5 text-[11px] text-sky-300 hover:bg-sky-500/20"
+          >
+            export ↓
+          </a>
         </div>
         <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 tnum">
           {root && (
