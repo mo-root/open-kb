@@ -2,9 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { NoteRef, NoteView as NoteData } from "@/lib/viewTypes";
-import { FAMILY_TONE, RELATION_BLURB } from "@/lib/viewTypes";
+import {
+  FAMILY_TONE,
+  GROUNDING_ENTITY_BLURB,
+  RELATION_BLURB,
+  TIER_BLURB,
+} from "@/lib/viewTypes";
 import { SiteIcon } from "@/components/SiteIcon";
-import { KindChip, RelevanceBadge, TypeChip } from "@/components/ui";
+import { KindChip, RelevanceBadge, TierBadge, TypeChip } from "@/components/ui";
 
 /* ---------------------------------------------------------------------------
    PORT NOTE (open-kb) — from a markdown reader to an entity reader.
@@ -161,6 +166,13 @@ export function NoteView({
             <RelevanceBadge value={note.relevance} />
           )}
           <KindChip kind={note.kind} />
+          {/* The provenance ladder, worn where the kind badge lives: a swarm
+              run stamps each entity with where its best evidence came from,
+              and a reader deciding how far to trust a row should not have to
+              open the raw run JSON to find out. */}
+          {note.tier && (
+            <TierBadge tier={note.tier} title={TIER_BLURB[note.tier]} />
+          )}
           {unplaced ? (
             <span
               title="The classifier saw this host and would not place it against the anchor. It is on the map and connected to nothing — shown rather than dropped."
@@ -190,6 +202,18 @@ export function NoteView({
               found via {f}
             </span>
           ))}
+          {/* The kernel's grounding meter for this one description. Subtle on
+              purpose, and the gloss is explicit that this is a drift meter
+              for embellished wording, not the share of the sentence that is
+              true — the honest framing the morning report established. */}
+          {typeof note.descGrounded === "number" && (
+            <span
+              title={GROUNDING_ENTITY_BLURB}
+              className="tnum font-mono text-[10px] text-slate-500"
+            >
+              desc grounded {note.descGrounded.toFixed(2)}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2.5">
           <SiteIcon domain={note.domain} name={note.title} size={24} />

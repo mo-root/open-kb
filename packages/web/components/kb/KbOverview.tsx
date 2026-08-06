@@ -10,7 +10,14 @@ import {
   TYPE_ORDER,
   type NodeType,
 } from "@/lib/nodeTypes";
-import { RELATION_BLURB, type KbView, type NoteRef } from "@/lib/viewTypes";
+import {
+  GROUNDING_MEAN_BLURB,
+  RELATION_BLURB,
+  type KbScorecard,
+  type KbView,
+  type NoteRef,
+} from "@/lib/viewTypes";
+import { gateExchange, nOfM, share, usdOfUsd } from "@/lib/scorecard-view";
 import { builtAtOf, manifestNum, manifestStr } from "./layerMeta";
 import {
   BarMeter,
@@ -404,11 +411,16 @@ function RunTelemetry({
   seconds,
   queries,
   hosts,
+  grounding,
 }: {
   usd?: number;
   seconds?: number;
   queries?: number;
   hosts?: number;
+  /** report.kernel.groundingMean (sweep runs). A drift meter, not a defect
+   *  rate — the tooltip carries the honest gloss so the number cannot read
+   *  as "68% true". */
+  grounding?: number;
 }) {
   const items = [
     usd !== undefined ? { label: "spent", value: `$${usd.toFixed(4)}` } : null,
@@ -417,7 +429,14 @@ function RunTelemetry({
       : null,
     queries !== undefined ? { label: "queries bought", value: String(queries) } : null,
     hosts !== undefined ? { label: "hosts returned", value: String(hosts) } : null,
-  ].filter((x): x is { label: string; value: string } => x !== null);
+    grounding !== undefined
+      ? {
+          label: "descriptions grounded",
+          value: `${grounding.toFixed(2)} mean`,
+          title: GROUNDING_MEAN_BLURB,
+        }
+      : null,
+  ].filter((x): x is { label: string; value: string; title?: string } => x !== null);
 
   if (items.length === 0) return null;
 
@@ -436,7 +455,7 @@ function RunTelemetry({
       />
       <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
         {items.map((it) => (
-          <div key={it.label}>
+          <div key={it.label} title={it.title}>
             <div className="tnum text-lg font-semibold leading-none text-slate-100">
               {it.value}
             </div>
@@ -445,6 +464,148 @@ function RunTelemetry({
             </div>
           </div>
         ))}
+      </div>
+    </Card>
+  );
+}
+
+/* The run's own instrument, read back. A swarm run serializes its scorecard
+   at the ending (report.scorecard, T6): the planned-question rows, the
+   evidence fractions with num/den beside every value, the unspent pool, and
+   the finish gate's record. Until now all of it stopped at the JSON — this
+   card is where the night's grading becomes visible.
+
+   Two display rules, enforced in lib/scorecard-view.ts where they are tested:
+   every fraction shows its own arithmetic ("2 of 3 · 0.67", never a bare
+   percent), and the gate's exchange renders the objection sentences verbatim —
+   they are fact-sentences written to be read, and paraphrase would be the
+   harness editorializing over its own instrument. */
+function CoveragePanel({ scorecard }: { scorecard: KbScorecard }) {
+  const rows = [
+    {
+      key: "families",
+      label: "families answered with page evidence",
+      of: nOfM(scorecard.familiesWithPageTier),
+      value: share(scorecard.familiesWithPageTier),
+    },
+    {
+      key: "pageTier",
+      label: "nodes on page-or-better evidence",
+      of: nOfM(scorecard.pageTier),
+      value: share(scorecard.pageTier),
+    },
+    {
+      key: "singleSourced",
+      label: "nodes resting on a single source",
+      of: nOfM(scorecard.singleSourced),
+      value: share(scorecard.singleSourced),
+    },
+    {
+      key: "poolUnspent",
+      label: "budget left unspent",
+      of: usdOfUsd(scorecard.poolUnspent),
+      value: share(scorecard.poolUnspent),
+    },
+  ];
+  const exchange = gateExchange(scorecard.gate);
+  const refused = scorecard.gate.refusedFinish;
+
+  return (
+    <Card className="reveal reveal-2">
+      <PanelHead
+        title="Coverage"
+        right={
+          <span className="font-mono text-[10px] lowercase tracking-wide text-slate-600">
+            the run grading itself
+          </span>
+        }
+      />
+      <dl className="space-y-1.5">
+        {rows.map((r) => (
+          <div key={r.key} className="flex items-baseline justify-between gap-3">
+            <dt className="text-[11px] text-slate-400">{r.label}</dt>
+            <dd className="tnum shrink-0 font-mono text-[11px] text-slate-300">
+              {r.of} <span className="text-slate-600">·</span>{" "}
+              <span className="text-slate-100">{r.value}</span>
+            </dd>
+          </div>
+        ))}
+      </dl>
+
+      {scorecard.families.length > 0 && (
+        <div className="mt-3 border-t border-slate-800 pt-3">
+          <div className="mb-1.5 font-mono text-[10px] uppercase tracking-wider text-slate-500">
+            planned questions
+          </div>
+          <ul className="space-y-1">
+            {scorecard.families.map((f, i) => (
+              <li
+                key={`${f.lens}-${i}`}
+                className="flex items-baseline justify-between gap-3 text-[11px]"
+              >
+                <span className="min-w-0 truncate text-slate-400">
+                  <span className="font-mono">{f.lens}</span>
+                  {f.status !== "landed" && (
+                    <span className="text-slate-500">
+                      {" "}
+                      · {f.status}
+                      {f.because ? ` — ${f.because}` : ""}
+                    </span>
+                  )}
+                </span>
+                {/* A family whose answer never reached page-tier evidence is
+                    the gap the scorecard exists to name, so it wears the
+                    advisory amber the rest of the app uses for "the run did
+                    not answer this". */}
+                <span
+                  className={`tnum shrink-0 font-mono text-[10px] ${
+                    f.pageTierNodes === 0 ? "text-amber-300" : "text-slate-500"
+                  }`}
+                >
+                  {f.pageTierNodes} of {f.nodesAdded} on page evidence
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="mt-3 border-t border-slate-800 pt-3">
+        {exchange.spoke ? (
+          /* The exchange, in the gate's own bytes. Amber stays inside the
+             theme-re-keyed 200-500 steps, the same rule as NoteView's
+             downgrade box. */
+          <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3">
+            <div className="mb-1 text-[11px] uppercase tracking-wide text-amber-400">
+              the gate refused the finish
+              {scorecard.gate.refusals > 1 ? ` × ${scorecard.gate.refusals}` : ""}
+            </div>
+            <ul className="space-y-1 text-sm text-amber-300">
+              {exchange.lines.map((l, i) => (
+                <li key={i}>
+                  {l.text}
+                  {l.carried && (
+                    <span
+                      className="ml-1.5 font-mono text-[10px] text-amber-400/80"
+                      title="Still standing at the run's end — the accepted finish's unresolved list omitted it."
+                    >
+                      still standing
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+            {refused?.summary && (
+              <p className="mt-2 border-t border-amber-500/20 pt-2 text-[11px] text-amber-300/80">
+                the refused finish would have said: “{refused.summary}”
+              </p>
+            )}
+          </div>
+        ) : (
+          <p className="font-mono text-[10px] text-slate-500">
+            the finish gate never refused.
+          </p>
+        )}
       </div>
     </Card>
   );
@@ -660,7 +821,13 @@ export function KbOverview({
         seconds={manifestNum(manifest, "seconds")}
         queries={manifestNum(manifest, "queries")}
         hosts={manifestNum(manifest, "hosts")}
+        grounding={manifestNum(manifest, "groundingMean")}
       />
+
+      {/* Swarm runs only: the scorecard the run serialized at its ending.
+          Absent on sweep runs and on runs recorded before it existed —
+          absence means "never measured", so no card rather than an empty one. */}
+      {envelope.scorecard && <CoveragePanel scorecard={envelope.scorecard} />}
 
       {/* Composition + placement. */}
       <div className="grid gap-4 md:grid-cols-2">

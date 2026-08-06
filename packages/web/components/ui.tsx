@@ -37,6 +37,36 @@ export function KindChip({ kind }: { kind: string }) {
   );
 }
 
+// Evidence tier -> badge tone. The provenance ladder (own-page > page >
+// snippet) drawn as a brightness ladder on the one action hue: own-page wears
+// the strongest ink, page a fainter wash of the same blue, snippet drops to
+// neutral slate — the lightest thing on the row, exactly as light as its
+// evidence. All classes stay inside the theme-re-keyed ramp steps (200-500 +
+// the slate chrome), the same theme-safety rule NoteView's amber downgrade
+// box documents. A tier this map has never heard of falls back to neutral
+// rather than being dropped: the run asserted it, so the reader shows it.
+const TIER_TONES: Record<string, string> = {
+  "own-page": "text-sky-300 border-sky-400/60 bg-sky-500/15",
+  page: "text-sky-300/90 border-sky-500/30 bg-sky-500/5",
+  snippet: "text-slate-400 border-slate-700/60 bg-slate-800/30",
+};
+
+/** Where an entity's best evidence came from (swarm runs). The caller passes
+ *  the gloss (viewTypes' TIER_BLURB) so the words stay defined in one place. */
+export function TierBadge({ tier, title }: { tier: string; title?: string }) {
+  const tone =
+    TIER_TONES[tier.toLowerCase().trim()] ?? "text-slate-300 border-slate-600/50 bg-slate-700/30";
+  return (
+    <span
+      title={title}
+      className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[10px] ${tone}`}
+    >
+      <span className="text-[9px] uppercase tracking-wider opacity-70">evidence</span>
+      {tier}
+    </span>
+  );
+}
+
 export function Chip({
   children,
   tone = "slate",
