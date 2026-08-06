@@ -12,7 +12,7 @@ import { SpanStream, discover } from "../packages/core/src/index.js"
 import { brightDataFetch } from "../packages/providers/src/index.js"
 
 const anchor = process.argv[2] ?? "resend.com"
-const MODEL = process.env.OPENKB_MODEL ?? "google/gemini-3.5-flash"
+const MODEL = process.env.OPENKB_MODEL ?? "deepseek/deepseek-v4-flash"
 
 const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY! })
 const fetcher = brightDataFetch({
@@ -29,7 +29,7 @@ const out = await discover({
   modelName: MODEL,
   fetch: fetcher,
   spans,
-  // gemini-3.5-flash: $1.50 / $9.00 per M
+  // deepseek-v4-flash: $0.088 / $0.176 per M (was gemini-3.5-flash at $1.50/$9.00)
   pricing: { inputPerMTok: 1.5, outputPerMTok: 9 },
 })
 spans.close()

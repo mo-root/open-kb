@@ -32,16 +32,16 @@
  * spells them. The agents themselves never see these names — tiers are the
  * only words cost has inside the run:
  *
- *   OPENKB_SWARM_LEAD_MODEL   default google/gemini-3-flash-preview — the one
+ *   OPENKB_SWARM_LEAD_MODEL   default deepseek/deepseek-v4-flash — the one
  *     growing transcript; its input price is what matters ($0.50/M measured
  *     at ~$0.10 per run in the design). Live run 3 (runs/swarm-brightdata-
  *     com-202608060151.json) watched this default sit 14 spawn-less,
  *     finish-less turns on a dry board with the scorecard armed — a
  *     stronger lead is this one env var away.
- *   OPENKB_SWARM_PEEK_MODEL   default google/gemini-3.1-flash-lite —
+ *   OPENKB_SWARM_PEEK_MODEL   default deepseek/deepseek-v4-flash —
  *     verification and demotion, the cheapest honest look.
- *   OPENKB_SWARM_READ_MODEL   default OPENKB_MODEL, then google/gemini-3.5-flash.
- *   OPENKB_SWARM_DIG_MODEL    default OPENKB_MODEL, then google/gemini-3.5-flash.
+ *   OPENKB_SWARM_READ_MODEL   default OPENKB_MODEL, then deepseek/deepseek-v4-flash.
+ *   OPENKB_SWARM_DIG_MODEL    default OPENKB_MODEL, then deepseek/deepseek-v4-flash.
  *
  * Pricing is accounting only — a wrong number makes the cost readout wrong,
  * never the run. Known ids take their row below; anything else takes the
@@ -132,13 +132,16 @@ const familyFloor: boolean | number | undefined =
           ? Number(famRaw)
           : undefined
 
-const LEAD = process.env.OPENKB_SWARM_LEAD_MODEL ?? "google/gemini-3-flash-preview"
-const PEEK = process.env.OPENKB_SWARM_PEEK_MODEL ?? "google/gemini-3.1-flash-lite"
-const READ = process.env.OPENKB_SWARM_READ_MODEL ?? process.env.OPENKB_MODEL ?? "google/gemini-3.5-flash"
-const DIG = process.env.OPENKB_SWARM_DIG_MODEL ?? process.env.OPENKB_MODEL ?? "google/gemini-3.5-flash"
+const LEAD = process.env.OPENKB_SWARM_LEAD_MODEL ?? "deepseek/deepseek-v4-flash"
+const PEEK = process.env.OPENKB_SWARM_PEEK_MODEL ?? "deepseek/deepseek-v4-flash"
+const READ = process.env.OPENKB_SWARM_READ_MODEL ?? process.env.OPENKB_MODEL ?? "deepseek/deepseek-v4-flash"
+const DIG = process.env.OPENKB_SWARM_DIG_MODEL ?? process.env.OPENKB_MODEL ?? "deepseek/deepseek-v4-flash"
 
-/** $/M tokens. The design's lead numbers, the sweep's default row for flash. */
+/** $/M tokens, checked against openrouter.ai/api/v1/models 2026-08-06. An
+ *  unknown id prices at the table's most expensive row — the meter must never
+ *  flatter a model it does not know. */
 const PRICES: Record<string, { inUsdPerM: number; outUsdPerM: number }> = {
+  "deepseek/deepseek-v4-flash": { inUsdPerM: 0.088, outUsdPerM: 0.176 },
   "google/gemini-3-flash-preview": { inUsdPerM: 0.5, outUsdPerM: 3.0 },
   "google/gemini-3.1-flash-lite": { inUsdPerM: 0.1, outUsdPerM: 0.4 },
   "google/gemini-3.5-flash": { inUsdPerM: 1.5, outUsdPerM: 9.0 },

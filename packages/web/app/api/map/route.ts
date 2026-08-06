@@ -134,7 +134,7 @@ export async function POST(req: Request) {
     }
   }
 
-  const modelId = process.env.OPENKB_MODEL ?? "google/gemini-3.5-flash"
+  const modelId = process.env.OPENKB_MODEL ?? "deepseek/deepseek-v4-flash"
   // `createRun` still records a definite number — its `queries` column is a
   // bookkeeping field a run's whole history reads, not the sweep's own input.
   // 0 means "no override was requested", the same convention `ceilingUsd()`

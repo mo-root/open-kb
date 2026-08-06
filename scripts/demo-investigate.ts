@@ -51,11 +51,11 @@ const out = await investigate({
     `different ways rather than naming it, cover as much ground sideways as you can, and record everything ` +
     `you can prove.`,
   ctx,
-  model: openrouter(process.env.OPENKB_MODEL ?? "google/gemini-3.5-flash"),
+  model: openrouter(process.env.OPENKB_MODEL ?? "deepseek/deepseek-v4-flash"),
   maxSteps: 20,
-  // gemini-3.5-flash on OpenRouter: $1.50 / $9.00 per million tokens.
+  // deepseek-v4-flash on OpenRouter: $0.088 / $0.176 per million tokens.
   // Supplied here, not in core, the engine must not know which vendor it talks to.
-  modelName: process.env.OPENKB_MODEL ?? "google/gemini-3.5-flash",
+  modelName: process.env.OPENKB_MODEL ?? "deepseek/deepseek-v4-flash",
   pricing: { inputPerMTok: 1.5, outputPerMTok: 9.0 },
 })
 ctx.spans.close()
