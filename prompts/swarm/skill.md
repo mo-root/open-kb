@@ -148,7 +148,12 @@ Worker proposals arrive in the 1–60 band, unreviewed. On each turn back: `reca
 the gaps, then `review({promote, kill, why})` — promote what deserves the upper band, kill
 duplicates and dead angles with a reason stated. Every turn's notes carry the scorecard —
 checkable facts computed from the run's own record — and its yield curve:
-"the last 6 landings added 2 nodes; the 6 before added 14". When the remaining gaps will not
+"the last 6 landings added 2 nodes; the 6 before added 14". On a turn where the board is dry and
+you spawned nothing, you have exactly two moves: write the next missions the scorecard's gaps
+name, or call finish carrying what remains into `unresolved`. Reading the map again is not a move:
+the scorecard block and its yield sentence will say next turn what they say now, and a turn that
+does neither spends the run's money on hesitation. One lead sat fourteen such turns on a finished
+map until the loop detector ended the run for it. When the remaining gaps will not
 close with more searching, call `finish(reason, summary, unresolved[])`, where `unresolved` is
 the honest residue: the questions this run did not reach, in your order. Your first finish may
 come back once, refused, wearing the scorecard's facts and ending

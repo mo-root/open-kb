@@ -150,6 +150,25 @@ describe("swarm skill", () => {
     expect(raw).toContain("verbatim")
   })
 
+  it("tells the lead when to stop thinking: a dry, spawn-less turn has exactly two moves", () => {
+    // Live run 3 (runs/swarm-brightdata-com-202608060151.json): the lead built
+    // the night's best map — 12 nodes, all own-page tier, $1.37 — then sat 14
+    // consecutive spawn-less, finish-less turns re-reading it, the scorecard
+    // armed in its notes the whole time, until the 24-turn loop detector fired.
+    // Run 2's lead failed the other way: finished at turn 20 with $3.55
+    // unspent. The skill taught the yield curve and the gate's exchange but
+    // never said WHEN to stop; these sentences are that lesson. Whether a
+    // model obeys them is not offline-testable — that verification is the
+    // next live run. What is testable is that the lesson stays in the file.
+    expect(raw).toContain("you have exactly two moves")
+    expect(raw).toContain("Reading the map again is not a move")
+    expect(raw).toContain("spends the run's money on hesitation")
+    // The only number in the lesson is the measured failure, never a turn
+    // budget — the cap belongs to the harness, and the skill already names it
+    // a loop detector, not a budget.
+    expect(raw).toContain("One lead sat fourteen such turns")
+  })
+
   it("gives the lead its band, its re-entry, its review seat, and its ending", () => {
     expect(raw).toContain("61–100")
     expect(raw).toContain("dedupeKey")
