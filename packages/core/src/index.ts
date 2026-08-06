@@ -46,6 +46,21 @@ export {
 } from "./ledger.js"
 export { BreakerTable, type BreakerState, type StrikeCount } from "./breaker.js"
 export {
+  buildAuditPacket,
+  scoreAuditPacket,
+  wilson,
+  cohenKappa,
+  AUDIT_ERROR_KINDS,
+  type AuditEntityRow,
+  type AuditPacket,
+  type AuditPacketRow,
+  type AuditVerdict,
+  type AuditRefusal,
+  type AuditScore,
+  type SecondReview,
+  type WilsonInterval,
+} from "./audit.js"
+export {
   computeScorecard,
   scorecardSentences,
   scorecardObjections,
