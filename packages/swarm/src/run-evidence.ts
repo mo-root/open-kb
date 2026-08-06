@@ -231,3 +231,23 @@ export class RunEvidence {
     return out
   }
 }
+
+/**
+ * The recall probe pool: every readable page this run bought, minus the
+ * anchor's own — they name the anchor by definition and would let the map
+ * grade itself against the anchor's marketing. Same rung-0 rule as the
+ * sweep's probe gate (rank.ts); registrable host, not hostname, so www. and
+ * subdomains fold in with it. ONE function shared by serialize.ts and the
+ * orchestrator's in-run scorecard, so the report's recall and the number the
+ * lead saw mid-run cannot drift apart.
+ */
+export function recallProbePool(evidence: RunEvidence, anchor: string): Array<{ url: string; html: string }> {
+  const anchorKey = registrableHost(anchor)
+  return evidence.pages().filter((p) => {
+    try {
+      return registrableHost(new URL(p.url).hostname) !== anchorKey
+    } catch {
+      return false
+    }
+  })
+}

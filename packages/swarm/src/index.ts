@@ -14,6 +14,7 @@ export {
   RunEvidence,
   MAX_STORED_BYTES,
   originKey,
+  recallProbePool,
   strongerTier,
   type RecordInput,
   type CiteOutcome,

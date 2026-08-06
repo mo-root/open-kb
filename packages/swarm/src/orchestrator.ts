@@ -1,20 +1,24 @@
 import {
   ALLOWANCES,
+  answerKeyRecall,
   Board,
   BreakerTable,
+  computeScorecard,
   Ledger,
   registrableHost,
+  scorecardSentences,
   type BoardRow,
   type FamilyRow,
   type FetchPort,
   type Mission,
   type MissionTier,
+  type ScorecardInput,
   type SearchPort,
   type SpanKind,
   type SpanStream,
 } from "@open-kb/core"
 import type { LanguageModel } from "ai"
-import { RunEvidence } from "./run-evidence.js"
+import { RunEvidence, recallProbePool } from "./run-evidence.js"
 import { MapState } from "./map.js"
 import { FamilyLedger } from "./family-ledger.js"
 import { newRunControl, type FinishState, type RunControl } from "./tools-control.js"
@@ -55,8 +59,6 @@ export const DEFAULT_GRACE_MS = 30_000
 export const DEFAULT_STILLBORN_MS = 30_000
 /** In-band warning lead time before the wall: "45 seconds left; call finish". */
 export const WALL_WARN_BEFORE_MS = 45_000
-/** The yield curve's window: "the last 6 landings produced X new companies". */
-const YIELD_WINDOW = 6
 
 const EPSILON = 1e-9
 
@@ -451,13 +453,9 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
    *  between turns via skipTotals so "skipped 3 times" is cumulative. */
   const skipNotes = new Map<string, { tier: string; priority: number; count: number }>()
   const skipTotals = new Map<string, number>()
-  const companyHistory: number[] = []
-  let companiesSeen = 0
 
   const missionsInFlight = () => inflight.size - (inflight.has("lead") ? 1 : 0)
   const floorHit = () => ledger.spendable() + EPSILON < ALLOWANCES.peek
-  const countCompanies = () =>
-    [...map.nodes.values()].filter((n) => !n.retracted && (n.kind === "company" || n.kind === "product")).length
 
   const callerAborted: Promise<Wake> = new Promise((resolve) => {
     const s = opts.signal
@@ -600,6 +598,31 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
     return false
   }
 
+  /** Live state folded into the scorecard's plain input, fresh at every think
+   *  turn: family rows lazily off the writer stamps, per-landing node yield
+   *  off the landings record, recall over the same anchor-excluded probe pool
+   *  serialization uses — so the number the lead sees mid-run is the number
+   *  the report ships. */
+  const scorecardInput = (): ScorecardInput => {
+    const live = [...map.nodes.values()].filter((n) => !n.retracted)
+    // Recall grades the map's VENDORS, the same host set serialize.ts builds
+    // from the map's own vocabulary (company/product).
+    const mapHosts = new Set(
+      live.filter((n) => n.kind === "company" || n.kind === "product").map((n) => registrableHost(n.domain || n.name)),
+    )
+    return {
+      families: families.rows(map),
+      entities: live.map((n) => ({ tier: n.tier, sources: new Set(n.evidence.map((e) => e.url)).size })),
+      spendableUsd: ledger.spendable(),
+      ceilingUsd,
+      spentUsd: ledger.spentUsd(),
+      elapsedMs: Date.now() - t0,
+      wallMs,
+      yieldHistory: landings.map((l) => l.digest.added.nodes),
+      recall: answerKeyRecall(recallProbePool(evidence, anchor), { anchor: map.anchor, mapHosts }),
+    }
+  }
+
   const composeNotes = (): string[] => {
     const notes = digestNotes.splice(0)
     for (const [key, s] of skipNotes) {
@@ -609,19 +632,11 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
       )
     }
     skipNotes.clear()
-    // The yield curve: measured and shown, never enforced — the lead draws
-    // the conclusion.
-    const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0)
-    const recent = companyHistory.slice(-YIELD_WINDOW)
-    const before = companyHistory.slice(-2 * YIELD_WINDOW, -YIELD_WINDOW)
-    if (before.length > 0) {
-      notes.push(
-        `the last ${recent.length} landings produced ${sum(recent)} new companies; ` +
-          `the ${before.length} before that produced ${sum(before)}`,
-      )
-    } else if (recent.length > 0) {
-      notes.push(`the last ${recent.length} landings produced ${sum(recent)} new companies`)
-    }
+    // The scorecard: every number computed by code from run state, in front of
+    // the lead on every think turn before any conclusion is drawn — facts,
+    // never verdicts. The old inline yield-curve narration lives inside it now
+    // as the scorecard's yield sentence: one voice, no duplicate.
+    notes.push(...scorecardSentences(computeScorecard(scorecardInput())))
     notes.push(...pendingNotes.splice(0))
     return notes
   }
@@ -861,9 +876,6 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
       inflight.delete(winner.key)
       landingsSince += 1
       if (winner.key === seed.dedupeKey) seedLanded = true
-      const live = countCompanies()
-      companyHistory.push(Math.max(0, live - companiesSeen))
-      companiesSeen = live
       const d = winner.digest
       const line =
         `${winner.key} landed: ${d.status}, +${d.added.nodes} nodes +${d.added.edges} edges, ` +

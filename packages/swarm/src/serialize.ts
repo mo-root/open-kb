@@ -1,5 +1,6 @@
 import { answerKeyRecall, registrableHost, type RecallReport } from "@open-kb/core"
 import type { EntityEdgeRow, EntityRow } from "./map.js"
+import { recallProbePool } from "./run-evidence.js"
 import type { SwarmRun } from "./orchestrator.js"
 
 /**
@@ -78,18 +79,10 @@ export function serializeSwarmRun(
       .filter((n) => !n.retracted && (n.kind === "company" || n.kind === "product"))
       .map((n) => registrableHost(n.domain || n.name)),
   )
-  // The probe pool excludes the anchor's own pages — they name the anchor by
-  // definition and would let the map grade itself against the anchor's own
-  // marketing. Same rung-0 rule as the sweep's probe gate (rank.ts); registrable
-  // host, not hostname, so www. and subdomains fold in with it.
-  const anchorKey = registrableHost(run.map.anchor)
-  const probePool = run.evidence.pages().filter((p) => {
-    try {
-      return registrableHost(new URL(p.url).hostname) !== anchorKey
-    } catch {
-      return false
-    }
-  })
+  // The probe pool excludes the anchor's own pages (rung 0, the rule and its
+  // reasons on recallProbePool itself) — the same pool the orchestrator's
+  // in-run scorecard reads, so the report's recall is the number the lead saw.
+  const probePool = recallProbePool(run.evidence, run.map.anchor)
   const recall: RecallReport = answerKeyRecall(probePool, { anchor: run.map.anchor, mapHosts })
 
   const hosts = new Set<string>()

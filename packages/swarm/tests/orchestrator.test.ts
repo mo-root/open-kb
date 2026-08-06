@@ -1,8 +1,16 @@
 import { describe, it, expect } from "vitest"
 import { MockLanguageModelV4 } from "ai/test"
 import type { LanguageModel } from "ai"
-import { SpanStream, type FetchPort, type Ledger, type SearchPort } from "@open-kb/core"
-import { runSwarm, seedMission, type SwarmEnding, type SwarmOptions } from "../src/index.js"
+import {
+  computeScorecard,
+  scorecardSentences,
+  SpanStream,
+  type FetchPort,
+  type Ledger,
+  type RecallReport,
+  type SearchPort,
+} from "@open-kb/core"
+import { runSwarm, seedMission, serializeSwarmRun, type SwarmEnding, type SwarmOptions, type SwarmRun } from "../src/index.js"
 
 /**
  * The orchestrator, offline: scripted models over fake ports. Every test runs
@@ -685,6 +693,128 @@ describe("runSwarm: the family ledger", () => {
     expect(m1).toMatchObject({ status: "landed", nodesAdded: 1, pageTierNodes: 1 })
     // The seed only searched: zero page-tier answers, and the row says so.
     expect(run.families.find((f) => f.dedupeKey === "orient:anchor.com")!.pageTierNodes).toBe(0)
+  })
+})
+
+// ── the in-band scorecard ───────────────────────────────────────────────────
+
+describe("runSwarm: the scorecard rides every think turn", () => {
+  /** One page-tier mission beside the searching seed, every lead prompt
+   *  captured — the deterministic fixture the three scorecard tests share. */
+  async function scorecardScenario(over: Partial<SwarmOptions> = {}): Promise<{ run: SwarmRun; turns: string[] }> {
+    const turns: string[] = []
+    const pageWriter = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = invTurnOf(prompt)
+        if (turn === 0)
+          return reply(
+            call("f1", "fetch", {
+              urls: ["https://rival.com", "https://roundup.com/best-fraud-tools"],
+              mode: "direct",
+              why: "the rival's own words, and the roundup that may grade the map",
+            }),
+            false,
+          )
+        if (turn === 1)
+          return reply(
+            call("r1", "remember", {
+              nodes: [
+                {
+                  name: "Rival",
+                  domain: "rival.com",
+                  kind: "company",
+                  what: "fraud scoring",
+                  relation: "competitor",
+                  why: "same capability sold to the same buyer, per its own page",
+                  evidence: [{ url: "https://rival.com", quote: "flags stolen cards before authorization" }],
+                },
+              ],
+              why: "record as I go",
+            }),
+            false,
+          )
+        return reply(text("done."), true)
+      },
+    })
+    const lead = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = leadTurnOf(prompt)
+        turns[turn] = JSON.stringify(prompt.filter((m) => m.role === "user").at(-1)?.content ?? "")
+        if (turn === 1)
+          return reply(
+            [
+              ...call("1", "spawn", { missions: [mission("m1", 90, "read")], why: "one page mission" }),
+              ...call("2", "next", { after: { landings: 2 }, why: "let both land" }),
+            ],
+            false,
+          )
+        return reply(call("f1", "finish", { reason: "done", summary: "s", unresolved: [], why: "d" }), false)
+      },
+    })
+    const run = await runSwarm(mkOpts({ lead, tiers: { read: pageWriter }, over }))
+    expect(run.ending.reason).toBe("lead-finished")
+    return { run, turns }
+  }
+
+  it("a think turn's notes carry the block, numbers matching an independently computed scorecard", async () => {
+    const { run, turns } = await scorecardScenario()
+    const notes = turns[2]!
+
+    // The same input the orchestrator folds, rebuilt from the run's own record
+    // — nothing changed between the captured turn and the ending, so the end
+    // state IS the compose-time state (zero model pricing, no later spends).
+    const live = [...run.map.nodes.values()].filter((n) => !n.retracted)
+    const expected = scorecardSentences(
+      computeScorecard({
+        families: run.families,
+        entities: live.map((n) => ({ tier: n.tier, sources: new Set(n.evidence.map((e) => e.url)).size })),
+        spendableUsd: run.ledger.spendable(),
+        ceilingUsd: 1.5,
+        spentUsd: run.ledger.spentUsd(),
+        elapsedMs: 0, // time moves between compose and ending; asserted by shape below
+        wallMs: 300_000,
+        yieldHistory: run.landings.map((l) => l.digest.added.nodes),
+        recall: { pooled: null, probes: [] }, // rivalHtml never names the anchor: no probe qualifies
+      }),
+    )
+    expect(expected.length).toBeGreaterThanOrEqual(6)
+    for (const line of expected) {
+      if (/wall elapsed$/.test(line)) continue
+      expect(notes).toContain(line)
+    }
+    expect(notes).toMatch(/\ds of the 300s wall elapsed/)
+    // And EVERY think turn carries it, the first included.
+    expect(turns[1]!).toMatch(/the pool holds \$\d+\.\d{2} of \$\d+\.\d{2}/)
+  })
+
+  it("the old inline yield narration is gone — exactly one yield sentence, the scorecard's", async () => {
+    const { turns } = await scorecardScenario()
+    const notes = turns[2]!
+    expect(notes).not.toMatch(/produced \d+ new compan/)
+    const yieldLines = notes.match(/the last (\d+ landings?|landing) added|no missions have landed/g) ?? []
+    expect(yieldLines).toHaveLength(1)
+  })
+
+  it("recall in the notes matches serialize-time recall on the same fixture", async () => {
+    // The roundup page names the anchor as a word of its own and links five
+    // vendors — an answer key. The map holds one of the five.
+    const probeHtml =
+      `<html><body><h1>Five fraud scoring vendors compared</h1>` +
+      `<p>Shortlisting alternatives to anchor.com for merchants: we scored each vendor on latency, ` +
+      `pricing and review tooling, then ran the same hundred stolen-card checkouts through every ` +
+      `platform to see what got flagged before authorization and what sailed straight through.</p>` +
+      `<a href="https://rival.com">Rival</a> <a href="https://second.com">Second</a> ` +
+      `<a href="https://third.com">Third</a> <a href="https://fourth.com">Fourth</a> ` +
+      `<a href="https://fifth.com">Fifth</a></body></html>`
+    const { run, turns } = await scorecardScenario({
+      fetch: fakeFetch({ "https://roundup.com/best-fraud-tools": { httpStatus: 200, body: probeHtml } }),
+    })
+
+    const out = serializeSwarmRun(run)
+    const recall = (out.report as { recall: RecallReport }).recall
+    expect(recall.pooled).toBeCloseTo(1 / 5, 6)
+    expect(recall.probes).toHaveLength(1)
+    expect(turns[2]!).toContain(`recall across 1 answer-key probe: ${recall.pooled!.toFixed(2)}`)
   })
 })
 
