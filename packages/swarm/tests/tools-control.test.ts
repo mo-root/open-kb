@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest"
+import { readFileSync } from "node:fs"
 import { Board, Ledger, ALLOWANCES, type Mission, type MissionTier } from "@open-kb/core"
 import {
   spawnTool,
@@ -482,5 +483,15 @@ describe("finishTool: the scorecard gate", () => {
     const third = finishTool(ctx, { reason: "again", summary: "s", unresolved: [] })
     expect(third.ok).toBe(false)
     if (!third.ok) expect(third.reason).toBe("the run is already finishing (mapped for real); the first accepted finish stands")
+  })
+
+  it("the skill quotes the refusal tail byte for byte — the gate and the doctrine cannot drift", () => {
+    // The LEAD section quotes the tail so the model recognises the refusal as
+    // the taught exchange, not an error. One string in one place
+    // (GATE_REFUSAL_TAIL); this assertion is the seam — the core suite pins
+    // the same bytes from the skill's side (the commercialDowngradeHint
+    // precedent, both directions).
+    const skill = readFileSync("prompts/swarm/skill.md", "utf8")
+    expect(skill).toContain(GATE_REFUSAL_TAIL)
   })
 })

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
 import { loadPrompt } from "../src/prompts.js"
+import { computeScorecard, scorecardSentences } from "../src/scorecard.js"
 
 const PATH = "prompts/swarm/skill.md"
 
@@ -111,6 +112,42 @@ describe("swarm skill", () => {
       expect(raw, `relation "${rel}" missing`).toContain(`**${rel}**`)
     }
     expect(raw).toContain("The map is the ecosystem, not the shortlist")
+  })
+
+  it("quotes the machine's own yield sentence byte for byte — the skill and the scorecard cannot drift", () => {
+    // The old teaching ("the last six landings produced 2 new companies...")
+    // drifted from what the scorecard actually says: different verb, noun,
+    // and count basis. Now the skill quotes the sentence the machine renders
+    // from the design's illustrative history, computed here rather than
+    // hardcoded, so a wording change in yieldSentence fails this test before
+    // it teaches the lead a sentence it will never see.
+    const sc = computeScorecard({
+      families: [],
+      entities: [],
+      spendableUsd: 0,
+      ceilingUsd: 1,
+      spentUsd: 0,
+      elapsedMs: 0,
+      wallMs: 1_000,
+      yieldHistory: [3, 3, 2, 2, 2, 2, 1, 1, 0, 0, 0, 0],
+      recall: { pooled: null, probes: [] },
+    })
+    const yieldLine = scorecardSentences(sc).find((l) => l.startsWith("the last"))
+    expect(yieldLine).toBe("the last 6 landings added 2 nodes; the 6 before added 14")
+    expect(raw).toContain(`"${yieldLine}"`)
+  })
+
+  it("teaches the one-refusal finish exchange, the gate's tail quoted byte for byte", () => {
+    // The literal below is the skill-side pin of GATE_REFUSAL_TAIL; the swarm
+    // package's tools-control tests assert the same bytes from the exported
+    // constant's side, so the skill and the gate cannot drift apart without
+    // one of the two suites failing (the commercialDowngradeHint precedent).
+    expect(raw).toContain(
+      '"; finishing now records these as unresolved — address them or carry them into unresolved verbatim; your next finish stands"',
+    )
+    // And the dedup rule the tail relies on: unresolved carries the gate's
+    // exact words, because a paraphrase records the same objection twice.
+    expect(raw).toContain("verbatim")
   })
 
   it("gives the lead its band, its re-entry, its review seat, and its ending", () => {
