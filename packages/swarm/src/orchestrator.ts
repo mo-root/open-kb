@@ -26,6 +26,7 @@ import { RunEvidence, recallProbePool } from "./run-evidence.js"
 import { MapState } from "./map.js"
 import { FamilyLedger } from "./family-ledger.js"
 import { DEFAULT_FAMILY_FLOOR, FAMILY_FLOOR_MAX, familyProfileFrom, seedFamilyMissions } from "./seed-families.js"
+import { sweepSeedMissions, type SweepRunLike } from "./from-sweep.js"
 import { newRunControl, spawnTool, type FinishState, type RunControl } from "./tools-control.js"
 import type { SearchTrace } from "./tools-free.js"
 import {
@@ -183,6 +184,21 @@ export interface SwarmOptions {
    * re-rank or kill the floor's rows — they are ordinary board items.
    */
   familyFloor?: boolean | number
+  /**
+   * The sweep→swarm handoff: a prior sweep run of the SAME domain, as its
+   * JSON serialized it. When present, the orchestrator mints board missions
+   * from it the moment orientation lands — peek missions that verify the
+   * sweep's head on the vendors' own pages, read missions that chase what the
+   * sweep left unknown, a recall-gap mission when the sweep's own probes say
+   * the map under-reached — funded through the normal spawn economics and
+   * counted into the family ledger (they are questions). The run is CONTEXT,
+   * never claims: the swarm map starts empty and re-proves everything
+   * (from-sweep.ts carries the full honesty line). With a handoff in play the
+   * family floor DEFAULTS OFF — the sweep's breadth IS the family questions
+   * answered, and the handoff pool should buy what the sweep could not:
+   * proof. An explicit `familyFloor` beside `fromSweep` restores it.
+   */
+  fromSweep?: SweepRunLike
   pendingAfterMs?: number
   spans?: SpanStream
   onLog?: (line: string) => void
@@ -256,13 +272,21 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
   const stillbornMs = opts.stillbornWindowMs ?? DEFAULT_STILLBORN_MS
   /** Each tier's wall, caller-tuned over the measured defaults. */
   const tierDeadlineMs: Record<MissionTier, number> = { ...TIER_DEADLINE_MS, ...opts.deadlines }
-  /** The family floor's size: default ON at DEFAULT_FAMILY_FLOOR, clamped to the deck. */
+  /** The family floor's size: default ON at DEFAULT_FAMILY_FLOOR, clamped to
+   *  the deck — except under a sweep handoff, where the unset default is OFF:
+   *  the sweep already asked the family questions at scale, and re-templating
+   *  "best X" would spend the handoff pool re-buying the breadth the run file
+   *  imports as context. Setting familyFloor explicitly restores it. */
   const familyFloorCount =
     opts.familyFloor === false
       ? 0
-      : opts.familyFloor === true || opts.familyFloor === undefined
+      : opts.familyFloor === true
         ? DEFAULT_FAMILY_FLOOR
-        : Math.max(0, Math.min(FAMILY_FLOOR_MAX, Math.floor(opts.familyFloor)))
+        : opts.familyFloor === undefined
+          ? opts.fromSweep
+            ? 0
+            : DEFAULT_FAMILY_FLOOR
+          : Math.max(0, Math.min(FAMILY_FLOOR_MAX, Math.floor(opts.familyFloor)))
 
   const anchor = registrableHost(opts.domain) || opts.domain
   const ledger = new Ledger(ceilingUsd)
@@ -750,6 +774,54 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
     }
   }
 
+  // ── the sweep handoff ────────────────────────────────────────────────────
+
+  /**
+   * The sweep→swarm handoff's board, opened once, in the seed's wake — after
+   * orientation on purpose: the stillborn check must resolve before a run
+   * file spends the pool on a dead domain, and the lead should hold the
+   * orient digest when the handoff's questions appear. Minting is mechanical
+   * (from-sweep.ts) and funding goes through spawnTool — the same
+   * reserve-at-push economics, board band, family-ledger rows and refusal
+   * sentences as a lead spawn — so a handoff mission is indistinguishable
+   * downstream, scorecard denominator included. The lead can review, re-rank
+   * or kill any of it.
+   */
+  let sweepOpened = false
+  const openSweepSeeds = () => {
+    if (sweepOpened || !opts.fromSweep) return
+    sweepOpened = true
+    const missions = sweepSeedMissions(opts.fromSweep, { anchor, coinages })
+    if (missions.length === 0) {
+      say("sweep handoff: the sweep run offered nothing to verify or chase; the board opens on the lead's judgement alone")
+      return
+    }
+    const out = spawnTool(
+      { board, ledger, control, onFamilyEvent: (e) => families.apply(e) },
+      { missions, why: "the sweep handoff: verify the head, chase the gaps — the sweep run is the brief, never the proof" },
+    )
+    for (const f of out.queued) {
+      const m = missions[f.i]!
+      say(`sweep handoff: p${m.priority} ${m.dedupeKey} funded (${m.tier})`)
+    }
+    for (const r of out.refused) {
+      const m = missions[r.i]!
+      say(`sweep handoff: ${m.dedupeKey} not funded — ${r.reason}`)
+    }
+    const queuedKeys = out.queued.map((f) => missions[f.i]!.dedupeKey)
+    if (queuedKeys.length > 0) {
+      digestNotes.push(
+        `the sweep handoff opened ${queuedKeys.length} ${queuedKeys.length === 1 ? "mission" : "missions"} from a ` +
+          `prior sweep of this market (${queuedKeys.join(", ")}); the sweep run is context, never claims — its ` +
+          `findings enter the map only when an investigator re-proves them — and these are ordinary board items: ` +
+          `review, re-rank or kill them`,
+      )
+    }
+    for (const r of out.refused) {
+      digestNotes.push(`the sweep handoff could not fund ${missions[r.i]!.dedupeKey}: ${r.reason}`)
+    }
+  }
+
   // ── endings ──────────────────────────────────────────────────────────────
 
   const humanFor = (reason: SwarmEndReason): string => {
@@ -992,10 +1064,16 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
       landingsSince += 1
       if (winner.key === seed.dedupeKey) {
         seedLanded = true
-        // The floor opens the moment orientation lands — before this
-        // iteration's fill, so the floor's missions ride the same pop the
-        // landing freed a lane for. A stopping or finishing run funds nothing.
-        if (!stopping && !control.finished) openFamilyFloor()
+        // The handoff and the floor open the moment orientation lands —
+        // before this iteration's fill, so their missions ride the same pop
+        // the landing freed a lane for. Handoff first: when both are on, the
+        // targeted questions take their money before the generic ones, and at
+        // equal priority the board's insertion tie-break runs them first too.
+        // A stopping or finishing run funds nothing.
+        if (!stopping && !control.finished) {
+          openSweepSeeds()
+          openFamilyFloor()
+        }
       }
       const d = winner.digest
       const line =

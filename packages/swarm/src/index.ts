@@ -127,6 +127,19 @@ export {
 } from "./seed-families.js"
 
 export {
+  sweepSeedMissions,
+  DEFAULT_VERIFY_COUNT,
+  DEFAULT_RECALL_GAP_THRESHOLD,
+  GAP_CLUSTER_CAP,
+  GAP_CLUSTER_SIZE,
+  RECALL_GAP_NAMES,
+  type SweepEntityLike,
+  type SweepProbeLike,
+  type SweepRunLike,
+  type SweepSeedOptions,
+} from "./from-sweep.js"
+
+export {
   spawnTool,
   proposeTool,
   reviewTool,
