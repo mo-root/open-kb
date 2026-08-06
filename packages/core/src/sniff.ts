@@ -7,11 +7,50 @@ export interface RawResponse {
   contentType?: string
 }
 
-export interface SniffResult {
-  status: FetchStatus
-  reason?: string
-  text: string
-}
+/**
+ * WHY a page could not be read, as a stable code — the dead-end taxonomy.
+ *
+ * These strings are API: persisted runs count their unreadable hosts by them,
+ * so a rename is a breaking change to every stored report. The taxonomy exists
+ * because "127 unreadable" is a bug report while "61 bot-walled, 40 JS-only,
+ * 26 parked" is a finding, and the sniffer had already derived the distinction
+ * before anything downstream flattened it.
+ *
+ *   - `no-response`: the transport failed before any bytes arrived — the
+ *     shipped port spells that httpStatus 0. A network problem, not a verdict
+ *     on the site.
+ *   - `server-error`: the origin answered 5xx — its own failure, maybe a bad
+ *     minute, maybe a dead host.
+ *   - `http-XXX`: the origin answered a 4xx status — the page is not at this
+ *     address (or refuses this caller: http-403 is the polite bot wall).
+ *   - `empty-body`: success on the status line, zero bytes behind it — the
+ *     measured hard-block shape (Bright Data Unlocker on stripe.com: 200,
+ *     Content-Length 0).
+ *   - `soft-404`: a text URL answered with an HTML page — the file is not
+ *     there, however healthy the response looks.
+ *   - `thin-render`: under 200 characters of readable text — an app shell,
+ *     assembled in the browser the fetch never ran.
+ */
+export type SniffReason =
+  | "no-response"
+  | "server-error"
+  | `http-${number}`
+  | "empty-body"
+  | "soft-404"
+  | "thin-render"
+
+/**
+ * The full taxonomy a caller can stamp on an unreadable host: everything the
+ * sniffer derives, plus the one failure the sniffer can never see —
+ * `fetch-failed`, a fetch that THREW before any response landed, known only to
+ * the caller holding the throw.
+ */
+export type UnreadableReason = SniffReason | "fetch-failed"
+
+/** A non-found verdict always carries its reason; `found` never does. */
+export type SniffResult =
+  | { status: "found"; reason?: undefined; text: string }
+  | { status: "not_found" | "blocked"; reason: SniffReason; text: string }
 
 /** Minimum extractable characters before we call a page substantive. */
 const THIN_TEXT = 200
@@ -117,6 +156,11 @@ function countHtmlSignals(body: string): number {
  * bare openers, which are ambiguous with generic type parameters.
  */
 export function sniff(r: RawResponse): SniffResult {
+  // Before any body question: httpStatus 0 is the shipped port's spelling of
+  // "the transport failed before any bytes arrived". Letting it fall through
+  // to the empty-body check filed network blips under the bot-wall code —
+  // same verdict (blocked), wrong finding.
+  if (r.httpStatus === 0) return { status: "blocked", reason: "no-response", text: "" }
   if (r.httpStatus >= 500) return { status: "blocked", reason: "server-error", text: "" }
   if (r.httpStatus >= 400) return { status: "not_found", reason: `http-${r.httpStatus}`, text: "" }
 

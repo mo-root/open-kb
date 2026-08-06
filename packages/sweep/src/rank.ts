@@ -1,6 +1,6 @@
 import {
   sniff, condense, admit, outboundHosts, registrableHost, namesHost, descriptionGrounding, checkQuote,
-  type FetchPort, type JudgedPage,
+  type FetchPort, type JudgedPage, type UnreadableReason,
 } from "@open-kb/core"
 
 export interface HostCandidate {
@@ -23,6 +23,11 @@ export interface Judged {
   why: string
   /** Present only on downgraded claims: the refusal, as a sentence. */
   because?: string
+  /** Present only on unreadable hosts: WHY the front page could not be read,
+   *  as the sniffer's stable code. The sentence in `because` is for the
+   *  reader; this is for arithmetic — it is what turns "127 unreadable" (a
+   *  bug report) into "61 bot-walled, 40 JS-only, 26 parked" (a finding). */
+  unreadableReason?: UnreadableReason
   settledBy: "predicate" | "model"
   /** Present only on model-judged entities: what fraction of the content terms
    *  in the what THE MODEL WROTE the page it saw actually contains, 2 decimals.
@@ -49,6 +54,10 @@ const SPAN_BUDGET = 360
 export interface KernelStats {
   fetched: number
   unreadable: number
+  /** The `unreadable` count above split by the sniffer's reason codes; the
+   *  values sum to `unreadable`. Empty object when nothing was unreadable —
+   *  an absent split and a clean run must not look alike in a stored report. */
+  unreadableByReason: Partial<Record<UnreadableReason, number>>
   aggregators: number
   modelJudged: number
   settledFree: number
@@ -80,7 +89,11 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
   const threshold = deps.aggregatorThreshold
   const entities: Judged[] = []
   const probePages: Array<{ url: string; html: string }> = []
-  const stats: KernelStats = { fetched: 0, unreadable: 0, aggregators: 0, modelJudged: 0, settledFree: 0, groundingMean: null }
+  const stats: KernelStats = { fetched: 0, unreadable: 0, unreadableByReason: {}, aggregators: 0, modelJudged: 0, settledFree: 0, groundingMean: null }
+  const countDeadEnd = (reason: UnreadableReason) => {
+    stats.unreadable += 1
+    stats.unreadableByReason[reason] = (stats.unreadableByReason[reason] ?? 0) + 1
+  }
   const anchorKey = registrableHost(deps.anchor)
   const queue = [...hosts]
 
@@ -109,13 +122,16 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
       // not reject the pool and discard every entity already judged. It costs
       // itself: the same downgrade the unreadable branch below hands out.
       stats.fetched += 1
-      stats.unreadable += 1
+      countDeadEnd("fetch-failed")
       stats.settledFree += 1
       deps.onFetch?.(url, false, Date.now() - started)
       emit({
         name: h.host, domain: h.host, kind: "unknown", what: "",
         relation: "unknown", why: "",
         because: `its front page fetch threw this run (${err instanceof Error ? err.message : String(err)})`,
+        // The one code the sniffer can never derive: there was no response to
+        // sniff, only the throw this caller is holding.
+        unreadableReason: "fetch-failed",
         settledBy: "predicate",
       })
       return
@@ -135,12 +151,15 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
     }
 
     if (s.status !== "found") {
-      stats.unreadable += 1
+      countDeadEnd(s.reason)
       stats.settledFree += 1
       emit({
         name: h.host, domain: h.host, kind: "unknown", what: "",
         relation: "unknown", why: "",
+        // The sentence keeps the flattened verdict — it reads right — and the
+        // code beside it keeps the distinction the sniffer already earned.
         because: `its front page could not be read this run (${s.status})`,
+        unreadableReason: s.reason,
         settledBy: "predicate",
       })
       return

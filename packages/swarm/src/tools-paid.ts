@@ -6,6 +6,7 @@ import {
   type FetchPort,
   type Ledger,
   type SearchPort,
+  type UnreadableReason,
 } from "@open-kb/core"
 import { RunEvidence, originKey } from "./run-evidence.js"
 import { SLICE, linksOf, type SearchTrace } from "./tools-free.js"
@@ -198,6 +199,13 @@ export interface FetchDocFail {
   status: number
   reason: string
   hint: string
+  /** Present when the failure is about the PAGE — a landed body the sniffer
+   *  refused, a transport that never answered, a fetch that threw — as the
+   *  same stable code the sweep kernel counts by. Tool-level refusals
+   *  (breaker-open, bad-url, refused, not-run) carry no code: no page was
+   *  judged. For sniffed bodies `reason` already speaks the same name; this
+   *  field is that name typed, so counting cannot drift from wording. */
+  code?: UnreadableReason
   /** Present when a body was recorded despite the verdict, so `read` can explain it. */
   handle?: string
 }
@@ -275,6 +283,7 @@ export async function fetchTool(ctx: PaidCtx, input: FetchInput): Promise<FetchR
         ok: false,
         status: 0,
         reason: "no-response",
+        code: "no-response",
         hint: "the request never got an answer — the network or the transport failed before any bytes arrived",
         handle: rec.handle,
       }
@@ -282,10 +291,10 @@ export async function fetchTool(ctx: PaidCtx, input: FetchInput): Promise<FetchR
 
     const s = sniff({ url, httpStatus: raw.httpStatus, body: raw.body, contentType: raw.contentType })
     if (s.status !== "found") {
-      const reason = s.reason ?? s.status
+      const reason = s.reason
       if (STRIKES.has(reason)) ctx.breaker.strike(originKey(url), input.mode, reason)
       const rec = record(url, s.text, s.status, reason, landAs, raw.body)
-      return { url, ok: false, status: raw.httpStatus, reason, hint: hintFor(reason, input.mode), handle: rec.handle }
+      return { url, ok: false, status: raw.httpStatus, reason, code: reason, hint: hintFor(reason, input.mode), handle: rec.handle }
     }
 
     const rec = record(url, s.text, "found", undefined, landAs, raw.body)
@@ -351,7 +360,7 @@ export async function fetchTool(ctx: PaidCtx, input: FetchInput): Promise<FetchR
     if (late !== "deadline") {
       if ("err" in late) {
         const msg = late.err instanceof Error ? late.err.message : String(late.err)
-        return { url, ok: false, status: 0, reason: "fetch-failed", hint: `the fetch itself failed: ${msg}` }
+        return { url, ok: false, status: 0, reason: "fetch-failed", code: "fetch-failed", hint: `the fetch itself failed: ${msg}` }
       }
       return settle(url, late.raw)
     }

@@ -42,6 +42,7 @@ import {
   type SpanStream,
   type FamilyQuery,
   type QueryFamily,
+  type UnreadableReason,
 } from "@open-kb/core"
 import {
   brightDataSearch,
@@ -363,6 +364,11 @@ export type SweptQuery = PlannedQuery & { family: QueryFamily; product?: string;
 export type Entity = z.infer<typeof Entity> & { foundBy?: string[]; families?: QueryFamily[] } & {
   because?: string
   settledBy?: "predicate" | "model"
+  /** Unreadable hosts only: WHY the front page could not be read, as the
+   *  sniffer's stable code (rank.ts stamps it beside the `because` sentence).
+   *  Persisted with the run so a stored map can say "61 bot-walled, 40
+   *  JS-only" instead of "127 unreadable". */
+  unreadableReason?: UnreadableReason
   /** Model-judged entities only: what fraction of the content terms in the
    *  what the model WROTE the page it saw actually contains, 2 decimals.
    *  The regression canary — the span ledger below is the gate. */

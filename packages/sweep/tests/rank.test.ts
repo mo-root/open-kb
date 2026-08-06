@@ -297,6 +297,114 @@ describe("judgeHosts pool", () => {
   })
 })
 
+/**
+ * The dead-end taxonomy. The kernel's live run settled 127 of 867 hosts as
+ * unreadable with one flattened sentence each — "could not be read this run
+ * (blocked)" — while sniff had already derived WHY and rank threw the code
+ * away. These tests hold the code on the entity (`unreadableReason`) and the
+ * per-reason split on the stats (`unreadableByReason`), with the reader-facing
+ * sentence unchanged.
+ */
+describe("judgeHosts dead-end taxonomy", () => {
+  /** A fetcher whose hosts fail in every way the taxonomy names. */
+  const mixedFetcher = (): FetchPort => ({
+    async get(url) {
+      const base = { url, ms: 1, usd: 0, contentType: "text/html" }
+      if (url === "https://botwalled.com/") return { ...base, httpStatus: 200, body: "" }
+      if (url === "https://jsonly.com/")
+        return { ...base, httpStatus: 200, body: "<html><body><div id='root'></div></body></html>" }
+      if (url === "https://gone.com/") return { ...base, httpStatus: 404, body: "nope" }
+      if (url === "https://flaky.com/") return { ...base, httpStatus: 503, body: "" }
+      if (url === "https://silent.com/") return { ...base, httpStatus: 0, body: "", contentType: undefined }
+      if (url === "https://boom.com/") throw new Error("getaddrinfo ENOTFOUND boom.com")
+      return { ...base, httpStatus: 200, body: vendorHtml }
+    },
+  })
+
+  it("each unreadable entity carries the sniffer's code; the readable one carries none", async () => {
+    const hosts = ["botwalled.com", "jsonly.com", "gone.com", "flaky.com", "silent.com", "boom.com", "acme.com"].map(cand)
+    const out = await judgeHosts(hosts, {
+      fetcher: mixedFetcher(),
+      classify: async (h) => ({ name: h.host, kind: "company", what: "scraping api", relation: "competitor", why: "same job", spans: ["We sell a scraping API"] }),
+      anchor: "anchor.com",
+      aggregatorThreshold: 12,
+      concurrency: 2,
+    })
+    const by = (d: string) => out.entities.find((e) => e.domain === d)!
+    expect(by("botwalled.com").unreadableReason).toBe("empty-body")
+    expect(by("jsonly.com").unreadableReason).toBe("thin-render")
+    expect(by("gone.com").unreadableReason).toBe("http-404")
+    expect(by("flaky.com").unreadableReason).toBe("server-error")
+    expect(by("silent.com").unreadableReason).toBe("no-response")
+    expect(by("boom.com").unreadableReason).toBe("fetch-failed")
+    expect("unreadableReason" in by("acme.com")).toBe(false)
+  })
+
+  it("the reader-facing sentence is unchanged — the code rides beside it, never replaces it", async () => {
+    const out = await judgeHosts([cand("botwalled.com"), cand("gone.com")], {
+      fetcher: mixedFetcher(),
+      classify: async () => { throw new Error("unreachable — both hosts are unreadable") },
+      anchor: "anchor.com",
+      aggregatorThreshold: 12,
+    })
+    const by = (d: string) => out.entities.find((e) => e.domain === d)!
+    // Byte-pinned: this is the sentence the live run's 127 entities wear, and
+    // the taxonomy was scoped to add a field, not to rewrite the because.
+    expect(by("botwalled.com").because).toBe("its front page could not be read this run (blocked)")
+    expect(by("gone.com").because).toBe("its front page could not be read this run (not_found)")
+  })
+
+  it("stats split the unreadable count by reason, and the split sums to the whole", async () => {
+    const hosts = ["botwalled.com", "jsonly.com", "gone.com", "flaky.com", "silent.com", "boom.com", "acme.com"].map(cand)
+    const out = await judgeHosts(hosts, {
+      fetcher: mixedFetcher(),
+      classify: async (h) => ({ name: h.host, kind: "company", what: "scraping api", relation: "competitor", why: "same job", spans: ["We sell a scraping API"] }),
+      anchor: "anchor.com",
+      aggregatorThreshold: 12,
+      concurrency: 3,
+    })
+    expect(out.stats.unreadable).toBe(6)
+    expect(out.stats.unreadableByReason).toEqual({
+      "empty-body": 1,
+      "thin-render": 1,
+      "http-404": 1,
+      "server-error": 1,
+      "no-response": 1,
+      "fetch-failed": 1,
+    })
+    const summed = Object.values(out.stats.unreadableByReason).reduce<number>((a, b) => a + (b ?? 0), 0)
+    expect(summed).toBe(out.stats.unreadable)
+  })
+
+  it("counts per reason, not per host — two bot-walled hosts land in one bucket", async () => {
+    const fetcher: FetchPort = {
+      async get(url) {
+        if (url === "https://thin.com/")
+          return { url, httpStatus: 200, body: "<html><body><p>tiny</p></body></html>", contentType: "text/html", ms: 1, usd: 0 }
+        return { url, httpStatus: 200, body: "", contentType: "text/html", ms: 1, usd: 0 }
+      },
+    }
+    const out = await judgeHosts([cand("wall1.com"), cand("wall2.com"), cand("thin.com")], {
+      fetcher,
+      classify: async () => { throw new Error("unreachable — every host here is unreadable") },
+      anchor: "anchor.com",
+      aggregatorThreshold: 12,
+    })
+    expect(out.stats.unreadableByReason).toEqual({ "empty-body": 2, "thin-render": 1 })
+    expect(out.stats.unreadable).toBe(3)
+  })
+
+  it("a run with nothing unreadable reports an empty split, not a missing one", async () => {
+    const out = await judgeHosts([cand("acme.com")], {
+      fetcher: fakeFetcher({ "https://acme.com/": vendorHtml }),
+      classify: async () => ({ name: "Acme", kind: "company", what: "scraping api", relation: "competitor", why: "same job", spans: ["We sell a scraping API"] }),
+      anchor: "anchor.com",
+      aggregatorThreshold: 12,
+    })
+    expect(out.stats.unreadableByReason).toEqual({})
+  })
+})
+
 // MEASUREMENT ONLY — descGrounded rides along on model-judged entities and
 // nothing gates on it. The residual error class it meters: an embellished
 // description inside a correctly-placed entity (a real competitor whose `what`

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { sniff, extractText, isHtml } from "../src/sniff.js"
+import { sniff, extractText, isHtml, type SniffReason, type UnreadableReason } from "../src/sniff.js"
 
 describe("sniff", () => {
   it("calls a 200 with an empty body blocked", () => {
@@ -241,6 +241,76 @@ describe("sniff", () => {
     expect(r.text).toContain("type Pair<a , b>")
     expect(r.text).toContain("type Bounded<p extends Base>")
     expect(r.text).toContain("type WithDefault<a = string>")
+  })
+})
+
+/**
+ * The dead-end taxonomy. These codes are API: persisted runs count unreadable
+ * hosts by these exact strings, so a rename here is a breaking change to every
+ * stored report. "127 unreadable" is a bug report; "61 bot-walled, 40 JS-only,
+ * 26 parked" is a finding — the codes are what makes the second sentence
+ * possible.
+ */
+describe("unreadable reason codes", () => {
+  it("pins the union: five literal codes plus the http-XXX shape from sniff; fetch-failed only a caller can stamp", () => {
+    // `satisfies` makes this a compile-time pin: renaming or dropping a member
+    // of SniffReason fails `pnpm check` here before it silently re-keys any
+    // stored run's counts.
+    const sniffLiterals = [
+      "no-response",
+      "server-error",
+      "empty-body",
+      "soft-404",
+      "thin-render",
+    ] as const satisfies readonly SniffReason[]
+    const httpShaped: SniffReason = "http-404"
+    // The one member sniff itself can never emit: a fetch that threw before
+    // any response landed. Only the caller holding the throw can stamp it.
+    const callerOnly: UnreadableReason = "fetch-failed"
+    expect(sniffLiterals).toHaveLength(5)
+    expect(httpShaped).toBe("http-404")
+    expect(callerOnly).toBe("fetch-failed")
+  })
+
+  it("derives each code from the shape of the response — one fixture per member", () => {
+    const shell = "<html><head><title>x</title></head><body><div id='root'></div></body></html>"
+    expect(sniff({ url: "https://a.com/", httpStatus: 0, body: "" }).reason).toBe("no-response")
+    expect(sniff({ url: "https://a.com/", httpStatus: 503, body: "" }).reason).toBe("server-error")
+    expect(sniff({ url: "https://a.com/x", httpStatus: 404, body: "nope" }).reason).toBe("http-404")
+    expect(sniff({ url: "https://a.com/", httpStatus: 200, body: "" }).reason).toBe("empty-body")
+    expect(
+      sniff({ url: "https://a.com/llms.txt", httpStatus: 200, body: "<!doctype html><html><body>x</body></html>" }).reason,
+    ).toBe("soft-404")
+    expect(sniff({ url: "https://a.com/", httpStatus: 200, body: shell }).reason).toBe("thin-render")
+  })
+
+  it("a transport that never answered is no-response, not an empty body — the verdict stays blocked", () => {
+    // The shipped provider converts its own failures to httpStatus 0 with an
+    // empty body. Before the taxonomy that read as empty-body, which is the
+    // bot-wall code — a network blip and a hard block are different findings.
+    const r = sniff({ url: "https://a.com/", httpStatus: 0, body: "" })
+    expect(r.status).toBe("blocked")
+    expect(r.reason).toBe("no-response")
+  })
+
+  it("every non-found verdict carries a reason; found carries none", () => {
+    const found = sniff({
+      url: "https://a.com/",
+      httpStatus: 200,
+      body: "<html><body><p>" + "real words about a real company. ".repeat(20) + "</p></body></html>",
+    })
+    expect(found.status).toBe("found")
+    expect(found.reason).toBeUndefined()
+    for (const r of [
+      sniff({ url: "https://a.com/", httpStatus: 0, body: "" }),
+      sniff({ url: "https://a.com/", httpStatus: 500, body: "" }),
+      sniff({ url: "https://a.com/", httpStatus: 403, body: "" }),
+      sniff({ url: "https://a.com/", httpStatus: 200, body: "" }),
+      sniff({ url: "https://a.com/", httpStatus: 200, body: "<html><body></body></html>" }),
+    ]) {
+      expect(r.status).not.toBe("found")
+      expect(r.reason).toBeTruthy()
+    }
   })
 })
 

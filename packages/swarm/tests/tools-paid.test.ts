@@ -376,6 +376,47 @@ describe("fetchTool", () => {
     expect((r.docs[6] as FetchDocFail).hint).toContain("only 6 urls fit")
   })
 
+  // The dead-end taxonomy, swarm side. `reason` has always spoken the
+  // sniffer's names; `code` is the same name as a typed field, so the swarm's
+  // fetch failures count by the same union the sweep kernel counts by. The
+  // taught sentences (`hint`) are untouched — the skill's byte-pins hold.
+  it("every page-level failure carries the taxonomy code beside its sentence", async () => {
+    const port: FetchPort = {
+      async get(url) {
+        if (url.includes("silent")) return { url, httpStatus: 0, body: "", ms: 1, usd: 0 }
+        if (url.includes("gone")) return { url, httpStatus: 404, body: "x", contentType: "text/html", ms: 1, usd: 0 }
+        if (url.includes("boom")) throw new Error("getaddrinfo ENOTFOUND boom.com")
+        return { url, httpStatus: 200, body: "", contentType: "text/html", ms: 1, usd: 0 }
+      },
+    }
+    const { ctx } = paidCtx({ fetch: port })
+    const r = await fetchTool(ctx, {
+      urls: ["https://wall.com/", "https://silent.com/", "https://gone.com/x", "https://boom.com/"],
+      mode: "direct",
+      why: "t",
+    })
+    expect(r.docs[0]).toMatchObject({ ok: false, reason: "empty-body", code: "empty-body" })
+    expect(r.docs[1]).toMatchObject({ ok: false, reason: "no-response", code: "no-response" })
+    expect(r.docs[2]).toMatchObject({ ok: false, reason: "http-404", code: "http-404" })
+    expect(r.docs[3]).toMatchObject({ ok: false, reason: "fetch-failed", code: "fetch-failed" })
+  })
+
+  it("tool-level refusals carry no code — no page was judged", async () => {
+    const { ctx } = paidCtx({ fetch: fakeFetcher({}) })
+    // Two strikes on wall.com open the breaker for the third call.
+    await fetchTool(ctx, { urls: ["https://wall.com/a"], mode: "direct", why: "t" })
+    await fetchTool(ctx, { urls: ["https://wall.com/b"], mode: "direct", why: "t" })
+    const r = await fetchTool(ctx, {
+      urls: ["https://wall.com/c", "not a url at all"],
+      mode: "direct",
+      why: "t",
+    })
+    expect((r.docs[0] as FetchDocFail).reason).toBe("breaker-open")
+    expect("code" in (r.docs[0] as FetchDocFail)).toBe(false)
+    expect((r.docs[1] as FetchDocFail).reason).toBe("bad-url")
+    expect("code" in (r.docs[1] as FetchDocFail)).toBe(false)
+  })
+
   it("a spent allowance refuses every url before any money moves", async () => {
     let called = 0
     const port: FetchPort = {
