@@ -1,0 +1,123 @@
+# Authentication and User Management
+
+119 entities, 11 straddling other segments.
+
+- [[aimultiple-com]] — lists
+- [[alternateoss-devaradise-com]] — lists
+- [[aws-amazon-com]] — dependency *(also: Developer Experience Tools, SaaS Billing Integration)*
+- [[answeroverflow-com]] — unknown
+- [[appwrite-io]] — competitor
+- [[aserto-com]] — substitute
+- [[attractgroup-com]] — substitute
+- [[community-auth0-com]] — discusses
+- [[auth0alternatives-com]] — lists
+- [[authelia-com]] — competitor
+- [[authgear-com]] — competitor
+- [[autional-com]] — competitor
+- [[amplify-aws]] — competitor
+- [[repost-aws]] — discusses
+- [[betalectic-com]] — substitute
+- [[better-auth-com]] — competitor
+- [[beyondidentity-com]] — competitor
+- [[bytebytego-com]] — covers
+- [[casdoor-github-io]] — competitor
+- [[cerbos-dev]] — integration
+- [[clever-cloud]] — substitute
+- [[cloudzero-com]] — substitute
+- [[code24x7-com]] — substitute
+- [[soonuki-tistory-com]] — none
+- [[copyelement-com]] — unknown
+- [[corbado-com]] — integration
+- [[descope-com]] — competitor *(also: Multi-tenant Organization Management)*
+- [[designmodo-com]] — none
+- [[dev-to]] — discusses *(also: Developer Experience Tools, Multi-tenant Organization Management)*
+- [[docsie-io]] — none *(also: Multi-tenant Organization Management)*
+- [[faststaq-com]] — substitute
+- [[forum-keycloak-org]] — discusses
+- [[freewareforlibraries-org]] — lists
+- [[frontegg-com]] — competitor *(also: Multi-tenant Organization Management)*
+- [[fusionauth-io]] — competitor
+- [[gainhq-com]] — substitute
+- [[geeksforgeeks-org]] — covers *(also: Developer Experience Tools)*
+- [[getkisi-com]] — none
+- [[gitnation-com]] — covers
+- [[gluu-org]] — competitor
+- [[goauthentik-io]] — competitor
+- [[gooddata-ai]] — integration
+- [[news-ycombinator-com]] — discusses
+- [[harness-io]] — substitute
+- [[hasura-io]] — integration
+- [[huawei-cn]] — unknown
+- [[identitymanagementinstitute-org]] — discusses
+- [[idura-eu]] — competitor
+- [[in-pinterest-com]] — unknown
+- [[inspoai-io]] — none
+- [[instagram-com]] — unknown
+- [[itsfoss-com]] — covers
+- [[jscrambler-com]] — integration
+- [[justinmind-com]] — none
+- [[keycloak-org]] — competitor
+- [[lawinsider-com]] — none
+- [[loginradius-com]] — competitor
+- [[logintc-com]] — competitor
+- [[logto-io]] — competitor
+- [[medium-com]] — unknown *(also: Multi-tenant Organization Management, Developer Experience Tools)*
+- [[memberstack-com]] — competitor
+- [[us-metoree-com]] — lists
+- [[miniorange-com]] — competitor
+- [[mozilla-org]] — unknown
+- [[mui-com]] — integration
+- [[ncsc-gov-uk]] — covers
+- [[csrc-nist-gov]] — covers
+- [[nordpass-com]] — substitute
+- [[nordvpn-com]] — unknown
+- [[okta-com]] — competitor
+- [[oloid-com]] — competitor
+- [[olympusacademiestrust-org-uk]] — covers
+- [[oneuptime-com]] — none
+- [[opensourcealternatives-to]] — lists
+- [[openidentityplatform-org]] — unknown
+- [[oracle-com]] — unknown
+- [[osohq-com]] — substitute
+- [[paloaltonetworks-com]] — substitute
+- [[pcmag-com]] — unknown
+- [[prismatic-io]] — integration
+- [[quora-com]] — unknown
+- [[rapidnative-com]] — substitute
+- [[architecture-learning-sap-com]] — covers
+- [[scalefusion-com]] — none
+- [[scalekit-com]] — competitor
+- [[seamfix-com]] — competitor
+- [[security-stackexchange-com]] — discusses
+- [[securityboulevard-com]] — unknown
+- [[skycloak-io]] — substitute
+- [[softwarerecs-stackexchange-com]] — discusses
+- [[souravmahato-in]] — none
+- [[sourceforge-net]] — lists
+- [[sphericalinsights-com]] — unknown
+- [[ssojet-com]] — competitor
+- [[stackoverflow-com]] — unknown *(also: Multi-tenant Organization Management, Developer Experience Tools)*
+- [[strongdm-com]] — substitute
+- [[stytch-com]] — competitor
+- [[supertokens-com]] — competitor *(also: Multi-tenant Organization Management)*
+- [[taazaa-com]] — substitute
+- [[techdocs-broadcom-com]] — none
+- [[techmarcos-com]] — unknown
+- [[goteleport-com]] — competitor
+- [[tenfold-security-com]] — competitor
+- [[cpl-thalesgroup-com]] — competitor
+- [[thenewstack-io]] — covers
+- [[themeselection-com]] — none
+- [[threedots-tech]] — covers
+- [[tohidhaghighi-medium-com]] — unknown
+- [[transmitsecurity-com]] — competitor
+- [[univention-com]] — competitor
+- [[untitledui-com]] — none
+- [[ventureradar-com]] — lists
+- [[veriff-com]] — integration
+- [[winmagic-com]] — competitor
+- [[workos-com]] — competitor *(also: Multi-tenant Organization Management)*
+- [[wrappixel-com]] — none
+- [[youtube-com]] — unknown *(also: Multi-tenant Organization Management, Developer Experience Tools, SaaS Billing Integration)*
+- [[zapier-com]] — integration
+- [[zuplo-com]] — integration

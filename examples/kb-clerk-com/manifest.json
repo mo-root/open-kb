@@ -1,0 +1,2132 @@
+{
+  "anchor": "clerk.com",
+  "entities": [
+    {
+      "key": "4sysops-com",
+      "path": "entities/4sysops-com.md",
+      "name": "4sysops",
+      "relation": "covers",
+      "tier": null
+    },
+    {
+      "key": "acropolium-com",
+      "path": "entities/acropolium-com.md",
+      "name": "Acropolium",
+      "relation": "substitute",
+      "tier": null
+    },
+    {
+      "key": "admindroid-com",
+      "path": "entities/admindroid-com.md",
+      "name": "AdminDroid",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "aimultiple-com",
+      "path": "entities/aimultiple-com.md",
+      "name": "AIMultiple",
+      "relation": "lists",
+      "tier": null
+    },
+    {
+      "key": "aircconline-com",
+      "path": "entities/aircconline-com.md",
+      "name": "AIRCC Publishing Corporation",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "aka-ms",
+      "path": "entities/aka-ms.md",
+      "name": "aka.ms",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "alternateoss-devaradise-com",
+      "path": "entities/alternateoss-devaradise-com.md",
+      "name": "AlternateOSS",
+      "relation": "lists",
+      "tier": null
+    },
+    {
+      "key": "amasty-com",
+      "path": "entities/amasty-com.md",
+      "name": "amasty.com",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "amplify-aws",
+      "path": "entities/amplify-aws.md",
+      "name": "AWS Amplify",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "anoopcnair-com",
+      "path": "entities/anoopcnair-com.md",
+      "name": "anoopcnair.com",
+      "relation": "covers",
+      "tier": null
+    },
+    {
+      "key": "answeroverflow-com",
+      "path": "entities/answeroverflow-com.md",
+      "name": "answeroverflow.com",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "appwrite-io",
+      "path": "entities/appwrite-io.md",
+      "name": "Appwrite",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "architecture-learning-sap-com",
+      "path": "entities/architecture-learning-sap-com.md",
+      "name": "SAP Architecture Center",
+      "relation": "covers",
+      "tier": null
+    },
+    {
+      "key": "artisan-co",
+      "path": "entities/artisan-co.md",
+      "name": "artisan.co",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "aserto-com",
+      "path": "entities/aserto-com.md",
+      "name": "aserto.com",
+      "relation": "substitute",
+      "tier": null
+    },
+    {
+      "key": "askmeidentity-com",
+      "path": "entities/askmeidentity-com.md",
+      "name": "askmeidentity",
+      "relation": "substitute",
+      "tier": null
+    },
+    {
+      "key": "atlassian-design",
+      "path": "entities/atlassian-design.md",
+      "name": "Atlassian Design",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "attractgroup-com",
+      "path": "entities/attractgroup-com.md",
+      "name": "Attract Group",
+      "relation": "substitute",
+      "tier": null
+    },
+    {
+      "key": "auth0-com",
+      "path": "entities/auth0-com.md",
+      "name": "auth0.com",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "auth0alternatives-com",
+      "path": "entities/auth0alternatives-com.md",
+      "name": "Auth0Alternatives",
+      "relation": "lists",
+      "tier": null
+    },
+    {
+      "key": "authelia-com",
+      "path": "entities/authelia-com.md",
+      "name": "Authelia",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "authgear-com",
+      "path": "entities/authgear-com.md",
+      "name": "Authgear",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "authjs-dev",
+      "path": "entities/authjs-dev.md",
+      "name": "Auth.js",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "autional-com",
+      "path": "entities/autional-com.md",
+      "name": "Autional",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "aws-amazon-com",
+      "path": "entities/aws-amazon-com.md",
+      "name": "Amazon Web Services",
+      "relation": "dependency",
+      "tier": null
+    },
+    {
+      "key": "azure-cn",
+      "path": "entities/azure-cn.md",
+      "name": "azure.cn",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "b2bsaastools-com",
+      "path": "entities/b2bsaastools-com.md",
+      "name": "b2bsaastools.com",
+      "relation": "lists",
+      "tier": null
+    },
+    {
+      "key": "bersyn-com",
+      "path": "entities/bersyn-com.md",
+      "name": "Bersyn",
+      "relation": "covers",
+      "tier": null
+    },
+    {
+      "key": "bestalternative-dev",
+      "path": "entities/bestalternative-dev.md",
+      "name": "bestalternative.dev",
+      "relation": "lists",
+      "tier": null
+    },
+    {
+      "key": "bestb2bsaas-com",
+      "path": "entities/bestb2bsaas-com.md",
+      "name": "Best B2B SaaS Directory",
+      "relation": "lists",
+      "tier": null
+    },
+    {
+      "key": "betalectic-com",
+      "path": "entities/betalectic-com.md",
+      "name": "Betalectic",
+      "relation": "substitute",
+      "tier": null
+    },
+    {
+      "key": "better-auth-com",
+      "path": "entities/better-auth-com.md",
+      "name": "Better Auth",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "better-auth-ui-com",
+      "path": "entities/better-auth-ui-com.md",
+      "name": "Better Auth UI",
+      "relation": "integration",
+      "tier": null
+    },
+    {
+      "key": "beyondidentity-com",
+      "path": "entities/beyondidentity-com.md",
+      "name": "Beyond Identity",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "billdu-com",
+      "path": "entities/billdu-com.md",
+      "name": "Billdu",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "billingplatform-com",
+      "path": "entities/billingplatform-com.md",
+      "name": "BillingPlatform",
+      "relation": "integration",
+      "tier": null
+    },
+    {
+      "key": "builtin-com",
+      "path": "entities/builtin-com.md",
+      "name": "Built In",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "bytebytego-com",
+      "path": "entities/bytebytego-com.md",
+      "name": "ByteByteGo",
+      "relation": "covers",
+      "tier": null
+    },
+    {
+      "key": "c7solutions-com",
+      "path": "entities/c7solutions-com.md",
+      "name": "c7solutions.com",
+      "relation": "covers",
+      "tier": null
+    },
+    {
+      "key": "capchase-com",
+      "path": "entities/capchase-com.md",
+      "name": "Capchase",
+      "relation": "integration",
+      "tier": null
+    },
+    {
+      "key": "capterra-co-uk",
+      "path": "entities/capterra-co-uk.md",
+      "name": "capterra.co.uk",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "casdoor-github-io",
+      "path": "entities/casdoor-github-io.md",
+      "name": "Casdoor",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "cerbos-dev",
+      "path": "entities/cerbos-dev.md",
+      "name": "cerbos.dev",
+      "relation": "integration",
+      "tier": null
+    },
+    {
+      "key": "championleadership-com",
+      "path": "entities/championleadership-com.md",
+      "name": "Champion Leadership Group",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "channelpartners-net",
+      "path": "entities/channelpartners-net.md",
+      "name": "channelpartners.net",
+      "relation": "covers",
+      "tier": null
+    },
+    {
+      "key": "chartmogul-com",
+      "path": "entities/chartmogul-com.md",
+      "name": "ChartMogul",
+      "relation": "integration",
+      "tier": null
+    },
+    {
+      "key": "clerk-com",
+      "path": "entities/clerk-com.md",
+      "name": "Clerk",
+      "relation": "shaper",
+      "tier": null
+    },
+    {
+      "key": "clever-cloud",
+      "path": "entities/clever-cloud.md",
+      "name": "Clever Cloud",
+      "relation": "substitute",
+      "tier": null
+    },
+    {
+      "key": "clickup-com",
+      "path": "entities/clickup-com.md",
+      "name": "ClickUp",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "cloud-folio3-com",
+      "path": "entities/cloud-folio3-com.md",
+      "name": "Folio3 Cloud",
+      "relation": "substitute",
+      "tier": null
+    },
+    {
+      "key": "cloudnativenow-com",
+      "path": "entities/cloudnativenow-com.md",
+      "name": "Cloud Native Now",
+      "relation": "covers",
+      "tier": null
+    },
+    {
+      "key": "cloudservus-com",
+      "path": "entities/cloudservus-com.md",
+      "name": "CloudServus",
+      "relation": "substitute",
+      "tier": null
+    },
+    {
+      "key": "cloudzero-com",
+      "path": "entities/cloudzero-com.md",
+      "name": "CloudZero",
+      "relation": "substitute",
+      "tier": null
+    },
+    {
+      "key": "code24x7-com",
+      "path": "entities/code24x7-com.md",
+      "name": "code24x7.com",
+      "relation": "substitute",
+      "tier": null
+    },
+    {
+      "key": "coderlegion-com",
+      "path": "entities/coderlegion-com.md",
+      "name": "Coder Legion",
+      "relation": "discusses",
+      "tier": null
+    },
+    {
+      "key": "community-auth0-com",
+      "path": "entities/community-auth0-com.md",
+      "name": "Auth0 Community",
+      "relation": "discusses",
+      "tier": null
+    },
+    {
+      "key": "components-lab-auth0-com",
+      "path": "entities/components-lab-auth0-com.md",
+      "name": "Auth0 Universal Components",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "componentsource-com",
+      "path": "entities/componentsource-com.md",
+      "name": "componentsource.com",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "confluence-atlassian-com",
+      "path": "entities/confluence-atlassian-com.md",
+      "name": "confluence.atlassian.com",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "contentpeter-com",
+      "path": "entities/contentpeter-com.md",
+      "name": "ContentPeter",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "copyelement-com",
+      "path": "entities/copyelement-com.md",
+      "name": "copyelement.com",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "corbado-com",
+      "path": "entities/corbado-com.md",
+      "name": "Corbado",
+      "relation": "integration",
+      "tier": null
+    },
+    {
+      "key": "coreview-com",
+      "path": "entities/coreview-com.md",
+      "name": "CoreView",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "cpl-thalesgroup-com",
+      "path": "entities/cpl-thalesgroup-com.md",
+      "name": "Thales",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "csrc-nist-gov",
+      "path": "entities/csrc-nist-gov.md",
+      "name": "NIST Computer Security Resource Center",
+      "relation": "covers",
+      "tier": null
+    },
+    {
+      "key": "cybersectools-com",
+      "path": "entities/cybersectools-com.md",
+      "name": "CyberSecTools",
+      "relation": "lists",
+      "tier": null
+    },
+    {
+      "key": "daily-dev",
+      "path": "entities/daily-dev.md",
+      "name": "daily.dev",
+      "relation": "discusses",
+      "tier": null
+    },
+    {
+      "key": "datawiza-com",
+      "path": "entities/datawiza-com.md",
+      "name": "datawiza.com",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "dealhub-io",
+      "path": "entities/dealhub-io.md",
+      "name": "dealhub.io",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "descope-com",
+      "path": "entities/descope-com.md",
+      "name": "Descope",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "designmodo-com",
+      "path": "entities/designmodo-com.md",
+      "name": "Designmodo",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "dev-to",
+      "path": "entities/dev-to.md",
+      "name": "dev.to",
+      "relation": "discusses",
+      "tier": null
+    },
+    {
+      "key": "devopsschool-com",
+      "path": "entities/devopsschool-com.md",
+      "name": "devopsschool.com",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "docsie-io",
+      "path": "entities/docsie-io.md",
+      "name": "docsie.io",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "eginnovations-com",
+      "path": "entities/eginnovations-com.md",
+      "name": "eG Innovations",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "en-wikipedia-org",
+      "path": "entities/en-wikipedia-org.md",
+      "name": "Wikipedia",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "erik365-blog",
+      "path": "entities/erik365-blog.md",
+      "name": "erik365.blog",
+      "relation": "covers",
+      "tier": null
+    },
+    {
+      "key": "expertinsights-com",
+      "path": "entities/expertinsights-com.md",
+      "name": "Expert Insights",
+      "relation": "lists",
+      "tier": null
+    },
+    {
+      "key": "f6s-com",
+      "path": "entities/f6s-com.md",
+      "name": "f6s.com",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "fastspring-com",
+      "path": "entities/fastspring-com.md",
+      "name": "FastSpring",
+      "relation": "substitute",
+      "tier": null
+    },
+    {
+      "key": "faststaq-com",
+      "path": "entities/faststaq-com.md",
+      "name": "FastStaq",
+      "relation": "substitute",
+      "tier": null
+    },
+    {
+      "key": "forum-keycloak-org",
+      "path": "entities/forum-keycloak-org.md",
+      "name": "forum.keycloak.org",
+      "relation": "discusses",
+      "tier": null
+    },
+    {
+      "key": "forum-serverless-com",
+      "path": "entities/forum-serverless-com.md",
+      "name": "Serverless Forums",
+      "relation": "discusses",
+      "tier": null
+    },
+    {
+      "key": "founderconnects-com",
+      "path": "entities/founderconnects-com.md",
+      "name": "Founder Connects",
+      "relation": "discusses",
+      "tier": null
+    },
+    {
+      "key": "freewareforlibraries-org",
+      "path": "entities/freewareforlibraries-org.md",
+      "name": "Freeware for Libraries",
+      "relation": "lists",
+      "tier": null
+    },
+    {
+      "key": "frontegg-com",
+      "path": "entities/frontegg-com.md",
+      "name": "Frontegg",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "fullproduct-dev",
+      "path": "entities/fullproduct-dev.md",
+      "name": "fullproduct.dev",
+      "relation": "substitute",
+      "tier": null
+    },
+    {
+      "key": "fusionauth-io",
+      "path": "entities/fusionauth-io.md",
+      "name": "fusionauth.io",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "gainhq-com",
+      "path": "entities/gainhq-com.md",
+      "name": "Gain Solutions",
+      "relation": "substitute",
+      "tier": null
+    },
+    {
+      "key": "geeksforgeeks-org",
+      "path": "entities/geeksforgeeks-org.md",
+      "name": "GeeksforGeeks",
+      "relation": "covers",
+      "tier": null
+    },
+    {
+      "key": "getkisi-com",
+      "path": "entities/getkisi-com.md",
+      "name": "getkisi.com",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "getlago-com",
+      "path": "entities/getlago-com.md",
+      "name": "getlago.com",
+      "relation": "integration",
+      "tier": null
+    },
+    {
+      "key": "getnerdio-com",
+      "path": "entities/getnerdio-com.md",
+      "name": "Nerdio",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "github-com",
+      "path": "entities/github-com.md",
+      "name": "GitHub",
+      "relation": "integration",
+      "tier": null
+    },
+    {
+      "key": "gitnation-com",
+      "path": "entities/gitnation-com.md",
+      "name": "GitNation",
+      "relation": "covers",
+      "tier": null
+    },
+    {
+      "key": "gitnux-org",
+      "path": "entities/gitnux-org.md",
+      "name": "gitnux.org",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "gluu-org",
+      "path": "entities/gluu-org.md",
+      "name": "gluu.org",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "goauthentik-io",
+      "path": "entities/goauthentik-io.md",
+      "name": "goauthentik.io",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "gooddata-ai",
+      "path": "entities/gooddata-ai.md",
+      "name": "GoodData.AI",
+      "relation": "integration",
+      "tier": null
+    },
+    {
+      "key": "goteleport-com",
+      "path": "entities/goteleport-com.md",
+      "name": "Teleport",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "grasshoppersignup-com",
+      "path": "entities/grasshoppersignup-com.md",
+      "name": "grasshoppersignup.com",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "growthmentor-com",
+      "path": "entities/growthmentor-com.md",
+      "name": "GrowthMentor",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "guide-sst-dev",
+      "path": "entities/guide-sst-dev.md",
+      "name": "SST Guide",
+      "relation": "covers",
+      "tier": null
+    },
+    {
+      "key": "harness-io",
+      "path": "entities/harness-io.md",
+      "name": "harness.io",
+      "relation": "substitute",
+      "tier": null
+    },
+    {
+      "key": "hasura-io",
+      "path": "entities/hasura-io.md",
+      "name": "Hasura",
+      "relation": "integration",
+      "tier": null
+    },
+    {
+      "key": "helium-seo-com",
+      "path": "entities/helium-seo-com.md",
+      "name": "Helium SEO",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "hibob-com",
+      "path": "entities/hibob-com.md",
+      "name": "hibob.com",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "huawei-cn",
+      "path": "entities/huawei-cn.md",
+      "name": "huawei.cn",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "i4tlabs-io",
+      "path": "entities/i4tlabs-io.md",
+      "name": "i4tlabs.io",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "ibm-com",
+      "path": "entities/ibm-com.md",
+      "name": "ibm.com",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "identitymanagementinstitute-org",
+      "path": "entities/identitymanagementinstitute-org.md",
+      "name": "Identity Management Institute",
+      "relation": "discusses",
+      "tier": null
+    },
+    {
+      "key": "idura-eu",
+      "path": "entities/idura-eu.md",
+      "name": "idura.eu",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "imagine-bo",
+      "path": "entities/imagine-bo.md",
+      "name": "Imagine.bo",
+      "relation": "substitute",
+      "tier": null
+    },
+    {
+      "key": "in-pinterest-com",
+      "path": "entities/in-pinterest-com.md",
+      "name": "in.pinterest.com",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "inkoop-io",
+      "path": "entities/inkoop-io.md",
+      "name": "inkoop.io",
+      "relation": "substitute",
+      "tier": null
+    },
+    {
+      "key": "inquir-org",
+      "path": "entities/inquir-org.md",
+      "name": "inquir.org",
+      "relation": "integration",
+      "tier": null
+    },
+    {
+      "key": "inspoai-io",
+      "path": "entities/inspoai-io.md",
+      "name": "inspoai.io",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "instagram-com",
+      "path": "entities/instagram-com.md",
+      "name": "instagram.com",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "inventree-org",
+      "path": "entities/inventree-org.md",
+      "name": "InvenTree",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "is-docs-wso2-com",
+      "path": "entities/is-docs-wso2-com.md",
+      "name": "is.docs.wso2.com",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "itpromentor-com",
+      "path": "entities/itpromentor-com.md",
+      "name": "itpromentor.com",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "itsfoss-com",
+      "path": "entities/itsfoss-com.md",
+      "name": "It's FOSS",
+      "relation": "covers",
+      "tier": null
+    },
+    {
+      "key": "joinx-co",
+      "path": "entities/joinx-co.md",
+      "name": "joinx.co",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "joshuakite-co-uk",
+      "path": "entities/joshuakite-co-uk.md",
+      "name": "joshuakite.co.uk",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "jscrambler-com",
+      "path": "entities/jscrambler-com.md",
+      "name": "Jscrambler",
+      "relation": "integration",
+      "tier": null
+    },
+    {
+      "key": "justinmind-com",
+      "path": "entities/justinmind-com.md",
+      "name": "Justinmind",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "kalungi-com",
+      "path": "entities/kalungi-com.md",
+      "name": "kalungi.com",
+      "relation": "substitute",
+      "tier": null
+    },
+    {
+      "key": "kenmoo-me",
+      "path": "entities/kenmoo-me.md",
+      "name": "kenmoo.me",
+      "relation": "discusses",
+      "tier": null
+    },
+    {
+      "key": "keycloak-org",
+      "path": "entities/keycloak-org.md",
+      "name": "Keycloak",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "kinde-com",
+      "path": "entities/kinde-com.md",
+      "name": "Kinde",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "lawinsider-com",
+      "path": "entities/lawinsider-com.md",
+      "name": "lawinsider.com",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "linkedin-com",
+      "path": "entities/linkedin-com.md",
+      "name": "linkedin.com",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "loginradius-com",
+      "path": "entities/loginradius-com.md",
+      "name": "loginradius.com",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "logintc-com",
+      "path": "entities/logintc-com.md",
+      "name": "LoginTC",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "logto-io",
+      "path": "entities/logto-io.md",
+      "name": "logto.io",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "maavdnbo-com",
+      "path": "entities/maavdnbo-com.md",
+      "name": "Maarten Van den Bossche",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "magicui-design",
+      "path": "entities/magicui-design.md",
+      "name": "magicui.design",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "medium-com",
+      "path": "entities/medium-com.md",
+      "name": "medium.com",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "memberstack-com",
+      "path": "entities/memberstack-com.md",
+      "name": "Memberstack",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "meteroid-com",
+      "path": "entities/meteroid-com.md",
+      "name": "Meteroid",
+      "relation": "integration",
+      "tier": null
+    },
+    {
+      "key": "microsoft-com",
+      "path": "entities/microsoft-com.md",
+      "name": "Microsoft",
+      "relation": "shaper",
+      "tier": null
+    },
+    {
+      "key": "minimals-cc",
+      "path": "entities/minimals-cc.md",
+      "name": "minimals.cc",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "miniorange-com",
+      "path": "entities/miniorange-com.md",
+      "name": "miniOrange",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "moesif-com",
+      "path": "entities/moesif-com.md",
+      "name": "Moesif",
+      "relation": "integration",
+      "tier": null
+    },
+    {
+      "key": "monday-com",
+      "path": "entities/monday-com.md",
+      "name": "monday.com",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "mozilla-org",
+      "path": "entities/mozilla-org.md",
+      "name": "mozilla.org",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "msadvance-com",
+      "path": "entities/msadvance-com.md",
+      "name": "MSAdvance",
+      "relation": "substitute",
+      "tier": null
+    },
+    {
+      "key": "mui-com",
+      "path": "entities/mui-com.md",
+      "name": "mui.com",
+      "relation": "integration",
+      "tier": null
+    },
+    {
+      "key": "ncsc-gov-uk",
+      "path": "entities/ncsc-gov-uk.md",
+      "name": "ncsc.gov.uk",
+      "relation": "covers",
+      "tier": null
+    },
+    {
+      "key": "news-ycombinator-com",
+      "path": "entities/news-ycombinator-com.md",
+      "name": "Hacker News",
+      "relation": "discusses",
+      "tier": null
+    },
+    {
+      "key": "nexetic-com",
+      "path": "entities/nexetic-com.md",
+      "name": "nexetic.com",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "nextsaaspilot-com",
+      "path": "entities/nextsaaspilot-com.md",
+      "name": "NextSaasPilot",
+      "relation": "substitute",
+      "tier": null
+    },
+    {
+      "key": "nhimg-org",
+      "path": "entities/nhimg-org.md",
+      "name": "nhimg.org",
+      "relation": "covers",
+      "tier": null
+    },
+    {
+      "key": "nordpass-com",
+      "path": "entities/nordpass-com.md",
+      "name": "nordpass.com",
+      "relation": "substitute",
+      "tier": null
+    },
+    {
+      "key": "nordvpn-com",
+      "path": "entities/nordvpn-com.md",
+      "name": "nordvpn.com",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "o365info-com",
+      "path": "entities/o365info-com.md",
+      "name": "o365info.com",
+      "relation": "covers",
+      "tier": null
+    },
+    {
+      "key": "oceanfrogs-com",
+      "path": "entities/oceanfrogs-com.md",
+      "name": "OceanFrogs",
+      "relation": "substitute",
+      "tier": null
+    },
+    {
+      "key": "okoone-com",
+      "path": "entities/okoone-com.md",
+      "name": "Okoone",
+      "relation": "substitute",
+      "tier": null
+    },
+    {
+      "key": "okta-com",
+      "path": "entities/okta-com.md",
+      "name": "okta.com",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "oloid-com",
+      "path": "entities/oloid-com.md",
+      "name": "OLOID",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "olympusacademiestrust-org-uk",
+      "path": "entities/olympusacademiestrust-org-uk.md",
+      "name": "olympusacademiestrust.org.uk",
+      "relation": "covers",
+      "tier": null
+    },
+    {
+      "key": "onenoughtone-com",
+      "path": "entities/onenoughtone-com.md",
+      "name": "OneNoughtOne",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "oneuptime-com",
+      "path": "entities/oneuptime-com.md",
+      "name": "OneUptime",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "openclassrooms-com",
+      "path": "entities/openclassrooms-com.md",
+      "name": "OpenClassrooms",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "openidentityplatform-org",
+      "path": "entities/openidentityplatform-org.md",
+      "name": "openidentityplatform.org",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "opensourcealternatives-to",
+      "path": "entities/opensourcealternatives-to.md",
+      "name": "Open Source Alternatives",
+      "relation": "lists",
+      "tier": null
+    },
+    {
+      "key": "oracle-com",
+      "path": "entities/oracle-com.md",
+      "name": "oracle.com",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "ordwaylabs-com",
+      "path": "entities/ordwaylabs-com.md",
+      "name": "Ordway",
+      "relation": "integration",
+      "tier": null
+    },
+    {
+      "key": "osohq-com",
+      "path": "entities/osohq-com.md",
+      "name": "Oso",
+      "relation": "substitute",
+      "tier": null
+    },
+    {
+      "key": "paloaltonetworks-com",
+      "path": "entities/paloaltonetworks-com.md",
+      "name": "Palo Alto Networks",
+      "relation": "substitute",
+      "tier": null
+    },
+    {
+      "key": "pandeysoni-medium-com",
+      "path": "entities/pandeysoni-medium-com.md",
+      "name": "pandeysoni.medium.com",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "pcmag-com",
+      "path": "entities/pcmag-com.md",
+      "name": "pcmag.com",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "permit-io",
+      "path": "entities/permit-io.md",
+      "name": "Permit.io",
+      "relation": "integration",
+      "tier": null
+    },
+    {
+      "key": "petri-com",
+      "path": "entities/petri-com.md",
+      "name": "petri.com",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "phpscientist-com",
+      "path": "entities/phpscientist-com.md",
+      "name": "PhpScientist",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "pipeline-zoominfo-com",
+      "path": "entities/pipeline-zoominfo-com.md",
+      "name": "ZoomInfo",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "polarisagency-com",
+      "path": "entities/polarisagency-com.md",
+      "name": "polarisagency.com",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "practical365-com",
+      "path": "entities/practical365-com.md",
+      "name": "practical365.com",
+      "relation": "covers",
+      "tier": null
+    },
+    {
+      "key": "precision-co",
+      "path": "entities/precision-co.md",
+      "name": "Precision",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "prismatic-io",
+      "path": "entities/prismatic-io.md",
+      "name": "prismatic.io",
+      "relation": "integration",
+      "tier": null
+    },
+    {
+      "key": "progress-com",
+      "path": "entities/progress-com.md",
+      "name": "progress.com",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "propelauth-com",
+      "path": "entities/propelauth-com.md",
+      "name": "PropelAuth",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "pypi-org",
+      "path": "entities/pypi-org.md",
+      "name": "PyPI",
+      "relation": "integration",
+      "tier": null
+    },
+    {
+      "key": "qrvey-com",
+      "path": "entities/qrvey-com.md",
+      "name": "Qrvey",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "quest-com",
+      "path": "entities/quest-com.md",
+      "name": "Quest Software",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "quora-com",
+      "path": "entities/quora-com.md",
+      "name": "quora.com",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "raftlabs-com",
+      "path": "entities/raftlabs-com.md",
+      "name": "RaftLabs",
+      "relation": "substitute",
+      "tier": null
+    },
+    {
+      "key": "rajeshscribe-com",
+      "path": "entities/rajeshscribe-com.md",
+      "name": "rajeshscribe.com",
+      "relation": "covers",
+      "tier": null
+    },
+    {
+      "key": "rapidnative-com",
+      "path": "entities/rapidnative-com.md",
+      "name": "RapidNative",
+      "relation": "substitute",
+      "tier": null
+    },
+    {
+      "key": "rationalgo-ai",
+      "path": "entities/rationalgo-ai.md",
+      "name": "RationalGo",
+      "relation": "substitute",
+      "tier": null
+    },
+    {
+      "key": "reddit-com",
+      "path": "entities/reddit-com.md",
+      "name": "reddit.com",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "relevant-software",
+      "path": "entities/relevant-software.md",
+      "name": "relevant.software",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "repost-aws",
+      "path": "entities/repost-aws.md",
+      "name": "AWS re:Post",
+      "relation": "discusses",
+      "tier": null
+    },
+    {
+      "key": "rufer-be",
+      "path": "entities/rufer-be.md",
+      "name": "rufer.be",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "saasrise-com",
+      "path": "entities/saasrise-com.md",
+      "name": "SaasRise",
+      "relation": "discusses",
+      "tier": null
+    },
+    {
+      "key": "saastr-com",
+      "path": "entities/saastr-com.md",
+      "name": "SaaStr",
+      "relation": "discusses",
+      "tier": null
+    },
+    {
+      "key": "sacks-substack-com",
+      "path": "entities/sacks-substack-com.md",
+      "name": "sacks.substack.com",
+      "relation": "covers",
+      "tier": null
+    },
+    {
+      "key": "sandrino-dev",
+      "path": "entities/sandrino-dev.md",
+      "name": "sandrino.dev",
+      "relation": "covers",
+      "tier": null
+    },
+    {
+      "key": "sathira-hguruge-medium-com",
+      "path": "entities/sathira-hguruge-medium-com.md",
+      "name": "sathira-hguruge.medium.com",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "scalefusion-com",
+      "path": "entities/scalefusion-com.md",
+      "name": "Scalefusion",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "scalekit-com",
+      "path": "entities/scalekit-com.md",
+      "name": "Scalekit",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "schneider-im",
+      "path": "entities/schneider-im.md",
+      "name": "SCHNEIDER IT MANAGEMENT",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "scmgalaxy-com",
+      "path": "entities/scmgalaxy-com.md",
+      "name": "scmgalaxy.com",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "seamfix-com",
+      "path": "entities/seamfix-com.md",
+      "name": "Seamfix",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "secureauth-com",
+      "path": "entities/secureauth-com.md",
+      "name": "SecureAuth",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "security-stackexchange-com",
+      "path": "entities/security-stackexchange-com.md",
+      "name": "security.stackexchange.com",
+      "relation": "discusses",
+      "tier": null
+    },
+    {
+      "key": "securityboulevard-com",
+      "path": "entities/securityboulevard-com.md",
+      "name": "securityboulevard.com",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "serverless-com",
+      "path": "entities/serverless-com.md",
+      "name": "serverless.com",
+      "relation": "integration",
+      "tier": null
+    },
+    {
+      "key": "serverlessadvocate-com",
+      "path": "entities/serverlessadvocate-com.md",
+      "name": "serverlessadvocate.com",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "serverlessland-com",
+      "path": "entities/serverlessland-com.md",
+      "name": "serverlessland.com",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "sharegate-com",
+      "path": "entities/sharegate-com.md",
+      "name": "ShareGate",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "skycloak-io",
+      "path": "entities/skycloak-io.md",
+      "name": "skycloak.io",
+      "relation": "substitute",
+      "tier": null
+    },
+    {
+      "key": "slideshare-net",
+      "path": "entities/slideshare-net.md",
+      "name": "slideshare.net",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "smartosc-com",
+      "path": "entities/smartosc-com.md",
+      "name": "SmartOSC",
+      "relation": "substitute",
+      "tier": null
+    },
+    {
+      "key": "software-land",
+      "path": "entities/software-land.md",
+      "name": "Software.Land",
+      "relation": "covers",
+      "tier": null
+    },
+    {
+      "key": "softwareadvice-co-uk",
+      "path": "entities/softwareadvice-co-uk.md",
+      "name": "softwareadvice.co.uk",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "softwarerecs-stackexchange-com",
+      "path": "entities/softwarerecs-stackexchange-com.md",
+      "name": "Software Recommendations Stack Exchange",
+      "relation": "discusses",
+      "tier": null
+    },
+    {
+      "key": "soonuki-tistory-com",
+      "path": "entities/soonuki-tistory-com.md",
+      "name": "Coding Warehouse",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "souravmahato-in",
+      "path": "entities/souravmahato-in.md",
+      "name": "souravmahato.in",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "sourceforge-net",
+      "path": "entities/sourceforge-net.md",
+      "name": "SourceForge",
+      "relation": "lists",
+      "tier": null
+    },
+    {
+      "key": "sphericalinsights-com",
+      "path": "entities/sphericalinsights-com.md",
+      "name": "sphericalinsights.com",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "ssojet-com",
+      "path": "entities/ssojet-com.md",
+      "name": "SSOJet",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "stackbe-io",
+      "path": "entities/stackbe-io.md",
+      "name": "stackbe.io",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "stackoverflow-com",
+      "path": "entities/stackoverflow-com.md",
+      "name": "stackoverflow.com",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "stackshare-io",
+      "path": "entities/stackshare-io.md",
+      "name": "stackshare.io",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "startwithidentity-com",
+      "path": "entities/startwithidentity-com.md",
+      "name": "Start with Identity",
+      "relation": "lists",
+      "tier": null
+    },
+    {
+      "key": "stripe-com",
+      "path": "entities/stripe-com.md",
+      "name": "Stripe",
+      "relation": "integration",
+      "tier": null
+    },
+    {
+      "key": "strongdm-com",
+      "path": "entities/strongdm-com.md",
+      "name": "StrongDM",
+      "relation": "substitute",
+      "tier": null
+    },
+    {
+      "key": "stytch-com",
+      "path": "entities/stytch-com.md",
+      "name": "Stytch",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "sumatosoft-com",
+      "path": "entities/sumatosoft-com.md",
+      "name": "SumatoSoft",
+      "relation": "substitute",
+      "tier": null
+    },
+    {
+      "key": "supertokens-com",
+      "path": "entities/supertokens-com.md",
+      "name": "SuperTokens",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "t2d3-pro",
+      "path": "entities/t2d3-pro.md",
+      "name": "T2D3 OS",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "taazaa-com",
+      "path": "entities/taazaa-com.md",
+      "name": "taazaa.com",
+      "relation": "substitute",
+      "tier": null
+    },
+    {
+      "key": "techdocs-broadcom-com",
+      "path": "entities/techdocs-broadcom-com.md",
+      "name": "techdocs.broadcom.com",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "techmarcos-com",
+      "path": "entities/techmarcos-com.md",
+      "name": "techmarcos.com",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "tecracer-com",
+      "path": "entities/tecracer-com.md",
+      "name": "tecRacer",
+      "relation": "integration",
+      "tier": null
+    },
+    {
+      "key": "tenfold-security-com",
+      "path": "entities/tenfold-security-com.md",
+      "name": "tenfold",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "theb2bplaybook-com",
+      "path": "entities/theb2bplaybook-com.md",
+      "name": "The B2B Playbook",
+      "relation": "covers",
+      "tier": null
+    },
+    {
+      "key": "themeselection-com",
+      "path": "entities/themeselection-com.md",
+      "name": "themeselection.com",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "themewagon-com",
+      "path": "entities/themewagon-com.md",
+      "name": "ThemeWagon",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "thenewstack-io",
+      "path": "entities/thenewstack-io.md",
+      "name": "The New Stack",
+      "relation": "covers",
+      "tier": null
+    },
+    {
+      "key": "threedots-tech",
+      "path": "entities/threedots-tech.md",
+      "name": "threedots.tech",
+      "relation": "covers",
+      "tier": null
+    },
+    {
+      "key": "tohidhaghighi-medium-com",
+      "path": "entities/tohidhaghighi-medium-com.md",
+      "name": "tohidhaghighi.medium.com",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "toriihq-com",
+      "path": "entities/toriihq-com.md",
+      "name": "Torii",
+      "relation": "substitute",
+      "tier": null
+    },
+    {
+      "key": "transmitsecurity-com",
+      "path": "entities/transmitsecurity-com.md",
+      "name": "Transmit Security",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "univention-com",
+      "path": "entities/univention-com.md",
+      "name": "Univention GmbH",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "untitledui-com",
+      "path": "entities/untitledui-com.md",
+      "name": "Untitled UI",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "us-metoree-com",
+      "path": "entities/us-metoree-com.md",
+      "name": "Metoree",
+      "relation": "lists",
+      "tier": null
+    },
+    {
+      "key": "useparagon-com",
+      "path": "entities/useparagon-com.md",
+      "name": "Paragon",
+      "relation": "integration",
+      "tier": null
+    },
+    {
+      "key": "v5-docs-adonisjs-com",
+      "path": "entities/v5-docs-adonisjs-com.md",
+      "name": "v5-docs.adonisjs.com",
+      "relation": "integration",
+      "tier": null
+    },
+    {
+      "key": "ventureradar-com",
+      "path": "entities/ventureradar-com.md",
+      "name": "ventureradar.com",
+      "relation": "lists",
+      "tier": null
+    },
+    {
+      "key": "veriff-com",
+      "path": "entities/veriff-com.md",
+      "name": "Veriff",
+      "relation": "integration",
+      "tier": null
+    },
+    {
+      "key": "winmagic-com",
+      "path": "entities/winmagic-com.md",
+      "name": "WinMagic",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "workos-com",
+      "path": "entities/workos-com.md",
+      "name": "WorkOS",
+      "relation": "competitor",
+      "tier": null
+    },
+    {
+      "key": "wrappixel-com",
+      "path": "entities/wrappixel-com.md",
+      "name": "WrapPixel",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "wso2-com",
+      "path": "entities/wso2-com.md",
+      "name": "wso2.com",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "x-com",
+      "path": "entities/x-com.md",
+      "name": "X",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "youtube-com",
+      "path": "entities/youtube-com.md",
+      "name": "youtube.com",
+      "relation": "unknown",
+      "tier": null
+    },
+    {
+      "key": "zapier-com",
+      "path": "entities/zapier-com.md",
+      "name": "Zapier",
+      "relation": "integration",
+      "tier": null
+    },
+    {
+      "key": "zenstack-dev",
+      "path": "entities/zenstack-dev.md",
+      "name": "ZenStack",
+      "relation": "integration",
+      "tier": null
+    },
+    {
+      "key": "zoneandco-com",
+      "path": "entities/zoneandco-com.md",
+      "name": "Zone & Co",
+      "relation": "none",
+      "tier": null
+    },
+    {
+      "key": "zuora-com",
+      "path": "entities/zuora-com.md",
+      "name": "zuora.com",
+      "relation": "integration",
+      "tier": null
+    },
+    {
+      "key": "zuplo-com",
+      "path": "entities/zuplo-com.md",
+      "name": "zuplo.com",
+      "relation": "integration",
+      "tier": null
+    }
+  ],
+  "files": [
+    "AGENTS.md",
+    "README.md",
+    "SKILL.md",
+    "entities/4sysops-com.md",
+    "entities/acropolium-com.md",
+    "entities/admindroid-com.md",
+    "entities/aimultiple-com.md",
+    "entities/aircconline-com.md",
+    "entities/aka-ms.md",
+    "entities/alternateoss-devaradise-com.md",
+    "entities/amasty-com.md",
+    "entities/amplify-aws.md",
+    "entities/anoopcnair-com.md",
+    "entities/answeroverflow-com.md",
+    "entities/appwrite-io.md",
+    "entities/architecture-learning-sap-com.md",
+    "entities/artisan-co.md",
+    "entities/aserto-com.md",
+    "entities/askmeidentity-com.md",
+    "entities/atlassian-design.md",
+    "entities/attractgroup-com.md",
+    "entities/auth0-com.md",
+    "entities/auth0alternatives-com.md",
+    "entities/authelia-com.md",
+    "entities/authgear-com.md",
+    "entities/authjs-dev.md",
+    "entities/autional-com.md",
+    "entities/aws-amazon-com.md",
+    "entities/azure-cn.md",
+    "entities/b2bsaastools-com.md",
+    "entities/bersyn-com.md",
+    "entities/bestalternative-dev.md",
+    "entities/bestb2bsaas-com.md",
+    "entities/betalectic-com.md",
+    "entities/better-auth-com.md",
+    "entities/better-auth-ui-com.md",
+    "entities/beyondidentity-com.md",
+    "entities/billdu-com.md",
+    "entities/billingplatform-com.md",
+    "entities/builtin-com.md",
+    "entities/bytebytego-com.md",
+    "entities/c7solutions-com.md",
+    "entities/capchase-com.md",
+    "entities/capterra-co-uk.md",
+    "entities/casdoor-github-io.md",
+    "entities/cerbos-dev.md",
+    "entities/championleadership-com.md",
+    "entities/channelpartners-net.md",
+    "entities/chartmogul-com.md",
+    "entities/clerk-com.md",
+    "entities/clever-cloud.md",
+    "entities/clickup-com.md",
+    "entities/cloud-folio3-com.md",
+    "entities/cloudnativenow-com.md",
+    "entities/cloudservus-com.md",
+    "entities/cloudzero-com.md",
+    "entities/code24x7-com.md",
+    "entities/coderlegion-com.md",
+    "entities/community-auth0-com.md",
+    "entities/components-lab-auth0-com.md",
+    "entities/componentsource-com.md",
+    "entities/confluence-atlassian-com.md",
+    "entities/contentpeter-com.md",
+    "entities/copyelement-com.md",
+    "entities/corbado-com.md",
+    "entities/coreview-com.md",
+    "entities/cpl-thalesgroup-com.md",
+    "entities/csrc-nist-gov.md",
+    "entities/cybersectools-com.md",
+    "entities/daily-dev.md",
+    "entities/datawiza-com.md",
+    "entities/dealhub-io.md",
+    "entities/descope-com.md",
+    "entities/designmodo-com.md",
+    "entities/dev-to.md",
+    "entities/devopsschool-com.md",
+    "entities/docsie-io.md",
+    "entities/eginnovations-com.md",
+    "entities/en-wikipedia-org.md",
+    "entities/erik365-blog.md",
+    "entities/expertinsights-com.md",
+    "entities/f6s-com.md",
+    "entities/fastspring-com.md",
+    "entities/faststaq-com.md",
+    "entities/forum-keycloak-org.md",
+    "entities/forum-serverless-com.md",
+    "entities/founderconnects-com.md",
+    "entities/freewareforlibraries-org.md",
+    "entities/frontegg-com.md",
+    "entities/fullproduct-dev.md",
+    "entities/fusionauth-io.md",
+    "entities/gainhq-com.md",
+    "entities/geeksforgeeks-org.md",
+    "entities/getkisi-com.md",
+    "entities/getlago-com.md",
+    "entities/getnerdio-com.md",
+    "entities/github-com.md",
+    "entities/gitnation-com.md",
+    "entities/gitnux-org.md",
+    "entities/gluu-org.md",
+    "entities/goauthentik-io.md",
+    "entities/gooddata-ai.md",
+    "entities/goteleport-com.md",
+    "entities/grasshoppersignup-com.md",
+    "entities/growthmentor-com.md",
+    "entities/guide-sst-dev.md",
+    "entities/harness-io.md",
+    "entities/hasura-io.md",
+    "entities/helium-seo-com.md",
+    "entities/hibob-com.md",
+    "entities/huawei-cn.md",
+    "entities/i4tlabs-io.md",
+    "entities/ibm-com.md",
+    "entities/identitymanagementinstitute-org.md",
+    "entities/idura-eu.md",
+    "entities/imagine-bo.md",
+    "entities/in-pinterest-com.md",
+    "entities/inkoop-io.md",
+    "entities/inquir-org.md",
+    "entities/inspoai-io.md",
+    "entities/instagram-com.md",
+    "entities/inventree-org.md",
+    "entities/is-docs-wso2-com.md",
+    "entities/itpromentor-com.md",
+    "entities/itsfoss-com.md",
+    "entities/joinx-co.md",
+    "entities/joshuakite-co-uk.md",
+    "entities/jscrambler-com.md",
+    "entities/justinmind-com.md",
+    "entities/kalungi-com.md",
+    "entities/kenmoo-me.md",
+    "entities/keycloak-org.md",
+    "entities/kinde-com.md",
+    "entities/lawinsider-com.md",
+    "entities/linkedin-com.md",
+    "entities/loginradius-com.md",
+    "entities/logintc-com.md",
+    "entities/logto-io.md",
+    "entities/maavdnbo-com.md",
+    "entities/magicui-design.md",
+    "entities/medium-com.md",
+    "entities/memberstack-com.md",
+    "entities/meteroid-com.md",
+    "entities/microsoft-com.md",
+    "entities/minimals-cc.md",
+    "entities/miniorange-com.md",
+    "entities/moesif-com.md",
+    "entities/monday-com.md",
+    "entities/mozilla-org.md",
+    "entities/msadvance-com.md",
+    "entities/mui-com.md",
+    "entities/ncsc-gov-uk.md",
+    "entities/news-ycombinator-com.md",
+    "entities/nexetic-com.md",
+    "entities/nextsaaspilot-com.md",
+    "entities/nhimg-org.md",
+    "entities/nordpass-com.md",
+    "entities/nordvpn-com.md",
+    "entities/o365info-com.md",
+    "entities/oceanfrogs-com.md",
+    "entities/okoone-com.md",
+    "entities/okta-com.md",
+    "entities/oloid-com.md",
+    "entities/olympusacademiestrust-org-uk.md",
+    "entities/onenoughtone-com.md",
+    "entities/oneuptime-com.md",
+    "entities/openclassrooms-com.md",
+    "entities/openidentityplatform-org.md",
+    "entities/opensourcealternatives-to.md",
+    "entities/oracle-com.md",
+    "entities/ordwaylabs-com.md",
+    "entities/osohq-com.md",
+    "entities/paloaltonetworks-com.md",
+    "entities/pandeysoni-medium-com.md",
+    "entities/pcmag-com.md",
+    "entities/permit-io.md",
+    "entities/petri-com.md",
+    "entities/phpscientist-com.md",
+    "entities/pipeline-zoominfo-com.md",
+    "entities/polarisagency-com.md",
+    "entities/practical365-com.md",
+    "entities/precision-co.md",
+    "entities/prismatic-io.md",
+    "entities/progress-com.md",
+    "entities/propelauth-com.md",
+    "entities/pypi-org.md",
+    "entities/qrvey-com.md",
+    "entities/quest-com.md",
+    "entities/quora-com.md",
+    "entities/raftlabs-com.md",
+    "entities/rajeshscribe-com.md",
+    "entities/rapidnative-com.md",
+    "entities/rationalgo-ai.md",
+    "entities/reddit-com.md",
+    "entities/relevant-software.md",
+    "entities/repost-aws.md",
+    "entities/rufer-be.md",
+    "entities/saasrise-com.md",
+    "entities/saastr-com.md",
+    "entities/sacks-substack-com.md",
+    "entities/sandrino-dev.md",
+    "entities/sathira-hguruge-medium-com.md",
+    "entities/scalefusion-com.md",
+    "entities/scalekit-com.md",
+    "entities/schneider-im.md",
+    "entities/scmgalaxy-com.md",
+    "entities/seamfix-com.md",
+    "entities/secureauth-com.md",
+    "entities/security-stackexchange-com.md",
+    "entities/securityboulevard-com.md",
+    "entities/serverless-com.md",
+    "entities/serverlessadvocate-com.md",
+    "entities/serverlessland-com.md",
+    "entities/sharegate-com.md",
+    "entities/skycloak-io.md",
+    "entities/slideshare-net.md",
+    "entities/smartosc-com.md",
+    "entities/software-land.md",
+    "entities/softwareadvice-co-uk.md",
+    "entities/softwarerecs-stackexchange-com.md",
+    "entities/soonuki-tistory-com.md",
+    "entities/souravmahato-in.md",
+    "entities/sourceforge-net.md",
+    "entities/sphericalinsights-com.md",
+    "entities/ssojet-com.md",
+    "entities/stackbe-io.md",
+    "entities/stackoverflow-com.md",
+    "entities/stackshare-io.md",
+    "entities/startwithidentity-com.md",
+    "entities/stripe-com.md",
+    "entities/strongdm-com.md",
+    "entities/stytch-com.md",
+    "entities/sumatosoft-com.md",
+    "entities/supertokens-com.md",
+    "entities/t2d3-pro.md",
+    "entities/taazaa-com.md",
+    "entities/techdocs-broadcom-com.md",
+    "entities/techmarcos-com.md",
+    "entities/tecracer-com.md",
+    "entities/tenfold-security-com.md",
+    "entities/theb2bplaybook-com.md",
+    "entities/themeselection-com.md",
+    "entities/themewagon-com.md",
+    "entities/thenewstack-io.md",
+    "entities/threedots-tech.md",
+    "entities/tohidhaghighi-medium-com.md",
+    "entities/toriihq-com.md",
+    "entities/transmitsecurity-com.md",
+    "entities/univention-com.md",
+    "entities/untitledui-com.md",
+    "entities/us-metoree-com.md",
+    "entities/useparagon-com.md",
+    "entities/v5-docs-adonisjs-com.md",
+    "entities/ventureradar-com.md",
+    "entities/veriff-com.md",
+    "entities/winmagic-com.md",
+    "entities/workos-com.md",
+    "entities/wrappixel-com.md",
+    "entities/wso2-com.md",
+    "entities/x-com.md",
+    "entities/youtube-com.md",
+    "entities/zapier-com.md",
+    "entities/zenstack-dev.md",
+    "entities/zoneandco-com.md",
+    "entities/zuora-com.md",
+    "entities/zuplo-com.md",
+    "evidence/receipts.md",
+    "llms.txt",
+    "manifest.json",
+    "relations/competitor.md",
+    "relations/covers.md",
+    "relations/dependency.md",
+    "relations/discusses.md",
+    "relations/integration.md",
+    "relations/lists.md",
+    "relations/none.md",
+    "relations/shaper.md",
+    "relations/substitute.md",
+    "relations/unknown.md",
+    "segments/authentication-and-user-management.md",
+    "segments/developer-experience-tools.md",
+    "segments/multi-tenant-organization-management.md",
+    "segments/saas-billing-integration.md",
+    "segments/unattributed.md"
+  ]
+}

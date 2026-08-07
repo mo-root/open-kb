@@ -1,0 +1,88 @@
+# Multi-tenant Organization Management
+
+84 entities, 9 straddling other segments.
+
+- [[4sysops-com]] — covers
+- [[acropolium-com]] — substitute
+- [[admindroid-com]] — none
+- [[aircconline-com]] — none
+- [[aka-ms]] — unknown
+- [[anoopcnair-com]] — covers
+- [[artisan-co]] — none
+- [[atlassian-design]] — none
+- [[components-lab-auth0-com]] — competitor
+- [[auth0-com]] — competitor *(also: Authentication and User Management, Developer Experience Tools)*
+- [[azure-cn]] — unknown
+- [[bestalternative-dev]] — lists
+- [[better-auth-ui-com]] — integration
+- [[c7solutions-com]] — covers
+- [[capterra-co-uk]] — unknown
+- [[championleadership-com]] — none
+- [[channelpartners-net]] — covers
+- [[clerk-com]] — shaper *(also: Authentication and User Management)*
+- [[cloudservus-com]] — substitute
+- [[componentsource-com]] — unknown
+- [[confluence-atlassian-com]] — none
+- [[contentpeter-com]] — none
+- [[coreview-com]] — none
+- [[cybersectools-com]] — lists
+- [[devopsschool-com]] — none
+- [[eginnovations-com]] — none
+- [[erik365-blog]] — covers
+- [[expertinsights-com]] — lists
+- [[cloud-folio3-com]] — substitute
+- [[fullproduct-dev]] — substitute
+- [[github-com]] — integration *(also: Authentication and User Management, Developer Experience Tools)*
+- [[gitnux-org]] — unknown
+- [[grasshoppersignup-com]] — unknown
+- [[growthmentor-com]] — none
+- [[helium-seo-com]] — none
+- [[i4tlabs-io]] — unknown
+- [[ibm-com]] — unknown *(also: Authentication and User Management)*
+- [[imagine-bo]] — substitute
+- [[inventree-org]] — none
+- [[is-docs-wso2-com]] — unknown
+- [[itpromentor-com]] — unknown
+- [[joinx-co]] — unknown
+- [[kalungi-com]] — substitute
+- [[kenmoo-me]] — discusses
+- [[linkedin-com]] — unknown *(also: Authentication and User Management)*
+- [[maavdnbo-com]] — none
+- [[magicui-design]] — none
+- [[microsoft-com]] — shaper *(also: Authentication and User Management)*
+- [[minimals-cc]] — unknown
+- [[msadvance-com]] — substitute
+- [[getnerdio-com]] — none
+- [[nexetic-com]] — unknown
+- [[nextsaaspilot-com]] — substitute
+- [[o365info-com]] — covers
+- [[okoone-com]] — substitute
+- [[petri-com]] — unknown
+- [[polarisagency-com]] — none
+- [[practical365-com]] — covers
+- [[precision-co]] — none
+- [[progress-com]] — none
+- [[qrvey-com]] — none
+- [[quest-com]] — none
+- [[raftlabs-com]] — substitute
+- [[rationalgo-ai]] — substitute
+- [[reddit-com]] — unknown *(also: Authentication and User Management, Developer Experience Tools)*
+- [[relevant-software]] — unknown
+- [[saasrise-com]] — discusses
+- [[saastr-com]] — discusses
+- [[sacks-substack-com]] — covers
+- [[schneider-im]] — none
+- [[scmgalaxy-com]] — unknown
+- [[sharegate-com]] — none
+- [[slideshare-net]] — none *(also: Authentication and User Management)*
+- [[softwareadvice-co-uk]] — unknown
+- [[stackshare-io]] — unknown
+- [[t2d3-pro]] — none
+- [[theb2bplaybook-com]] — covers
+- [[themewagon-com]] — none
+- [[toriihq-com]] — substitute
+- [[en-wikipedia-org]] — none *(also: Authentication and User Management)*
+- [[wso2-com]] — unknown
+- [[x-com]] — unknown
+- [[zenstack-dev]] — integration
+- [[pipeline-zoominfo-com]] — none
