@@ -27,6 +27,8 @@ Give it a domain, get back a cited map of the ecosystem around it — competitor
 
 <sub>4× speed — [**watch the full demo with audio**](./assets/demo.mp4) (1m26s)</sub>
 
+<sub>Or skip the install: <a href="./examples/kb-clerk-com/README.md"><b>browse a real exported map, checked into this repo</b></a> — clerk.com, 263 entities, every claim with its receipt.</sub>
+
 </div>
 
 <br />
@@ -142,6 +144,25 @@ So a model having a bad day can write a weak query or misjudge a host — it can
 
 <!-- ─────────────────────────────────────────────────────────────────────── -->
 
+## The second engine: the swarm
+
+The sweep is breadth — one pass, every market, hundreds of hosts. The swarm is depth. A **lead** agent reads the map so far and posts investigations to a shared board; **investigator** lanes claim them, work them with search and page tools, and file claims. Between the investigators and the map sits the machinery the whole engine answers to:
+
+- **The admit gate.** A claim about a company only lands if it cites that company's *own* fetched page. Third-party listicles can nominate a host; they can never convict it.
+- **Downgrade, never delete.** A claim that loses its evidence is downgraded with the refusal reason attached — the map remembers what it declined to believe, and shows you.
+- **The scorecard.** The run may not end because the model feels done. A code-side scorecard says what's still uncovered, and the lead answers to it before the run is allowed to finish.
+
+```bash
+pnpm swarm brightdata.com 5                # depth-first map, $5 ceiling
+pnpm swarm brightdata.com 5 --from-sweep runs/sweep-brightdata-com-<stamp>.json
+```
+
+The second form is the intended shape: **the sweep finds the field cheaply, the swarm interrogates it.** Everything the sweep mapped arrives as leads; the swarm's job is to turn nominations into convictions or refusals.
+
+<br />
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+
 ## Receipts, or it doesn't exist
 
 The trust layer, enforced in code:
@@ -152,6 +173,14 @@ The trust layer, enforced in code:
 - **The company's own catalog links to the pages that establish it.** Nothing on the map is unclickable.
 
 <!-- Screenshot: an entity with its citations — assets/receipts.png -->
+
+### The instruments
+
+Trust claims are cheap, so open-kb ships the instruments to check its own:
+
+- **The audit** — `pnpm run audit runs/<run>.json` deals a deterministic, seeded sample of the map's claims as a fillable review packet, and `--score` refuses to grade one unless the verdicts were reviewed *symmetrically* (re-checking only the rows marked "wrong" can only ever lower the rate — that's not a review, it's a thumb on the scale). The Wilson interval always prints beside the rate, because "3.3% wrong" at n=30 is honestly "0.6%–16.7%".
+- **The drift** — `pnpm run diff runs/a.json runs/b.json` compares two runs of the same anchor: what appeared, what vanished, what changed relation or confidence. A map is a snapshot; drift is how you know what moved between yesterday's and today's.
+- **The bake-off** — `pnpm run bakeoff <domain>` runs the identical probe across model configs and writes one table to `runs/experiments/`: dollars, wall seconds, hosts, competitors, recall. The default model is the winner of that table, not a preference — the current one took the last bake-off on cost and competitor coverage at once.
 
 <br />
 
@@ -183,10 +212,43 @@ cd packages/web && pnpm dev
 ### Or skip the UI
 
 ```bash
-pnpm sweep stripe.com        # full map from the CLI
+set -a && source .env && set +a   # the CLI reads your keys from the shell
+pnpm sweep stripe.com        # breadth: the full sweep map
+pnpm swarm stripe.com 5      # depth: the swarm, $5 ceiling
 pnpm discover stripe.com     # just phase one: what does this company sell?
 pnpm test                    # 873 tests, no network, no keys needed
 ```
+
+<br />
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+
+## The map is a folder
+
+Every run exports to plain markdown — a **vault** that an agent (or you) can walk with nothing but a file reader:
+
+```
+kb-clerk-com/
+├── README.md             # the map, summarized: segments, counts, the honest stats
+├── SKILL.md              # teaches an agent how to read this vault
+├── llms.txt              # the standard agent entrypoint
+├── AGENTS.md             # ground rules: what the tiers mean, what "unknown" means
+├── entities/             # one file per company — role, segment, receipts
+├── relations/            # competitor.md, substitute.md, integration.md …
+├── segments/             # each market, with its members
+└── evidence/receipts.md  # every quote, tied to the page it came from
+```
+
+**[Browse a real one — the clerk.com map, checked into this repo.](./examples/kb-clerk-com/README.md)** 263 entities from a $0.25 probe run. Start at [`entities/auth0-com.md`](./examples/kb-clerk-com/entities/auth0-com.md), or the [competitor index](./examples/kb-clerk-com/relations/competitor.md), and notice that the refusals are right there on the page — an entity the engine couldn't convict says so, with the reason.
+
+In the web app it's the **Export** button — same vault, zipped. From the CLI:
+
+```bash
+pnpm run export runs/sweep-clerk-com-<stamp>.json my-vault   # one run → one vault
+pnpm run export --all                                        # every run → an indexed knowledge lake
+```
+
+The vault is a build artifact: regenerate it from the run file, never hand-edit it.
 
 <br />
 
@@ -260,11 +322,11 @@ open-kb/
 
 ## Roadmap
 
-Shipping today: the family engine, the widening loop, live metering, the cited map, the web app, the Agent Skill.
+Shipping today: the sweep, the swarm, the widening loop, live metering, the cited map, the vault export and knowledge lake, the audit/drift/bake-off instruments, the web app, the Agent Skill.
 
 Next:
-- **The full swarm** — the discovery agent (already built and tested standalone) wired in as phase one, pulling the company's corpus itself instead of a single-pass read
 - **Run journals** — each run writes what worked; the next run on that market reads it first. The self-evolving substrate.
+- **Checkpointed runs** — a sweep that loses the network mid-flight should resume from its last round, not die wholesale
 - Deeper community and channel mapping — where buyers argue, not just who sells
 
 <br />
