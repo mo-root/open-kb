@@ -106,27 +106,43 @@ and which did not, and quote two or three `why` lines so the reader can judge th
 
 ## How much to trust it
 
-This is measured, and you should pass it on rather than presenting the map as fact.
+This is measured, and you should pass the measurement on rather than presenting the map as fact.
 
-An audit fetched **207 entities from a real map and checked them against the live web: 86 right,
-121 wrong.**
+Two engines, two numbers:
 
-What is reliable:
+- **The old classifier** judged from a hostname, three titles and a snippet. An audit checked 207 of
+  its entities against the live web: **86 right, 121 wrong**. That number is why the engine was
+  rebuilt.
+- **The rebuilt engine** judges every host from its own fetched page, and every quote is verified as
+  a literal substring of a page the run actually retrieved. A 30-entity spot audit measured **1
+  wrong — 3.3%, which at n=30 honestly means 0.6%–16.7%** (the Wilson interval; never quote the
+  rate without it). One caveat on that audit: its second reviewer only re-read verdicts marked
+  "wrong" — a correction that can only lower the rate — which is exactly why the audit is now a
+  repeatable instrument instead of a story.
 
-- **The head of the market.** Every genuine competitor was present and correctly labelled. A reader
-  taking the top of the competitor list is on solid ground.
-- **Counts by relation and kind**, as a shape.
+Do not inherit either number. Deal a packet on the map in front of you:
 
-What is not:
+```bash
+pnpm run audit runs/<run>.json            # deals a seeded, fillable review packet
+pnpm run audit --score <packet>.json      # refuses to score unless reviewed symmetrically
+```
 
-- **The long tail of `competitor`.** The classifier reads a hostname, three titles and a snippet, so
-  it promotes anything ranking for the market's vocabulary. A comparison site that *ranked the
-  anchor first* was recorded as a rival selling proxies.
-- **`what` and `why` on obscure hosts.** One entity's entire description was invented from its TLD.
-- **The total count.** Inflated by the above.
+What is reliable by construction:
 
-So: quote the head of the map confidently, treat the tail as leads to check, and never repeat a
-`why` line about an unfamiliar host as though it were established.
+- **The head of the market.** Genuine competitors present, correctly labelled, with receipts.
+- **Quotes.** One code path mints evidence and it refuses quotes that weren't actually fetched — a
+  citation cannot be invented, only misjudged.
+- **Refusals.** An entity the engine could not convict lands as `unknown` with the refusal reason
+  attached. It downgrades rather than deletes, so the map shows you what it declined to believe.
+
+What still deserves suspicion:
+
+- **The `unknown` pile is unfinished work, not noise.** Real competitors sit in it when their page
+  refused to load or the evidence bar was not met. Treat it as the lead list.
+- **Absence.** The widening judge decides when a market is exhausted; check the per-market counts
+  before treating "nobody else sells X" as a finding.
+- **A `why` line on an unfamiliar host is a lead, not a fact** — click the receipt before repeating
+  it.
 
 ## The other surface
 
