@@ -58,7 +58,7 @@ That includes the ones no comparison article has ever listed: the open-source to
 | **Where answers come from** | curated databases | model memory | live searches, this run |
 | **Finds substitutes & long tail** | rarely | sometimes, unverifiable | yes — that's the method |
 | **Citation on every claim** | rare | no | every node and edge: URL + quote |
-| **Cost per map** | contracts | free but uncheckable | a few dollars, metered live |
+| **Cost per map** | contracts | free but uncheckable | about a dollar (~$0.001/entity, measured), metered live |
 | **Self-hosted** | no | — | yes |
 
 <br />
@@ -124,7 +124,7 @@ flowchart TD
     Q --> W["SERP worker pool"]
     W --> A{"**assess**<br/>the widening judge"}
     A -- "release reserve /<br/>write new queries" --> Q
-    A -- "enough" --> K["**classify** · 6 batches in flight"]
+    A -- "enough" --> K["**classify** · per host, page in hand"]
     K --> L["**link**"] --> M["the map"]
 ```
 
@@ -185,7 +185,7 @@ cd packages/web && pnpm dev
 ```bash
 pnpm sweep stripe.com        # full map from the CLI
 pnpm discover stripe.com     # just phase one: what does this company sell?
-pnpm test                    # 220 tests, no network, no keys needed
+pnpm test                    # 873 tests, no network, no keys needed
 ```
 
 <br />
