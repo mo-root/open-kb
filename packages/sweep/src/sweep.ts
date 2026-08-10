@@ -1112,9 +1112,24 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   // typo into an apparent outage. `brightdata.ccom` cost six fetches, an unlocker
   // call, and a reader's confidence in the tool.
   if (!pages.length && !(await resolves(anchor))) {
-    throw new Error(
+    const err = new Error(
       `${anchor} does not resolve — there is no such domain. ${suggest(anchor)}`.trim(),
     )
+    // READER-SAFE, and marked so the web layer knows it.
+    //
+    // This sentence is the whole value of the check: it names the typo and
+    // suggests the fix. Unmarked, `failRun` cannot tell it from a provider
+    // error that might carry a key or a request id, so it does the safe thing
+    // and replaces it with "the server could not handle this request, quote
+    // ref 4739e12c". Measured on the live surface with a mistyped domain: the
+    // engine produced the right sentence and the visitor was shown a crash.
+    //
+    // `Symbol.for` is the global registry, so this marks the error for
+    // `isNamedFault` in packages/web without either package importing the
+    // other — which they must not, since core and sweep may not know a web
+    // app exists.
+    ;(err as unknown as Record<symbol, boolean>)[Symbol.for("open-kb.named-fault")] = true
+    throw err
   }
 
   // Try the free surfaces again before spending anything. A run once died here
