@@ -1,48 +1,68 @@
-<div align="center">
-
 # open-kb
 
-### An open knowledge base of any market, built in minutes from <ins>one domain</ins>.
-
-Plug in `stripe.com`. Get back a full market map and a knowledge graph that plugs
-straight into your agent: everyone chasing the same buyer, the tools people use
-instead, who buys, and where the market argues with itself. Every claim carries
-the page it came from. The median map is 1,431 entities for **$1.35 and eight
-minutes**, about a tenth of a cent an entity, and two-thirds of it is search, not
-tokens.
-
-<br />
-
-[![License: MIT](https://img.shields.io/badge/License-MIT-4B8BFF?style=flat-square&labelColor=0a1628)](./LICENSE)
+[![MIT](https://img.shields.io/badge/License-MIT-4B8BFF?style=flat-square&labelColor=0a1628)](./LICENSE)
 [![Node](https://img.shields.io/badge/Node-%E2%89%A520-4B8BFF?style=flat-square&labelColor=0a1628)](https://nodejs.org)
-[![Next.js](https://img.shields.io/badge/Next.js-16-4B8BFF?style=flat-square&labelColor=0a1628)](https://nextjs.org)
-[![AI SDK](https://img.shields.io/badge/AI%20SDK-7-4B8BFF?style=flat-square&labelColor=0a1628)](https://sdk.vercel.ai)
-[![Bright Data](https://img.shields.io/badge/Powered%20by-Bright%20Data-22D3EE?style=flat-square&labelColor=0a1628)](https://brightdata.com)
+[![Powered by Bright Data](https://img.shields.io/badge/Powered%20by-Bright%20Data-22D3EE?style=flat-square&labelColor=0a1628)](https://brightdata.com)
 
-</div>
+**One domain in. The whole market out.** Point it at `stripe.com` and it comes
+back with everyone chasing the same buyer, the tools people use instead, who
+buys, and where the market argues. Every claim carries the page it came from.
 
-<br />
+It never types the company's name to find the market. It reads the company, works
+out the job each product does, and searches for the job, which is how it finds
+the open-source tool people outgrow and the substitute no comparison article
+lists.
 
-<!-- ─────────────────────────────────────────────────────────────────────── -->
-
-<div align="center">
+> Across the 22 runs in this repo, the median map is **951 entities on the map for
+> $1.21 and eight minutes**, about a tenth of a cent an entity. Two-thirds of that
+> is search, not tokens. `pnpm bench` prints that table from the run files, so you
+> can check it rather than believe it.
 
 <img src="./assets/hero.gif" alt="One run on stripe.com, exploded into three planes: the raw hosts it found, the entities it kept, and the relations between them" width="100%" />
 
-<sub>One run on <code>stripe.com</code>. 190 queries into <b>2,551 hosts, for $1.82 in 13 minutes</b>.</sub>
+```bash
+pnpm sweep stripe.com
+```
 
-<br />
+```
+runs/sweep-stripe-com-<stamp>.json     the run: every entity, edge, span and dollar
+
+kb-stripe-com/                          pnpm run export <run>
+├── README.md         the map summarised, with the honest stats
+├── entities/         one file per company: what it is, how it relates, its quotes
+├── relations/        competitor.md · substitute.md · integration.md · buyer.md
+├── segments/         each market the run went looking for, and who is in it
+├── llms.txt          the agent entrypoint
+├── SKILL.md          teaches an agent to read this vault
+└── AGENTS.md         ground rules: how to read a row, what it does not claim
+```
 
 ## [→ Open the demo](https://open-kb-demo.vercel.app)
 
-<sub>Six real maps, already built and free to explore. <a href="https://open-kb-demo.vercel.app/kb/sweep-vercel-com-202608062351">vercel.com</a> is 2,370 entities across 6,283 edges · <a href="https://open-kb-demo.vercel.app/kb/sweep-stripe-com-202608070005">stripe.com</a> is 2,551 · <a href="https://open-kb-demo.vercel.app/kb/sweep-brightdata-com-202608042230">brightdata.com</a> has a description on every single row.</sub>
+Six real maps, already built and free to explore.
+[vercel.com](https://open-kb-demo.vercel.app/kb/sweep-vercel-com-202608062351) is
+2,370 entities across 6,283 edges ·
+[stripe.com](https://open-kb-demo.vercel.app/kb/sweep-stripe-com-202608070005) is
+2,551 ·
+[brightdata.com](https://open-kb-demo.vercel.app/kb/sweep-brightdata-com-202608042230)
+has a description on every row. Build your own there too: sized to a 300s
+function, that is about 230 entities in four minutes.
 
-<sub>Build your own there too. Sized to a 300s function, that is ~230 entities for <b>about 20 cents in four minutes</b>.</sub>
+Prefer files? [Read a map as markdown in this repo](./examples/kb-clerk-com/README.md).
+137 entities from clerk.com, each with its sources or the reason it has none.
 
-<sub>Prefer files? <a href="./examples/kb-clerk-com/README.md"><b>Read a map as markdown in this repo</b></a>. 137 entities from clerk.com, each with its sources or the reason it has none.</sub>
+## Install
 
-<br />
-<br />
+Requires Node 20+, a [Bright Data](https://brightdata.com) account with a SERP
+API zone and a Web Unlocker zone, and an [OpenRouter](https://openrouter.ai) key.
+
+```bash
+git clone https://github.com/mo-root/open-kb.git && cd open-kb && pnpm install
+cp .env.example .env      # four keys, named in the file
+pnpm sweep stripe.com
+```
+
+<div align="center">
 
 <img src="./assets/demo.gif" alt="The app: the graph, an entity card with its sources, the entity list" width="100%" />
 
@@ -275,32 +295,26 @@ Trust claims are cheap, so open-kb ships the instruments to check its own.
 
 <!-- ─────────────────────────────────────────────────────────────────────── -->
 
-## Quick start
-
-You need a [Bright Data](https://brightdata.com) account with a **SERP API** zone and a **Web Unlocker** zone, plus an [OpenRouter](https://openrouter.ai) key.
-
-```bash
-git clone https://github.com/mo-root/open-kb.git
-cd open-kb
-pnpm install
-
-cp .env.example .env
-# OPENROUTER_API_KEY, BRIGHTDATA_API_TOKEN,
-# BRIGHTDATA_SERP_ZONE, BRIGHTDATA_UNLOCKER_ZONE
-
-cd packages/web && pnpm dev
-# http://localhost:3210, type a domain, watch it run
-```
-
-Or stay in the terminal:
+## Every command
 
 ```bash
 set -a && source .env && set +a   # the CLI reads keys from the shell
-pnpm sweep stripe.com        # breadth
+
+pnpm sweep stripe.com        # breadth: the map
 pnpm swarm stripe.com 5      # depth, $5 ceiling
 pnpm discover stripe.com     # phase one only: what does this company sell?
+pnpm run export <run> vault  # the map as a folder of markdown
+pnpm run diff a.json b.json  # what moved between two runs of one anchor
+pnpm run audit <run>         # deal a review packet, score it symmetrically
 pnpm bench                   # the results table, read out of runs/
 pnpm test                    # 1,387 tests, no network, no keys
+```
+
+The web app runs the same engine, with a run sized to whatever clock its host
+allows:
+
+```bash
+cd packages/web && pnpm dev   # http://localhost:3210
 ```
 
 <br />
