@@ -29,6 +29,10 @@ type Stat = { glyph: GlyphKind; label: string; value: number; className: string 
  *  a fourth pushes the tallest card (stripe, nine markets) past its neighbours
  *  without telling the reader anything the `+5` does not. The cap is what keeps
  *  this a card rather than a list of markets with a domain on top. */
+/** Below this, a kind count is more likely to be a classifier miss than a
+ *  small market, so the card leaves it off. See `stats` below. */
+const KIND_FLOOR = 50;
+
 const MARKETS_SHOWN = 3;
 
 /**
@@ -88,7 +92,25 @@ export function KbCard({ kb, showcase = false }: { kb: KbSummary; showcase?: boo
     { glyph: "player", label: "players", value: players, className: "text-[var(--type-player)]" },
     { glyph: "community", label: "communities", value: communities, className: "text-[var(--type-community)]" },
   ];
-  const stats = allStats.filter((s) => s.value > 0);
+  /**
+   * A count under the floor does not go on the card.
+   *
+   * `notes` is always shown: it is the size of the map and it is never the
+   * number in question. The three kind counts are, because the classifier is
+   * currently mis-kinding companies as products — stripe.com reads 1,272
+   * products and ONE player, and cursor.com and clerk.com read one and two.
+   * A card that says a payments market has one player is worse than a card
+   * that does not break the market down at all, and a reader has no way to
+   * know which of the four numbers to distrust.
+   *
+   * A floor rather than a fix, and it is worth being plain about that. The
+   * classifier bug is being fixed separately; when it lands these counts come
+   * back on their own, because a real market has more than fifty of at least
+   * one of these. What the floor buys in the meantime is that the card shows
+   * nothing it cannot stand behind. The composition bar above is unaffected:
+   * it renders proportions of whatever the run recorded and claims no label.
+   */
+  const stats = allStats.filter((s) => s.glyph === "docs" || s.value >= KIND_FLOOR);
 
   /* The markets, as provenance drew them. `segments` is already derived off
      `foundBy` in the reading layer — this renders it and infers nothing.
