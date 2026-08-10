@@ -4,7 +4,7 @@
 
 # open&#183;knowledge base
 
-### The open knowledge base for markets
+### Any market, mapped from one domain
 
 [![MIT](https://img.shields.io/badge/License-MIT-4B8BFF?style=flat-square&labelColor=0a1628)](./LICENSE)
 [![Node](https://img.shields.io/badge/Node-%E2%89%A520-4B8BFF?style=flat-square&labelColor=0a1628)](https://nodejs.org)
