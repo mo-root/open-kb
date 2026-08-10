@@ -27,17 +27,26 @@ tokens.
 
 <div align="center">
 
-<img src="./assets/demo.gif" alt="A finished map for brightdata.com: the graph, an entity card with its sources, the entity list" width="100%" />
+<img src="./assets/hero.gif" alt="One run on stripe.com, exploded into three planes: 2,551 raw hosts, 2,530 entities, 5,806 relations" width="100%" />
 
-<sub>[Watch the full walkthrough with audio](./assets/demo.mp4) (51s)</sub>
+<sub>One run on <code>stripe.com</code>. 190 queries, 6,840 results, <b>2,530 entities and 5,806 relations for $1.82</b>.</sub>
 
-### [→ Open a live map](https://open-kb-demo.vercel.app)
+<br />
+
+## [→ Open the demo](https://open-kb-demo.vercel.app)
 
 <sub>Six real maps, already built and free to explore. <a href="https://open-kb-demo.vercel.app/kb/sweep-vercel-com-202608062351">vercel.com</a> is 2,370 entities across 6,283 edges · <a href="https://open-kb-demo.vercel.app/kb/sweep-stripe-com-202608070005">stripe.com</a> is 2,551 · <a href="https://open-kb-demo.vercel.app/kb/sweep-brightdata-com-202608042230">brightdata.com</a> has a description on every single row.</sub>
 
 <sub>Build your own there too. Sized to a 300s function, that is ~230 entities for <b>about 20 cents in four minutes</b>.</sub>
 
 <sub>Prefer files? <a href="./examples/kb-clerk-com/README.md"><b>Read a map as markdown in this repo</b></a>. 137 entities from clerk.com, each with its sources or the reason it has none.</sub>
+
+<br />
+<br />
+
+<img src="./assets/demo.gif" alt="The app: the graph, an entity card with its sources, the entity list" width="100%" />
+
+<sub>The app itself. <a href="./assets/demo.mp4">Watch the full walkthrough</a> (51s).</sub>
 
 </div>
 
