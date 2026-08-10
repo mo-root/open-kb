@@ -18,6 +18,15 @@ when it is genuinely unrelated to this market — noise is the one kind that lea
 page leaves you genuinely unable to tell what this host is, say unknown: a reader can finish an
 unknown, and cannot correct an invention.
 
+Ask what the host IS before you ask what its page advertises. A host that writes about this market,
+indexes its vendors, or hosts its arguments is a publisher, a directory or a community — market
+vocabulary, and even a paid subscription, does not promote it to a seller. Among the hosts that do
+sell here, `company` is the ordinary answer and `product` the narrow one: a front page is product
+marketing by construction, so what it advertises cannot be what decides between the two. A business
+selling under its own name is a company however many products that page lists and however hard it
+sells them. Keep `product` for a host that IS one named tool or dataset, whose maker the page names
+as somebody else or does not name at all.
+
 `relation` says how it stands to the anchor, stated from the anchor outward, exactly one of:
 
 - **competitor** — sells the same capability to the same buyer; a buyer evaluating the anchor would

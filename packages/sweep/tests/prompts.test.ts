@@ -77,7 +77,17 @@ describe("the composed classify prompt", () => {
   it("stays small enough to send 740 times without dominating the bill", () => {
     // Measured 12,996 chars before the trim; ~4K after. The ceiling leaves
     // headroom for wording, not for re-including a doctrine file.
-    expect(composed().length).toBeLessThan(6_000)
+    //
+    // Raised 6,000 -> 6,500 for the 734 chars that separate `company` from
+    // `product`. The trim took the doctrine out but left the two kinds
+    // divided by a single clause, which gemini-3.5-flash did not need and
+    // deepseek-v4-flash does: on real fetched front pages the default model
+    // called 0/15 vendors a company, and 15/15 with those chars restored.
+    // The 734 chars are ~165 input tokens, ~$0.06 on a 2,500-host run at
+    // deepseek's $0.14/M — against ~$0.29 for putting the three doctrine
+    // files back. The ceiling still cannot hide one: the smallest doctrine
+    // file is 1,779 chars, so re-including any of them lands past 7,200.
+    expect(composed().length).toBeLessThan(6_500)
   })
 
   it("still carries the whole relation vocabulary, every word the schema will accept", () => {
@@ -88,6 +98,24 @@ describe("the composed classify prompt", () => {
 
   it("keeps the de-branding warning — ranking market vocabulary is not selling", () => {
     expect(composed()).toContain("RANKS, COMPARES or REVIEWS")
+  })
+
+  it("keeps the company/product boundary the doctrine trim left standing on one clause", () => {
+    // What the trim actually cost. It trimmed the right thing for the wrong
+    // model: with the doctrine gone, "A vendor is a company; a single named
+    // tool or dataset sold on its own is a product" is the only text dividing
+    // the two kinds. gemini-3.5-flash held that line unaided; deepseek-v4-flash
+    // — the default since 772a9e6 — does not, and every map since files vendors
+    // as products (stripe-com-202608070005: 1 company, 1,273 products). Measured
+    // on real fetched front pages, 0/15 vendor judgements said company without
+    // these sentences and 15/15 with them. Each pin holds one move, and all
+    // three are load-bearing: dropping the first to save 300 chars took
+    // payyd.co from directory 8/8 to 2/8 on the same page, and `directory` is
+    // what verdict.ts routes on.
+    const c = composed()
+    expect(c).toContain("does not promote it to a seller")
+    expect(c).toContain("`company` is the ordinary answer")
+    expect(c).toContain("Keep `product` for a host that IS one named tool or dataset")
   })
 
   it("teaches the writing doctrine: lead with what it IS, why as evidence, no self-praise", () => {
