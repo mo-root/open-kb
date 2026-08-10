@@ -110,10 +110,30 @@ const LEDGER = {
   clock: "72m 43s",
 }
 
-/** Two per-card numbers, from the two extremes of the set: the largest map's
- *  entity count and the densest map's edge count. */
-const STRIPE_ENTITIES = 2522
-const VERCEL_EDGES = 6283
+/** Three per-card numbers, as the card SPELLS them — thousands separators and
+ *  all, since that is what a reader sees. Two are the extremes of the set (the
+ *  largest map's entity count, the densest map's link count) and one is the
+ *  headline the card now leads with.
+ *
+ *  `STRIPE_COMPANIES` is the number this whole card was rewritten around, and
+ *  it took two corrections to arrive at.
+ *
+ *  It is a UNION, because stripe.com's stored run filed 1,272 hosts as
+ *  `product` and exactly one as `company` — the two kinds were one coin flip
+ *  until they were merged at the classifier — so a card counting `company`
+ *  alone puts "1 company in this market" on the front page of a payments map.
+ *
+ *  And it is a union MINUS the rows that run placed outside this market. 265 of
+ *  those 1,273 carry `relation: "none"`, which is the classifier saying the
+ *  host sells into a different one: dart.deloitte.com, "accounting research
+ *  materials and standards for financial reporting and auditing, not
+ *  payments". The headline says "in this market"; counting them asserts the
+ *  opposite of what the run concluded. 20.1% of every company-like row in the
+ *  stored corpus is such a row, and 38.5% on figma.com, so it cannot be
+ *  rounded away. See `KbSummary.companies`. */
+const STRIPE_ENTITIES = "2,522"
+const STRIPE_COMPANIES = "1,008"
+const VERCEL_LINKS = "6,283"
 
 const KEYS = [
   "OPENKB_DEMO",
@@ -258,18 +278,39 @@ describe("with OPENKB_DEMO on — the maps are the page", () => {
     expect(at("clerk-com-202608062258")).toBeGreaterThan(at("cursor-com-202608070032"))
   })
 
-  it("gives each card what makes it worth opening: counts, edges and markets", async () => {
+  it("gives each card what makes it worth opening: a headline, its markets, its evidence", async () => {
     env({ OPENKB_DEMO: "1" })
     const html = await home()
 
-    expect(html).toContain(String(STRIPE_ENTITIES))
-    expect(html).toContain(String(VERCEL_EDGES))
-    expect(html).toContain("edges</span>")
+    // The headline, against the real file. See STRIPE_COMPANIES for why the
+    // number is a union and not `counts.player`.
+    expect(html).toContain(`${STRIPE_COMPANIES}</span>`)
+    expect(html).toContain("companies in this market")
+    expect(html).toContain(`${STRIPE_ENTITIES}</span> entities`)
+    expect(html).toContain(`${VERCEL_LINKS}</span> links`)
     // The markets provenance drew, in the decomposition's own spelling.
     expect(html).toContain("online payment acceptance")
     expect(html).toContain("Proxy servers")
     // …and never the remainder bucket dressed as one of them.
     expect(html).not.toContain(">unattributed<")
+  })
+
+  it("gives all six cards the same fields, so none of them can look random", async () => {
+    /* THE COMPLAINT THIS PAGE WAS REWRITTEN FOR. The old footer filtered kind
+       counts through a `KIND_FLOOR = 50`, so stripe.com printed three numbers
+       and brightdata.com four, and the composition bar above them had coloured
+       bands with no chip to explain them. Six specimens that are supposed to
+       read as one set were six different cards.
+
+       Counted rather than spot-checked: one headline, one entity count and one
+       link count per card, six of each, no exceptions. */
+    env({ OPENKB_DEMO: "1" })
+    const html = await home()
+    const count = (needle: string) => html.split(needle).length - 1
+
+    expect(count("companies in this market")).toBe(6)
+    expect(count("</span> entities")).toBe(6)
+    expect(count("</span> links")).toBe(6)
   })
 
   it("replaces the price list with what these maps actually cost", async () => {

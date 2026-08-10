@@ -246,6 +246,26 @@ export interface KbSummary {
    *  "violations" here, a quality check this engine does not run, so the slot
    *  carries the number that IS measured instead. */
   unplaced: number
+  /**
+   * Sellers this map actually PLACES in the anchor's market.
+   *
+   * `counts.player + counts.product` is not this number, and the difference is
+   * a claim rather than a rounding. `relation: "none"` is the classifier saying
+   * the host sells into a DIFFERENT market — Temporal and Setapp in Figma's map,
+   * dart.deloitte.com ("accounting research materials, not payments") in
+   * Stripe's — and `place()` keeps those rows, because the run paid for them and
+   * they are evidence. Counting them under a headline that reads "companies in
+   * this market" asserts the opposite of what the run concluded.
+   *
+   * MEASURED over every stored run: 5,000 of 24,835 company-like rows, 20.1%,
+   * and it is not evenly spread — figma 38.5%, supabase 39.1%, clerk 38.9%,
+   * brightdata 3.1%. So a card cannot approximate it away.
+   *
+   * The engine drops these at write time now (`onMap` in @open-kb/sweep), which
+   * fixes runs from today forward and no map already on disk. This field is what
+   * makes the ~50 stored maps honest without rebuilding any of them.
+   */
+  companies: number
   /** Hosts the run paid for and the classifier threw away as `kind: "noise"`. */
   noise: number
   /**

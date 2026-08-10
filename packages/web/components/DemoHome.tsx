@@ -119,8 +119,14 @@ export function DemoHome({
      it — what they hold and what they cost, all of it already spent. */
   const ledger = shown.length > 0 && (
     <p className="tnum mt-2 font-mono text-[10px] uppercase tracking-wider text-slate-500">
+      {/* "links", not "edges", and it is the same word the six cards under it
+          use for the same field (`KbSummary.edges`). One number wearing two
+          names between a summary line and the cards it summarises is the
+          "every card says something different" complaint arriving one line
+          higher up. The engine's own vocabulary is unchanged — the field is
+          still `edges`, and the graph still draws edges. */}
       {l.maps} {l.maps === 1 ? "map" : "maps"} below · {n(l.entities)} entities
-      · {n(l.edges)} edges
+      · {n(l.edges)} links
       {l.usd !== undefined && l.seconds !== undefined && (
         <>
           {" "}

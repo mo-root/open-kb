@@ -70,6 +70,42 @@ export const TYPE_ICON: Record<NodeType, string> = {
 /** Stable display order: core first, then the market layers. */
 export const TYPE_ORDER: NodeType[] = ["core", "product", "player", "community"]
 
+/**
+ * The node types that are A COMPANY ON THE MAP, and the reason this is one
+ * name rather than an addition spelled out per surface.
+ *
+ * `company` and `product` were merged at the classifier (CLASSIFY_KINDS in
+ * packages/sweep/src/sweep.ts) because the choice between them was a coin
+ * flip. The merge fixes new runs and does nothing for the stored ones, and
+ * the stored ones are the gallery: measured over the six committed maps,
+ * `company` alone reads 1 for stripe.com, 1 for cursor.com, 2 for clerk.com,
+ * 4 for supabase.com, 19 for vercel.com and 404 for brightdata.com — the same
+ * classifier, the same question, one order of magnitude apart depending on
+ * which afternoon the run happened. The union is stable across the same six:
+ * 1,273 · 416 · 293 · 727 · 1,122 · 456, and every one of those is a number a
+ * reader can hold against the domain it belongs to.
+ *
+ * `core` and `community` are deliberately out. `core` is the anchor plus every
+ * `unknown` — a host the kernel could not read at all (`kind: "unknown"` folds
+ * into the `unplaced` group, which falls through `nodeTypeOf` to core), 476 of
+ * stripe.com's 2,522 and 383 of vercel.com's 2,333, all of them nameless and
+ * descriptionless. `community` is publishers, directories and community
+ * venues: channels this market is discussed in, not players in it.
+ */
+export const COMPANY_TYPES: readonly NodeType[] = ["product", "player"]
+
+/**
+ * How many companies a map holds — the one number a surface may print as
+ * "companies", derived in one place so two surfaces cannot disagree about it.
+ *
+ * Takes the tally rather than the notes so the caller pays nothing: every
+ * reader shape here already carries `TypeCounts` (`KbSummary.counts`,
+ * `KbView.counts`), and both are built by the same loop in lib/kb-from-run.ts.
+ */
+export function companyCount(counts: Record<NodeType, number>): number {
+  return COMPANY_TYPES.reduce((n, t) => n + counts[t], 0)
+}
+
 /** Map a raw graph group (top-level folder) to the label shown to a reader. */
 export function groupLabel(group: string): string {
   return group === "overview" ? "core" : group

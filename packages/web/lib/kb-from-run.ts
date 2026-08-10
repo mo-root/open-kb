@@ -1,5 +1,6 @@
+import { onMap } from "@open-kb/sweep"
 import type { Entity, SweepResult } from "@open-kb/sweep"
-import { nodeTypeOf, type NodeType } from "./nodeTypes"
+import { COMPANY_TYPES, nodeTypeOf, type NodeType } from "./nodeTypes"
 import type {
   GraphEdge,
   GraphView,
@@ -451,6 +452,10 @@ export function summaryOf(run: CompletedRun): KbSummary {
     counts,
     notes: kept.length + 1,
     unplaced: kept.filter((p) => p.entity.relation === "none").length,
+    // `onMap` is imported from the engine rather than restated here, so the
+    // writer and the reader cannot drift about what is on a map. It is the same
+    // predicate that keeps these rows out of runs written from now on.
+    companies: kept.filter((p) => COMPANY_TYPES.includes(p.type) && onMap(p.entity)).length,
     noise: noise.length,
     // The run's own count, not the canvas's — see `KbSummary.edges` for why the
     // two differ and why this one is the one a card reports. `edges` is
