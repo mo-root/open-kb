@@ -223,7 +223,6 @@ export default async function RunsPage() {
                   <th className="px-3 py-2.5 font-medium">Finished</th>
                   <th className="px-3 py-2.5 font-medium">Entities</th>
                   <th className="px-3 py-2.5 font-medium">Players</th>
-                  <th className="px-3 py-2.5 font-medium">Unplaced</th>
                   <th className="px-3 py-2.5 font-medium" title="everything fired: the opening hand plus every widening round">
                     Queries
                   </th>
@@ -287,25 +286,6 @@ export default async function RunsPage() {
                       </Cell>
                       <Cell>{kb.notes}</Cell>
                       <Cell>{kb.counts.player}</Cell>
-                      <Cell>
-                        <span
-                          className={
-                            kb.unplaced > 0
-                              ? "tnum text-amber-400"
-                              : "tnum text-slate-400"
-                          }
-                        >
-                          {kb.unplaced}
-                        </span>
-                        {kb.noise > 0 && (
-                          <span
-                            className="ml-1.5 font-mono text-xs text-slate-600"
-                            title="hosts discarded as noise — no node on the map"
-                          >
-                            +{kb.noise} noise
-                          </span>
-                        )}
-                      </Cell>
                       <Cell>{queriesAsked}</Cell>
                       <Cell>{s.hosts}</Cell>
                       <Cell>
@@ -326,11 +306,9 @@ export default async function RunsPage() {
           </div>
 
           <p className="mt-4 max-w-2xl text-xs leading-relaxed text-slate-500">
-            One row per run, keyed by the run&apos;s own id — two sweeps of the
-            same domain are two rows, not one overwriting the other. The unplaced
-            column is the count of entities the classifier put on the map and
-            would not connect to the anchor; it is a column rather than a
-            footnote because it is often a large share of what a run returns.
+            One row per run, keyed by the run&apos;s own id. Two sweeps of the
+            same domain are two rows, not one overwriting the other. Open a run
+            to see what it could not place and what it discarded as noise.
           </p>
         </>
       )}
