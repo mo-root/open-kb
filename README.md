@@ -13,8 +13,9 @@
 
 </div>
 
-**Six real maps are live and free to open, no install and no keys:
-[open-kb-demo.vercel.app](https://open-kb-demo.vercel.app)**
+**See it now: [browse six real maps](https://open-kb-demo.vercel.app), no install
+and no keys.** Then drop any domain of your own with three lines of
+[install](#install) below.
 
 **One domain in. The whole market out.** Point it at `stripe.com` and it comes
 back with everyone chasing the same buyer, the tools people use instead, who
