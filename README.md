@@ -251,7 +251,7 @@ only. The web app runs the sweep.
 | **Where answers come from** | curated databases | model memory | searches this run bought |
 | **Finds substitutes and the long tail** | rarely | sometimes, unverifiable | yes, by construction |
 | **Citations** | rare | none | URL and quote on every node it could read. A node it could not read says why |
-| **Cost per map** | contracts | free, uncheckable | **$0.28 to $3.74 a map, metered live.** Median $1.35 for 1,431 entities across 9 runs. Two-thirds of that is search, one-third tokens |
+| **Cost per map** | contracts | free, uncheckable | **Metered live, and the meter is in the repo.** Median $1.21 for 951 entities on the map across 22 runs, and the range is wide: $0.17 to $2.24 on one anchor in ten hours. Two-thirds search, one-third tokens |
 | **Self-hosted** | no | | yes |
 
 <br />
