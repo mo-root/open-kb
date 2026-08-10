@@ -100,22 +100,30 @@ describe("the composed classify prompt", () => {
     expect(composed()).toContain("RANKS, COMPARES or REVIEWS")
   })
 
-  it("keeps the company/product boundary the doctrine trim left standing on one clause", () => {
-    // What the trim actually cost. It trimmed the right thing for the wrong
-    // model: with the doctrine gone, "A vendor is a company; a single named
-    // tool or dataset sold on its own is a product" is the only text dividing
-    // the two kinds. gemini-3.5-flash held that line unaided; deepseek-v4-flash
-    // — the default since 772a9e6 — does not, and every map since files vendors
-    // as products (stripe-com-202608070005: 1 company, 1,273 products). Measured
-    // on real fetched front pages, 0/15 vendor judgements said company without
-    // these sentences and 15/15 with them. Each pin holds one move, and all
-    // three are load-bearing: dropping the first to save 300 chars took
+  it("keeps the seller boundary, which is the one the doctrine trim left standing on a clause", () => {
+    // HISTORY, because this pin has moved once and the reason matters. The
+    // trim (f8fd2ba) left "A vendor is a company; a single named tool or
+    // dataset sold on its own is a product" as the only text dividing those two
+    // kinds. gemini-3.5-flash held that line unaided; deepseek-v4-flash — the
+    // default since 772a9e6 — does not, and every map after it filed vendors as
+    // products (stripe-com-202608070005: 1 company, 1,273 products).
+    //
+    // Restoring the boundary fixed it, and then the boundary itself was
+    // removed: `product` is no longer a kind the model may choose, because a
+    // front page is product marketing by construction and the choice was a coin
+    // flip every downstream consumer immediately re-merged. See CLASSIFY_KINDS
+    // in packages/sweep/src/sweep.ts.
+    //
+    // WHAT STILL HAS TO HOLD is the other half of that paragraph — seller
+    // against publisher, directory and community — which is doing the work the
+    // measurements credited it with. Dropping it to save 300 chars took
     // payyd.co from directory 8/8 to 2/8 on the same page, and `directory` is
     // what verdict.ts routes on.
     const c = composed()
     expect(c).toContain("does not promote it to a seller")
-    expect(c).toContain("`company` is the ordinary answer")
-    expect(c).toContain("Keep `product` for a host that IS one named tool or dataset")
+    expect(c).toContain("Anything that sells into this market is a company")
+    // And the prompt must not offer a kind the schema will reject.
+    expect(c).not.toContain("is a product")
   })
 
   it("teaches the writing doctrine: lead with what it IS, why as evidence, no self-praise", () => {

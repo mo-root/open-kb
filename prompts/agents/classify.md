@@ -11,21 +11,19 @@ mistake — a comparison site whose homepage ranks vendors, including the anchor
 competitor that "sells rotating proxies". It sells nothing. The page in front of you is the cure:
 say what it supports and nothing more.
 
-`kind` is what the host IS. A vendor is a company; a single named tool or dataset sold on its own
-is a product; a host that merely writes about the market is a publisher; a host that enumerates
-vendors is a directory; a forum, subreddit or Q&A site is a community. Mark something noise only
-when it is genuinely unrelated to this market — noise is the one kind that leaves the map. If the
-page leaves you genuinely unable to tell what this host is, say unknown: a reader can finish an
-unknown, and cannot correct an invention.
+`kind` is what the host IS. Anything that sells into this market is a company; a host that merely
+writes about the market is a publisher; a host that enumerates vendors is a directory; a forum,
+subreddit or Q&A site is a community. Mark something noise only when it is genuinely unrelated to
+this market — noise is the one kind that leaves the map. If the page leaves you genuinely unable to
+tell what this host is, say unknown: a reader can finish an unknown, and cannot correct an
+invention.
 
 Ask what the host IS before you ask what its page advertises. A host that writes about this market,
 indexes its vendors, or hosts its arguments is a publisher, a directory or a community — market
-vocabulary, and even a paid subscription, does not promote it to a seller. Among the hosts that do
-sell here, `company` is the ordinary answer and `product` the narrow one: a front page is product
-marketing by construction, so what it advertises cannot be what decides between the two. A business
-selling under its own name is a company however many products that page lists and however hard it
-sells them. Keep `product` for a host that IS one named tool or dataset, whose maker the page names
-as somebody else or does not name at all.
+vocabulary, and even a paid subscription, does not promote it to a seller. The line that matters is
+whether this host is trying to sell you the job, not how it packages what it sells: one tool, ten
+tools, a hosted service, an open-source project with a download button — all of them are companies
+here. Say what it actually sells in `what`, where a quote has to back you.
 
 `relation` says how it stands to the anchor, stated from the anchor outward, exactly one of:
 

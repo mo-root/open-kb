@@ -219,6 +219,35 @@ export const ENTITY_KINDS = [
 ] as const
 
 /**
+ * The kinds a host may be judged as — ENTITY_KINDS without `product`.
+ *
+ * `product` IS STILL A KIND, and nothing new is minted as one. It stays in the
+ * vocabulary above because 81 runs on disk are full of it, the swarm's own node
+ * kinds include it, and `Entity` above still has to parse a stored map. What
+ * changed is that the model is no longer asked to choose.
+ *
+ * WHY THE CHOICE WAS A COIN FLIP. A front page is product marketing by
+ * construction, so the page a judge is handed argues for `product` no matter
+ * who owns it. Measured across nine runs: `company` share ran 0.0% to 1.1%.
+ * Stripe's map said its market had ONE company and 1,273 products. The
+ * distinction cost a real judgement per host and bought a number nobody could
+ * defend.
+ *
+ * AND NOTHING DOWNSTREAM WANTED IT. `n.kind === "company" || n.kind ===
+ * "product"` appears six times across core, sweep and swarm — verdict.ts's
+ * COMPANY_LIKE, the swarm's live-node filters, seed-families, the edge
+ * builders. Every consumer that acts on the kind already re-merges them. The
+ * one place they were kept apart was the place they were guessed.
+ *
+ * What a company sells is not lost; it is the `what`, which is span-checked
+ * against the page and was always the better place for it.
+ */
+export const CLASSIFY_KINDS = ENTITY_KINDS.filter((k) => k !== "product") as unknown as readonly [
+  string,
+  ...string[],
+]
+
+/**
  * The classify answer's size, output tokens. 350 before span-bound
  * descriptions; the spans field adds up to three ~120-char verbatim quotes
  * (~100 tokens, billed at six times the input rate — the reason the receipts
@@ -394,7 +423,7 @@ const PlannedQuery = z.object({
 const Entity = z.object({
   name: z.string(),
   domain: z.string(),
-  kind: z.enum(ENTITY_KINDS),
+  kind: z.enum(CLASSIFY_KINDS),
   what: z.string().describe("what it is, one line, from what the results say"),
   relation: z.enum(RELATIONS),
   why: z.string().describe("why it belongs on this map, stated against the anchor"),
@@ -2084,7 +2113,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         `classify ${h.host}`,
         z.object({
           name: z.string(),
-          kind: z.enum(ENTITY_KINDS),
+          kind: z.enum(CLASSIFY_KINDS),
           what: z.string().describe("what it is, one line, from the page itself"),
           relation: z.enum(RELATIONS),
           why: z.string().describe("why it belongs on this map, stated against the anchor"),
