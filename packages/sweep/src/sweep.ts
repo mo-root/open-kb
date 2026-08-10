@@ -258,6 +258,10 @@ export const CLASSIFY_KINDS = ENTITY_KINDS.filter((k) => k !== "product") as unk
  */
 export const CLASSIFY_MAX_OUTPUT_TOKENS = 450
 
+/** How long one model call may take before it is abandoned. Argued at
+ *  `withDeadline` in `call()`; overridable for a slow model or a slow host. */
+export const CALL_TIMEOUT_MS = Math.max(1_000, Number(process.env.OPENKB_CALL_TIMEOUT_MS ?? 120_000) || 120_000)
+
 /**
  * How an entity stands to the anchor.
  *
@@ -940,12 +944,46 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         : {}),
     })
 
+    /**
+     * A DEADLINE PER CALL, not just the run's cancel signal.
+     *
+     * `signal` is the run's own AbortController — it fires when a visitor
+     * closes the tab or the host's clock runs out. It is not a timeout, so a
+     * model call that never answers is a run that never ends. Measured: a
+     * figma.com sweep sat in the link phase for 13 minutes at 0.1% CPU on one
+     * unanswered call, 451 of 491 pairs done, and would have sat there until
+     * something killed it. Bright Data's search and fetch have carried
+     * `AbortSignal.timeout` all along; the model calls never did.
+     *
+     * It matters most where nobody is watching. A batch building fifty maps
+     * loses the whole batch to one hung socket, and the run that hangs has
+     * already paid for everything it bought.
+     *
+     * TWO MINUTES, against measured call times. The slowest legitimate calls in
+     * `runs/` are classify retries at 56 to 62 seconds — the doubled-ceiling
+     * retry after a model returns nothing — and the catalog call ran 51 seconds
+     * when it was one call instead of three. Two minutes clears the slowest
+     * real call by roughly 2x and still bounds a hang to something a batch can
+     * absorb.
+     *
+     * FRESH PER CALL, deliberately. One shared `AbortSignal.timeout` would
+     * start at module load and abort every call after the first two minutes of
+     * the process.
+     *
+     * A timeout leaves `signal.aborted` false, so the caller's own check still
+     * tells a host that stopped answering apart from a visitor who left.
+     */
+    const withDeadline = () => {
+      const timeout = AbortSignal.timeout(CALL_TIMEOUT_MS)
+      return signal ? AbortSignal.any([signal, timeout]) : timeout
+    }
+
     const attempt = async (maxOut: number, think: string | undefined) =>
       generateObject({
         model,
         schema,
         prompt,
-        abortSignal: signal,
+        abortSignal: withDeadline(),
         maxOutputTokens: maxOut,
         providerOptions: { openrouter: openrouterOpts(think) },
       })
@@ -957,7 +995,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         model,
         schema,
         prompt,
-        abortSignal: signal,
+        abortSignal: withDeadline(),
         // Floored well above the answer's own size. Reasoning is mandatory on
         // this model and is spent out of the SAME output budget, so a cap sized
         // only for the answer starves it: a 1,680-token catalog call thought
