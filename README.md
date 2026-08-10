@@ -11,9 +11,9 @@
 [![Powered by Bright Data](https://img.shields.io/badge/Powered%20by-Bright%20Data-22D3EE?style=flat-square&labelColor=0a1628)](https://brightdata.com)
 [![Live demo](https://img.shields.io/badge/Live-demo-1b4fd8?style=flat-square&labelColor=0a1628)](https://open-kb-demo.vercel.app)
 
-</div>
-
 **[→ Try the beta](https://open-kb-demo.vercel.app)**
+
+</div>
 
 **One domain in. The whole market out.** Point it at `stripe.com` and it comes
 back with everyone chasing the same buyer, the tools people use instead, who
