@@ -40,6 +40,63 @@ describe("judgeHosts", () => {
     expect(out.stats.aggregators).toBe(1)
   })
 
+  it("refuses a host the model named after the anchor, and everything it said with it", async () => {
+    // Real: Figma's map carried a "Figma" whose domain was egnyte.com, and the
+    // linker gave that node 273 of the map's 2,461 edges because it resolves a
+    // mention to an entity by name. Six of the nine runs on disk had one.
+    const out = await judgeHosts([cand("egnyte.com")], {
+      fetcher: fakeFetcher({ "https://egnyte.com/": vendorHtml }),
+      classify: async () => ({
+        name: "Figma",
+        kind: "product",
+        what: "the collaborative interface design tool",
+        relation: "shaper",
+        why: "defines the category every other vendor positions against",
+        spans: [],
+      }),
+      anchor: "figma.com",
+      aggregatorThreshold: null,
+    })
+    const e = out.entities[0]!
+    expect(e.domain).toBe("egnyte.com")
+    // Not renamed and left standing: a model that answered with the wrong
+    // subject was not describing this page, so its kind, relation and reasons
+    // are about that same wrong subject.
+    expect(e.name).toBe("egnyte.com")
+    expect(e.kind).toBe("unknown")
+    expect(e.relation).toBe("unknown")
+    expect(e.what).toBe("")
+    expect(e.why).toBe("")
+    expect(e.because).toContain("anchor's own identity")
+  })
+
+  it("lets the anchor's own host keep the anchor's name", async () => {
+    const out = await judgeHosts([cand("figma.com")], {
+      fetcher: fakeFetcher({ "https://figma.com/": vendorHtml }),
+      classify: async () => ({
+        name: "Figma", kind: "company", what: "design tool", relation: "competitor",
+        why: "it is the anchor", spans: [],
+      }),
+      anchor: "figma.com",
+      aggregatorThreshold: null,
+    })
+    expect(out.entities[0]!.name).toBe("Figma")
+  })
+
+  it("does not fire on a two-letter anchor, where the name would be a coincidence", async () => {
+    // "x.com" reduces to "x", which matches any entity anyone called X. The
+    // rule declines rather than renaming real entities on a collision.
+    const out = await judgeHosts([cand("acme.com")], {
+      fetcher: fakeFetcher({ "https://acme.com/": vendorHtml }),
+      classify: async () => ({
+        name: "X", kind: "company", what: "a thing", relation: "competitor", why: "w", spans: [],
+      }),
+      anchor: "x.com",
+      aggregatorThreshold: null,
+    })
+    expect(out.entities[0]!.name).toBe("X")
+  })
+
   it("settles an unreadable host as unknown — no model call", async () => {
     let modelCalls = 0
     const out = await judgeHosts([cand("dead.com")], {

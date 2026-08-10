@@ -154,6 +154,15 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
     stats.unreadableByReason[reason] = (stats.unreadableByReason[reason] ?? 0) + 1
   }
   const anchorKey = registrableHost(deps.anchor)
+  /**
+   * The anchor's own brand, as a string two spellings of it both reduce to.
+   *
+   * Only ever compared against a name the model wrote, so it has to survive the
+   * ways a brand is written down: "Figma", "figma", "FIGMA". Punctuation goes
+   * for the same reason — "e-gain" and "eGain" are one identity.
+   */
+  const identityKey = (text: string) => text.toLowerCase().replace(/[^a-z0-9]/g, "")
+  const anchorLabel = identityKey(anchorKey.split(".")[0] ?? "")
   const queue = [...hosts]
 
   // The running mean's raw ingredients — the mean itself is stored rounded,
@@ -279,6 +288,49 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
     // text the model saw, on the model's own prose — before any fallback —
     // so the meter keeps metering the model when the span gate below has
     // already replaced what the reader sees.
+    // THE MODEL CAME BACK WEARING THE ANCHOR'S NAME, on a host that is not the
+    // anchor. It was asked what THIS host is and answered with the market's most
+    // famous brand, which is the one answer that cannot be a near miss.
+    //
+    // MEASURED, and it is not rare: six of nine runs on disk have one. Figma's
+    // map carried a "Figma" whose domain was egnyte.com; Cloudflare's an
+    // "exabeam.com", Shopify's an "eginnovations.com", Twilio's an "egain.com",
+    // GitHub's two. All enterprise sites behind bot protection, all named after
+    // the anchor.
+    //
+    // WHY IT IS WORTH ITS OWN BRANCH rather than a rename. The linker resolves a
+    // mention to an entity BY NAME, so a second entity called "Figma" collects
+    // every page in the run that mentions Figma: 273 of the 2,461 edges in that
+    // map, 11% of the whole graph, pointing at a file-sharing company. The map's
+    // own anchor was split in half and half of it was labelled Egnyte.
+    //
+    // AND EVERYTHING IT SAID GOES, not just the name. That row's `why` was
+    // "defines the category of collaborative interface design tools" — a true
+    // sentence about Figma, attached to Egnyte. A model that returned the wrong
+    // subject was not describing this page, so its kind, relation and reasons
+    // are about the same wrong subject. The span gate below catches the
+    // description and cannot catch any of the rest, because a hallucinated
+    // sentence about the anchor is still ungrounded text either way.
+    //
+    // The entity survives wearing the refusal, which is what an unreadable host
+    // gets: the host was found, and what it is went unsettled this run.
+    if (
+      // A one- or two-letter anchor label ("x.com") would match names that have
+      // nothing to do with it, so the rule declines to fire rather than rename
+      // real entities on a coincidence.
+      anchorLabel.length >= 3 &&
+      registrableHost(h.host) !== anchorKey &&
+      identityKey(out.name ?? "") === anchorLabel
+    ) {
+      emit({
+        name: h.host, domain: h.host, kind: "unknown", what: "",
+        relation: "unknown", why: "",
+        because: `the model answered with the anchor's own identity for this host, so nothing it said about it stands`,
+        settledBy: "model",
+      })
+      return
+    }
+
     const grounding = descriptionGrounding(out.what, pageText)
     groundingSum += grounding.score
     groundingN += 1
