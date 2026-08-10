@@ -155,7 +155,11 @@ if (resumeFrom) {
   }
 }
 
-const stamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, "")
+// The one spelling every stamped writer in scripts/ uses, asserted by
+// packages/web/lib/runs.test.ts. This file wrote `/[-:]/g` at first, which
+// leaves the `T` in and made `batch-20260810T122018.jsonl` — a fifth spelling
+// of the same idea, which is the drift that test exists to stop.
+const stamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "")
 const manifest = resumeFrom ?? `runs/batch-${stamp}.jsonl`
 
 const todo = queue.filter((a) => !alreadyDone.has(a))

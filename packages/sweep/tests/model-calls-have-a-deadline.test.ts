@@ -52,3 +52,32 @@ describe("every model call carries a deadline", () => {
     expect(fresh.aborted).toBe(false)
   })
 })
+
+describe("a stopped call does not take the run with it", () => {
+  it("names a timeout apart from a cancel, which is what decides whether to retry", () => {
+    // `call()` retries a timed-out call once and must never retry a cancelled
+    // one — a visitor who closed the tab is not waiting for a second attempt.
+    // The distinction is that a deadline leaves the RUN's signal clear.
+    const run = new AbortController()
+    const timedOut = (err: Error, aborted: boolean) =>
+      !aborted &&
+      (err.name === "TimeoutError" ||
+        err.name === "AbortError" ||
+        /aborted due to timeout/i.test(String(err.message ?? "")))
+
+    // What the AI SDK actually threw when the figma run died at 412/492 pairs.
+    const real = new Error("The operation was aborted due to timeout")
+    expect(timedOut(real, run.signal.aborted)).toBe(true)
+
+    const byName = new Error("stopped")
+    byName.name = "TimeoutError"
+    expect(timedOut(byName, run.signal.aborted)).toBe(true)
+
+    // The same error, once the visitor has left: not ours to retry.
+    run.abort()
+    expect(timedOut(real, run.signal.aborted)).toBe(false)
+
+    // And an ordinary failure is neither.
+    expect(timedOut(new Error("model refused the schema"), false)).toBe(false)
+  })
+})

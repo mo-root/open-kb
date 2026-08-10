@@ -280,7 +280,7 @@ describe("the stamp in a CLI id, at both widths", () => {
      collision course while the other three looked fixed. Read off disk rather
      than asserted from memory, and the exact expression is pinned as well as the
      count: `toHaveLength(4)` alone stays green if all four drift together. */
-  it("keeps one spelling of the stamp across all four writers", async () => {
+  it("keeps one spelling of the stamp across all five writers", async () => {
     const scripts = new URL("../../../scripts/", import.meta.url)
     const names = (await readdir(scripts)).filter((n) => n.endsWith(".ts"))
     const written: string[] = []
@@ -290,7 +290,13 @@ describe("the stamp in a CLI id, at both widths", () => {
         if (line.startsWith("const stamp = new Date")) written.push(line)
       }
     }
-    expect(written).toHaveLength(4)
+    // FIVE, not four: scripts/batch.ts stamps a manifest name. It is exempt from
+    // the SHAPE scan below — it writes bookkeeping, not a map — but not from
+    // this, because there is only ever one right way to spell an instant here
+    // and a manifest dated differently from the maps beside it is the same
+    // drift wearing a different extension. It first shipped `/[-:]/g`, which
+    // leaves the `T` in.
+    expect(written).toHaveLength(5)
     expect(new Set(written).size).toBe(1)
     expect(written[0]).toBe(
       'const stamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "")',
@@ -368,6 +374,15 @@ describe("the filename each CLI writes, against the reader that parses it back",
         // reads a date out of it, and audit.ts:89 refuses rather than overwrites.
         // Exempt by name and by reason, so a sixth exemption has to be argued.
         if (file === "audit.ts") continue
+        // `scripts/batch.ts` writes into `runs/` too and is a MANIFEST writer,
+        // not a map writer. It records what a fifty-domain build decided about
+        // each domain, one JSON line appended per outcome, so `--resume` can
+        // read back what is still owed; it produces no map and the gallery
+        // cannot adopt it. Exempt by name and by reason, like audit.ts above,
+        // and the assertion below proves the reason rather than trusting it —
+        // this is the decision the "no fifth writer" test exists to force, made
+        // here instead of discovered later as a card that never appears.
+        if (file === "batch.ts") continue
         const m = WRITES.exec(line.trim())
         if (!m) {
           throw new Error(`${file} writes a stamped name in a shape this test cannot read: ${line.trim()}`)
@@ -388,6 +403,21 @@ describe("the filename each CLI writes, against the reader that parses it back",
       "swarm.ts",
       "sweep.ts",
     ])
+  })
+
+  it("keeps the batch manifest out of the gallery, by two independent facts", async () => {
+    // The exemption above is only honest while the gallery genuinely cannot
+    // read this file, so that is asserted rather than asserted-in-a-comment.
+    // `listStoredRuns` takes a name only when it ends `.json` AND starts with
+    // one of three prefixes; the manifest fails both, so either one changing is
+    // not enough to let it in. Read out of batch.ts itself, so renaming the file
+    // there breaks this test rather than silently publishing a manifest.
+    const src = await readFile(new URL("../../../scripts/batch.ts", import.meta.url), "utf8")
+    const written = /`(runs\/[^`]*\$\{stamp\}[^`]*)`/.exec(src)
+    expect(written, "batch.ts no longer writes a stamped manifest — re-argue the exemption").not.toBeNull()
+    const name = written![1]!.replace("runs/", "").replace("${stamp}", STAMP)
+    expect(name.endsWith(".json")).toBe(false)
+    expect(["run-", "sweep-", "swarm-"].some((p) => name.startsWith(p))).toBe(false)
   })
 
   it("writes two names the gallery adopts, each dated to the stamp it wrote", async () => {

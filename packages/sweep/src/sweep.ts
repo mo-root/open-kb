@@ -19,9 +19,9 @@
  * reads the stream in the CLI (`onLog` prints instead), and the browser reads
  * nothing else.
  */
-import { generateObject } from "ai"
-import type { LanguageModel } from "ai"
-import { z } from "zod"
+import { generateObject } from "ai";
+import type { LanguageModel } from "ai";
+import { z } from "zod";
 import {
   sniff,
   condense,
@@ -49,37 +49,38 @@ import {
   type FamilyQuery,
   type QueryFamily,
   type UnreadableReason,
-} from "@open-kb/core"
+} from "@open-kb/core";
 // Re-exported because `SweepOptions.pricing` is typed with it, and a package
 // whose options name a type nobody can import from that package is a package
 // you cannot write a caller for. It moved to core when the price table was
 // consolidated into @open-kb/providers, and this keeps @open-kb/sweep's public
 // surface what it was. Same move packages/swarm/src/agent.ts:126 already makes.
-export type { ModelPricing }
+export type { ModelPricing };
 import {
   brightDataSearch,
   brightDataFetch,
   priceForModel,
   type BrightDataCredentials,
-} from "@open-kb/providers"
-import { existsSync } from "node:fs"
-import { dirname, join } from "node:path"
-import { fileURLToPath } from "node:url"
-import { composePrompt, render } from "@open-kb/core"
-import { judgeHosts, type Judged } from "./rank.js"
+} from "@open-kb/providers";
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { composePrompt, render } from "@open-kb/core";
+import { judgeHosts, type Judged } from "./rank.js";
 
 /** The walk itself: from `start`, upwards, for a directory holding
  *  `prompts/doctrine`. `null` rather than a throw, because a miss is only fatal
  *  once every strategy below has missed. */
 function walkUpForPrompts(start: string): string | null {
-  let dir = start
+  let dir = start;
   for (let i = 0; i < 8; i++) {
-    if (existsSync(join(dir, "prompts", "doctrine"))) return join(dir, "prompts")
-    const up = dirname(dir)
-    if (up === dir) break
-    dir = up
+    if (existsSync(join(dir, "prompts", "doctrine")))
+      return join(dir, "prompts");
+    const up = dirname(dir);
+    if (up === dir) break;
+    dir = up;
   }
-  return null
+  return null;
 }
 
 /**
@@ -125,23 +126,25 @@ function promptsRoot(): string {
   // rather than as a missing-agent error eight frames into the first model
   // call. The check is for `doctrine/` specifically because that is what the
   // walk looks for, so all three strategies agree on what "a prompts dir" is.
-  const explicit = process.env.OPENKB_PROMPTS_DIR
+  const explicit = process.env.OPENKB_PROMPTS_DIR;
   if (explicit) {
     if (!existsSync(join(explicit, "doctrine"))) {
       throw new Error(
         `OPENKB_PROMPTS_DIR is set to ${explicit}, which has no doctrine/ in it`,
-      )
+      );
     }
-    return explicit
+    return explicit;
   }
 
-  const fromModule = walkUpForPrompts(dirname(fileURLToPath(import.meta.url)))
-  if (fromModule) return fromModule
+  const fromModule = walkUpForPrompts(dirname(fileURLToPath(import.meta.url)));
+  if (fromModule) return fromModule;
 
-  const fromCwd = walkUpForPrompts(process.cwd())
-  if (fromCwd) return fromCwd
+  const fromCwd = walkUpForPrompts(process.cwd());
+  if (fromCwd) return fromCwd;
 
-  throw new Error("cannot find prompts/ — the agents have no instructions to load")
+  throw new Error(
+    "cannot find prompts/ — the agents have no instructions to load",
+  );
 }
 
 /**
@@ -167,22 +170,22 @@ function promptsRoot(): string {
  */
 export function makePrompt(
   compose: (agent: string) => string = (agent) => {
-    const root = promptsRoot()
-    return composePrompt(agent, join(root, "agents"), join(root, "doctrine"))
+    const root = promptsRoot();
+    return composePrompt(agent, join(root, "agents"), join(root, "doctrine"));
   },
 ): (agent: string, vars: Record<string, string | number>) => string {
-  const templates = new Map<string, string>()
+  const templates = new Map<string, string>();
   return (agent, vars) => {
-    let t = templates.get(agent)
+    let t = templates.get(agent);
     if (t === undefined) {
-      t = compose(agent)
-      templates.set(agent, t)
+      t = compose(agent);
+      templates.set(agent, t);
     }
-    return render(t, vars)
-  }
+    return render(t, vars);
+  };
 }
 
-import { emitUi } from "./ui.js"
+import { emitUi } from "./ui.js";
 
 // ── the shapes ────────────────────────────────────────────────────────────────
 
@@ -195,8 +198,8 @@ export const INTENTS = [
   "integration",
   "hiring",
   "community",
-] as const
-export type Intent = (typeof INTENTS)[number]
+] as const;
+export type Intent = (typeof INTENTS)[number];
 
 export const PLATFORMS = [
   "web",
@@ -206,7 +209,7 @@ export const PLATFORMS = [
   "stackoverflow",
   "producthunt",
   "x",
-] as const
+] as const;
 
 export const ENTITY_KINDS = [
   "company",
@@ -216,7 +219,7 @@ export const ENTITY_KINDS = [
   "directory",
   "noise",
   "unknown",
-] as const
+] as const;
 
 /**
  * The kinds a host may be judged as — ENTITY_KINDS without `product`.
@@ -242,10 +245,9 @@ export const ENTITY_KINDS = [
  * What a company sells is not lost; it is the `what`, which is span-checked
  * against the page and was always the better place for it.
  */
-export const CLASSIFY_KINDS = ENTITY_KINDS.filter((k) => k !== "product") as unknown as readonly [
-  string,
-  ...string[],
-]
+export const CLASSIFY_KINDS = ENTITY_KINDS.filter(
+  (k) => k !== "product",
+) as unknown as readonly [string, ...string[]];
 
 /**
  * The classify answer's size, output tokens. 350 before span-bound
@@ -256,11 +258,14 @@ export const CLASSIFY_KINDS = ENTITY_KINDS.filter((k) => k !== "product") as unk
  * spends from the same budget — this constant documents the answer's size and
  * feeds that max(); it is not itself the wire cap.
  */
-export const CLASSIFY_MAX_OUTPUT_TOKENS = 450
+export const CLASSIFY_MAX_OUTPUT_TOKENS = 450;
 
 /** How long one model call may take before it is abandoned. Argued at
  *  `withDeadline` in `call()`; overridable for a slow model or a slow host. */
-export const CALL_TIMEOUT_MS = Math.max(1_000, Number(process.env.OPENKB_CALL_TIMEOUT_MS ?? 120_000) || 120_000)
+export const CALL_TIMEOUT_MS = Math.max(
+  1_000,
+  Number(process.env.OPENKB_CALL_TIMEOUT_MS ?? 120_000) || 120_000,
+);
 
 /**
  * How an entity stands to the anchor.
@@ -285,7 +290,7 @@ export const RELATIONS = [
   "discusses",
   "unknown",
   "none",
-] as const
+] as const;
 
 /**
  * The three lenses the catalog is written through, in parallel.
@@ -332,13 +337,15 @@ const PEER_RELATIONS = [
   "lists",
   "discusses",
   "unknown",
-] as const
+] as const;
 
 const EntityEdge = z.object({
   from: z.string().describe("the domain doing the relating, exactly as given"),
   to: z.string().describe("the domain being related to, exactly as given"),
   relation: z.enum(PEER_RELATIONS),
-  why: z.string().describe("how they relate, in one line. Not that they resemble."),
+  why: z
+    .string()
+    .describe("how they relate, in one line. Not that they resemble."),
   /**
    * Borrowed from the graphify extraction spec, which requires a confidence on
    * every edge and forbids a lazy default. `measured` means a page we retrieved
@@ -347,22 +354,40 @@ const EntityEdge = z.object({
    */
   confidence: z
     .enum(["measured", "inferred"])
-    .describe("measured = a retrieved page named both; inferred = reasoned from what each does"),
-})
+    .describe(
+      "measured = a retrieved page named both; inferred = reasoned from what each does",
+    ),
+});
 
-export type EntityEdge = z.infer<typeof EntityEdge>
+export type EntityEdge = z.infer<typeof EntityEdge>;
 
 const Decomposition = z.object({
-  sells: z.string().describe("what this company sells, in one plain sentence, no marketing words"),
-  buyer: z.string().describe("who buys it and what has just gone wrong for them"),
-  brand: z.string().describe("the company's name as it writes it, e.g. from its own header or footer"),
+  sells: z
+    .string()
+    .describe(
+      "what this company sells, in one plain sentence, no marketing words",
+    ),
+  buyer: z
+    .string()
+    .describe("who buys it and what has just gone wrong for them"),
+  brand: z
+    .string()
+    .describe(
+      "the company's name as it writes it, e.g. from its own header or footer",
+    ),
   products: z.array(
     z.object({
       name: z.string(),
-      does: z.string().describe("what this product does, stripped of the company's own naming"),
+      does: z
+        .string()
+        .describe(
+          "what this product does, stripped of the company's own naming",
+        ),
       foundAt: z
         .string()
-        .describe("the url of the company's own page that establishes this product, copied from the pages given; empty string if none does"),
+        .describe(
+          "the url of the company's own page that establishes this product, copied from the pages given; empty string if none does",
+        ),
     }),
   ),
   /**
@@ -377,9 +402,15 @@ const Decomposition = z.object({
   capabilities: z
     .array(
       z.object({
-        name: z.string().describe("the capability in the market's words, no brand, no product name"),
+        name: z
+          .string()
+          .describe(
+            "the capability in the market's words, no brand, no product name",
+          ),
         does: z.string().describe("the job it does for the buyer, one line"),
-        covers: z.array(z.string()).describe("which of the products above this groups"),
+        covers: z
+          .array(z.string())
+          .describe("which of the products above this groups"),
         /**
          * Core or adjacent, because equal coverage misfires.
          *
@@ -397,11 +428,15 @@ const Decomposition = z.object({
           ),
       }),
     )
-    .describe("the products grouped into distinct markets — the unit the search budget is split across"),
+    .describe(
+      "the products grouped into distinct markets — the unit the search budget is split across",
+    ),
   coinages: z
     .array(z.string())
-    .describe("words this company invented — product names, brand terms. Queries must never contain these."),
-})
+    .describe(
+      "words this company invented — product names, brand terms. Queries must never contain these.",
+    ),
+});
 
 const PlannedQuery = z.object({
   q: z.string(),
@@ -411,7 +446,11 @@ const PlannedQuery = z.object({
   // A plan is a spend: a list of query strings tells a reader what was bought
   // and never why, and a reason reconstructed later from the query text is a
   // guess about our own plan rather than a record of it.
-  why: z.string().describe("one short line: what this query is expected to surface that the others will not"),
+  why: z
+    .string()
+    .describe(
+      "one short line: what this query is expected to surface that the others will not",
+    ),
   /**
    * Which of the anchor's markets this query is for.
    *
@@ -421,8 +460,12 @@ const PlannedQuery = z.object({
    * on one market and report only that it asked forty questions. With it the
    * gap is countable before a single search is paid for.
    */
-  market: z.string().describe("the capability name this query is aimed at, copied exactly from the list above"),
-})
+  market: z
+    .string()
+    .describe(
+      "the capability name this query is aimed at, copied exactly from the list above",
+    ),
+});
 
 const Entity = z.object({
   name: z.string(),
@@ -430,28 +473,34 @@ const Entity = z.object({
   kind: z.enum(CLASSIFY_KINDS),
   what: z.string().describe("what it is, one line, from what the results say"),
   relation: z.enum(RELATIONS),
-  why: z.string().describe("why it belongs on this map, stated against the anchor"),
-})
+  why: z
+    .string()
+    .describe("why it belongs on this map, stated against the anchor"),
+});
 
 /** What one query cost and what it returned. Persisted with the run, because
  *  per-query yield only ever existed on the span stream, which dies with the
  *  process, so every question about which shapes of query pay ("are ours too
  *  long?") had to be answered from the query text alone, by eye. */
 export interface QueryYield {
-  q: string
-  intent: string
-  words: number
-  hits: number
-  ok: boolean
+  q: string;
+  intent: string;
+  words: number;
+  hits: number;
+  ok: boolean;
 }
 
-export type Decomposition = z.infer<typeof Decomposition>
-export type PlannedQuery = z.infer<typeof PlannedQuery>
+export type Decomposition = z.infer<typeof Decomposition>;
+export type PlannedQuery = z.infer<typeof PlannedQuery>;
 
 /** A query as the sweep fires it: the model's PlannedQuery plus the mechanical
  *  tags. Family and product are stamped in code, never asked of the model —
  *  a tag the model can forget is a tag the join cannot rely on. */
-export type SweptQuery = PlannedQuery & { family: QueryFamily; product?: string; term?: string }
+export type SweptQuery = PlannedQuery & {
+  family: QueryFamily;
+  product?: string;
+  term?: string;
+};
 
 /**
  * `foundBy` is which of the anchor's markets' queries surfaced this host,
@@ -465,51 +514,54 @@ export type SweptQuery = PlannedQuery & { family: QueryFamily; product?: string;
  * reader got one hub with a hundred spokes and no way to see which market any
  * of them belonged to.
  */
-export type Entity = z.infer<typeof Entity> & { foundBy?: string[]; families?: QueryFamily[] } & {
-  because?: string
-  settledBy?: "predicate" | "model"
+export type Entity = z.infer<typeof Entity> & {
+  foundBy?: string[];
+  families?: QueryFamily[];
+} & {
+  because?: string;
+  settledBy?: "predicate" | "model";
   /** Unreadable hosts only: WHY the front page could not be read, as the
    *  sniffer's stable code (rank.ts stamps it beside the `because` sentence).
    *  Persisted with the run so a stored map can say "61 bot-walled, 40
    *  JS-only" instead of "127 unreadable". */
-  unreadableReason?: UnreadableReason
+  unreadableReason?: UnreadableReason;
   /** Model-judged entities only: what fraction of the content terms in the
    *  what the model WROTE the page it saw actually contains, 2 decimals.
    *  The regression canary — the span ledger below is the gate. */
-  descGrounded?: number
+  descGrounded?: number;
   /** Model-judged entities only: how many of the verbatim page quotes the
    *  model claimed back its what were literal substrings of the page it saw,
    *  checked in code. A what with zero verified spans shipped as the span-free
    *  fallback sentence, never as the model's prose. */
-  descSpans?: { verified: number; claimed: number }
+  descSpans?: { verified: number; claimed: number };
   /** The verified quotes — the receipts, capped at 360 chars total. */
-  spans?: string[]
-}
+  spans?: string[];
+};
 
 export interface SweepStats {
-  queries: number
-  results: number
-  hosts: number
-  kept: number
-  tokIn: number
-  tokOut: number
+  queries: number;
+  results: number;
+  hosts: number;
+  kept: number;
+  tokIn: number;
+  tokOut: number;
   /** Output tokens the model spent thinking. Billed at the output rate and
    *  never shown to anyone, so it is worth being able to see. */
-  tokReasoning: number
-  serpCalls: number
-  unlockerCalls: number
-  usd: number
-  seconds: number
+  tokReasoning: number;
+  serpCalls: number;
+  unlockerCalls: number;
+  usd: number;
+  seconds: number;
 }
 
 export interface SweepResult {
-  anchor: string
-  decomposition: Decomposition
-  queries: SweptQuery[]
-  entities: Entity[]
+  anchor: string;
+  decomposition: Decomposition;
+  queries: SweptQuery[];
+  entities: Entity[];
   /** How the entities relate to each other, not to the anchor. */
-  edges?: EntityEdge[]
-  stats: SweepStats
+  edges?: EntityEdge[];
+  stats: SweepStats;
   /**
    * The run's own summary, in exactly the shape the `complete` frame carries.
    *
@@ -518,16 +570,16 @@ export interface SweepResult {
    * which is the shape of bug where a browser that caught the frame and a
    * browser that asked afterwards render two different runs.
    */
-  report: Record<string, unknown>
+  report: Record<string, unknown>;
 }
 
 export interface SweepOptions {
-  domain: string
+  domain: string;
   /** An override that clamps the catalog to a fixed count, for a bounded
    *  probe. Left unset — the normal case — every product is dealt its own
    *  opening hand instead, and the run's real ceiling is the spend limit, not
    *  a query quota. */
-  queries?: number
+  queries?: number;
   /**
    * A ceiling on the queries this run may fire IN TOTAL — the opening hand and
    * every widening round together.
@@ -543,7 +595,7 @@ export interface SweepOptions {
    * own hand. Set by the web route, which knows its `maxDuration` and sizes the
    * run to it (`queriesThatFit`, @open-kb/core/clock).
    */
-  maxQueries?: number
+  maxQueries?: number;
   /**
    * The instant this run must be FINISHED by, epoch ms — not a duration, and
    * not a timeout that fires.
@@ -560,9 +612,9 @@ export interface SweepOptions {
    *
    * Left unset by the CLI: no clock, no checks, byte-identical behaviour.
    */
-  deadlineAt?: number
-  spans: SpanStream
-  creds: BrightDataCredentials
+  deadlineAt?: number;
+  spans: SpanStream;
+  creds: BrightDataCredentials;
   /**
    * The two ports the run spends through, handed in rather than built.
    *
@@ -602,93 +654,92 @@ export interface SweepOptions {
    *     fails OPEN — rename the provider export and the mock silently stops
    *     mocking, so the test starts reaching the network instead of going red.
    */
-  ports?: { search: SearchPort; fetch: FetchPort }
-  model: LanguageModel
+  ports?: { search: SearchPort; fetch: FetchPort };
+  model: LanguageModel;
   /** Names the model in the trace. `model` itself is an opaque object. */
-  modelId?: string
-  runId?: string
+  modelId?: string;
+  runId?: string;
   /** Accounting only — nothing here bills anyone, and a wrong number makes the
    *  cost readout wrong rather than the run. Omit it and `modelId` is priced
    *  from `@open-kb/providers`; pass it only to price a model that table has
    *  not met. */
-  pricing?: ModelPricing
+  pricing?: ModelPricing;
   /** Result pages read per query. Measured: one query across five pages returned
    *  37 distinct hosts against 7 from the first page alone, and had not
    *  saturated. A page costs exactly what a query costs, so depth here buys more
    *  of a market than breadth does. */
-  pages?: number
+  pages?: number;
   /** Ceiling on how many times the run may look at its own map and ask for more
    *  queries. It usually stops before this because the model says it has enough. */
-  maxWaves?: number
+  maxWaves?: number;
   /** A wave adding fewer new hosts than this ends the run, more queries would be
    *  buying corroboration rather than coverage. */
-  minNewHosts?: number
+  minNewHosts?: number;
   /** SERP calls in flight at once. */
-  concurrency?: number
+  concurrency?: number;
   /** Co-occurring pairs per link-phase model call. */
-  batchSize?: number
+  batchSize?: number;
   /** Outbound-link count above which a company-shaped front page is settled as
    *  a directory for free, without a model call. Left unset: calibration
    *  (`scripts/calibrate-kernel.ts`) found no separation between vendor and
    *  directory front pages on the measured sample, so the rule ships disabled
    *  (`null`) rather than shipping a guessed number. Set it once a real run
    *  produces a cutoff worth trusting. */
-  aggregatorThreshold?: number
+  aggregatorThreshold?: number;
   /** How many co-occurring entity pairs to ask about. 0 disables linking. */
-  maxPairs?: number
+  maxPairs?: number;
   /** Skip the paid pass that asks a model to label co-occurring pairs, keeping
    *  only the free edges from pages that name another player outright. */
-  skipModelLinking?: boolean
+  skipModelLinking?: boolean;
   /** How many of the company's own product pages to read. 0 uses the index only. */
-  productPages?: number
+  productPages?: number;
   /** Bounds the model's per-product debranded ask (clamped to 2-3 regardless of
    *  a larger value here; the floor of 2 is not configurable). Templates cover
    *  plain and branded and are not affected — this only trims how many
    *  model-written debranded queries a product's opening hand carries. */
-  perProduct?: number
+  perProduct?: number;
   /** What this deployment may spend, in total, cumulative since deploy — not a
    *  per-run figure. Read by the caller (the web route) from the provider's own
    *  usage and passed through so `report.cost.ceilingUsd` can say honestly
    *  whether a ceiling was in force, rather than always claiming there is none.
    *  Left unset on the CLI, which has no deployment-wide ceiling to report. */
-  ceilingUsd?: number | null
+  ceilingUsd?: number | null;
   /** The CLI's console. Left unset in the browser, where the span stream is the
    *  only output. */
-  onLog?: (line: string) => void
-  signal?: AbortSignal
+  onLog?: (line: string) => void;
+  signal?: AbortSignal;
 }
 
 /** The five stage names the UI's rail knows. Emitting anything else freezes it
  *  on the stage before, so the mapping is a name, not a free-text label. */
-export type Phase = "understand" | "plan" | "sweep" | "rank" | "link" | "write"
-
+export type Phase = "understand" | "plan" | "sweep" | "rank" | "link" | "write";
 
 /** Does this name exist at all? A DNS lookup is free, instant, and definitive —
  *  the one check that can tell a typo apart from a bad minute. */
 async function resolves(host: string): Promise<boolean> {
   try {
-    const { lookup } = await import("node:dns/promises")
-    await lookup(host)
-    return true
+    const { lookup } = await import("node:dns/promises");
+    await lookup(host);
+    return true;
   } catch {
-    return false
+    return false;
   }
 }
 
 /** A typo is nearly always a doubled or transposed letter in the TLD, so the
  *  useful reply is a concrete alternative rather than "check your spelling". */
 function suggest(host: string): string {
-  const parts = host.split(".")
-  const tld = parts.at(-1) ?? ""
-  const fixes = new Set<string>()
+  const parts = host.split(".");
+  const tld = parts.at(-1) ?? "";
+  const fixes = new Set<string>();
   for (const good of ["com", "io", "ai", "dev", "app", "co", "net", "org"]) {
     // one character away: a doubled letter, a missing one, or two swapped
-    if (tld === good) continue
-    if (tld.replace(/(.)\1/, "$1") === good) fixes.add(good)
-    if (tld.length === good.length + 1 && tld.includes(good)) fixes.add(good)
+    if (tld === good) continue;
+    if (tld.replace(/(.)\1/, "$1") === good) fixes.add(good);
+    if (tld.length === good.length + 1 && tld.includes(good)) fixes.add(good);
   }
-  const alt = [...fixes][0]
-  return alt ? `Did you mean ${[...parts.slice(0, -1), alt].join(".")}?` : ""
+  const alt = [...fixes][0];
+  return alt ? `Did you mean ${[...parts.slice(0, -1), alt].join(".")}?` : "";
 }
 
 /**
@@ -741,14 +792,15 @@ function suggest(host: string): string {
  * as placing it outside.
  */
 export function onMap(e: { kind: string; relation: string }): boolean {
-  return e.kind !== "noise" && e.relation !== "none"
+  return e.kind !== "noise" && e.relation !== "none";
 }
 
 export function rankThinkLine(e: Judged): string | null {
-  if (e.kind === "noise") return null
-  const head = e.name && e.name !== e.domain ? `${e.name} (${e.domain})` : e.domain
-  const reason = e.because ?? e.why
-  return `${head} — ${e.kind}/${e.relation}${reason ? `: ${reason}` : ""}`
+  if (e.kind === "noise") return null;
+  const head =
+    e.name && e.name !== e.domain ? `${e.name} (${e.domain})` : e.domain;
+  const reason = e.because ?? e.why;
+  return `${head} — ${e.kind}/${e.relation}${reason ? `: ${reason}` : ""}`;
 }
 
 export async function sweep(opts: SweepOptions): Promise<SweepResult> {
@@ -767,102 +819,128 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     pricing = priceForModel(modelId),
     onLog,
     signal,
-  } = opts
+  } = opts;
   // One renderer per run: templates composed on first use, rendered per call.
   // The prompts on disk cannot change mid-run, and the per-host classify call
   // used to recompose them inside the rank pool for every residue host.
-  const prompt = makePrompt()
-  const target = Math.max(1, Math.floor(opts.queries ?? 40))
-  const CONC = Math.max(1, Math.floor(opts.concurrency ?? 20))
-  const BATCH = Math.max(1, Math.floor(opts.batchSize ?? 40))
+  const prompt = makePrompt();
+  const target = Math.max(1, Math.floor(opts.queries ?? 40));
+  const CONC = Math.max(1, Math.floor(opts.concurrency ?? 20));
+  const BATCH = Math.max(1, Math.floor(opts.batchSize ?? 40));
 
-  const PAGES = Math.max(1, Math.floor(opts.pages ?? 3))
+  const PAGES = Math.max(1, Math.floor(opts.pages ?? 3));
   /** How many times the run may look at what it has and ask for more. A ceiling,
    *  not a target, most runs stop earlier because the model says enough. */
-  const MAX_WAVES = Math.max(1, Math.floor(opts.maxWaves ?? 4))
+  const MAX_WAVES = Math.max(1, Math.floor(opts.maxWaves ?? 4));
   /** A wave adding fewer new hosts than this is reaching ground already covered.
    *  The harness's backstop for a model that keeps asking while learning nothing. */
-  const MIN_NEW_HOSTS = Math.max(1, Math.floor(opts.minNewHosts ?? 8))
+  const MIN_NEW_HOSTS = Math.max(1, Math.floor(opts.minNewHosts ?? 8));
   /** How many co-occurring pairs to ask about. Bounds the linking stage's cost. */
-  const MAX_PAIRS = Math.max(0, Math.floor(opts.maxPairs ?? 600))
+  const MAX_PAIRS = Math.max(0, Math.floor(opts.maxPairs ?? 600));
   /** Most queries any single product may take. */
-  const PER_PRODUCT = Math.max(1, Math.floor(opts.perProduct ?? 5))
+  const PER_PRODUCT = Math.max(1, Math.floor(opts.perProduct ?? 5));
   /** How many of the company's own product pages to read. */
-  const PRODUCT_PAGES = Math.max(0, Math.floor(opts.productPages ?? 25))
+  const PRODUCT_PAGES = Math.max(0, Math.floor(opts.productPages ?? 25));
   /** The whole run's query ceiling, or null for "as many as the map wants" —
    *  which is every CLI run. See `SweepOptions.maxQueries`. */
-  const QUERY_CEILING = opts.maxQueries === undefined ? null : Math.max(1, Math.floor(opts.maxQueries))
+  const QUERY_CEILING =
+    opts.maxQueries === undefined
+      ? null
+      : Math.max(1, Math.floor(opts.maxQueries));
   /** The instant this run has to be over, or null for "no clock". */
-  const DEADLINE = opts.deadlineAt ?? null
+  const DEADLINE = opts.deadlineAt ?? null;
   /** How much clock is left, in seconds. `Infinity` when nobody set a deadline,
    *  so every comparison below reads as "there is time" without a null check at
    *  each site. Goes negative once the deadline is past, which is a real state
    *  the comparisons need — `leftS()` is the one for prose. */
-  const secondsLeft = () => (DEADLINE === null ? Infinity : (DEADLINE - Date.now()) / 1000)
+  const secondsLeft = () =>
+    DEADLINE === null ? Infinity : (DEADLINE - Date.now()) / 1000;
   /** The same number, floored at zero and rounded, for a sentence. "-4s are
    *  left" is arithmetic leaking into a line meant for a person. */
-  const leftS = () => Math.max(0, Math.round(secondsLeft()))
+  const leftS = () => Math.max(0, Math.round(secondsLeft()));
   /** What the run still owes after the last host is judged: the link batches
    *  and the write. Reserved out of the clock rather than discovered at the end
    *  of it — a map that is not written down is a map nobody has. */
-  const TAIL_SECONDS = MEASURED_PHASE_COSTS.tailSeconds
+  const TAIL_SECONDS = MEASURED_PHASE_COSTS.tailSeconds;
   // Unset is the production path, and it is the same two expressions with the
   // same arguments it has always been — see `SweepOptions.ports` for why the
   // override is a pair and not two independent fields.
-  const search = opts.ports?.search ?? brightDataSearch(creds, { pages: PAGES })
-  const fetcher = opts.ports?.fetch ?? brightDataFetch(creds)
+  const search =
+    opts.ports?.search ?? brightDataSearch(creds, { pages: PAGES });
+  const fetcher = opts.ports?.fetch ?? brightDataFetch(creds);
 
-  const t0 = Date.now()
-  const sec = () => Math.round((Date.now() - t0) / 1000)
-  const el = () => String(sec()).padStart(3)
-  let tokIn = 0
-  let tokOut = 0
-  let tokReasoning = 0
-  let serpCalls = 0
-  let unlockerCalls = 0
+  const t0 = Date.now();
+  const sec = () => Math.round((Date.now() - t0) / 1000);
+  const el = () => String(sec()).padStart(3);
+  let tokIn = 0;
+  let tokOut = 0;
+  let tokReasoning = 0;
+  let serpCalls = 0;
+  let unlockerCalls = 0;
 
   /** The itemised bill, accumulated as the run spends rather than reconstructed
    *  from the trace afterwards, the trace is capped for display and a
    *  reconstruction from it would quietly under-report a wide sweep. */
   interface Line {
-    label: string
-    calls: number
-    failures: number
-    usd: number
-    ms: number
+    label: string;
+    calls: number;
+    failures: number;
+    usd: number;
+    ms: number;
   }
-  const byKind = new Map<string, Line>()
-  const byAgent = new Map<string, Line>()
-  const bill = (kind: string, agent: string, usd: number, ms: number, ok: boolean) => {
+  const byKind = new Map<string, Line>();
+  const byAgent = new Map<string, Line>();
+  const bill = (
+    kind: string,
+    agent: string,
+    usd: number,
+    ms: number,
+    ok: boolean,
+  ) => {
     for (const [m, label] of [
       [byKind, kind],
       [byAgent, agent],
     ] as const) {
-      const cur = m.get(label) ?? { label, calls: 0, failures: 0, usd: 0, ms: 0 }
-      cur.calls += 1
-      if (!ok) cur.failures += 1
-      cur.usd += usd
-      cur.ms += ms
-      m.set(label, cur)
+      const cur = m.get(label) ?? {
+        label,
+        calls: 0,
+        failures: 0,
+        usd: 0,
+        ms: 0,
+      };
+      cur.calls += 1;
+      if (!ok) cur.failures += 1;
+      cur.usd += usd;
+      cur.ms += ms;
+      m.set(label, cur);
     }
-  }
-  const lines = (m: Map<string, Line>) => [...m.values()].sort((a, b) => b.usd - a.usd)
+  };
+  const lines = (m: Map<string, Line>) =>
+    [...m.values()].sort((a, b) => b.usd - a.usd);
 
   const say = (agent: Phase, message: string) => {
-    onLog?.(`${el()}s  ${message}`)
-    emitUi(spans, runId, "progress", agent, { round: 1, agent, message, atSec: sec() })
-  }
+    onLog?.(`${el()}s  ${message}`);
+    emitUi(spans, runId, "progress", agent, {
+      round: 1,
+      agent,
+      message,
+      atSec: sec(),
+    });
+  };
   /** The model's own words, verbatim, to the panel that reads along. Not a
    *  paraphrase written here, the point is to show what came back. */
   const think = (agent: Phase, text: string) => {
-    emitUi(spans, runId, "agent", agent, { type: "text-delta", delta: `${text}\n` })
-  }
+    emitUi(spans, runId, "agent", agent, {
+      type: "text-delta",
+      delta: `${text}\n`,
+    });
+  };
   const emitResult = (agent: Phase, frame: Record<string, unknown>) => {
-    emitUi(spans, runId, "results", agent, frame)
-  }
+    emitUi(spans, runId, "results", agent, frame);
+  };
 
   const usdFor = (inTok: number, outTok: number) =>
-    (inTok / 1e6) * pricing.inUsdPerM + (outTok / 1e6) * pricing.outUsdPerM
+    (inTok / 1e6) * pricing.inUsdPerM + (outTok / 1e6) * pricing.outUsdPerM;
 
   /**
    * One model call, accounted and traced.
@@ -892,7 +970,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     prompt: string,
     opts: { think?: "none" | "low" | "medium"; maxOutputTokens?: number } = {},
   ): Promise<z.infer<T>> {
-    const started = Date.now()
+    const started = Date.now();
 
     /**
      * One retry, with room to think and less thinking to do.
@@ -928,7 +1006,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
             // by argument.
             { max_tokens: 200 }
           : { enabled: false }
-        : { effort: think === "none" ? "minimal" : (think ?? "low") }
+        : { effort: think === "none" ? "minimal" : (think ?? "low") };
 
     /* DeepSeek routes across 23 providers of very different speeds — measured
      * 6.3s on the default pick against 3.5s sorted by throughput, same call.
@@ -940,9 +1018,14 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       // the default pick, same call. Preference order with fallbacks open —
       // a preferred host going down degrades to the next, never to a failure.
       ...(modelId.startsWith("deepseek/")
-        ? { provider: { order: ["parasail", "novita", "siliconflow"], allow_fallbacks: true } }
+        ? {
+            provider: {
+              order: ["parasail", "novita", "siliconflow"],
+              allow_fallbacks: true,
+            },
+          }
         : {}),
-    })
+    });
 
     /**
      * A DEADLINE PER CALL, not just the run's cancel signal.
@@ -974,9 +1057,9 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
      * tells a host that stopped answering apart from a visitor who left.
      */
     const withDeadline = () => {
-      const timeout = AbortSignal.timeout(CALL_TIMEOUT_MS)
-      return signal ? AbortSignal.any([signal, timeout]) : timeout
-    }
+      const timeout = AbortSignal.timeout(CALL_TIMEOUT_MS);
+      return signal ? AbortSignal.any([signal, timeout]) : timeout;
+    };
 
     const attempt = async (maxOut: number, think: string | undefined) =>
       generateObject({
@@ -986,9 +1069,9 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         abortSignal: withDeadline(),
         maxOutputTokens: maxOut,
         providerOptions: { openrouter: openrouterOpts(think) },
-      })
+      });
 
-    const ceiling = Math.max(6_000, opts.maxOutputTokens ?? 8_192)
+    const ceiling = Math.max(6_000, opts.maxOutputTokens ?? 8_192);
 
     try {
       const out = await generateObject({
@@ -1006,16 +1089,17 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         providerOptions: {
           openrouter: openrouterOpts(opts.think),
         },
-      })
-      const inTok = out.usage?.inputTokens ?? 0
-      const outTok = out.usage?.outputTokens ?? 0
+      });
+      const inTok = out.usage?.inputTokens ?? 0;
+      const outTok = out.usage?.outputTokens ?? 0;
       // Recorded so the reasoning share stops being inferred from arithmetic.
       const reasoning =
-        (out.usage as { reasoningTokens?: number } | undefined)?.reasoningTokens ?? 0
-      if (reasoning) tokReasoning += reasoning
-      tokIn += inTok
-      tokOut += outTok
-      bill("llm", agent, usdFor(inTok, outTok), Date.now() - started, true)
+        (out.usage as { reasoningTokens?: number } | undefined)
+          ?.reasoningTokens ?? 0;
+      if (reasoning) tokReasoning += reasoning;
+      tokIn += inTok;
+      tokOut += outTok;
+      bill("llm", agent, usdFor(inTok, outTok), Date.now() - started, true);
       spans.emit({
         runId,
         agentId: agent,
@@ -1028,19 +1112,53 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         tokensIn: inTok,
         tokensOut: outTok,
         usd: usdFor(inTok, outTok),
-      })
-      return out.object as z.infer<T>
+      });
+      return out.object as z.infer<T>;
     } catch (e) {
-      const empty = (e as Error).name === "AI_NoObjectGeneratedError"
-      if (empty) {
-        say(agent, `  ${label}: the model returned nothing, retrying with more room`)
+      const empty = (e as Error).name === "AI_NoObjectGeneratedError";
+      /**
+       * A DEADLINE THAT KILLS THE RUN IS WORSE THAN THE HANG IT REPLACED.
+       *
+       * Measured, both ways, on the same anchor. Before the deadline existed a
+       * figma.com sweep sat in the link phase for 13 minutes on one unanswered
+       * call. With the deadline and no retry it did not hang — it DIED, at 412
+       * of 492 pairs, and threw away $1.74 of finished work. Two of every three
+       * dollars this repo spent on runs today went to those two failures.
+       *
+       * So a call the deadline stopped is retried once, exactly like a call
+       * that came back empty. The retry keeps the ORIGINAL ceiling rather than
+       * doubling it: doubling is the remedy for a model that ran out of room to
+       * answer, and here the model had room and took too long — more room makes
+       * it slower, which is the wrong direction.
+       *
+       * NOT WHEN THE RUN ITSELF WAS CANCELLED. `signal.aborted` means a visitor
+       * closed the tab or the host's clock ran out, and retrying that would
+       * spend money nobody is waiting for. A timeout leaves the run's own
+       * signal clear, which is the whole reason `withDeadline` composes the two
+       * instead of replacing one with the other.
+       */
+      const timedOut =
+        !signal?.aborted &&
+        ((e as Error).name === "TimeoutError" ||
+          (e as Error).name === "AbortError" ||
+          /aborted due to timeout/i.test(String((e as Error).message ?? "")));
+      if (empty || timedOut) {
+        say(
+          agent,
+          timedOut
+            ? `  ${label}: no answer in ${Math.round(CALL_TIMEOUT_MS / 1000)}s, retrying once`
+            : `  ${label}: the model returned nothing, retrying with more room`,
+        );
         try {
-          const out = await attempt(ceiling * 2, opts.think)
-          const inTok = out.usage?.inputTokens ?? 0
-          const outTok = out.usage?.outputTokens ?? 0
-          tokIn += inTok
-          tokOut += outTok
-          bill("llm", agent, usdFor(inTok, outTok), Date.now() - started, true)
+          const out = await attempt(
+            timedOut ? ceiling : ceiling * 2,
+            opts.think,
+          );
+          const inTok = out.usage?.inputTokens ?? 0;
+          const outTok = out.usage?.outputTokens ?? 0;
+          tokIn += inTok;
+          tokOut += outTok;
+          bill("llm", agent, usdFor(inTok, outTok), Date.now() - started, true);
           spans.emit({
             runId,
             agentId: agent,
@@ -1053,13 +1171,13 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
             tokensIn: inTok,
             tokensOut: outTok,
             usd: usdFor(inTok, outTok),
-          })
-          return out.object as z.infer<T>
+          });
+          return out.object as z.infer<T>;
         } catch {
           // fall through and report the original
         }
       }
-      bill("llm", agent, 0, Date.now() - started, false)
+      bill("llm", agent, 0, Date.now() - started, false);
       spans.emit({
         runId,
         agentId: agent,
@@ -1071,21 +1189,21 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         ok: false,
         error: e instanceof Error ? e.message : String(e),
         usd: 0,
-      })
-      throw e
+      });
+      throw e;
     }
   }
 
   // ── 1. read the company ──────────────────────────────────────────────────
-  say("understand", `reading ${anchor}`)
-  const pages: string[] = []
-  const readPages: string[] = []
+  say("understand", `reading ${anchor}`);
+  const pages: string[] = [];
+  const readPages: string[] = [];
   // The anchor's own pages, raw bytes kept: the anchor's half of the alias
   // reciprocity check (alias.ts) — its hreflang/canonical assertions live in
   // markup that `condense` strips from `pages`. The candidate half arrives
   // later for free, in `judged.probePages` (a reciprocating alias page names
   // the anchor by its backlink, so the rank probe gate keeps it).
-  const anchorPages: Array<{ url: string; html: string }> = []
+  const anchorPages: Array<{ url: string; html: string }> = [];
 
   const read = async (url: string, mode: "direct" | "unlocked") => {
     // The run's signal, on every fetch. The sweep checks it at its own
@@ -1093,9 +1211,9 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     // in flight kept its socket — and its unlocker charge — running until it
     // finished. Cancel and destroy were the same button precisely because the
     // paid calls never heard the cancel.
-    const raw = await fetcher.get(url, mode, { signal })
-    if (mode === "unlocked") unlockerCalls += 1
-    const s = sniff(raw)
+    const raw = await fetcher.get(url, mode, { signal });
+    if (mode === "unlocked") unlockerCalls += 1;
+    const s = sniff(raw);
     // A `.txt` URL that answers with HTML did not have the file.
     //
     // Measured: one company's /llms.txt returns 200, content-type text/html, and
@@ -1104,11 +1222,17 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     // that whole error page would be absorbed as the company's catalog. Status
     // codes lie, content-type lies, and length says nothing; the file extension
     // is the one thing here that states what the body was supposed to be.
-    const wantedText = /\.(txt|md|xml)$/i.test(new URL(url).pathname)
-    const gotHtml = isHtml(raw.body, raw.contentType)
-    const wrongShape = wantedText && gotHtml
-    const found = s.status === "found" && s.text.length > 300 && !wrongShape
-    bill(mode === "unlocked" ? "unlocker" : "fetch", "understand", raw.usd, raw.ms, found)
+    const wantedText = /\.(txt|md|xml)$/i.test(new URL(url).pathname);
+    const gotHtml = isHtml(raw.body, raw.contentType);
+    const wrongShape = wantedText && gotHtml;
+    const found = s.status === "found" && s.text.length > 300 && !wrongShape;
+    bill(
+      mode === "unlocked" ? "unlocker" : "fetch",
+      "understand",
+      raw.usd,
+      raw.ms,
+      found,
+    );
     spans.emit({
       runId,
       agentId: "understand",
@@ -1129,23 +1253,27 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
             ? `${s.status}: ${raw.providerError}`
             : s.status,
       usd: raw.usd,
-    })
+    });
     if (found) {
-      const kept = condense(s.text)
-      pages.push(`--- ${url} ---\n${kept}`)
-      readPages.push(url)
-      anchorPages.push({ url, html: raw.body })
+      const kept = condense(s.text);
+      pages.push(`--- ${url} ---\n${kept}`);
+      readPages.push(url);
+      anchorPages.push({ url, html: raw.body });
       say(
         "understand",
         `  ${url} -> ${s.text.length} chars${kept.length < s.text.length ? ` (condensed to ${kept.length})` : ""}`,
-      )
+      );
     }
-    return found
-  }
+    return found;
+  };
 
-  const surfaces = [`https://${anchor}/llms.txt`, `https://docs.${anchor}/llms.txt`, `https://${anchor}/`]
+  const surfaces = [
+    `https://${anchor}/llms.txt`,
+    `https://docs.${anchor}/llms.txt`,
+    `https://${anchor}/`,
+  ];
   for (const u of surfaces) {
-    await read(u, "direct")
+    await read(u, "direct");
   }
 
   /**
@@ -1157,21 +1285,21 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    * says what it is. Costs one to two seconds, concurrent, and nothing at all,
    * since a direct fetch is free.
    */
-  const productPages: PageFacts[] = []
+  const productPages: PageFacts[] = [];
   {
     const raw = async (u: string) => {
-      const r = await fetcher.get(u, "direct", { signal })
-      return r.httpStatus >= 200 && r.httpStatus < 300 ? r.body : ""
-    }
+      const r = await fetcher.get(u, "direct", { signal });
+      return r.httpStatus >= 200 && r.httpStatus < 300 ? r.body : "";
+    };
 
-    let candidates = [] as ReturnType<typeof candidatesFromSitemap>
-    let xml = await raw(`https://${anchor}/sitemap.xml`)
+    let candidates = [] as ReturnType<typeof candidatesFromSitemap>;
+    let xml = await raw(`https://${anchor}/sitemap.xml`);
     // A sitemap of sitemaps: folding it here would return nothing but more xml.
     if (xml && isSitemapIndex(xml)) {
-      const first = /<loc>([^<]+)<\/loc>/.exec(xml)?.[1]
-      xml = first ? await raw(first) : ""
+      const first = /<loc>([^<]+)<\/loc>/.exec(xml)?.[1];
+      xml = first ? await raw(first) : "";
     }
-    if (xml) candidates = candidatesFromSitemap(xml, PRODUCT_PAGES)
+    if (xml) candidates = candidatesFromSitemap(xml, PRODUCT_PAGES);
 
     // The nav ALWAYS, merged rather than used as a fallback. One company's
     // sitemap has 118 urls of which twelve are products and another's has none,
@@ -1179,29 +1307,37 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     // homepage and zero times in a 2,976-url sitemap. A sitemap is what a site
     // wants indexed; the nav is what it wants bought.
     {
-      const home = await raw(`https://${anchor}/`)
-      const fromNav = candidatesFromLinks(home, `https://${anchor}/`, PRODUCT_PAGES)
-      const seen = new Set(candidates.map((c) => c.url.replace(/\/+$/, "")))
+      const home = await raw(`https://${anchor}/`);
+      const fromNav = candidatesFromLinks(
+        home,
+        `https://${anchor}/`,
+        PRODUCT_PAGES,
+      );
+      const seen = new Set(candidates.map((c) => c.url.replace(/\/+$/, "")));
       candidates = [
         ...candidates,
         ...fromNav.filter((c) => !seen.has(c.url.replace(/\/+$/, ""))),
-      ].slice(0, PRODUCT_PAGES)
+      ].slice(0, PRODUCT_PAGES);
     }
 
     if (candidates.length) {
       const read = await Promise.all(
         candidates.map(async (c) => {
-          const body = await raw(c.url)
-          return body ? readPageFacts(c.url, body) : null
+          const body = await raw(c.url);
+          return body ? readPageFacts(c.url, body) : null;
         }),
-      )
-      for (const f of dedupeFacts(read.filter((f): f is PageFacts => f !== null))) productPages.push(f)
+      );
+      for (const f of dedupeFacts(
+        read.filter((f): f is PageFacts => f !== null),
+      ))
+        productPages.push(f);
       say(
         "understand",
         `read ${productPages.length} of the company's own product pages` +
           `${candidates.length > productPages.length ? ` (${candidates.length - productPages.length} said nothing)` : ""}`,
-      )
-      for (const f of productPages) think("understand", `${new URL(f.url).pathname} — ${f.heading}`)
+      );
+      for (const f of productPages)
+        think("understand", `${new URL(f.url).pathname} — ${f.heading}`);
     }
   }
 
@@ -1213,7 +1349,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   if (!pages.length && !(await resolves(anchor))) {
     const err = new Error(
       `${anchor} does not resolve — there is no such domain. ${suggest(anchor)}`.trim(),
-    )
+    );
     // READER-SAFE, and marked so the web layer knows it.
     //
     // This sentence is the whole value of the check: it names the typo and
@@ -1227,8 +1363,10 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     // `isNamedFault` in packages/web without either package importing the
     // other — which they must not, since core and sweep may not know a web
     // app exists.
-    ;(err as unknown as Record<symbol, boolean>)[Symbol.for("open-kb.named-fault")] = true
-    throw err
+    (err as unknown as Record<symbol, boolean>)[
+      Symbol.for("open-kb.named-fault")
+    ] = true;
+    throw err;
   }
 
   // Try the free surfaces again before spending anything. A run once died here
@@ -1238,11 +1376,14 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   // there was never a reason for one bad instant to end a run. Two seconds of
   // patience is cheaper than a wasted map.
   if (!pages.length) {
-    say("understand", `nothing readable on the first pass — waiting a moment and trying again`)
-    await new Promise((r) => setTimeout(r, 2_000))
+    say(
+      "understand",
+      `nothing readable on the first pass — waiting a moment and trying again`,
+    );
+    await new Promise((r) => setTimeout(r, 2_000));
     for (const u of surfaces) {
-      if (signal?.aborted) throw new Error("aborted")
-      await read(u, "direct")
+      if (signal?.aborted) throw new Error("aborted");
+      await read(u, "direct");
     }
   }
 
@@ -1251,8 +1392,11 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     // exceptional one, and giving up here would end the run over a bot wall.
     // One unlocked fetch is ~$0.008 and 13-16s, so it is a fallback rather than
     // the default path.
-    say("understand", `direct fetch found nothing — retrying ${anchor} through the unlocker`)
-    await read(`https://${anchor}/`, "unlocked")
+    say(
+      "understand",
+      `direct fetch found nothing — retrying ${anchor} through the unlocker`,
+    );
+    await read(`https://${anchor}/`, "unlocked");
   }
   if (!pages.length) {
     throw new Error(
@@ -1260,7 +1404,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         `once through the unlocker; none returned readable text. If the site loads in a browser this is ` +
         `most likely a temporary block or a network blip — the same domain has read fine minutes later. ` +
         `Worth simply running again.`,
-    )
+    );
   }
 
   const decomp = await call(
@@ -1275,26 +1419,37 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     }),
     // Worth thinking about: everything downstream descends from these sentences.
     { think: "medium", maxOutputTokens: 8_000 },
-  )
+  );
 
-  say("understand", `sells: ${decomp.sells}`)
-  say("understand", `${decomp.products.length} products → ${decomp.capabilities.length} distinct markets, ${decomp.coinages.length} coinages to avoid`)
-  for (const c of decomp.capabilities) think("understand", `capability — ${c.name}: ${c.does}`)
-  think("understand", `sells — ${decomp.sells}`)
-  think("understand", `buyer — ${decomp.buyer}`)
-  for (const p of decomp.products) think("understand", `product — ${p.name}: ${p.does}`)
-  if (decomp.coinages.length) think("understand", `never search — ${decomp.coinages.join(", ")}`)
+  say("understand", `sells: ${decomp.sells}`);
+  say(
+    "understand",
+    `${decomp.products.length} products → ${decomp.capabilities.length} distinct markets, ${decomp.coinages.length} coinages to avoid`,
+  );
+  for (const c of decomp.capabilities)
+    think("understand", `capability — ${c.name}: ${c.does}`);
+  think("understand", `sells — ${decomp.sells}`);
+  think("understand", `buyer — ${decomp.buyer}`);
+  for (const p of decomp.products)
+    think("understand", `product — ${p.name}: ${p.does}`);
+  if (decomp.coinages.length)
+    think("understand", `never search — ${decomp.coinages.join(", ")}`);
 
   emitResult("understand", {
     kind: "understanding",
     brand: anchor,
     sells: decomp.sells,
-    products: decomp.products.map((p) => ({ slug: p.name, name: p.name, sells: p.does, because: "" })),
+    products: decomp.products.map((p) => ({
+      slug: p.name,
+      name: p.name,
+      sells: p.does,
+      because: "",
+    })),
     buyer: { role: decomp.buyer, context: "", vocabulary: [], because: "" },
     coinages: decomp.coinages,
     marketConcepts: [],
     usd: usdFor(tokIn, tokOut),
-  })
+  });
 
   // ── 2. write the catalog: the model writes debranded blind to the anchor's
   //      own name; branded templates name it on purpose (the exemption below) ──
@@ -1309,7 +1464,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       : QUERY_CEILING !== null
         ? `dealing every product an opening hand, then keeping the first ${QUERY_CEILING} — as many as this run's clock can finish`
         : `dealing every product an opening hand — no fixed count, the templates and the strip decide`,
-  )
+  );
   /**
    * One call per PRODUCT, not one per lens.
    *
@@ -1330,7 +1485,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    */
   const ranked = [...decomp.capabilities].sort((a, b) =>
     a.centrality === b.centrality ? 0 : a.centrality === "core" ? -1 : 1,
-  )
+  );
 
   // Every product gets a hand. The funding contest died with the spec of
   // 2026-08-04: a product left unfunded is an entire market the map never
@@ -1339,39 +1494,50 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   const queues = ranked.map((c) => ({
     market: c,
     products: (c.covers.length ? c.covers : [c.name]).slice(),
-  }))
-  const funded: { market: (typeof ranked)[number]; product: string }[] = []
+  }));
+  const funded: { market: (typeof ranked)[number]; product: string }[] = [];
   {
-    let moved = true
+    let moved = true;
     while (moved) {
-      moved = false
+      moved = false;
       for (const q of queues.filter((x) => x.market.centrality === "core")) {
-        const p = q.products.shift()
-        if (p) { funded.push({ market: q.market, product: p }); moved = true }
+        const p = q.products.shift();
+        if (p) {
+          funded.push({ market: q.market, product: p });
+          moved = true;
+        }
       }
     }
-    moved = true
+    moved = true;
     while (moved) {
-      moved = false
+      moved = false;
       for (const q of queues.filter((x) => x.market.centrality !== "core")) {
-        const p = q.products.shift()
-        if (p) { funded.push({ market: q.market, product: p }); moved = true }
+        const p = q.products.shift();
+        if (p) {
+          funded.push({ market: q.market, product: p });
+          moved = true;
+        }
       }
     }
   }
-  say("plan", `${funded.length} products, every one dealt an opening hand`)
+  say("plan", `${funded.length} products, every one dealt an opening hand`);
 
   // Debranded ask per product. Small on purpose: the templates already hold
   // the center, so the model's few are spent where templates cannot go.
-  const debrandedAsk = Math.max(2, Math.min(PER_PRODUCT, 3))
+  const debrandedAsk = Math.max(2, Math.min(PER_PRODUCT, 3));
 
   // The strip artifact (spec section "Strip"): per product, the terms it was
   // stripped to, whether the catalog call judged the name generic, and the
   // page that established it. Persisted so the audit trail the spec promises
   // ("the strip is a visible artifact on the map") actually exists — this used
   // to carry only `product`/`terms` and was never rendered anywhere.
-  const strips: { product: string; terms: string[]; generic: boolean; foundAt: string }[] = []
-  const reserve = new Map<string, FamilyQuery[]>()
+  const strips: {
+    product: string;
+    terms: string[];
+    generic: boolean;
+    foundAt: string;
+  }[] = [];
+  const reserve = new Map<string, FamilyQuery[]>();
 
   // Bounded, not unleashed. The funding contest this change removes was the
   // thing that incidentally kept this fan-out small — `funded.length` used to
@@ -1383,9 +1549,9 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   // all-or-nothing, so one throttled product call kills a run that has
   // already paid for everything `understand` read. Same shape of fix used
   // elsewhere in this file: a small pool, not a wide one.
-  const CATALOG_CONC = 6
+  const CATALOG_CONC = 6;
 
-  const catalogs: SweptQuery[][] = []
+  const catalogs: SweptQuery[][] = [];
   for (let i = 0; i < funded.length; i += CATALOG_CONC) {
     const chunk = await Promise.all(
       funded.slice(i, i + CATALOG_CONC).map(({ market, product }) =>
@@ -1393,10 +1559,16 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           "plan",
           `catalog: ${product}`,
           z.object({
-            terms: z.array(z.string()).describe("1-3 terms a buyer types for this job, ordered, closest first"),
+            terms: z
+              .array(z.string())
+              .describe(
+                "1-3 terms a buyer types for this job, ordered, closest first",
+              ),
             generic: z
               .boolean()
-              .describe("true if this product's NAME alone reads as a common noun rather than this product — 'Datasets' is generic, 'Web Scraper API' is not"),
+              .describe(
+                "true if this product's NAME alone reads as a common noun rather than this product — 'Datasets' is generic, 'Web Scraper API' is not",
+              ),
             queries: z.array(PlannedQuery),
           }),
           prompt("catalog", {
@@ -1409,20 +1581,25 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
             sells: decomp.sells,
             buyer: decomp.buyer,
             siblings:
-              market.covers.filter((c) => c !== product).join(", ") || "(nothing else in this market)",
+              market.covers.filter((c) => c !== product).join(", ") ||
+              "(nothing else in this market)",
             coinages: decomp.coinages.join(", "),
           }),
           { think: "low", maxOutputTokens: 180 * debrandedAsk + 6_000 },
         ).then((out) => {
-          const terms = out.terms.map((t) => t.trim()).filter(Boolean).slice(0, 3)
+          const terms = out.terms
+            .map((t) => t.trim())
+            .filter(Boolean)
+            .slice(0, 3);
           strips.push({
             product,
             terms,
             generic: out.generic,
-            foundAt: decomp.products.find((p) => p.name === product)?.foundAt ?? "",
-          })
-          const hand = openingHand(product, terms, { branded: !out.generic })
-          reserve.set(product, hand.reserve)
+            foundAt:
+              decomp.products.find((p) => p.name === product)?.foundAt ?? "",
+          });
+          const hand = openingHand(product, terms, { branded: !out.generic });
+          reserve.set(product, hand.reserve);
           const asFired = (fq: FamilyQuery): SweptQuery => ({
             q: fq.q,
             intent: fq.family === "plain" ? "evaluation" : "switching",
@@ -1432,24 +1609,29 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
             family: fq.family,
             product: fq.product,
             term: fq.term,
-          })
+          });
           const debranded: SweptQuery[] = out.queries.map((q) => ({
             ...q,
             market: market.name,
             family: "debranded" as const,
             product,
-          }))
-          return [...hand.open.map(asFired), ...debranded.slice(0, debrandedAsk)]
+          }));
+          return [
+            ...hand.open.map(asFired),
+            ...debranded.slice(0, debrandedAsk),
+          ];
         }),
       ),
-    )
-    catalogs.push(...chunk)
+    );
+    catalogs.push(...chunk);
   }
 
   // Deal the company-level hand once — the owner decision, and the densest
   // comparison pages a map has. Fired outside the per-product calls because it
   // is not about any one product, it is about the company itself.
-  const company: SweptQuery[] = companyHand(decomp.brand || anchor.replace(/\..*$/, "")).map((fq) => ({
+  const company: SweptQuery[] = companyHand(
+    decomp.brand || anchor.replace(/\..*$/, ""),
+  ).map((fq) => ({
     q: fq.q,
     intent: "switching",
     platform: "web",
@@ -1458,20 +1640,20 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     family: fq.family,
     product: undefined,
     term: undefined,
-  }))
+  }));
 
   // Deduplicated across lenses: they were told to stay in their own lane, but
   // "best X alternatives" is reachable from two of the three, and a repeat is a
   // query bought twice.
-  const seenQ = new Set<string>()
+  const seenQ = new Set<string>();
   const cat = {
     queries: [...catalogs.flat(), ...company].filter((q) => {
-      const k = q.q.trim().toLowerCase()
-      if (seenQ.has(k)) return false
-      seenQ.add(k)
-      return true
+      const k = q.q.trim().toLowerCase();
+      if (seenQ.has(k)) return false;
+      seenQ.add(k);
+      return true;
     }),
-  }
+  };
 
   // The requested count is a sentence in a prompt, and a prompt is a request.
   // Gemini rejects array-length constraints in a structured-output schema, so
@@ -1484,7 +1666,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   // ask is kept and said: a short catalog is a real outcome worth seeing, and
   // silently topping it up would hide that the market gave the model less to
   // work with than it was asked for.
-  const planned = cat.queries
+  const planned = cat.queries;
   // opts.queries is now an override for scripts that want a bounded probe.
   // Left unset — the normal case — the opening is the product count times the
   // hand, and the ceiling on the RUN is the spend ceiling, not a query quota.
@@ -1493,45 +1675,65 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   // below splices `queries` in place, and `written: planned.length` further
   // down has to keep reporting what the model actually wrote, not what
   // survived the drop.
-  const opening = opts.queries !== undefined ? planned.slice(0, target) : [...planned]
+  const opening =
+    opts.queries !== undefined ? planned.slice(0, target) : [...planned];
   // The clock's ceiling, applied to the opening as well as to the widening loop
   // below — a hand dealt before the first search is still a hand this run has
   // to be able to rank. Sliced rather than sampled: `funded` put the core
   // markets first, so the first N are the queries the company is bought for.
-  const queries = QUERY_CEILING === null ? opening : opening.slice(0, QUERY_CEILING)
+  const queries =
+    QUERY_CEILING === null ? opening : opening.slice(0, QUERY_CEILING);
   if (QUERY_CEILING !== null && opening.length > queries.length) {
     say(
       "plan",
       `sized to the clock: the hand came to ${opening.length} queries and this run may fire ${QUERY_CEILING} — ` +
         `taking the first ${queries.length}, core markets first`,
-    )
+    );
   }
-
 
   // Coverage, stated rather than assumed. A market with no query cannot put a
   // single competitor on the map, and until now that failed silently: on one
   // measured run three of nine products drew zero queries and nothing said so.
   {
-    const asked = new Map<string, number>()
-    for (const q of queries) asked.set(q.market.trim().toLowerCase(), (asked.get(q.market.trim().toLowerCase()) ?? 0) + 1)
-    const core = decomp.capabilities.filter((c) => c.centrality === "core")
-    const missed = core.filter((c) => !asked.get(c.name.trim().toLowerCase()))
+    const asked = new Map<string, number>();
+    for (const q of queries)
+      asked.set(
+        q.market.trim().toLowerCase(),
+        (asked.get(q.market.trim().toLowerCase()) ?? 0) + 1,
+      );
+    const core = decomp.capabilities.filter((c) => c.centrality === "core");
+    const missed = core.filter((c) => !asked.get(c.name.trim().toLowerCase()));
     for (const c of decomp.capabilities) {
-      think("plan", `${c.centrality} · ${c.name}: ${asked.get(c.name.trim().toLowerCase()) ?? 0} queries`)
+      think(
+        "plan",
+        `${c.centrality} · ${c.name}: ${asked.get(c.name.trim().toLowerCase()) ?? 0} queries`,
+      );
     }
     if (missed.length) {
-      say("plan", `no queries for ${missed.length} of ${core.length} core markets: ${missed.map((c) => c.name).join(", ")}`)
+      say(
+        "plan",
+        `no queries for ${missed.length} of ${core.length} core markets: ${missed.map((c) => c.name).join(", ")}`,
+      );
     } else {
-      say("plan", `every one of the ${core.length} core markets got at least one query`)
+      say(
+        "plan",
+        `every one of the ${core.length} core markets got at least one query`,
+      );
     }
   }
   // The truncation warning only applies when opts.queries actually clamped the
   // catalog — the normal, unset case never slices, so "using the first N"
   // would be a lie about a cut that never happened.
   if (opts.queries !== undefined && planned.length > target) {
-    say("plan", `catalog: model wrote ${planned.length} for a budget of ${target} — using the first ${target}`)
+    say(
+      "plan",
+      `catalog: model wrote ${planned.length} for a budget of ${target} — using the first ${target}`,
+    );
   } else if (opts.queries !== undefined && planned.length < target) {
-    say("plan", `catalog: model wrote ${planned.length} of the ${target} asked for`)
+    say(
+      "plan",
+      `catalog: model wrote ${planned.length} of the ${target} asked for`,
+    );
   }
 
   // `banned` (packages/core/src/families.ts) is the one implementation of this
@@ -1539,27 +1741,38 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   // reserve-released and freshly-invented queries, so a strip term or coinage
   // dropped here cannot fire unfiltered later just because it arrived through
   // a different code path.
-  const anchorName = anchor.split(".")[0] ?? ""
-  const named = queries.filter((x) => banned(x.q, x.family, anchorName, decomp.coinages))
+  const anchorName = anchor.split(".")[0] ?? "";
+  const named = queries.filter((x) =>
+    banned(x.q, x.family, anchorName, decomp.coinages),
+  );
   // Dropped, not counted. This only ever tested the anchor's own name and its
   // coinages, which is the one case the model cannot argue with, and it reported
   // "0 accidentally name the company" on catalogs where a quarter of the queries
   // named a third party. A query that looks the anchor up is bought for nothing,
   // so it does not get bought.
   if (named.length) {
-    const drop = new Set(named.map((q) => q.q))
-    for (let i = queries.length - 1; i >= 0; i--) if (drop.has(queries[i]!.q)) queries.splice(i, 1)
-    say("plan", `catalog: ${queries.length} queries (dropped ${named.length} debranded/plain queries that named the anchor)`)
-    for (const q of named) think("plan", `dropped, names the anchor: ${q.q}`)
+    const drop = new Set(named.map((q) => q.q));
+    for (let i = queries.length - 1; i >= 0; i--)
+      if (drop.has(queries[i]!.q)) queries.splice(i, 1);
+    say(
+      "plan",
+      `catalog: ${queries.length} queries (dropped ${named.length} debranded/plain queries that named the anchor)`,
+    );
+    for (const q of named) think("plan", `dropped, names the anchor: ${q.q}`);
   } else {
-    say("plan", `catalog: ${queries.length} queries, none name the anchor`)
+    say("plan", `catalog: ${queries.length} queries, none name the anchor`);
   }
 
   emitResult("plan", {
     kind: "planned",
     slug: anchor,
     brand: anchor,
-    queries: queries.map((q) => ({ q: q.q, source: q.intent, rationale: q.why, concept: q.platform })),
+    queries: queries.map((q) => ({
+      q: q.q,
+      source: q.intent,
+      rationale: q.why,
+      concept: q.platform,
+    })),
     // Priced from Bright Data's SERP rate, which is the only part of the bill
     // that is knowable before the run, the model half depends on how much text
     // comes back.
@@ -1578,7 +1791,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     // uncapped and says so.
     ceiling: QUERY_CEILING,
     clockSeconds: DEADLINE === null ? null : Math.round((DEADLINE - t0) / 1000),
-  })
+  });
 
   // ── 3. fire, look, and decide whether to fire again ───────────────────────
   //
@@ -1592,14 +1805,14 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   // the honest move is to stop rather than to spend the rest of the budget
   // proving what is already known.
   const hits: Array<{
-    url: string
-    title: string
-    description: string
-    q: string
-    intent: string
-    family: QueryFamily
-    product?: string
-  }> = []
+    url: string;
+    title: string;
+    description: string;
+    q: string;
+    intent: string;
+    family: QueryFamily;
+    product?: string;
+  }> = [];
 
   /**
    * The distinct hosts seen so far, maintained as results land rather than
@@ -1613,7 +1826,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    * a hot loop. Filled in `runOne` beside the `hits.push` that was its only
    * source, so the two cannot come to disagree.
    */
-  const hostsSeen = new Set<string>()
+  const hostsSeen = new Set<string>();
 
   /**
    * Fire a wave, keeping the pipe full.
@@ -1630,75 +1843,83 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   /** Search one query and record everything it produced. The pool below calls
    *  this; nothing here knows about batches or waves. */
   const runOne = async (planned: SweptQuery) => {
-    const [r] = await search.search([planned.q])
-    if (!r) return
+    const [r] = await search.search([planned.q]);
+    if (!r) return;
     {
-      const batch = [planned]
-      const j = 0
+      const batch = [planned];
+      const j = 0;
       {
-      // Guarded on the same condition the port uses to decide whether to
-      // dispatch at all. A blank query used to buy a full wave of `q=` pages,
-      // so adding PAGES unconditionally was true; the port now refuses it
-      // locally for $0 and issues nothing, which would leave this counter
-      // describing requests that were never made. `usd` was already honest
-      // either way — this is the count catching up with it.
-      if (planned.q.trim()) serpCalls += PAGES
-      bill("serp", "sweep", r.usd, r.ms, r.ok)
-      // One span per SERP call, carrying the query text, the only place a
-      // reader can see which question the run just paid for.
-      spans.emit({
-        runId,
-        agentId: "sweep",
-        parentId: null,
-        kind: "search",
-        name: "serp",
-        argsDigest: r.query,
-        ms: r.ms,
-        ok: r.ok,
-        error: r.error,
-        usd: r.usd,
-      })
-      for (const h of r.hits) {
-        hits.push({ ...h, q: r.query, intent: batch[j]!.intent, family: batch[j]!.family, product: batch[j]!.product })
-        try {
-          hostsSeen.add(new URL(h.url).hostname.toLowerCase().replace(/^www\./, ""))
-        } catch {
-          // a row without a parseable URL is not a host, skip rather than count it
+        // Guarded on the same condition the port uses to decide whether to
+        // dispatch at all. A blank query used to buy a full wave of `q=` pages,
+        // so adding PAGES unconditionally was true; the port now refuses it
+        // locally for $0 and issues nothing, which would leave this counter
+        // describing requests that were never made. `usd` was already honest
+        // either way — this is the count catching up with it.
+        if (planned.q.trim()) serpCalls += PAGES;
+        bill("serp", "sweep", r.usd, r.ms, r.ok);
+        // One span per SERP call, carrying the query text, the only place a
+        // reader can see which question the run just paid for.
+        spans.emit({
+          runId,
+          agentId: "sweep",
+          parentId: null,
+          kind: "search",
+          name: "serp",
+          argsDigest: r.query,
+          ms: r.ms,
+          ok: r.ok,
+          error: r.error,
+          usd: r.usd,
+        });
+        for (const h of r.hits) {
+          hits.push({
+            ...h,
+            q: r.query,
+            intent: batch[j]!.intent,
+            family: batch[j]!.family,
+            product: batch[j]!.product,
+          });
+          try {
+            hostsSeen.add(
+              new URL(h.url).hostname.toLowerCase().replace(/^www\./, ""),
+            );
+          } catch {
+            // a row without a parseable URL is not a host, skip rather than count it
+          }
         }
-      }
 
-      // The results themselves, not just the count. Everything downstream, the
-      // hosts, the classifications, the map, is derived from these rows, and
-      // without them a reader is asked to trust an aggregate: "580 results, 88
-      // hosts" is not something anyone can check. This is the raw material.
-      emitResult("sweep", {
-        kind: "searched",
-        query: r.query,
-        intent: batch[j]!.intent,
-        platform: batch[j]!.platform,
-        family: batch[j]!.family,
-        product: batch[j]!.product ?? "",
-        why: batch[j]!.why,
-        ok: r.ok,
-        error: r.error,
-        ms: r.ms,
-        usd: r.usd,
-        hits: r.hits.map((h) => ({
-          url: h.url,
-          title: h.title,
-          // Trimmed, not dropped: a whole page of descriptions is what made a
-          // previous design's context explode, and the first sentence is what a
-          // reader actually reads anyway.
-          description: (h.description ?? "").slice(0, 200),
-        })),
-      })
+        // The results themselves, not just the count. Everything downstream, the
+        // hosts, the classifications, the map, is derived from these rows, and
+        // without them a reader is asked to trust an aggregate: "580 results, 88
+        // hosts" is not something anyone can check. This is the raw material.
+        emitResult("sweep", {
+          kind: "searched",
+          query: r.query,
+          intent: batch[j]!.intent,
+          platform: batch[j]!.platform,
+          family: batch[j]!.family,
+          product: batch[j]!.product ?? "",
+          why: batch[j]!.why,
+          ok: r.ok,
+          error: r.error,
+          ms: r.ms,
+          usd: r.usd,
+          hits: r.hits.map((h) => ({
+            url: h.url,
+            title: h.title,
+            // Trimmed, not dropped: a whole page of descriptions is what made a
+            // previous design's context explode, and the first sentence is what a
+            // reader actually reads anyway.
+            description: (h.description ?? "").slice(0, 200),
+          })),
+        });
       }
     }
-  }
+  };
 
-  const distinctHosts = () => hostsSeen
+  const distinctHosts = () => hostsSeen;
 
-  const asked: SweptQuery[] = [...queries]
+  const asked: SweptQuery[] = [...queries];
   /**
    * One queue, drained continuously, refilled while it drains.
    *
@@ -1713,25 +1934,29 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    * another query there is usually one waiting. Assessment overlaps searching
    * instead of interrupting it.
    */
-  const queue: SweptQuery[] = [...queries]
-  let taken = 0
-  let sealed = false
-  let rounds = 0
+  const queue: SweptQuery[] = [...queries];
+  let taken = 0;
+  let sealed = false;
+  let rounds = 0;
 
-  let ran = 0
-  const take = (): SweptQuery | null => (taken < queue.length ? queue[taken++]! : null)
-  const pending = () => queue.length - taken
-  const idle = (ms: number) => new Promise((r) => setTimeout(r, ms))
+  let ran = 0;
+  const take = (): SweptQuery | null =>
+    taken < queue.length ? queue[taken++]! : null;
+  const pending = () => queue.length - taken;
+  const idle = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-  say("sweep", `${queries.length} queries × ${PAGES} pages, ${CONC} at a time, topping up as it goes`)
+  say(
+    "sweep",
+    `${queries.length} queries × ${PAGES} pages, ${CONC} at a time, topping up as it goes`,
+  );
 
   /** Said once, by whichever worker gets there first. Twenty workers reaching
    *  the same conclusion in the same second is one event, not twenty. */
-  let outOfClock = false
+  let outOfClock = false;
 
   const worker = async () => {
     while (true) {
-      if (signal?.aborted) throw new Error("aborted")
+      if (signal?.aborted) throw new Error("aborted");
       /**
        * THE CLOCK, CHECKED WHERE THE MONEY IS SPENT.
        *
@@ -1745,49 +1970,56 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
        * when a run is out of road — and O(1), which is why `hostsSeen` is a
        * running set rather than a fold.
        */
-      if (DEADLINE !== null && !sealed && secondsLeft() < rankSeconds(hostsSeen.size) + TAIL_SECONDS) {
-        sealed = true
+      if (
+        DEADLINE !== null &&
+        !sealed &&
+        secondsLeft() < rankSeconds(hostsSeen.size) + TAIL_SECONDS
+      ) {
+        sealed = true;
         if (!outOfClock) {
-          outOfClock = true
+          outOfClock = true;
           say(
             "sweep",
             `stopping the search: ${hostsSeen.size} hosts already need about ` +
               `${Math.round(rankSeconds(hostsSeen.size) + TAIL_SECONDS)}s to judge and write, and ` +
               `${leftS()}s are left — buying more would only lengthen a list nobody gets to`,
-          )
+          );
         }
-        return
+        return;
       }
-      const planned = take()
+      const planned = take();
       if (!planned) {
         // Nothing queued. Either the planner is about to add more, or it has
         // decided the map is done and this worker is finished.
-        if (sealed) return
-        await idle(200)
-        continue
+        if (sealed) return;
+        await idle(200);
+        continue;
       }
-      await runOne(planned)
-      ran += 1
+      await runOne(planned);
+      ran += 1;
       // Every tenth, and the last. Not "whenever the queue is empty": with more
       // workers than queued queries that is true on every completion, and the
       // log becomes one line per query.
       if (ran % 10 === 0 || (sealed && ran === queue.length)) {
-        say("sweep", `  ${ran}/${queue.length} queries — ${hits.length} results so far`)
+        say(
+          "sweep",
+          `  ${ran}/${queue.length} queries — ${hits.length} results so far`,
+        );
       }
     }
-  }
+  };
 
   const planner = async () => {
     while (rounds < MAX_WAVES) {
       // Wait for the queue to run low rather than empty: a refill that lands
       // while workers are still busy is a refill nobody waited for.
       while (!sealed && pending() > Math.floor(CONC / 2)) {
-        if (signal?.aborted) return
-        await idle(250)
+        if (signal?.aborted) return;
+        await idle(250);
       }
-      if (sealed || signal?.aborted) return
+      if (sealed || signal?.aborted) return;
 
-      const before = distinctHosts().size
+      const before = distinctHosts().size;
 
       /**
        * CAN THIS RUN AFFORD ANOTHER ROUND — asked before the assess call, not
@@ -1812,21 +2044,21 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           "plan",
           `${asked.length} queries fired of the ${QUERY_CEILING} this run was sized for — not widening, ` +
             `the rest of the clock belongs to judging what came back`,
-        )
-        sealed = true
-        return
+        );
+        sealed = true;
+        return;
       }
       if (DEADLINE !== null) {
-        const need = rankSeconds(before) + TAIL_SECONDS
-        const left = secondsLeft()
+        const need = rankSeconds(before) + TAIL_SECONDS;
+        const left = secondsLeft();
         if (left < need) {
           say(
             "plan",
             `not widening: ${before} hosts still need about ${Math.round(need)}s to judge and write, ` +
               `and there are ${leftS()}s left`,
-          )
-          sealed = true
-          return
+          );
+          sealed = true;
+          return;
         }
       }
       // Per-family and per-product yield, computed from what was actually
@@ -1836,63 +2068,103 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       // so a `.find` per hit over a several-thousand-row `asked` would make
       // this quadratic in the run's own size, rebuilt every round.
       const hostOfHit = (u: string) => {
-        try { return new URL(u).hostname.toLowerCase().replace(/^www\./, "") } catch { return "" }
-      }
+        try {
+          return new URL(u).hostname.toLowerCase().replace(/^www\./, "");
+        } catch {
+          return "";
+        }
+      };
       const famTable = (() => {
-        const rowsByFam = new Map<string, { asked: number; hosts: Set<string> }>()
-        const rowsByProd = new Map<string, { asked: number; hosts: Set<string> }>()
-        const byQ = new Map(asked.map((x) => [x.q, x]))
+        const rowsByFam = new Map<
+          string,
+          { asked: number; hosts: Set<string> }
+        >();
+        const rowsByProd = new Map<
+          string,
+          { asked: number; hosts: Set<string> }
+        >();
+        const byQ = new Map(asked.map((x) => [x.q, x]));
         for (const q of asked) {
-          const f = rowsByFam.get(q.family) ?? { asked: 0, hosts: new Set<string>() }
-          f.asked += 1
-          rowsByFam.set(q.family, f)
+          const f = rowsByFam.get(q.family) ?? {
+            asked: 0,
+            hosts: new Set<string>(),
+          };
+          f.asked += 1;
+          rowsByFam.set(q.family, f);
           if (q.product) {
-            const p = rowsByProd.get(q.product) ?? { asked: 0, hosts: new Set<string>() }
-            p.asked += 1
-            rowsByProd.set(q.product, p)
+            const p = rowsByProd.get(q.product) ?? {
+              asked: 0,
+              hosts: new Set<string>(),
+            };
+            p.asked += 1;
+            rowsByProd.set(q.product, p);
           }
         }
         for (const h of hits) {
-          const q = byQ.get(h.q)
-          if (!q) continue
-          const host = hostOfHit(h.url)
-          if (!host) continue
-          rowsByFam.get(q.family)?.hosts.add(host)
-          if (q.product) rowsByProd.get(q.product)?.hosts.add(host)
+          const q = byQ.get(h.q);
+          if (!q) continue;
+          const host = hostOfHit(h.url);
+          if (!host) continue;
+          rowsByFam.get(q.family)?.hosts.add(host);
+          if (q.product) rowsByProd.get(q.product)?.hosts.add(host);
         }
         const famLines = [...rowsByFam.entries()].map(
-          ([f, v]) => `  ${f} — ${v.asked} queries, ${v.hosts.size} distinct hosts`,
-        )
+          ([f, v]) =>
+            `  ${f} — ${v.asked} queries, ${v.hosts.size} distinct hosts`,
+        );
         const prodLines = [...rowsByProd.entries()].map(
           ([p, v]) => `  ${p} — ${v.asked} queries, ${v.hosts.size} hosts`,
-        )
-        return { families: famLines.join("\n"), products: prodLines.join("\n") }
-      })()
-      const reserveLines = [...reserve.entries()]
-        .filter(([, v]) => v.length)
-        .map(([p, v]) => `  ${p} — ${v.length} held: ${v.map((x) => `"${x.q}"`).join(", ")}`)
-        .join("\n") || "  (all reserves released)"
+        );
+        return {
+          families: famLines.join("\n"),
+          products: prodLines.join("\n"),
+        };
+      })();
+      const reserveLines =
+        [...reserve.entries()]
+          .filter(([, v]) => v.length)
+          .map(
+            ([p, v]) =>
+              `  ${p} — ${v.length} held: ${v.map((x) => `"${x.q}"`).join(", ")}`,
+          )
+          .join("\n") || "  (all reserves released)";
 
       const verdict = await call(
         "plan",
         "assess",
         z.object({
-          enough: z.boolean().describe("is this a map worth showing, or is something obviously missing?"),
-          missing: z.string().describe("what is thin or absent, one line. Empty if nothing is."),
+          enough: z
+            .boolean()
+            .describe(
+              "is this a map worth showing, or is something obviously missing?",
+            ),
+          missing: z
+            .string()
+            .describe("what is thin or absent, one line. Empty if nothing is."),
           draw: z
             .array(z.object({ product: z.string(), n: z.number() }))
-            .describe("reserve template queries to release, per product. Empty if none."),
-          queries: z.array(PlannedQuery).describe("fresh debranded queries aimed at what no template can reach. Empty if enough."),
+            .describe(
+              "reserve template queries to release, per product. Empty if none.",
+            ),
+          queries: z
+            .array(PlannedQuery)
+            .describe(
+              "fresh debranded queries aimed at what no template can reach. Empty if enough.",
+            ),
         }),
         prompt("assess", {
           anchor,
           sells: decomp.sells,
           buyer: decomp.buyer,
-          capabilities: decomp.capabilities.map((c) => `  ${c.name}`).join("\n"),
+          capabilities: decomp.capabilities
+            .map((c) => `  ${c.name}`)
+            .join("\n"),
           waves: `${rounds + 1} round${rounds === 0 ? "" : "s"}`,
           hosts: before,
           asked: asked.length,
-          angles: asked.map((q) => `  ${q.intent} · ${q.platform} — ${q.q}`).join("\n"),
+          angles: asked
+            .map((q) => `  ${q.intent} · ${q.platform} — ${q.q}`)
+            .join("\n"),
           sample: [...distinctHosts()].slice(0, 60).join(", "),
           families: `${famTable.families}\n${famTable.products}`,
           reserve: reserveLines,
@@ -1902,32 +2174,38 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         // carrying sixty host names and every query already asked spent the
         // whole budget thinking and returned nothing.
         { think: "medium", maxOutputTokens: 20_000 },
-      )
+      );
 
       // The world moved while this call was in flight — 15-25 seconds of it.
       // A worker that ran out of clock (or the run being cancelled) seals the
       // queue and goes home, and queueing behind an empty pool would add rows
       // to `asked` that nothing will ever buy: `report.queries` counts what was
       // FIRED, and a plan nobody executed must not inflate it.
-      if (sealed || signal?.aborted) return
+      if (sealed || signal?.aborted) return;
 
       // queries.length === 0 alone no longer means "enough": the prompt now
       // tells the model to release reserve instead of inventing when a
       // template covers the gap, so a widening round can legitimately carry
       // zero fresh queries and a non-empty draw. Only seal here when there is
       // neither.
-      if (verdict.enough || (verdict.queries.length === 0 && !verdict.draw?.length)) {
-        say("plan", `enough — ${before} hosts${verdict.missing ? ` (noted gap: ${verdict.missing})` : ""}`)
-        sealed = true
-        return
+      if (
+        verdict.enough ||
+        (verdict.queries.length === 0 && !verdict.draw?.length)
+      ) {
+        say(
+          "plan",
+          `enough — ${before} hosts${verdict.missing ? ` (noted gap: ${verdict.missing})` : ""}`,
+        );
+        sealed = true;
+        return;
       }
 
       // Reserve first: a held template is a query already judged worth its
       // family, so it outranks a freshly invented one.
-      const released: SweptQuery[] = []
+      const released: SweptQuery[] = [];
       for (const d of verdict.draw ?? []) {
-        const held = reserve.get(d.product)
-        if (!held?.length) continue
+        const held = reserve.get(d.product);
+        if (!held?.length) continue;
         for (const fq of held.splice(0, Math.max(1, Math.floor(d.n)))) {
           released.push({
             q: fq.q,
@@ -1938,14 +2216,14 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
             family: fq.family,
             product: fq.product,
             term: fq.term,
-          })
+          });
         }
       }
 
       // Never ask the same thing twice. The planner sees what has been asked,
       // but it is writing under time pressure against a moving map and a repeat
       // is a query bought for nothing.
-      const seen = new Set(asked.map((q) => q.q.trim().toLowerCase()))
+      const seen = new Set(asked.map((q) => q.q.trim().toLowerCase()));
       // Untagged by product or template — the assess call widens on a gap it
       // named in prose, not a reserve slot, so "debranded" is the honest family
       // for a query written free-form rather than drawn from a hand. Reserve
@@ -1955,7 +2233,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         // 20: a round's fresh-invention allowance, distinct from the reserve
         // releases above, which are pre-judged and uncapped here.
         .slice(0, 20)
-        .map((q) => ({ ...q, family: "debranded" as const }))
+        .map((q) => ({ ...q, family: "debranded" as const }));
 
       // Both the dedupe set and the anchor-naming filter, applied to
       // EVERYTHING this round wants to fire — reserve releases included. The
@@ -1970,75 +2248,90 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       // down. `seen` grows as each candidate is accepted, so a collision
       // between two released queries — not just between released and
       // already-asked — is caught too.
-      const proposed = [...released, ...fresh]
-      const widened: SweptQuery[] = []
+      const proposed = [...released, ...fresh];
+      const widened: SweptQuery[] = [];
       // What the ceiling leaves for this round — at least 1, because a round
       // that begins with the budget already spent returned above without paying
       // for the assess call. Counted as the survivors are collected rather than
       // sliced off afterwards, so a query the budget could not afford is never
       // marked seen: it stays proposable, which matters only if a later round
       // happens and costs nothing if none does.
-      const room = QUERY_CEILING === null ? Number.POSITIVE_INFINITY : Math.max(0, QUERY_CEILING - asked.length)
-      let refused = 0
-      let unaffordable = 0
+      const room =
+        QUERY_CEILING === null
+          ? Number.POSITIVE_INFINITY
+          : Math.max(0, QUERY_CEILING - asked.length);
+      let refused = 0;
+      let unaffordable = 0;
       for (const q of proposed) {
-        const k = q.q.trim().toLowerCase()
+        const k = q.q.trim().toLowerCase();
         if (seen.has(k) || banned(q.q, q.family, anchorName, decomp.coinages)) {
-          refused += 1
-          continue
+          refused += 1;
+          continue;
         }
         if (widened.length >= room) {
-          unaffordable += 1
-          continue
+          unaffordable += 1;
+          continue;
         }
-        seen.add(k)
-        widened.push(q)
+        seen.add(k);
+        widened.push(q);
       }
       if (refused) {
-        think("plan", `round ${rounds + 1}: dropped ${refused} widened queries — duplicate or named the anchor`)
+        think(
+          "plan",
+          `round ${rounds + 1}: dropped ${refused} widened queries — duplicate or named the anchor`,
+        );
       }
       if (unaffordable) {
         say(
           "plan",
           `round ${rounds + 1}: the model wanted ${unaffordable} more queries than this run's budget of ` +
             `${QUERY_CEILING} has left — firing ${widened.length}, which is the last of them`,
-        )
+        );
       }
       if (!widened.length) {
-        say("plan", `round ${rounds + 1}: every suggested query had already been asked — stopping`)
-        sealed = true
-        return
+        say(
+          "plan",
+          `round ${rounds + 1}: every suggested query had already been asked — stopping`,
+        );
+        sealed = true;
+        return;
       }
 
-      rounds += 1
+      rounds += 1;
       say(
         "plan",
         `round ${rounds}: ${verdict.missing || "widening"} — ${released.length} drawn from reserve, ${fresh.length} freshly written — ${widened.length} queries queued`,
-      )
-      think("plan", `after ${before} hosts the model wants more: ${verdict.missing}`)
-      asked.push(...widened)
-      queue.push(...widened)
+      );
+      think(
+        "plan",
+        `after ${before} hosts the model wants more: ${verdict.missing}`,
+      );
+      asked.push(...widened);
+      queue.push(...widened);
 
       // Yield floor, measured once the round's queries have actually landed.
       // A round that adds almost nothing means the queries are reaching ground
       // already covered, and the next one would buy corroboration.
-      const mine = queue.length
-      while (!sealed && taken < mine && !signal?.aborted) await idle(250)
-      const gained = distinctHosts().size - before
-      say("sweep", `round ${rounds} added ${gained} new hosts (${distinctHosts().size} total)`)
+      const mine = queue.length;
+      while (!sealed && taken < mine && !signal?.aborted) await idle(250);
+      const gained = distinctHosts().size - before;
+      say(
+        "sweep",
+        `round ${rounds} added ${gained} new hosts (${distinctHosts().size} total)`,
+      );
       if (gained < MIN_NEW_HOSTS) {
-        say("plan", `round ${rounds} added only ${gained} — stopping, further queries are buying corroboration`)
-        sealed = true
-        return
+        say(
+          "plan",
+          `round ${rounds} added only ${gained} — stopping, further queries are buying corroboration`,
+        );
+        sealed = true;
+        return;
       }
     }
-    sealed = true
-  }
+    sealed = true;
+  };
 
-  await Promise.all([
-    ...Array.from({ length: CONC }, worker),
-    planner(),
-  ])
+  await Promise.all([...Array.from({ length: CONC }, worker), planner()]);
 
   /**
    * One entry per COMPANY, not per hostname.
@@ -2061,31 +2354,47 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    * site rather than a thing in its own right.
    */
   const SECTION = new Set([
-    "docs", "doc", "documentation", "blog", "help", "support", "developer",
-    "developers", "dev", "api", "learn", "kb", "guides", "changelog", "status",
-  ])
+    "docs",
+    "doc",
+    "documentation",
+    "blog",
+    "help",
+    "support",
+    "developer",
+    "developers",
+    "dev",
+    "api",
+    "learn",
+    "kb",
+    "guides",
+    "changelog",
+    "status",
+  ]);
   const parentOf = (host: string): string => {
-    const parts = host.split(".")
-    if (parts.length <= 2) return host
-    if (!SECTION.has(parts[0]!)) return host
-    return parts.slice(1).join(".")
-  }
+    const parts = host.split(".");
+    if (parts.length <= 2) return host;
+    if (!SECTION.has(parts[0]!)) return host;
+    return parts.slice(1).join(".");
+  };
 
-  const byHost = new Map<string, typeof hits>()
-  let folded = 0
+  const byHost = new Map<string, typeof hits>();
+  let folded = 0;
   for (const h of hits) {
-    let host: string
+    let host: string;
     try {
-      host = new URL(h.url).hostname.toLowerCase().replace(/^www\./, "")
+      host = new URL(h.url).hostname.toLowerCase().replace(/^www\./, "");
     } catch {
-      continue
+      continue;
     }
-    const parent = parentOf(host)
-    if (parent !== host) folded += 1
-    if (!byHost.has(parent)) byHost.set(parent, [])
-    byHost.get(parent)!.push(h)
+    const parent = parentOf(host);
+    if (parent !== host) folded += 1;
+    if (!byHost.has(parent)) byHost.set(parent, []);
+    byHost.get(parent)!.push(h);
   }
-  say("sweep", `${hits.length} results, ${byHost.size} distinct hosts${folded ? ` (${folded} rows folded into a parent domain)` : ""}`)
+  say(
+    "sweep",
+    `${hits.length} results, ${byHost.size} distinct hosts${folded ? ` (${folded} rows folded into a parent domain)` : ""}`,
+  );
 
   // ── 4. judge every host from its own page ─────────────────────────────────
   const hostList = [...byHost.entries()].map(([host, hs]) => ({
@@ -2095,44 +2404,53 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     titles: [...new Set(hs.map((h) => h.title))].slice(0, 3),
     desc: hs[0]!.description?.slice(0, 190) ?? "",
     topHit: hs[0]?.url,
-  }))
+  }));
 
   // Left null unless the caller supplies a real one. Calibration
   // (`scripts/calibrate-kernel.ts`) found no separation between vendor and
   // directory front pages on the measured sample, so shipping a guessed 12
   // would be arithmetic dressed as evidence. `report.kernel.threshold` below
   // carries this value through honestly, null included.
-  const KERNEL_THRESHOLD = opts.aggregatorThreshold ?? null
+  const KERNEL_THRESHOLD = opts.aggregatorThreshold ?? null;
   say(
     "rank",
     `judging ${hostList.length} hosts from their own front pages, predicates first` +
-      (KERNEL_THRESHOLD === null ? ", aggregator rule off" : `, aggregator threshold ${KERNEL_THRESHOLD}`),
-  )
+      (KERNEL_THRESHOLD === null
+        ? ", aggregator rule off"
+        : `, aggregator threshold ${KERNEL_THRESHOLD}`),
+  );
   if (DEADLINE !== null) {
-    const need = rankSeconds(hostList.length) + TAIL_SECONDS
+    const need = rankSeconds(hostList.length) + TAIL_SECONDS;
     say(
       "rank",
       `about ${Math.round(need)}s of judging and writing left to do, ${leftS()}s of clock` +
-        (need > secondsLeft() ? " — this will stop short and ship what it has" : ""),
-    )
+        (need > secondsLeft()
+          ? " — this will stop short and ship what it has"
+          : ""),
+    );
   }
 
-  const entities: Entity[] = []
-  let judgedCount = 0
-  let rankedBuffer: Judged[] = []
+  const entities: Entity[] = [];
+  let judgedCount = 0;
+  let rankedBuffer: Judged[] = [];
   const flushRanked = () => {
-    const kept = rankedBuffer.filter(onMap)
+    const kept = rankedBuffer.filter(onMap);
     if (kept.length) {
       emitResult("rank", {
         kind: "ranked",
         candidates: kept.map((e) => ({
-          domain: e.domain, name: e.name || e.domain, kind: e.kind, relation: e.relation,
-          what: e.what, why: e.because ?? e.why, breadth: byHost.get(e.domain)?.length ?? 0,
+          domain: e.domain,
+          name: e.name || e.domain,
+          kind: e.kind,
+          relation: e.relation,
+          what: e.what,
+          why: e.because ?? e.why,
+          breadth: byHost.get(e.domain)?.length ?? 0,
         })),
-      })
+      });
     }
-    rankedBuffer = []
-  }
+    rankedBuffer = [];
+  };
 
   const judged = await judgeHosts(hostList, {
     fetcher,
@@ -2143,7 +2461,10 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     // OPENKB_RANK_CONCURRENCY raises it when the model provider's rate allows
     // — doubling the pool roughly halves the phase, and a provider that
     // objects answers with 429s the caller will see, not silent loss.
-    concurrency: Math.max(1, Math.floor(Number(process.env.OPENKB_RANK_CONCURRENCY ?? 8) || 8)),
+    concurrency: Math.max(
+      1,
+      Math.floor(Number(process.env.OPENKB_RANK_CONCURRENCY ?? 8) || 8),
+    ),
     signal,
     /**
      * THE BACKSTOP, and the last place a run can still choose to be smaller.
@@ -2161,21 +2482,29 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
      */
     stop: DEADLINE === null ? undefined : () => secondsLeft() <= TAIL_SECONDS,
     onFetch: (url, ok, ms) => {
-      bill("fetch", "rank", 0, ms, ok)
+      bill("fetch", "rank", 0, ms, ok);
       spans.emit({
-        runId, agentId: "rank", parentId: null, kind: "fetch", name: "fetch",
-        argsDigest: url, ms, ok, usd: 0,
-      })
+        runId,
+        agentId: "rank",
+        parentId: null,
+        kind: "fetch",
+        name: "fetch",
+        argsDigest: url,
+        ms,
+        ok,
+        usd: 0,
+      });
     },
     onJudged: (e) => {
-      rankedBuffer.push(e)
-      judgedCount += 1
+      rankedBuffer.push(e);
+      judgedCount += 1;
       // The judgement itself, to the reading panel, as it lands — the batch
       // classifier's think line, restored to the per-host path.
-      const line = rankThinkLine(e)
-      if (line) think("rank", line)
-      if (rankedBuffer.length >= 25) flushRanked()
-      if (judgedCount % 50 === 0) say("rank", `  judged ${judgedCount}/${hostList.length}`)
+      const line = rankThinkLine(e);
+      if (line) think("rank", line);
+      if (rankedBuffer.length >= 25) flushRanked();
+      if (judgedCount % 50 === 0)
+        say("rank", `  judged ${judgedCount}/${hostList.length}`);
     },
     classify: async (h, pageText) => {
       const out = await call(
@@ -2184,40 +2513,53 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         z.object({
           name: z.string(),
           kind: z.enum(CLASSIFY_KINDS),
-          what: z.string().describe("what it is, one line, from the page itself"),
+          what: z
+            .string()
+            .describe("what it is, one line, from the page itself"),
           relation: z.enum(RELATIONS),
-          why: z.string().describe("why it belongs on this map, stated against the anchor"),
+          why: z
+            .string()
+            .describe("why it belongs on this map, stated against the anchor"),
           spans: z
             .array(z.string())
             .min(1)
             .max(3)
-            .describe("1-3 short quotes copied character-for-character from the page, together backing the what"),
+            .describe(
+              "1-3 short quotes copied character-for-character from the page, together backing the what",
+            ),
         }),
         prompt("classify", {
-          anchor, sells: decomp.sells, buyer: decomp.buyer,
-          host: h.host, seenIn: String(h.seenIn), intents: h.intents.join(","),
+          anchor,
+          sells: decomp.sells,
+          buyer: decomp.buyer,
+          host: h.host,
+          seenIn: String(h.seenIn),
+          intents: h.intents.join(","),
           page: pageText,
         }),
         { think: "none", maxOutputTokens: CLASSIFY_MAX_OUTPUT_TOKENS },
-      )
-      return out
+      );
+      return out;
     },
-  })
-  flushRanked()
-  if (signal?.aborted) throw new Error("aborted")
-  entities.push(...judged.entities.map((e) => ({ ...e } as Entity)))
-  say("rank", `${judged.stats.settledFree} hosts settled by predicate for $0; ${judged.stats.modelJudged} judged by the model`)
+  });
+  flushRanked();
+  if (signal?.aborted) throw new Error("aborted");
+  entities.push(...judged.entities.map((e) => ({ ...e }) as Entity));
+  say(
+    "rank",
+    `${judged.stats.settledFree} hosts settled by predicate for $0; ${judged.stats.modelJudged} judged by the model`,
+  );
   /** Hosts the run found and never judged, because the clock ran out on the
    *  pool. Zero on every run that finished the list — which is every run
    *  without a deadline. Reported rather than absorbed: a map of 300 entities
    *  drawn from 900 hosts is a different claim from a map of 300 entities. */
-  const unjudged = hostList.length - judged.entities.length
+  const unjudged = hostList.length - judged.entities.length;
   if (unjudged > 0) {
     say(
       "rank",
       `stopped ${unjudged} hosts short of the ${hostList.length} found — the clock ran out, so the run is ` +
         `writing the ${judged.entities.length} it judged instead of losing all of them`,
-    )
+    );
   }
 
   // ── report ────────────────────────────────────────────────────────────────
@@ -2237,38 +2579,55 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
      * not match resolves to nothing: an entity with no market falls back to the
      * anchor, which is honest, where a made-up market node is not.
      */
-    const declared = new Map(decomp.capabilities.map((c) => [c.name.trim().toLowerCase(), c.name]))
-    const canonical = (m: string | undefined) => (m ? declared.get(m.trim().toLowerCase()) : undefined)
-    const marketOf = new Map(asked.map((q) => [q.q, canonical(q.market)]))
-    const familyOf = new Map(asked.map((q) => [q.q, q.family]))
+    const declared = new Map(
+      decomp.capabilities.map((c) => [c.name.trim().toLowerCase(), c.name]),
+    );
+    const canonical = (m: string | undefined) =>
+      m ? declared.get(m.trim().toLowerCase()) : undefined;
+    const marketOf = new Map(asked.map((q) => [q.q, canonical(q.market)]));
+    const familyOf = new Map(asked.map((q) => [q.q, q.family]));
 
-    const stray = new Set(asked.map((q) => q.market).filter((m) => m && !canonical(m)))
+    const stray = new Set(
+      asked.map((q) => q.market).filter((m) => m && !canonical(m)),
+    );
     if (stray.size) {
-      say("rank", `${stray.size} queries named a market that was never declared; their hosts fall back to the anchor`)
-      for (const m of stray) think("rank", `undeclared market on a query: ${m}`)
+      say(
+        "rank",
+        `${stray.size} queries named a market that was never declared; their hosts fall back to the anchor`,
+      );
+      for (const m of stray)
+        think("rank", `undeclared market on a query: ${m}`);
     }
     for (const e of entities) {
-      const rows = byHost.get(e.domain.toLowerCase().replace(/^www\./, "")) ?? []
-      const counts = new Map<string, number>()
+      const rows =
+        byHost.get(e.domain.toLowerCase().replace(/^www\./, "")) ?? [];
+      const counts = new Map<string, number>();
       for (const h of rows) {
-        const m = marketOf.get(h.q)
-        if (m) counts.set(m, (counts.get(m) ?? 0) + 1)
+        const m = marketOf.get(h.q);
+        if (m) counts.set(m, (counts.get(m) ?? 0) + 1);
       }
       if (counts.size) {
-        e.foundBy = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([m]) => m)
+        e.foundBy = [...counts.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .map(([m]) => m);
       }
-      const fams = new Map<QueryFamily, number>()
+      const fams = new Map<QueryFamily, number>();
       for (const h of rows) {
-        const f = familyOf.get(h.q)
-        if (f) fams.set(f, (fams.get(f) ?? 0) + 1)
+        const f = familyOf.get(h.q);
+        if (f) fams.set(f, (fams.get(f) ?? 0) + 1);
       }
-      if (fams.size) e.families = [...fams.entries()].sort((a, b) => b[1] - a[1]).map(([f]) => f)
+      if (fams.size)
+        e.families = [...fams.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .map(([f]) => f);
     }
   }
 
-  const keep = entities.filter(onMap)
+  const keep = entities.filter(onMap);
   // The hosts that reached the map, for the co-occurrence pass below.
-  const keptHosts = new Set(keep.map((e) => e.domain.toLowerCase().replace(/^www\./, "")))
+  const keptHosts = new Set(
+    keep.map((e) => e.domain.toLowerCase().replace(/^www\./, "")),
+  );
 
   /**
    * How the entities relate to each other.
@@ -2285,28 +2644,28 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    * everywhere else in this run.
    */
   const coPairs = (() => {
-    const byQuery = new Map<string, Set<string>>()
+    const byQuery = new Map<string, Set<string>>();
     for (const h of hits) {
-      let host: string
+      let host: string;
       try {
-        host = new URL(h.url).hostname.toLowerCase().replace(/^www\./, "")
+        host = new URL(h.url).hostname.toLowerCase().replace(/^www\./, "");
       } catch {
-        continue
+        continue;
       }
-      if (!keptHosts.has(host)) continue
-      if (!byQuery.has(h.q)) byQuery.set(h.q, new Set())
-      byQuery.get(h.q)!.add(host)
+      if (!keptHosts.has(host)) continue;
+      if (!byQuery.has(h.q)) byQuery.set(h.q, new Set());
+      byQuery.get(h.q)!.add(host);
     }
-    const score = new Map<string, number>()
+    const score = new Map<string, number>();
     for (const hosts of byQuery.values()) {
       // A query that returned almost everything says nothing about any pair in
       // it. Skip it rather than let it inflate every score it touches.
-      const list = [...hosts]
-      if (list.length > 40) continue
+      const list = [...hosts];
+      if (list.length > 40) continue;
       for (let i = 0; i < list.length; i++) {
         for (let j = i + 1; j < list.length; j++) {
-          const key = [list[i]!, list[j]!].sort().join("|")
-          score.set(key, (score.get(key) ?? 0) + 1)
+          const key = [list[i]!, list[j]!].sort().join("|");
+          score.set(key, (score.get(key) ?? 0) + 1);
         }
       }
     }
@@ -2315,17 +2674,17 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       .sort((a, b) => b[1] - a[1])
       .slice(0, MAX_PAIRS)
       .map(([k, n]) => {
-        const [a, b] = k.split("|") as [string, string]
-        return { a, b, seen: n }
-      })
-  })()
+        const [a, b] = k.split("|") as [string, string];
+        return { a, b, seen: n };
+      });
+  })();
 
-  const edges: EntityEdge[] = []
+  const edges: EntityEdge[] = [];
   /** Pairs the paid linking pass never got to ask about, because the clock ran
    *  out mid-phase. Reported rather than swallowed: a reader comparing two runs
    *  of one anchor deserves to know one of them shipped fewer edges because it
    *  was hurried, not because the market has fewer relationships. */
-  let unlinked = 0
+  let unlinked = 0;
 
   /**
    * Systematic linking, before any model sees a pair.
@@ -2344,11 +2703,14 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    * Free, and it costs no wall clock worth measuring.
    */
   const namesIt = (haystack: string, needle: string): boolean =>
-    new RegExp(`\\b${needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(haystack)
+    new RegExp(
+      `\\b${needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+      "i",
+    ).test(haystack);
 
   {
     const spellings: { entity: Entity; terms: string[] }[] = keep.map((e) => {
-      const host = e.domain.toLowerCase().replace(/^www\./, "")
+      const host = e.domain.toLowerCase().replace(/^www\./, "");
       return {
         entity: e,
         // The company's name and its full host, and nothing else. Matching a
@@ -2357,54 +2719,218 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         // "google" of four separate entities, so a page saying "cloud" linked to
         // Google. v1 matched name and slug only, and was right.
         terms: [...new Set([e.name, host])].filter((t) => t && t.length > 3),
-      }
-    })
+      };
+    });
 
-    const seenEdge = new Set<string>()
-    let matched = 0
+    /**
+     * ONE SPELLING, ONE OWNER.
+     *
+     * The loop below asks every entity whether this page names it, so a string
+     * two entities both answer to buys an edge to BOTH — and the run has no
+     * way to say which one the page meant. Measured on the ten biggest maps on
+     * disk: 4 to 16 spellings per map are claimed twice, and they were paying
+     * for 992 edges across the ten — 0 on linear.app, 170 on cloudflare, 11%
+     * of github's whole naming pass. Almost all of them are one company
+     * reached by two hosts —
+     * `react.dev` and `legacy.reactjs.org` both answer to "React",
+     * `zeroheight.com` and `report.zeroheight.com` to "zeroheight" — so the
+     * pair was never two findings, it was one finding counted twice.
+     *
+     * The owner is the claimant whose host actually spells the term, and the
+     * shortest such host, which is the apex rather than the subdomain: "React"
+     * goes to react.dev and not to the archive, "Open Source Design" to
+     * opensourcedesign.net and not to its forum. Alphabetical last, so two
+     * hosts of equal length resolve the same way on every run.
+     *
+     * A host term always spells its own host, so a registrable-host match —
+     * the strongest identification the pass has — can never lose this contest.
+     */
+    const identityKey = (text: string) =>
+      text.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const claimants = new Map<string, string[]>();
+    for (const { entity, terms } of spellings) {
+      const host = entity.domain.toLowerCase().replace(/^www\./, "");
+      for (const t of terms) {
+        const k = t.toLowerCase();
+        claimants.set(k, [...(claimants.get(k) ?? []), host]);
+      }
+    }
+    const owner = new Map<string, string>();
+    for (const [term, hosts] of claimants) {
+      const backed = hosts.filter((h) =>
+        identityKey(h).includes(identityKey(term)),
+      );
+      const pool = backed.length ? backed : hosts;
+      owner.set(
+        term,
+        [...pool].sort((a, b) => a.length - b.length || (a < b ? -1 : 1))[0]!,
+      );
+    }
+
+    /** Kinds that sell something, which is the only kind a rival can be. */
+    const sells = (kind: string) => kind === "company" || kind === "product";
+    /**
+     * A member of this market's rival set: it sells, and the classify pass —
+     * reading its OWN front page, span-checked — placed it against the anchor
+     * as a competitor or a substitute. Everything else on the map is here for
+     * another reason: it is depended on, integrated with, written about.
+     *
+     * Asked of BOTH ends, which was measured rather than assumed. Judging the
+     * target alone leaves figma with 279 competitor edges, 46 of them running
+     * FROM a host that is not in the rival set; the run's own model, asked pair
+     * by pair whether the two actually compete, said yes to 4 of 40 sampled
+     * there against 19 of 40 sampled from the 233 that are. Same shape on
+     * stripe: 4 of 40 in the source-only slice. A 10%-true slice beside a
+     * 48%-true one is worth the handful of real edges the symmetry costs.
+     */
+    const anchorHost = anchor.toLowerCase().replace(/^www\./, "");
+    const isRival = (e: Entity) => {
+      // THE ANCHOR IS IN ITS OWN MARKET BY CONSTRUCTION, and without this line
+      // the rule deletes the one edge class a market map exists to publish.
+      //
+      // `isRival` reads a relation the classify pass wrote, and every relation
+      // is stated FROM THE ANCHOR OUTWARD — so the anchor's own row cannot
+      // carry `competitor`, because nothing competes with itself. On this run
+      // it carries `shaper`; it could carry anything. Either way the predicate
+      // says false, and then `isRival(src) && isRival(entity)` demotes every
+      // edge with the anchor at either end: 309 of figma.com's 2,461, all of
+      // them "figma.com competes with X" turned into "figma.com discusses X".
+      //
+      // Not widened to `shaper` generally, which would have fixed this run and
+      // not the next one — a shaper is the incumbent a market is defined
+      // against, which is a different claim from selling against the anchor.
+      // The anchor is named by host, which is the one identification that
+      // cannot be a judgement.
+      if (e.domain.toLowerCase().replace(/^www\./, "") === anchorHost)
+        return true;
+      return (
+        sells(e.kind) &&
+        (e.relation === "competitor" || e.relation === "substitute")
+      );
+    };
+
+    const seenEdge = new Set<string>();
+    let matched = 0;
+    let ambiguous = 0;
+    let demoted = 0;
     for (const [host, rows] of byHost) {
-      const src = keep.find((e) => e.domain.toLowerCase().replace(/^www\./, "") === host)
-      if (!src) continue
+      const src = keep.find(
+        (e) => e.domain.toLowerCase().replace(/^www\./, "") === host,
+      );
+      if (!src) continue;
       // Only what this host's own results said, which is text the run retrieved.
-      const blob = rows.map((r) => `${r.title} ${r.description ?? ""}`).join("\n")
+      const blob = rows
+        .map((r) => `${r.title} ${r.description ?? ""}`)
+        .join("\n");
       for (const { entity, terms } of spellings) {
-        const target = entity.domain.toLowerCase().replace(/^www\./, "")
-        if (target === host) continue
-        const hit = terms.find((t) => namesIt(blob, t))
-        if (!hit) continue
-        const key = `${host}|${target}`
-        if (seenEdge.has(key)) continue
-        seenEdge.add(key)
+        const target = entity.domain.toLowerCase().replace(/^www\./, "");
+        if (target === host) continue;
+        const hit = terms.find((t) => namesIt(blob, t));
+        if (!hit) continue;
+        // The string names somebody, and the run cannot say it was this one.
+        // Not a weaker edge — no edge, because there is no evidence about this
+        // target to weaken.
+        if (owner.get(hit.toLowerCase()) !== target) {
+          ambiguous += 1;
+          continue;
+        }
+        const key = `${host}|${target}`;
+        if (seenEdge.has(key)) continue;
+        seenEdge.add(key);
+        // What the naming means depends on what the namer is. A forum naming a
+        // vendor discusses it; a directory lists it; a publication covers it.
+        // Those three are what those kinds are FOR, so the mention is the whole
+        // relationship and the mapping stands.
+        //
+        // A SELLER NAMING SOMETHING IS THE ONE THAT DOES NOT FOLLOW. "A vendor
+        // naming a vendor is positioning against one" was the old reading, and
+        // it made `competitor` 1,071 of figma's 2,461 edges on the strength of
+        // a word-boundary match: figma.com -[competitor]-> a Substack
+        // newsletter, because a page said "Design with AI".
+        //
+        // So both ends get a vote, using the judgement already made from their
+        // OWN pages rather than from a string on somebody else's: an edge
+        // between rivals joins two members of this market's rival set.
+        // Everything else a seller names — the React it is built on, the Slack
+        // it ships into, the newsletter that reviewed it, the MCP spec it
+        // implements — is a mention, and `discusses` is what a mention proves.
+        //
+        // MEASURED on the ten biggest maps on disk, replaying this pass over
+        // their stored SERP rows with today's other two fixes already applied,
+        // so this is only what those left behind: this pass's competitor edges
+        // fall 9,657 -> 4,117 across the ten — 405->233 on figma,
+        // 2,521->648 on shopify, 1,016->441 on stripe, 1,417->655 on vercel.
+        //
+        // WHAT IT COSTS, because it is not free. Demoted pairs put back to the
+        // run's own model one by one — "would a buyer pick one instead of the
+        // other?" — say yes to 4 of 40 sampled on figma and 12 of 40 on
+        // stripe. So the bar demotes real rivalries too: roughly 17 of figma's
+        // 172 and 170 of stripe's 575. It is still the better side of the
+        // trade, because what it keeps is truer than what it drops — figma's
+        // surviving competitor edges are 21 of 40 real against 4 of 40 among
+        // the demoted, stripe's 14 of 40 against 12 of 40 — but stripe is the
+        // honest warning: in payments almost every vendor is somebody's
+        // integration AND somebody's rival, and there this bar moves the
+        // label's precision from 32% to 35% and no further.
+        //
+        // THE PAID PASS BELOW IS LEFT ALONE, and that was checked rather than
+        // assumed: only 6 of its 58 competitor edges on figma point at
+        // something that does not sell, and reading them they are right
+        // (g2.com and gartner.com really are rivals). It sees both descriptions
+        // before it answers. The string match is where the leap was.
+        const mention =
+          src.kind === "community"
+            ? "discusses"
+            : src.kind === "directory"
+              ? "lists"
+              : src.kind === "publisher"
+                ? "covers"
+                : sells(src.kind)
+                  ? "discusses"
+                  : "unknown";
+        const rivals = isRival(src) && isRival(entity);
+        if (sells(src.kind) && !rivals) demoted += 1;
         edges.push({
           from: host,
           to: target,
-          // What the naming means depends on what the namer is. A forum naming a
-          // vendor discusses it; a directory lists it; a publication covers it;
-          // a vendor naming a vendor is positioning against one.
-          relation:
-            src.kind === "community"
-              ? "discusses"
-              : src.kind === "directory"
-                ? "lists"
-                : src.kind === "publisher"
-                  ? "covers"
-                  : src.kind === "company" || src.kind === "product"
-                    ? "competitor"
-                    : "unknown",
+          relation: rivals ? "competitor" : mention,
           why: `a page on ${host} names "${hit}"`,
           confidence: "measured",
-        })
-        matched += 1
+        });
+        matched += 1;
       }
     }
-    if (matched) say("link", `${matched} edges from pages that name another player outright`)
+    if (matched) {
+      say(
+        "link",
+        `${matched} edges from pages that name another player outright`,
+      );
+      // Said out loud because both numbers are edges a reader of an older map
+      // would have seen. A run that quietly ships 30% fewer competitors than
+      // last week's run of the same anchor is indistinguishable from a run that
+      // found a quieter market.
+      if (demoted || ambiguous) {
+        say(
+          "link",
+          `${demoted} of them are mentions, not rivalries` +
+            (ambiguous
+              ? `; ${ambiguous} more named something two entities answer to and were dropped`
+              : ""),
+        );
+      }
+    }
   }
 
   // Whatever the free pass already answered is not worth asking a model about.
-  const resolved = new Set(edges.map((e) => [e.from, e.to].sort().join("|")))
-  const unresolved = coPairs.filter((p) => !resolved.has([p.a, p.b].sort().join("|")))
+  const resolved = new Set(edges.map((e) => [e.from, e.to].sort().join("|")));
+  const unresolved = coPairs.filter(
+    (p) => !resolved.has([p.a, p.b].sort().join("|")),
+  );
   if (resolved.size) {
-    say("link", `${coPairs.length - unresolved.length} of ${coPairs.length} pairs already answered by a page`)
+    say(
+      "link",
+      `${coPairs.length - unresolved.length} of ${coPairs.length} pairs already answered by a page`,
+    );
   }
 
   /**
@@ -2418,26 +2944,32 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    * skips the inferred ones, which costs a reader inference and saves them the
    * whole map.
    */
-  const canAffordLinking = secondsLeft() >= TAIL_SECONDS
+  const canAffordLinking = secondsLeft() >= TAIL_SECONDS;
   if (!canAffordLinking && unresolved.length && !opts.skipModelLinking) {
     say(
       "link",
       `${unresolved.length} pairs left unasked — ${leftS()}s of clock is the write reserve, ` +
         `so the map ships with the ${edges.length} edges pages stated outright`,
-    )
+    );
   }
   if (unresolved.length && !opts.skipModelLinking && canAffordLinking) {
-    say("link", `${unresolved.length} pairs co-occurred but no page names either — asking how they relate`)
-    const byDomain = new Map(keep.map((e) => [e.domain.toLowerCase().replace(/^www\./, ""), e]))
+    say(
+      "link",
+      `${unresolved.length} pairs co-occurred but no page names either — asking how they relate`,
+    );
+    const byDomain = new Map(
+      keep.map((e) => [e.domain.toLowerCase().replace(/^www\./, ""), e]),
+    );
     const describe = (d: string) => {
-      const e = byDomain.get(d)
-      return e ? `${d} (${e.kind}) — ${e.what}` : d
-    }
+      const e = byDomain.get(d);
+      return e ? `${d} (${e.kind}) — ${e.what}` : d;
+    };
 
-    const pairBatches: (typeof coPairs)[] = []
-    for (let i = 0; i < unresolved.length; i += BATCH) pairBatches.push(unresolved.slice(i, i + BATCH))
+    const pairBatches: (typeof coPairs)[] = [];
+    for (let i = 0; i < unresolved.length; i += BATCH)
+      pairBatches.push(unresolved.slice(i, i + BATCH));
 
-    let linked = 0
+    let linked = 0;
     await Promise.all(
       pairBatches.map(async (batch, n) => {
         // SKIP, DO NOT THROW. Every phase before this one throws on abort
@@ -2458,37 +2990,63 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         // `report.unlinkedPairs` says how many. A map with all its entities and
         // some of its edges is worth shipping; nothing is not.
         if (signal?.aborted) {
-          unlinked += batch.length
-          return
+          unlinked += batch.length;
+          return;
         }
-        const out = await call(
-          "link",
-          `link batch ${n + 1} of ${pairBatches.length}`,
-          z.object({ edges: z.array(EntityEdge) }),
-          prompt("link", {
-            anchor,
-            sells: decomp.sells,
-            pairs: batch
-              .map((p) => `${describe(p.a)}\n   ${describe(p.b)}\n   co-occurred in ${p.seen} different searches`)
-              .join("\n\n"),
-          }),
-          { think: "none", maxOutputTokens: 200 * batch.length + 6_000 },
-        )
+        // AND ON ANY OTHER FAILURE, for the reason written directly above.
+        //
+        // The comment above already argues that an out-of-time link batch is
+        // edges this run does not have, and the guard only covered a cancelled
+        // run. Every other way a batch can fail — a call the deadline stopped
+        // after its retry, a provider 500, a schema the model would not fill —
+        // threw, and the throw travelled all the way out and failed the sweep.
+        // Measured: figma.com died at batch 412 of 492 having already produced
+        // 1,444 entities and 411 batches of edges, and wrote none of it.
+        //
+        // A map with all its entities and some of its edges is worth shipping;
+        // nothing is not. That was true of the deadline the day it was written
+        // and it is just as true of a batch that failed for any other reason.
+        let out: { edges: z.infer<typeof EntityEdge>[] };
+        try {
+          out = await call(
+            "link",
+            `link batch ${n + 1} of ${pairBatches.length}`,
+            z.object({ edges: z.array(EntityEdge) }),
+            prompt("link", {
+              anchor,
+              sells: decomp.sells,
+              pairs: batch
+                .map(
+                  (p) =>
+                    `${describe(p.a)}\n   ${describe(p.b)}\n   co-occurred in ${p.seen} different searches`,
+                )
+                .join("\n\n"),
+            }),
+            { think: "none", maxOutputTokens: 200 * batch.length + 6_000 },
+          );
+        } catch (err) {
+          unlinked += batch.length;
+          say(
+            "link",
+            `  batch ${n + 1} of ${pairBatches.length} produced no edges: ${err instanceof Error ? err.message : String(err)}`,
+          );
+          return;
+        }
         // Only edges whose ends are both on the map. A model naming something it
         // remembers rather than something the run found is a dangling edge, and
         // v1 shipped sixteen of them before anyone noticed.
         for (const e of out.edges) {
-          const from = e.from.toLowerCase().replace(/^www\./, "")
-          const to = e.to.toLowerCase().replace(/^www\./, "")
-          if (from === to) continue
-          if (!byDomain.has(from) || !byDomain.has(to)) continue
-          edges.push({ ...e, from, to })
+          const from = e.from.toLowerCase().replace(/^www\./, "");
+          const to = e.to.toLowerCase().replace(/^www\./, "");
+          if (from === to) continue;
+          if (!byDomain.has(from) || !byDomain.has(to)) continue;
+          edges.push({ ...e, from, to });
         }
-        linked += batch.length
-        say("link", `  ${linked}/${unresolved.length} pairs`)
+        linked += batch.length;
+        say("link", `  ${linked}/${unresolved.length} pairs`);
       }),
-    )
-    say("link", `${edges.length} edges between entities`)
+    );
+    say("link", `${edges.length} edges between entities`);
   }
 
   // Summed from what was actually billed, not re-derived from the counters: a
@@ -2501,9 +3059,13 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   // a reader comparing `report.usd`/`report.seconds` against `report.cost.usd`
   // (assembled from the same `byKind`/`byAgent` lines, always fresh) deserves
   // numbers that do not contradict each other.
-  const usd = lines(byKind).reduce((n, l) => n + l.usd, 0)
-  const seconds = (Date.now() - t0) / 1000
-  const count = (arr: string[]) => arr.reduce<Record<string, number>>((a, k) => ((a[k] = (a[k] ?? 0) + 1), a), {})
+  const usd = lines(byKind).reduce((n, l) => n + l.usd, 0);
+  const seconds = (Date.now() - t0) / 1000;
+  const count = (arr: string[]) =>
+    arr.reduce<Record<string, number>>(
+      (a, k) => ((a[k] = (a[k] ?? 0) + 1), a),
+      {},
+    );
 
   const stats: SweepStats = {
     queries: queries.length,
@@ -2517,16 +3079,20 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     unlockerCalls,
     usd,
     seconds,
-  }
+  };
 
-  say("write", `${keep.length} on the map from ${byHost.size} hosts`)
+  say("write", `${keep.length} on the map from ${byHost.size} hosts`);
 
   // A family contributing nothing must be reported, not absorbed: the doctrine
   // or the templates have a hole and the only way anyone finds it is here.
   {
-    const fam = count(asked.map((q) => q.family))
+    const fam = count(asked.map((q) => q.family));
     for (const f of ["plain", "debranded", "branded"] as const) {
-      if (!fam[f]) say("plan", `the ${f} family asked nothing this run — its doctrine or templates have a hole`)
+      if (!fam[f])
+        say(
+          "plan",
+          `the ${f} family asked nothing this run — its doctrine or templates have a hole`,
+        );
     }
   }
 
@@ -2538,7 +3104,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     entities
       .filter((e) => e.kind === "company" || e.kind === "product")
       .map((e) => registrableHost(e.domain || e.name)),
-  )
+  );
   // The anchor's structural alias set, both halves from pages already paid
   // for: the anchor's assertions out of `anchorPages` (understand kept the
   // raw bytes), the reciprocation out of `judged.probePages` (an alias's
@@ -2548,9 +3114,17 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   // against un-aliased runs is a bug fix in the instrument, not a coverage
   // improvement, and `recall.aliasExclusion.note` ships that sentence.
   // Map identity is untouched: an alias stays its own entity row.
-  const anchorAliases = anchorAliasSet([...anchorPages, ...judged.probePages], anchor)
-  const recall = answerKeyRecall(judged.probePages, { anchor, mapHosts, anchorAliases })
-  if (recall.aliasExclusion) say("write", `recall: ${recall.aliasExclusion.note}`)
+  const anchorAliases = anchorAliasSet(
+    [...anchorPages, ...judged.probePages],
+    anchor,
+  );
+  const recall = answerKeyRecall(judged.probePages, {
+    anchor,
+    mapHosts,
+    anchorAliases,
+  });
+  if (recall.aliasExclusion)
+    say("write", `recall: ${recall.aliasExclusion.note}`);
 
   const report: Record<string, unknown> = {
     domain: anchor,
@@ -2592,12 +3166,16 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         ? null
         : {
             maxQueries: QUERY_CEILING,
-            clockSeconds: DEADLINE === null ? null : Math.round((DEADLINE - t0) / 1000),
+            clockSeconds:
+              DEADLINE === null ? null : Math.round((DEADLINE - t0) / 1000),
             fired: asked.length,
             hostsFound: byHost.size,
             hostsJudged: judged.entities.length,
             unjudged,
-            linkingSkipped: !canAffordLinking && !opts.skipModelLinking && unresolved.length > 0,
+            linkingSkipped:
+              !canAffordLinking &&
+              !opts.skipModelLinking &&
+              unresolved.length > 0,
             /** Pairs the paid pass began and did not finish. `linkingSkipped`
              *  is the whole phase declined before it started, on the check
              *  above; this is the phase started and cut off mid-flight, which
@@ -2618,9 +3196,17 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       byAgent: lines(byAgent),
       partial: false,
     },
-  }
+  };
 
-  emitResult("write", { kind: "complete", result: report })
+  emitResult("write", { kind: "complete", result: report });
 
-  return { anchor, decomposition: decomp, queries, entities, edges, stats, report }
+  return {
+    anchor,
+    decomposition: decomp,
+    queries,
+    entities,
+    edges,
+    stats,
+    report,
+  };
 }
