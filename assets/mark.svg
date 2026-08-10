@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120" role="img" aria-label="open-kb">
+  <title>open-kb</title>
+  <!-- The anchor, and the market around it. One node you name, and the ones a
+       run finds for you: rivals, substitutes, buyers, venues. Drawn rather than
+       lettered so it reads at 32px in a repo header. -->
+  <g fill="none" stroke="#c3d5f2" stroke-width="1.6" stroke-linecap="round">
+    <line x1="60" y1="60" x2="60" y2="22"/>
+    <line x1="60" y1="60" x2="93" y2="41"/>
+    <line x1="60" y1="60" x2="93" y2="79"/>
+    <line x1="60" y1="60" x2="60" y2="98"/>
+    <line x1="60" y1="60" x2="27" y2="79"/>
+    <line x1="60" y1="60" x2="27" y2="41"/>
+  </g>
+  <g stroke="#dde7f9" stroke-width="1.1" fill="none" opacity=".85">
+    <path d="M60 22 L93 41 L93 79 L60 98 L27 79 L27 41 Z"/>
+  </g>
+  <!-- The ring the anchor sits inside: the market it did not know it was in. -->
+  <circle cx="60" cy="60" r="46" fill="none" stroke="#e2eafa" stroke-width="1"/>
+  <g fill="#3D7FFC">
+    <circle cx="60" cy="22" r="4.6"/>
+    <circle cx="93" cy="41" r="4.6"/>
+  </g>
+  <g fill="#EB368C">
+    <circle cx="93" cy="79" r="4.6"/>
+    <circle cx="27" cy="41" r="4.6"/>
+  </g>
+  <g fill="#d4541e">
+    <circle cx="60" cy="98" r="4.6"/>
+    <circle cx="27" cy="79" r="4.6"/>
+  </g>
+  <!-- The anchor last, so it sits over every edge that reaches it. -->
+  <circle cx="60" cy="60" r="9.5" fill="#0e1b34"/>
+  <circle cx="60" cy="60" r="4" fill="#ffffff"/>
+</svg>

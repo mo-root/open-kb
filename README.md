@@ -1,17 +1,30 @@
-# open-kb
+<div align="center">
+
+<img src="./assets/mark.svg" alt="" width="76" height="76" />
+
+# open&#183;kb
+
+### The open knowledge base for markets
 
 [![MIT](https://img.shields.io/badge/License-MIT-4B8BFF?style=flat-square&labelColor=0a1628)](./LICENSE)
 [![Node](https://img.shields.io/badge/Node-%E2%89%A520-4B8BFF?style=flat-square&labelColor=0a1628)](https://nodejs.org)
 [![Powered by Bright Data](https://img.shields.io/badge/Powered%20by-Bright%20Data-22D3EE?style=flat-square&labelColor=0a1628)](https://brightdata.com)
+[![Live demo](https://img.shields.io/badge/Live-demo-1b4fd8?style=flat-square&labelColor=0a1628)](https://open-kb-demo.vercel.app)
+
+</div>
 
 **One domain in. The whole market out.** Point it at `stripe.com` and it comes
 back with everyone chasing the same buyer, the tools people use instead, who
-buys, and where the market argues. Every claim carries the page it came from.
+buys, and where the market argues.
 
-It never types the company's name to find the market. It reads the company, works
-out the job each product does, and searches for the job, which is how it finds
-the open-source tool people outgrow and the substitute no comparison article
-lists.
+- **It never searches the company's name.** It reads the company, works out the
+  job each product does, and searches for the job. That is how a run finds the
+  open-source tool people outgrow and the substitute no comparison article lists.
+- **Every claim carries its receipt.** A URL and a literal quote from the page
+  the run fetched. One function mints a citation and it has no fallback branch:
+  a quote that is not in the bytes throws, and the claim never lands.
+- **A folder, not a dashboard.** Every run exports to markdown an agent walks
+  with a file reader, with `llms.txt` at the door.
 
 > Across the 22 runs in this repo, the median map is **951 entities on the map for
 > $1.21 and eight minutes**, about a tenth of a cent an entity. Two-thirds of that
