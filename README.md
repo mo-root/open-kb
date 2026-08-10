@@ -13,6 +13,9 @@
 
 </div>
 
+**Six real maps are live and free to open, no install and no keys:
+[open-kb-demo.vercel.app](https://open-kb-demo.vercel.app)**
+
 **One domain in. The whole market out.** Point it at `stripe.com` and it comes
 back with everyone chasing the same buyer, the tools people use instead, who
 buys, and where the market argues.
@@ -33,41 +36,31 @@ buys, and where the market argues.
 
 <img src="./assets/hero.gif" alt="One run on stripe.com, exploded into three planes: the raw hosts it found, the entities it kept, and the relations between them" width="100%" />
 
+## [→ Open the demo](https://open-kb-demo.vercel.app)
+
+[vercel.com](https://open-kb-demo.vercel.app/kb/sweep-vercel-com-202608062351)
+2,370 entities · [stripe.com](https://open-kb-demo.vercel.app/kb/sweep-stripe-com-202608070005)
+2,551 · [brightdata.com](https://open-kb-demo.vercel.app/kb/sweep-brightdata-com-202608042230)
+a description on every row. Or [read one as markdown](./examples/kb-clerk-com/README.md).
+
 ```bash
 pnpm sweep stripe.com
 ```
 
 ```
-runs/sweep-stripe-com-<stamp>.json     the run: every entity, edge, span and dollar
+runs/sweep-stripe-com-<stamp>.json   every entity, edge, span and dollar
 
-kb-stripe-com/                          pnpm run export <run>
-├── README.md         the map summarised, with the honest stats
-├── entities/         one file per company: what it is, how it relates, its quotes
-├── relations/        competitor.md · substitute.md · integration.md · buyer.md
-├── segments/         each market the run went looking for, and who is in it
-├── llms.txt          the agent entrypoint
-├── SKILL.md          teaches an agent to read this vault
-└── AGENTS.md         ground rules: how to read a row, what it does not claim
+kb-stripe-com/                       pnpm run export <run>
+├── entities/     one file per company, with its quotes
+├── relations/    competitor · substitute · integration · buyer
+├── segments/     each market, and who is in it
+└── llms.txt      the door an agent comes in through
 ```
-
-## [→ Open the demo](https://open-kb-demo.vercel.app)
-
-Six real maps, already built and free to explore.
-[vercel.com](https://open-kb-demo.vercel.app/kb/sweep-vercel-com-202608062351) is
-2,370 entities across 6,283 edges ·
-[stripe.com](https://open-kb-demo.vercel.app/kb/sweep-stripe-com-202608070005) is
-2,551 ·
-[brightdata.com](https://open-kb-demo.vercel.app/kb/sweep-brightdata-com-202608042230)
-has a description on every row. Build your own there too: sized to a 300s
-function, that is about 230 entities in four minutes.
-
-Prefer files? [Read a map as markdown in this repo](./examples/kb-clerk-com/README.md).
-137 entities from clerk.com, each with its sources or the reason it has none.
 
 ## Install
 
-Requires Node 20+, a [Bright Data](https://brightdata.com) account with a SERP
-API zone and a Web Unlocker zone, and an [OpenRouter](https://openrouter.ai) key.
+Node 20+, a [Bright Data](https://brightdata.com) account with a SERP and an
+Unlocker zone, and an [OpenRouter](https://openrouter.ai) key.
 
 ```bash
 git clone https://github.com/mo-root/open-kb.git && cd open-kb && pnpm install
