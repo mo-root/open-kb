@@ -27,9 +27,9 @@ tokens.
 
 <div align="center">
 
-<img src="./assets/hero.gif" alt="One run on stripe.com, exploded into three planes: 2,551 raw hosts, 2,530 entities, 5,806 relations" width="100%" />
+<img src="./assets/hero.gif" alt="One run on stripe.com, exploded into three planes: the raw hosts it found, the entities it kept, and the relations between them" width="100%" />
 
-<sub>One run on <code>stripe.com</code>. 190 queries, 6,840 results, <b>2,530 entities and 5,806 relations for $1.82</b>.</sub>
+<sub>One run on <code>stripe.com</code>. 190 queries into <b>2,551 hosts, for $1.82 in 13 minutes</b>.</sub>
 
 <br />
 
@@ -120,7 +120,7 @@ Every entity records which product's search found it and through which family.
 
 <img src="./assets/graph-brightdata.png" alt="The map for brightdata.com: 910 entities and 404 companies across 915 nodes and 1,596 links, clustered by the market that found each one" width="100%" />
 
-<sub>One run on `brightdata.com`. <b>910 entities · 404 companies · 63 queries → 934 hosts.</b> Each cluster is a market the run went looking for: proxy servers, web scraping apis, pre-collected web datasets. Every node there came from that market's own searches and carries its citations. The 16 marked <b>unplaced</b> turned up in results and fit nowhere. They stay on the map instead of vanishing.</sub>
+<sub>One run on `brightdata.com`. <b>910 entities · 404 companies · 123 queries → 934 hosts.</b> Each cluster is a market the run went looking for: proxy servers, web scraping apis, pre-collected web datasets. Every node there came from that market's own searches and carries its citations. The 16 marked <b>unplaced</b> turned up in results and fit nowhere. They stay on the map instead of vanishing.</sub>
 
 <br />
 
@@ -269,7 +269,7 @@ Trust claims are cheap, so open-kb ships the instruments to check its own.
 - **The audit.** `pnpm run audit runs/<run>.json` deals a seeded sample of the map's claims as a review packet. `--score` refuses to grade one unless the verdicts were reviewed symmetrically, because re-checking only the rows marked wrong can only lower the rate. The Wilson interval prints beside the rate: "3.3% wrong" at n=30 honestly means 0.6% to 16.7%.
 - **The drift.** `pnpm run diff runs/a.json runs/b.json` compares two runs of one anchor and shows what appeared, what vanished, and what changed relation or confidence.
 - **The bench.** `pnpm bench` reads every artifact in `runs/` and prints the results table. Nothing in it gets typed by hand.
-- **The bake-off.** `pnpm run bakeoff <domain>` runs one probe across model configs and writes a table to `runs/experiments/`: dollars, wall seconds, hosts, competitors, recall. The default model won that table on cost, speed and coverage. It did not win on correctness: the audit packets exist to measure a wrong rate and nobody has scored one yet, so no model here carries a verified quality number. Run the bake-off on your own anchor before you trust the default for yours.
+- **The bake-off.** `pnpm run bakeoff <domain>` runs one probe across model configs and writes a table to `runs/experiments/`: dollars, wall seconds, hosts, competitors, recall. The default model won that table on cost, at $0.29 against $0.54 to $2.24. It placed third of five on wall seconds and fourth on hosts found, and it was picked for the price. It did not win on correctness: the audit packets exist to measure a wrong rate and nobody has scored one yet, so no model here carries a verified quality number. Run the bake-off on your own anchor before you trust the default for yours.
 
 <br />
 

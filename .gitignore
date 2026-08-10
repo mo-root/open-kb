@@ -62,3 +62,4 @@ coverage/
 # megabytes each and there are several aspect ratios of the same 44 seconds.
 /branding/
 .vercel
+.gc-tmp*
