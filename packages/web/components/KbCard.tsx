@@ -8,7 +8,7 @@ import type { KbSummary } from "@/lib/viewTypes";
 //   · prov-rail left edge encodes how much of the market got placed
 //   · composition bar splits the market into product/player/community mass
 //   · glyph counts read the same marks as the graph legend
-//   · amber "N unplaced" / emerald "all placed" badge, mono built-date stamp
+//   · mono built-date stamp (the unplaced badge was removed; see below)
 //
 // port NOTE, THE badge. v1 badged `manifest.violations` here: green "verified",
 // titled "Every claim is cited, every link resolves, nothing is unsourced, the
@@ -139,26 +139,15 @@ export function KbCard({ kb, showcase = false }: { kb: KbSummary; showcase?: boo
             {subtitle}
           </div>
         </div>
-        {unplaced > 0 ? (
-          <span
-            title="Entities the classifier put on the map and then would not connect to the anchor. Named rather than hidden — a map that reports none is usually a map that stopped looking."
-            className="tnum inline-flex shrink-0 items-center gap-1 rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[11px] font-medium text-amber-300"
-          >
-            <NodeGlyph kind="alert" size={12} className="text-amber-300" />
-            {unplaced} unplaced
-          </span>
-        ) : (
-          <span
-            title="Every entity on this map carries a relation to the anchor."
-            className="inline-flex shrink-0 items-center gap-1.5 rounded border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[11px] font-medium text-emerald-300"
-          >
-            <span
-              aria-hidden
-              className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_1px_rgba(0,224,255,0.6)]"
-            />
-            all placed
-          </span>
-        )}
+        {/* NO BADGE HERE ANY MORE. This corner carried "N unplaced" in amber
+            on every card, so the loudest mark on a gallery of finished maps was
+            a count of what the engine could not connect. On stripe.com that is
+            485 against 2,522 entities, and a reader skimming six cards reads
+            six warnings rather than six maps.
+
+            The number is not hidden, only demoted: it is on the map's own
+            header and on its overview, where somebody already looking at that
+            run will find it. A gallery is a place to choose what to open. */}
       </div>
 
       {/* composition bar — market mass by node type */}

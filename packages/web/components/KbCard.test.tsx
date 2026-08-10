@@ -42,9 +42,11 @@ describe("the gallery card — the default", () => {
 
     expect(html).not.toContain("edges")
     expect(html).not.toContain("widget hosting")
-    // Still the card it always was: title, run stamp, badge, glyph counts.
+    // Still the card it always was: title, run stamp, glyph counts. The
+    // unplaced badge is gone on purpose — a gallery is for choosing what to
+    // open, and an amber warning in the corner of every card is not that.
     expect(html).toContain("acme.com")
-    expect(html).toContain("3 unplaced")
+    expect(html).not.toContain("unplaced")
     expect(html).toContain('href="/kb/acme-com-202608070005"')
   })
 })
