@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest"
 import { judgeHosts, type Judged, type HostCandidate } from "../src/rank.js"
-import { rankThinkLine } from "../src/sweep.js"
+import { onMap, rankThinkLine } from "../src/sweep.js"
 import { emitUi, readUi, type UiFrame } from "../src/ui.js"
 import { SpanStream, type FetchPort, type Span } from "@open-kb/core"
 
@@ -176,5 +176,35 @@ describe("rankThinkLine", () => {
     expect(
       rankThinkLine({ name: "x", domain: "x.com", kind: "noise", what: "", relation: "none", why: "", settledBy: "model" }),
     ).toBeNull()
+  })
+})
+
+describe("onMap — what actually reaches the map", () => {
+  const row = (kind: string, relation: string) => ({ kind, relation })
+
+  it("drops a host the judge placed outside this market, the same as noise", () => {
+    // 392 of figma.com's hosts came back `relation: none` and stayed, while 28
+    // called `noise` left. Same verdict, two fields, opposite outcomes. The
+    // rows were not borderline — Temporal, Setapp, Sessionize, Redokun — and
+    // the model said so in the `why` each time.
+    expect(onMap(row("company", "none"))).toBe(false)
+    expect(onMap(row("publisher", "none"))).toBe(false)
+    expect(onMap(row("company", "competitor"))).toBe(true)
+    expect(onMap(row("noise", "competitor"))).toBe(false)
+  })
+
+  it("keeps a host it merely failed to place, which is a different refusal", () => {
+    // `unknown` means the page did not support a relation, not that there is
+    // none to support. Half of those rows are named by other pages in the run —
+    // 1,214 of 2,439 across nine runs appear in an edge — so dropping them
+    // would delete real endpoints.
+    expect(onMap(row("unknown", "unknown"))).toBe(true)
+    expect(onMap(row("company", "unknown"))).toBe(true)
+  })
+
+  it("keeps every relation that states a stance", () => {
+    for (const r of ["competitor", "substitute", "shaper", "dependency", "integration", "buyer", "target", "covers", "lists", "discusses"]) {
+      expect(onMap(row("company", r))).toBe(true)
+    }
   })
 })

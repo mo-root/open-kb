@@ -708,6 +708,38 @@ function suggest(host: string): string {
  * The model's name rides ahead of the domain when it gave one; a predicate
  * settlement has no name beyond its host, and prints as the host alone.
  */
+/**
+ * Is this host on the map, or did the judge just tell us it is not in this market?
+ *
+ * TWO FIELDS WERE SAYING THE SAME THING AND ONLY ONE WAS BELIEVED. `noise` is a
+ * kind and `none` is a relation, and both mean "this host has nothing to do
+ * with the anchor's market" — the prompt describes noise as the kind that
+ * leaves the map and none as the relation that costs an entity its edge. In
+ * practice the model reaches for the relation, because "how does this stand to
+ * the anchor" is exactly the question and the honest answer is "it does not".
+ *
+ * MEASURED on figma.com: 28 hosts were called noise and left; 392 were given
+ * `relation: none` and stayed. Same verdict, opposite outcome, decided by which
+ * field the model happened to use. Across nine runs it is 2,776 rows, 17% of
+ * every map.
+ *
+ * They are not borderline. Sampled from that run: Temporal (durable execution),
+ * Setapp (Mac app subscriptions), Sessionize (conference management), Redokun
+ * (document translation). The model got every one of them right and said so in
+ * the `why` — "not a collaborative interface design", "a different market" —
+ * and the map kept them anyway, padding its own size by a sixth with companies
+ * from other markets.
+ *
+ * NOT `unknown`, which is the other empty-looking relation and stays. That one
+ * means the page did not support a relation, not that there is none to support;
+ * the host was found and half of those rows are named by other pages in the run
+ * (1,214 of 2,439 appear in an edge). Refusing to place a host is not the same
+ * as placing it outside.
+ */
+export function onMap(e: { kind: string; relation: string }): boolean {
+  return e.kind !== "noise" && e.relation !== "none"
+}
+
 export function rankThinkLine(e: Judged): string | null {
   if (e.kind === "noise") return null
   const head = e.name && e.name !== e.domain ? `${e.name} (${e.domain})` : e.domain
@@ -2051,7 +2083,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   let judgedCount = 0
   let rankedBuffer: Judged[] = []
   const flushRanked = () => {
-    const kept = rankedBuffer.filter((e) => e.kind !== "noise")
+    const kept = rankedBuffer.filter(onMap)
     if (kept.length) {
       emitResult("rank", {
         kind: "ranked",
@@ -2196,7 +2228,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     }
   }
 
-  const keep = entities.filter((e) => e.kind !== "noise")
+  const keep = entities.filter(onMap)
   // The hosts that reached the map, for the co-occurrence pass below.
   const keptHosts = new Set(keep.map((e) => e.domain.toLowerCase().replace(/^www\./, "")))
 

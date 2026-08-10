@@ -43,8 +43,10 @@ here. Say what it actually sells in `what`, where a quote has to back you.
 - **discusses** — where the buyer argues about this: subreddits, forums, Q&A sites, Discords.
 - **unknown** — the page does not support any relation; downgraded, not deleted — the host stays,
   wearing the refusal. Prefer this over promoting a guess.
-- **none** — the last resort; it costs the entity its edge, so reach for the channel relations
-  (covers, lists, discusses) before it.
+- **none** — this host is not in this market at all. It is the same call as `kind: noise` and it
+  has the same consequence: the entity leaves the map entirely, so reach for the channel relations
+  (covers, lists, discusses) before it. Say none when you would otherwise write a `why` that
+  explains what market the host is in INSTEAD of this one — that sentence is the verdict.
 
 A page that RANKS, COMPARES or REVIEWS vendors is a directory or a publisher however much market
 vocabulary it contains — ranking for the market's vocabulary is not evidence of selling in the
