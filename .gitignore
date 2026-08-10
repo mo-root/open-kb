@@ -1,0 +1,64 @@
+# --- secrets -----------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- local reference material (nested git repos, not part of this product) ----
+inspiration/
+
+# --- dependencies -------------------------------------------------------------
+node_modules/
+.pnpm-store/
+
+# --- build output -------------------------------------------------------------
+dist/
+.next/
+out/
+*.tsbuildinfo
+# `build/` is NOT here, and must not be added back unanchored. It matched
+# `packages/web/components/build/` — the entire live-run UI, BuildWorkflow and
+# every panel it renders — so those components served fine in the browser and
+# could never be committed. Exactly the failure the note under `/runs/` below
+# describes, repeated one rule higher up. No package emits a `build/` directory;
+# `dist/`, `.next/` and `out/` cover the real output. If one ever does, anchor
+# it to that package: `/packages/<name>/build/`.
+
+# --- test / coverage ----------------------------------------------------------
+coverage/
+.nyc_output/
+
+# --- caches -------------------------------------------------------------------
+.cache/
+.turbo/
+.eslintcache
+
+# --- runtime artifacts --------------------------------------------------------
+*.log
+.DS_Store
+# ANCHORED. A bare `runs/` matches a directory of that name at ANY depth, which
+# silently swallowed `packages/web/app/runs/` — the route that lists runs — so
+# the pages existed on disk, served fine, and could never be committed. The
+# artifact directory is at the repo root and nowhere else.
+/runs/
+.next/
+*.tsbuildinfo
+
+# --- internal engineering record (local only; the public repo is the product) --
+/docs/
+/.superpowers/
+/overnight/
+# Design-review scratch that happens to sit under a SERVED directory. ANCHORED to
+# the two subdirectories, and not to `public/` itself: Next.js serves that folder,
+# so ignoring all of it would silently drop the first real static asset someone
+# adds. Name each scratch directory here instead.
+/packages/web/public/canvases/
+/packages/web/public/graph-review/
+
+# Demo/promo renders and their stills. Local while the cut is still being
+# chosen; a picked one moves to assets/ and gets committed deliberately, the way
+# assets/demo.mp4 was. Ignored as a directory because the MP4s are tens of
+# megabytes each and there are several aspect ratios of the same 44 seconds.
+/branding/
+.vercel

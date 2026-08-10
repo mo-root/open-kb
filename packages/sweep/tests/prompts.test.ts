@@ -1,0 +1,197 @@
+import { describe, it, expect } from "vitest"
+import { readFileSync, existsSync } from "node:fs"
+import { dirname, join } from "node:path"
+import { fileURLToPath } from "node:url"
+import { composePrompt } from "@open-kb/core"
+import { RELATIONS, ENTITY_KINDS, CLASSIFY_MAX_OUTPUT_TOKENS, makePrompt } from "../src/sweep.js"
+
+/**
+ * The prompts are the product.
+ *
+ * Every instruction a paid model run receives lives in `prompts/` so it can be
+ * read and edited without touching TypeScript. That only stays true if something
+ * checks, the four sweep prompts spent their whole life as template literals
+ * buried in `sweep.ts` while `prompts/` sat beside them describing an agent that
+ * this pipeline never runs, and nothing noticed.
+ *
+ * These are the checks that would have noticed.
+ */
+
+function root(): string {
+  let dir = dirname(fileURLToPath(import.meta.url))
+  for (let i = 0; i < 8; i++) {
+    if (existsSync(join(dir, "prompts", "doctrine"))) return join(dir, "prompts")
+    dir = dirname(dir)
+  }
+  throw new Error("no prompts/")
+}
+
+const AGENTS = ["understand", "catalog", "assess", "classify"]
+
+describe("the sweep's prompts", () => {
+  it.each(AGENTS)("%s composes with its doctrine", (agent) => {
+    const composed = composePrompt(agent, join(root(), "agents"), join(root(), "doctrine"))
+    expect(composed.length).toBeGreaterThan(200)
+    // Placeholders survive composition, they are filled at call time, not here.
+    expect(composed).toMatch(/\{\{\w+\}\}/)
+  })
+
+  /**
+   * The drift this exists to catch, stated plainly: `02-relations.md` opened with
+   * "The five relations" for as long as the code had eight, and then eleven. The
+   * classifier was being handed a vocabulary list that was missing most of the
+   * words it was required to choose from.
+   */
+  it("documents every relation the code will accept", () => {
+    const doc = readFileSync(join(root(), "doctrine", "02-relations.md"), "utf8")
+    const undocumented = RELATIONS.filter((r) => r !== "none" && !doc.includes(`**${r}**`))
+    expect(undocumented).toEqual([])
+  })
+
+  it("documents the escape hatch and what it costs", () => {
+    const doc = readFileSync(join(root(), "doctrine", "02-relations.md"), "utf8")
+    expect(doc).toContain("**none**")
+  })
+
+  it("names every entity kind the classifier must choose between", () => {
+    const p = readFileSync(join(root(), "agents", "classify.md"), "utf8")
+    const unnamed = ENTITY_KINDS.filter((k) => !p.includes(k))
+    expect(unnamed).toEqual([])
+  })
+})
+
+/**
+ * The classify prompt is sent once per host. A measured live run made 740 such
+ * calls, and ~75% of its 3.19M input tokens were the same ~13K chars of
+ * composed doctrine re-sent every time — breadth doctrine, search craft,
+ * reading-the-web narrative, none of which a per-host judge can act on: it
+ * fetches nothing and plans nothing. The prompt was trimmed to carry only what
+ * one judgement needs. These tests keep the win from silently regressing and
+ * keep the trim from cutting the one thing that must never be cut: the full
+ * relation vocabulary, because a judge choosing from words it was never given
+ * poisons every judgement.
+ */
+describe("the composed classify prompt", () => {
+  const composed = () => composePrompt("classify", join(root(), "agents"), join(root(), "doctrine"))
+
+  it("stays small enough to send 740 times without dominating the bill", () => {
+    // Measured 12,996 chars before the trim; ~4K after. The ceiling leaves
+    // headroom for wording, not for re-including a doctrine file.
+    expect(composed().length).toBeLessThan(6_000)
+  })
+
+  it("still carries the whole relation vocabulary, every word the schema will accept", () => {
+    const c = composed()
+    const missing = RELATIONS.filter((r) => !c.includes(`**${r}**`))
+    expect(missing).toEqual([])
+  })
+
+  it("keeps the de-branding warning — ranking market vocabulary is not selling", () => {
+    expect(composed()).toContain("RANKS, COMPARES or REVIEWS")
+  })
+
+  it("teaches the writing doctrine: lead with what it IS, why as evidence, no self-praise", () => {
+    // The corpus these rules answer: of 740 model-judged entities on the
+    // 2026-08-05 brightdata sweep, 81 whats opened with a bare verb or a
+    // keyword list instead of saying what the host is, 57 carried the page's
+    // self-praise or a vendor-counted number ("premium", "70M+ IPs"), and 274
+    // whys spent their first clause restating the what. The description meter
+    // measures the what against the page; these sentences tell the judge what
+    // the meter will find. Each pin holds one rule.
+    const c = composed()
+    expect(c).toContain("leads with what the host IS")
+    expect(c).toContain("evidence for the relation")
+    expect(c).toContain("self-praise")
+    expect(c).toContain("padding")
+  })
+
+  it("teaches the span contract: verbatim receipts, checked in code, or the what drops", () => {
+    // The guarantee's other half lives in rank.ts; this half tells the judge
+    // the check exists so it copies instead of paraphrasing. Each pin holds
+    // one clause of the contract.
+    const c = composed()
+    expect(c).toContain("character-for-character")
+    expect(c).toContain("literal substring")
+    expect(c).toContain("`spans`")
+  })
+
+  it("pins the classify output ceiling — sized for the answer plus its receipts", () => {
+    // 350 before spans; spans add up to three ~120-char verbatim quotes
+    // (~100 output tokens, priced 6x input), so the ceiling grows once, here,
+    // deliberately. Note the wire floor in call() is 6,000 either way — this
+    // number documents the answer's size, not the reasoning budget.
+    expect(CLASSIFY_MAX_OUTPUT_TOKENS).toBe(450)
+  })
+
+  it("keeps exactly the placeholders the rank call renders with", () => {
+    // render() throws on any mismatch between these and the call-site's vars,
+    // so a drift here would fail at runtime, on a paid call. Fail here instead.
+    const found = new Set([...composed().matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]!))
+    expect([...found].sort()).toEqual(["anchor", "buyer", "host", "intents", "page", "seenIn", "sells"])
+  })
+})
+
+/**
+ * The per-run compose memo. The classify prompt is rendered once per residue
+ * host from inside the rank pool, and composing there meant re-reading the
+ * same unchanging files for every host a model judged. `makePrompt` composes
+ * each agent's template once per run and leaves only the placeholder fill per
+ * call — these tests pin that arithmetic with a counting fake, since the real
+ * file reads are not cleanly observable from a test.
+ */
+describe("makePrompt (the per-run compose memo)", () => {
+  it("composes an agent's template once for N per-host renders, and still fills per host", () => {
+    let compositions = 0
+    const prompt = makePrompt((agent) => {
+      compositions += 1
+      return `judge {{host}} as ${agent}`
+    })
+    const hosts = Array.from({ length: 40 }, (_, i) => `host${i}.test`)
+    const rendered = hosts.map((h) => prompt("classify", { host: h }))
+    expect(compositions).toBe(1)
+    // The render is the per-host half and must stay per-host: memoising the
+    // template can never memoise the fill.
+    expect(rendered[0]).toBe("judge host0.test as classify")
+    expect(rendered[39]).toBe("judge host39.test as classify")
+    expect(new Set(rendered).size).toBe(40)
+  })
+
+  it("keeps agents separate — each composes its own template, once", () => {
+    const composed: string[] = []
+    const prompt = makePrompt((agent) => {
+      composed.push(agent)
+      return `${agent}: {{x}}`
+    })
+    prompt("classify", { x: 1 })
+    prompt("understand", { x: 2 })
+    prompt("classify", { x: 3 })
+    prompt("understand", { x: 4 })
+    expect(composed).toEqual(["classify", "understand"])
+  })
+
+  it("two renderers share nothing — a new run re-reads the disk, so a prompt edit lands next run", () => {
+    let compositions = 0
+    const compose = () => {
+      compositions += 1
+      return "{{x}}"
+    }
+    makePrompt(compose)("classify", { x: 1 })
+    makePrompt(compose)("classify", { x: 2 })
+    expect(compositions).toBe(2)
+  })
+
+  it("the default compose renders the real classify prompt, every placeholder filled", () => {
+    const prompt = makePrompt()
+    const out = prompt("classify", {
+      anchor: "anchor.test",
+      sells: "a scraping api",
+      buyer: "a data engineer",
+      host: "rival.test",
+      seenIn: "2",
+      intents: "evaluation",
+      page: "the page text",
+    })
+    expect(out).toContain("rival.test")
+    expect(out).not.toMatch(/\{\{\w+\}\}/)
+  })
+})

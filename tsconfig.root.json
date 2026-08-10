@@ -1,0 +1,34 @@
+{
+  // The root's own TypeScript: scripts/, tests/ and vitest.config.ts — everything
+  // `pnpm check` never read. Each package tsconfig includes only its own `src`, the four
+  // tsconfig.tests.json cover only their own package's `tests`, and the root tsconfig.json
+  // is a reference list with `"files": []`. Nothing pointed here, so a planted
+  // `const x: number = "nope"` in either directory left the gate green.
+  //
+  // vitest.config.ts is in for the same reason its own comment gives: it decides what the
+  // suite collects, and a mistake in it makes tests vanish rather than fail. With it, every
+  // first-party .ts in the repo is now read by some config — 194 files, one list.
+  //
+  // `*.ts` rather than naming vitest.config.ts, because the first draft named it and a
+  // planted error in a NEW root-level sibling still left the gate green — the same
+  // file-by-file blindness this file exists to end, reintroduced one directory up. A glob
+  // covers the next root config nobody has written yet.
+  //
+  // ONE file, though the two are different animals to a reader — node CLIs run by tsx on
+  // one side, vitest suites on the other. They are the same animal to the COMPILER: same
+  // ES2023 lib, same NodeNext resolution, neither emits, and there are no test globals to
+  // keep out of the CLIs because vitest.config.ts never set `globals` and every suite
+  // imports describe/it/expect by name. A second file would be a copy of this one with a
+  // different `include`. Split it the day one side needs an option the other must not have.
+  //
+  // `lib` is ES2023 with no DOM, matching the packages rather than their tsconfig.tests.json:
+  // these are headless node processes, and a `document` that typechecks here is a lie that
+  // only fails at runtime.
+  //
+  // packages/web is out of reach on purpose. It compiles under `bundler` resolution with the
+  // DOM lib and is checked by its own `tsc --noEmit`; nothing listed here imports it, and
+  // pulling it into a NodeNext program would not resolve if it did.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": { "noEmit": true, "lib": ["ES2023"] },
+  "include": ["scripts", "tests", "*.ts"]
+}

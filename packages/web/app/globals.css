@@ -1,0 +1,666 @@
+@import "tailwindcss";
+
+/* Sources declared, not detected.
+   ------------------------------------------------------------------------
+   Tailwind v4 finds its sources automatically and SKIPS anything .gitignore
+   matches. .gitignore carried a bare `build/`, which matches a directory of
+   that name at any depth, so it matched `components/build/` — the entire
+   live-run UI. Every class used only by those components was silently absent
+   from this stylesheet: no `lg:grid-cols-[…]`, so the two-column layout never
+   applied and the model-output panel rendered straight on top of the pipeline
+   rail. The UI looked broken and the CSS was simply never generated for it.
+
+   The gitignore rule is fixed, but the coupling is the real defect: a rule
+   about what to COMMIT should not decide what gets STYLED. Declaring the
+   directories explicitly severs it, so a future ignore rule cannot delete a
+   component's styling again. */
+@source "../app";
+@source "../components";
+@source "../lib";
+
+/* ---- public-kb: Bright Data brand — LIGHT default + DARK toggle ----------
+   Brand law (docs/brand-brightdata.md): 65% surface · 20% primary blue #3D7FFC
+   (action) · 15% pink #EB368C (highlight/badge). Cyan #00E0FF reserved for
+   data-flow/glow. IBM Plex throughout. Signature: the provenance rail.
+
+   LIGHT is the default — the paper-white Bright Data dashboard: the 65% becomes
+   paper #FFFFFF / #F5F8FF, text is ink #0E1B34, blue is the action, pink the
+   highlight, cyan is data-flow only. :root[data-theme="dark"] restores the
+   original dark-blue atmosphere.
+
+   The entire app paints through the slate/sky/amber/emerald/rose/violet Tailwind
+   ramps plus a handful of semantic tokens (--accent, --highlight, --dataflow…).
+   Every ramp step is re-keyed to a --c-* variable (see @theme inline) and every
+   --c-* + semantic token flips between the two :root blocks below, so a single
+   data-theme swap inverts the whole UI by MEANING, not by hue. Node-type colors
+   (--type-*) are the one exception: brand law fixes them across both themes. */
+
+/* ============================ LIGHT (default) =========================== */
+:root {
+  color-scheme: light;
+
+  /* semantic tokens */
+  --bg: #ffffff;          /* paper — the 65% */
+  --surface: #f5f8ff;     /* card / elevated surface */
+  --surface-alt: #edf2ff;
+  --border: #c6dbff;      /* hairline that reads on paper (catalog --rule-2) */
+  --text: #0e1b34;        /* ink body text */
+  --muted: #5f7ba6;       /* muted text — ~4.4:1 on paper */
+  --faint: #8296bd;       /* de-emphasised labels / dead links */
+  --accent: #3d7ffc;      /* primary blue — the action color (20%) */
+  --accent-hover: #2e6be0;/* darkens on hover over paper */
+  --highlight: #d81e86;   /* pink accent (15%), deepened to read as text (~4.7:1) */
+  --dataflow: #0fa8ce;    /* cyan data-flow, deepened for white */
+
+  /* rendered-note + chrome literals, tokenised so they flip per theme */
+  --code-bg: #f1f5ff;
+  --prose-strong: #0a1428;
+  --prose-h3: #3f5c86;
+  --sel-fg: #0e1b34;
+  --scroll-thumb: #c6dbff;
+  --scan-rgb: 61, 127, 252; /* radar / atmosphere tint → soft blue on paper */
+
+  /* node-type palette — mirrors lib/nodeTypes.ts TYPE_COLOR. Brand law keeps
+     these FIXED across both themes (community must stay lavender everywhere):
+     they are intentionally NOT overridden under [data-theme="dark"]. */
+  --type-product: #3d7ffc;   /* blue */
+  --type-player: #eb368c;    /* pink */
+  /* Community was lavender #c4c1f8 in both themes under the "node hues are
+     fixed" rule. Measured, that rule was costing more than it bought: on paper
+     the lavender sits at 1.7:1 against white — 139 of 295 nodes on a real map,
+     effectively invisible — and it lands only ΔE 8.0 from --type-core in normal
+     vision, well under the 15 floor, so community and the anchor were nearly
+     the same colour. Both themes FAILED the all-pairs categorical check.
+
+     Orange is the third hue that passes: it is far enough from the brand blue
+     AND the brand pink to clear every gate in both modes (checked with the
+     dataviz validator, all-pairs, on #ffffff and #0e1b34). It is the ONE
+     --type-* that steps per theme; product and player are unchanged. */
+  --type-community: #c2410c; /* orange — paper step */
+  --type-core: #9db2d6;      /* muted */
+
+  /* Tailwind ramp — LIGHT, inverted by MEANING (consumed via @theme inline).
+     slate: 950 = paper … 100 = ink. Accents keep their hue, tuned for paper. */
+  --c-slate-950: #ffffff;  /* page bg */
+  --c-slate-900: #f5f8ff;  /* cards */
+  --c-slate-800: #e7eeff;  /* borders / rules (catalog --fill) */
+  --c-slate-700: #c6dbff;  /* stronger rule (catalog --rule-2) */
+  --c-slate-600: #9db2d6;
+  --c-slate-500: #5f7ba6;  /* muted text — ~4.4:1 on paper */
+  --c-slate-400: #3f5c86;
+  --c-slate-300: #22406e;
+  --c-slate-200: #0e1b34;  /* ink text */
+  --c-slate-100: #0a1428;  /* ink text (strongest) */
+  --c-slate-50:  #06101f;
+
+  --c-sky-200: #6ba0ff;
+  --c-sky-300: #2e6be0;    /* links / hovers on paper — ~5:1 */
+  --c-sky-400: #3d7ffc;    /* brand action — fills, underbar, dot */
+  --c-sky-500: #1e52c0;    /* deep — solid buttons (white text), borders */
+  --c-sky-600: #163c86;
+
+  --c-amber-200: #f072ac;  /* amber namespace = brand pink */
+  --c-amber-300: #c8187a;  /* pink text on paper — ~5.4:1 */
+  --c-amber-400: #eb368c;  /* brand pink — accents / borders */
+  --c-amber-500: #b31570;  /* deep pink — solid fills (white text) */
+
+  --c-emerald-300: #0a7d93;/* emerald namespace = cyan; text on paper — ~4.8:1 */
+  --c-emerald-400: #0c93ad;/* accent / dots */
+  --c-emerald-500: #0a7186;/* solid fills (white text ~5.3:1) */
+
+  --c-rose-200: #d84763;   /* alert red namespace */
+  --c-rose-300: #ce2447;   /* red text on paper — ~5.3:1 */
+  --c-rose-400: #e8385a;
+  --c-rose-500: #d0203f;   /* solid fills (white text) */
+
+  --c-violet-300: #6157b0; /* lavender/conceptual text on paper — ~6:1 */
+  --c-violet-400: #7e79c3;
+}
+
+/* ================================ DARK ================================= */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #0e1b34;          /* primary dark (the 65%) */
+  --surface: #0d2243;     /* card / elevated surface */
+  --surface-alt: #0b1c36;
+  --border: #1c3763;      /* hairlines on dark */
+  --text: #e8eef9;        /* body text */
+  --muted: #9db2d6;       /* muted text */
+  --faint: #6b84ad;
+  --accent: #3d7ffc;      /* primary blue — the action color (20%) */
+  --accent-hover: #5590fc;
+  --highlight: #eb368c;   /* sanctioned pink accent (15%) */
+  --dataflow: #00e0ff;    /* cyan — data-flow / glow only */
+
+  --code-bg: #10202f;
+  --prose-strong: #e9eff5;
+  --prose-h3: #b2c3d3;
+  --sel-fg: #f4f7fa;
+  --scroll-thumb: #32495f;
+  --scan-rgb: 0, 224, 255;
+
+  /* Only --type-community steps per theme; see the note in the light block.
+     product / player / core keep one value in both, as before. */
+  --type-community: #d95926; /* orange — navy step */
+
+  --c-slate-950: #0a1730;
+  --c-slate-900: #0d2243;  /* surface */
+  --c-slate-800: #1c3763;  /* border */
+  --c-slate-700: #274a82;
+  --c-slate-600: #35619e;
+  --c-slate-500: #6b84ad;
+  --c-slate-400: #9db2d6;  /* muted text */
+  --c-slate-300: #c6dbff;  /* section label */
+  --c-slate-200: #e8eef9;  /* body text */
+  --c-slate-100: #eff4ff;
+  --c-slate-50:  #f7faff;
+
+  --c-sky-200: #a9c6ff;
+  --c-sky-300: #76a5ff;
+  --c-sky-400: #3d7ffc;
+  --c-sky-500: #2e6be0;
+  --c-sky-600: #1e52c0;
+
+  --c-amber-200: #f7a8ce;
+  --c-amber-300: #f072ac;
+  --c-amber-400: #eb368c;
+  --c-amber-500: #c8187a;
+
+  --c-emerald-300: #6be9ff;
+  --c-emerald-400: #00e0ff;
+  --c-emerald-500: #15c1e6;
+
+  --c-rose-200: #ffb3c4;
+  --c-rose-300: #ff8fa8;
+  --c-rose-400: #fb5d7a;
+  --c-rose-500: #e8385a;
+
+  --c-violet-300: #d6d4fa;
+  --c-violet-400: #c4c1f8;
+}
+
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  /* One ramp, two themes: each Tailwind color resolves to a --c-* custom
+     property that flips per :root above. The `inline` keyword makes utilities
+     emit the var() directly, so every slate, sky, amber, emerald, rose and
+     violet class re-colours the instant data-theme changes. */
+  --color-slate-950: var(--c-slate-950);
+  --color-slate-900: var(--c-slate-900);
+  --color-slate-800: var(--c-slate-800);
+  --color-slate-700: var(--c-slate-700);
+  --color-slate-600: var(--c-slate-600);
+  --color-slate-500: var(--c-slate-500);
+  --color-slate-400: var(--c-slate-400);
+  --color-slate-300: var(--c-slate-300);
+  --color-slate-200: var(--c-slate-200);
+  --color-slate-100: var(--c-slate-100);
+  --color-slate-50: var(--c-slate-50);
+
+  --color-sky-200: var(--c-sky-200);
+  --color-sky-300: var(--c-sky-300);
+  --color-sky-400: var(--c-sky-400);
+  --color-sky-500: var(--c-sky-500);
+  --color-sky-600: var(--c-sky-600);
+
+  --color-amber-200: var(--c-amber-200);
+  --color-amber-300: var(--c-amber-300);
+  --color-amber-400: var(--c-amber-400);
+  --color-amber-500: var(--c-amber-500);
+
+  --color-emerald-300: var(--c-emerald-300);
+  --color-emerald-400: var(--c-emerald-400);
+  --color-emerald-500: var(--c-emerald-500);
+
+  --color-rose-200: var(--c-rose-200);
+  --color-rose-300: var(--c-rose-300);
+  --color-rose-400: var(--c-rose-400);
+  --color-rose-500: var(--c-rose-500);
+
+  --color-violet-300: var(--c-violet-300);
+  --color-violet-400: var(--c-violet-400);
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Drafting-table atmosphere: a faint plotting grid + one warm cast, fixed
+   behind everything. Quiet enough to miss, felt when it's gone. Light default
+   is a soft blue grid on paper; dark restores the cool slate-on-navy grid. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(1100px 520px at 78% -10%, rgba(61, 127, 252, 0.06), transparent 60%),
+    radial-gradient(900px 460px at 12% 8%, rgba(235, 54, 140, 0.04), transparent 62%),
+    linear-gradient(rgba(61, 127, 252, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(61, 127, 252, 0.05) 1px, transparent 1px);
+  background-size: auto, auto, 34px 34px, 34px 34px;
+}
+:root[data-theme="dark"] body::before {
+  background:
+    radial-gradient(1100px 520px at 78% -10%, rgba(61, 127, 252, 0.10), transparent 60%),
+    radial-gradient(900px 460px at 12% 8%, rgba(235, 54, 140, 0.05), transparent 62%),
+    linear-gradient(rgba(157, 178, 214, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(157, 178, 214, 0.04) 1px, transparent 1px);
+  background-size: auto, auto, 34px 34px, 34px 34px;
+}
+
+.font-display {
+  font-family: var(--font-display), Georgia, "Times New Roman", serif;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  color: var(--sel-fg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Page-load reveal (home masthead). Pure CSS, opacity/transform only, and it
+   simply does not exist for prefers-reduced-motion users — no hidden state. */
+@media (prefers-reduced-motion: no-preference) {
+  .reveal {
+    opacity: 0;
+    transform: translateY(10px);
+    animation: reveal-rise 0.55s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  .reveal-2 { animation-delay: 90ms; }
+  .reveal-3 { animation-delay: 180ms; }
+  .reveal-4 { animation-delay: 280ms; }
+  @keyframes reveal-rise {
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
+/* ---- stagger: a list that arrives in reading order ------------------------
+   Put `.stagger` on a grid/list and every direct child rises in, 45ms apart,
+   so the eye is handed the cards one at a time instead of all at once. Capped
+   at 12 children: past that the last card would wait half a second for no
+   reason, and an unfinished-looking page is worse than a plain one. Delay-only
+   staggering — the animation itself is `reveal-rise`, the same curve the
+   masthead uses, so nothing on the page moves in two different ways. */
+@media (prefers-reduced-motion: no-preference) {
+  .stagger > * {
+    opacity: 0;
+    animation: reveal-rise 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  .stagger > *:nth-child(1)  { animation-delay: 0ms; }
+  .stagger > *:nth-child(2)  { animation-delay: 45ms; }
+  .stagger > *:nth-child(3)  { animation-delay: 90ms; }
+  .stagger > *:nth-child(4)  { animation-delay: 135ms; }
+  .stagger > *:nth-child(5)  { animation-delay: 180ms; }
+  .stagger > *:nth-child(6)  { animation-delay: 225ms; }
+  .stagger > *:nth-child(7)  { animation-delay: 270ms; }
+  .stagger > *:nth-child(8)  { animation-delay: 315ms; }
+  .stagger > *:nth-child(9)  { animation-delay: 360ms; }
+  .stagger > *:nth-child(10) { animation-delay: 405ms; }
+  .stagger > *:nth-child(11) { animation-delay: 450ms; }
+  .stagger > *:nth-child(n + 12) { animation-delay: 495ms; }
+}
+
+/* ---- panel swap: the tab that just became visible -------------------------
+   A tab panel is remounted on change (React `key`), so a plain entry animation
+   plays exactly once per switch. Shorter and shallower than the page-load
+   reveal: this is a change of view inside a page the reader is already in, and
+   a big movement here reads as a page load that did not happen. */
+@media (prefers-reduced-motion: no-preference) {
+  .panel-in {
+    animation: panel-enter 0.26s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes panel-enter {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+  }
+}
+
+/* ---- command palette: arrives fast, from where it will sit ----------------
+   The scrim fades and the panel drops a few pixels into place. Both are quick
+   (140ms / 180ms) because ⌘K is pressed by someone in a hurry, and a dialog
+   that keeps them waiting for its entrance is a dialog they will stop opening.
+   The panel scales from 0.98 rather than sliding a long distance: it should
+   read as the surface coming forward, not as a sheet flying in. */
+@media (prefers-reduced-motion: no-preference) {
+  .palette-scrim {
+    animation: palette-fade 0.14s ease-out;
+  }
+  .palette-panel {
+    animation: palette-rise 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes palette-fade {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes palette-rise {
+    from {
+      opacity: 0;
+      transform: translateY(-8px) scale(0.98);
+    }
+  }
+}
+
+/* ---- skeleton: a shape that says "a number is coming" ---------------------
+   Used wherever a panel awaits its fetch. It draws the block the content will
+   occupy, so the layout does not jump when the data lands, and a slow sheen
+   crosses it so a stalled request still looks alive. */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--border) 55%, transparent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in srgb, var(--accent) 16%, transparent),
+      transparent
+    );
+    animation: skeleton-sheen 1.5s ease-in-out infinite;
+  }
+  @keyframes skeleton-sheen {
+    to {
+      transform: translateX(100%);
+    }
+  }
+}
+
+/* ---- landing: radar-scan backdrop ----------------------------------------
+   A slow sweep over faint concentric range-rings — the product quietly scanning
+   the public web. The tint (--scan-rgb) is cyan in dark, soft blue on paper, so
+   the radar reads on both without stealing headline contrast. The sweep rotates
+   solely for no-preference users; reduced-motion sees a still radar, never a
+   hidden one. */
+.hero-scan {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  background: repeating-radial-gradient(
+    circle at center,
+    transparent 0 62px,
+    rgba(var(--scan-rgb), 0.07) 62px 63px,
+    transparent 63px 64px
+  );
+  -webkit-mask: radial-gradient(circle at center, #000 34%, transparent 72%);
+          mask: radial-gradient(circle at center, #000 34%, transparent 72%);
+}
+.hero-scan::before,
+.hero-scan::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+}
+.hero-scan::before {
+  /* the rotating sweep wedge */
+  background: conic-gradient(
+    from 0deg,
+    rgba(var(--scan-rgb), 0.24),
+    rgba(var(--scan-rgb), 0.06) 22deg,
+    transparent 62deg,
+    transparent 360deg
+  );
+  -webkit-mask: radial-gradient(circle at center, #000 34%, transparent 72%);
+          mask: radial-gradient(circle at center, #000 34%, transparent 72%);
+}
+.hero-scan::after {
+  /* faint crosshair axes through the centre */
+  background:
+    linear-gradient(rgba(var(--scan-rgb), 0.08) 1px, transparent 0) center / 100% 50% no-repeat,
+    linear-gradient(90deg, rgba(var(--scan-rgb), 0.08) 1px, transparent 0) center / 50% 100% no-repeat;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .hero-scan::before {
+    animation: radar-sweep 9s linear infinite;
+    will-change: transform;
+  }
+}
+@keyframes radar-sweep {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---- data-flow connector: marching cyan dashes between pipeline steps ----
+   The visual grammar for "data moving". Static (just a dotted rule) under
+   reduced-motion; a slow left-to-right march otherwise. */
+.flow-line {
+  height: 1px;
+  background-image: linear-gradient(90deg, var(--dataflow) 0 42%, transparent 42% 100%);
+  background-size: 14px 1px;
+  background-repeat: repeat-x;
+  opacity: 0.4;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .flow-line {
+    animation: flow-shift 1.2s linear infinite;
+  }
+}
+@keyframes flow-shift {
+  to {
+    background-position: 14px 0;
+  }
+}
+
+/* The provenance rail: set --rel (0-100) on a .prov-rail card and its left
+   edge fills to the note's relevance — the trio made visible. Lives in the
+   components layer so utility padding (pl-4 / pl-5) on callers wins. */
+@layer components {
+  /* Width contract — three levels, one place.
+     `measure` caps PROSE in ch so it tracks the font, not the viewport: the
+     notes column measured 101 characters per line before this, well past the
+     45-75 readable band.
+     `content` preserves the previous max-w-6xl feel for dense text surfaces.
+     `pane` is for surfaces that should use the screen (the graph today,
+     signals and notes in later slices), capped so ultrawide displays do not
+     stretch the layout into uselessness. */
+  .w-measure {
+    max-width: 70ch;
+  }
+  .w-content {
+    max-width: 72rem; /* identical to Tailwind's max-w-6xl */
+  }
+  .w-pane {
+    max-width: 2400px;
+  }
+
+  .prov-rail {
+    position: relative;
+    padding-left: 0.875rem;
+  }
+  .prov-rail::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 8px;
+    bottom: 8px;
+    width: 2px;
+    border-radius: 1px;
+    background: linear-gradient(
+      to top,
+      var(--accent) 0%,
+      var(--accent) calc(var(--rel, 0) * 1%),
+      var(--border) calc(var(--rel, 0) * 1%),
+      var(--border) 100%
+    );
+  }
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* thin technical scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border-radius: 4px;
+}
+
+/* ---- rendered note markdown ---- */
+.note-prose {
+  color: var(--text);
+  line-height: 1.7;
+  font-size: 0.95rem;
+}
+.note-prose > *:first-child {
+  margin-top: 0;
+}
+.note-prose h1 {
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 1.6rem;
+  font-weight: 600;
+  margin: 1.6rem 0 0.8rem;
+  letter-spacing: 0;
+}
+.note-prose h2 {
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin: 1.5rem 0 0.6rem;
+  color: var(--prose-strong);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.3rem;
+}
+.note-prose h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 1.2rem 0 0.5rem;
+  color: var(--prose-h3);
+}
+.note-prose p {
+  margin: 0.7rem 0;
+}
+.note-prose ul,
+.note-prose ol {
+  margin: 0.7rem 0;
+  padding-left: 1.3rem;
+}
+.note-prose li {
+  margin: 0.3rem 0;
+}
+.note-prose ul {
+  list-style: disc;
+}
+.note-prose ol {
+  list-style: decimal;
+}
+.note-prose em {
+  color: var(--muted);
+  font-style: italic;
+}
+.note-prose strong {
+  color: var(--prose-strong);
+  font-weight: 600;
+}
+.note-prose a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.note-prose a:hover {
+  border-bottom-color: var(--accent);
+}
+.note-prose code {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.85em;
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.05rem 0.35rem;
+}
+.note-prose pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+  margin: 0.9rem 0;
+}
+.note-prose pre code {
+  background: none;
+  border: none;
+  padding: 0;
+}
+.note-prose blockquote {
+  border-left: 3px solid var(--border);
+  padding-left: 1rem;
+  color: var(--muted);
+  margin: 0.9rem 0;
+}
+.note-prose table {
+  border-collapse: collapse;
+  margin: 0.9rem 0;
+  font-size: 0.85rem;
+  display: block;
+  overflow-x: auto;
+}
+.note-prose th,
+.note-prose td {
+  border: 1px solid var(--border);
+  padding: 0.4rem 0.7rem;
+  text-align: left;
+}
+.note-prose th {
+  background: var(--code-bg);
+}
+
+/* internal wikilink */
+.wikilink {
+  color: var(--accent);
+  background: none;
+  border: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+.wikilink:hover {
+  border-bottom-color: var(--accent);
+}
+.wikilink-dead {
+  color: var(--faint);
+  border-bottom: 1px dotted var(--faint);
+}

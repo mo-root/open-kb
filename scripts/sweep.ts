@@ -1,0 +1,124 @@
+/**
+ * The sweep, from a terminal.
+ *
+ * The pipeline itself lives in `packages/sweep`, this file is argv, credentials
+ * and a console, nothing else. The web route drives the same function, so what
+ * you see here is what the browser runs.
+ *
+ * Usage:  set -a && . ./.env && set +a && npx tsx scripts/sweep.ts resend.com [nQueries]
+ */
+import { openrouter } from "@openrouter/ai-sdk-provider"
+import { SpanStream } from "../packages/core/src/index.js"
+import { priceForModel } from "../packages/providers/src/index.js"
+import { sweep, readUi } from "../packages/sweep/src/index.js"
+import { fatal } from "./fatal.js"
+
+const anchor = process.argv[2] ?? "resend.com"
+// Unset unless a third arg is given — the normal case, and now the same
+// default the web route already used (`route.ts`: "undefined is not a bad
+// value, it is the normal one now"). Left as a hardcoded `?? 40` here, every
+// CLI run silently reactivated the old fixed-quota catalog and the run this
+// script exists to validate — every product dealt its own opening hand, the
+// spend ceiling as the only brake — could never actually be exercised from a
+// terminal. A numeric third arg still bounds a probe exactly as before.
+const TARGET = process.argv[3] !== undefined ? Number(process.argv[3]) : undefined
+const MODEL = process.env.OPENKB_MODEL ?? "deepseek/deepseek-v4-flash"
+
+const spans = new SpanStream()
+
+// There is no live ceiling here — the web route's `OPENKB_CEILING_USD` guard
+// is a pre-run refusal, not something that watches a run already in flight,
+// and the CLI has nothing like it at all. `spans.totalUsd()` already tracks
+// the running total as every span is billed, so the only missing piece was
+// printing it. Prefixing every log line costs nothing and turns "did this
+// just blow past $4" from a guess into something read off the screen.
+const out = await sweep({
+  domain: anchor,
+  queries: TARGET,
+  pages: Number(process.env.OPENKB_PAGES ?? 4),
+  // Search-wave width. The provider adapter obeys retry-afters, so pushing
+  // this is observable-safe: too wide answers as 429s and pacing, never loss.
+  concurrency: Number(process.env.OPENKB_SEARCH_CONCURRENCY ?? 0) || undefined,
+  skipModelLinking: process.env.OPENKB_SKIP_MODEL_LINKING === "1",
+  spans,
+  creds: {
+    token: process.env.BRIGHTDATA_API_TOKEN!,
+    serpZone: process.env.BRIGHTDATA_SERP_ZONE!,
+    unlockerZone: process.env.BRIGHTDATA_UNLOCKER_ZONE!,
+  },
+  model: openrouter(MODEL),
+  modelId: MODEL,
+  pricing: priceForModel(MODEL),
+  runId: `cli-${Date.now()}`,
+  onLog: (line) => console.log(`$${spans.totalUsd().toFixed(3)}  ${line}`),
+}).catch((e) => fatal(e, "sweep"))
+spans.close()
+
+// Every query the run actually fired, including whatever the widening loop
+// drew from reserve or invented after the opening hand — `out.queries` only
+// ever carries the OPENING batch (the shape the web route's "planned" panel
+// wants), so it undercounts a widened run and there was previously no way to
+// grep what a CLI run actually asked. The span log already has one
+// "ui:results" span per query (`kind: "searched"`), emitted as the sweep runs
+// and never read here before; walked once now that the run has finished and
+// the stream is closed, so this drains the whole log instead of racing it.
+const searched: Record<string, unknown>[] = []
+for await (const span of spans.stream()) {
+  const ui = readUi(span)
+  if (ui?.ns === "results" && ui.frame.kind === "searched") searched.push(ui.frame)
+}
+
+const { stats, entities } = out
+const keep = entities.filter((e) => e.kind !== "noise")
+const count = (arr: string[]) => arr.reduce<Record<string, number>>((a, k) => ((a[k] = (a[k] ?? 0) + 1), a), {})
+
+console.log(`\n${"=".repeat(80)}`)
+console.log(`${keep.length} on the map (${entities.length - keep.length} judged noise) from ${stats.hosts} hosts`)
+console.log(`kinds     `, count(keep.map((e) => e.kind)))
+console.log(`relations `, count(keep.map((e) => e.relation)))
+console.log(`\n${stats.queries} queries · ${stats.serpCalls} SERP calls · ${stats.results} results`)
+console.log(`tokens ${stats.tokIn.toLocaleString()} in / ${stats.tokOut.toLocaleString()} out`)
+console.log(`$${stats.usd.toFixed(4)} · ${stats.seconds.toFixed(0)}s`)
+
+const { writeFileSync, mkdirSync } = await import("node:fs")
+mkdirSync("runs", { recursive: true })
+// Stamped, because the filename used to be the domain alone and a second run of
+// the same company silently destroyed the first. A 771-second, $1.26, 388-entity
+// map of brightdata.com was overwritten by a 10-query smoke test that happened to
+// name the same domain. Maps are expensive and slow; nothing that costs a dollar
+// and thirteen minutes should be deleted by a command that does not say "delete".
+//
+// Seconds, not minutes, and the margin is why. `runs/` holds 53 stamped maps: the
+// closest two of one domain landed 2 minutes apart, 11 of the 53 finished inside
+// 2 minutes, and the fastest sweep on disk ran 49.6s. So a minute-wide stamp was
+// one fast pair away from re-opening the hole it was added to close — and
+// scripts/bakeoff.ts is the caller aimed straight at it, because it sweeps ONE
+// domain once per contestant back to back. There the collision is worse than an
+// overwrite: the second run reuses the first one's name, so it never appears in
+// bakeoff's before/after diff of runs/ and lands in the results table as "no
+// file" — a contestant that finished, reported as a contestant that produced
+// nothing.
+//
+// Four scripts write the line below and all four must keep writing it
+// byte-identically — swarm.ts, demo-investigate.ts and bakeoff.ts are the others,
+// b6ffd99 and fbb67b9 both exist to keep them one spelling, and runs.test.ts now
+// asserts it. Deliberately not quoting the grep that checks it: the pattern would
+// match this comment and report the drift it was meant to catch.
+//
+// Widening it is also a change to a READER. packages/web/lib/runs.ts recovers a
+// CLI run's end time from these digits and used to want exactly twelve of them,
+// so fourteen would have matched nothing — not thrown, matched nothing — and
+// silently dated every new run to whenever the gallery was loaded rather than
+// when it ran. It takes both widths now, and the 53 stamped files already on disk
+// still parse to the instant they always did.
+//
+// Narrowed, not closed, and this is the site the other three defer to so it says
+// so here. Two writes inside one second still overwrite: `writeFileSync` with no
+// existsSync check, no error, no log. Sixty seconds of exposure became one, which
+// no sweep can hit — the shortest on record is 771s — but a time-only stamp
+// cannot do better than its resolution, and pretending otherwise is how the
+// minute version read as safe for as long as it did.
+const stamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "")
+const path = `runs/sweep-${anchor.replace(/\W+/g, "-")}-${stamp}.json`
+writeFileSync(path, JSON.stringify({ ...out, searched }, null, 2))
+console.log(`\nwrote ${path} (${searched.length} queries logged)`)

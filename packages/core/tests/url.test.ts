@@ -1,0 +1,182 @@
+import { describe, it, expect } from "vitest"
+import { canonicalUrl, registrableHost, isReservedHost, isIpLiteral } from "../src/url.js"
+
+describe("canonicalUrl", () => {
+  it("normalises host case, www, trailing slash and fragment", () => {
+    expect(canonicalUrl("HTTPS://WWW.Stripe.com/radar/")).toBe("https://stripe.com/radar")
+    expect(canonicalUrl("https://stripe.com/radar#pricing")).toBe("https://stripe.com/radar")
+  })
+
+  it("drops tracking params but keeps meaningful ones", () => {
+    expect(canonicalUrl("https://a.com/x?utm_source=g&id=7")).toBe("https://a.com/x?id=7")
+  })
+
+  it("treats the bare root and the slashed root as the same url", () => {
+    expect(canonicalUrl("https://a.com")).toBe(canonicalUrl("https://a.com/"))
+  })
+
+  it("returns the input unchanged when it cannot be parsed", () => {
+    expect(canonicalUrl("not a url")).toBe("not a url")
+  })
+})
+
+describe("registrableHost", () => {
+  it("strips www and lowercases", () => {
+    expect(registrableHost("WWW.Apify.com")).toBe("apify.com")
+  })
+  it("folds subdomains to the registrable domain", () => {
+    expect(registrableHost("docs.apify.com")).toBe("apify.com")
+    expect(registrableHost("deep.docs.apify.com")).toBe("apify.com")
+  })
+  it("keeps two-part public suffixes whole", () => {
+    expect(registrableHost("shop.example.co.uk")).toBe("example.co.uk")
+    expect(registrableHost("example.com.au")).toBe("example.com.au")
+  })
+  it("passes through bare and unparseable input", () => {
+    expect(registrableHost("localhost")).toBe("localhost")
+    expect(registrableHost("")).toBe("")
+  })
+  it("strips a trailing FQDN dot", () => {
+    expect(registrableHost("apify.com.")).toBe("apify.com")
+    expect(registrableHost("a.b.example.co.uk.")).toBe("example.co.uk")
+  })
+  it("passes IPv4 addresses through unchanged", () => {
+    expect(registrableHost("192.168.1.1")).toBe("192.168.1.1")
+  })
+})
+
+/**
+ * The SSRF predicate, half of a two-layer defence.
+ *
+ * Every host in the first block below was measured passing the shipped
+ * validator, whose whole rule was `^[a-z0-9-]+(\.[a-z0-9-]+)+$`. Three of them
+ * reach a cloud instance's credentials.
+ */
+describe("isReservedHost", () => {
+  it("refuses the loopback, private and link-local literals the old shape check waved through", () => {
+    // The six from the audit, in the notation the audit used.
+    expect(isReservedHost("127.0.0.1")).toBe(true)
+    expect(isReservedHost("10.0.0.5")).toBe(true)
+    expect(isReservedHost("169.254.169.254")).toBe(true) // AWS/GCP instance metadata
+    expect(isReservedHost("metadata.google.internal")).toBe(true)
+    expect(isReservedHost("internal-jenkins.corp")).toBe(true)
+    expect(isReservedHost("localhost")).toBe(true)
+  })
+
+  it("covers every RFC1918, loopback, link-local, CGNAT and unique-local range", () => {
+    for (const host of [
+      "10.0.0.1",
+      "10.255.255.254",
+      "172.16.0.1",
+      "172.31.255.254",
+      "192.168.0.1",
+      "192.168.255.254",
+      "127.0.0.1",
+      "127.255.255.254",
+      "169.254.0.1",
+      "169.254.169.254",
+      "100.64.0.1", // carrier-grade NAT
+      "100.127.255.254",
+      "0.0.0.0", // every local interface at once
+      "255.255.255.255",
+      "224.0.0.1", // multicast
+      "fc00::1", // unique-local
+      "fd12:3456:789a::1",
+      "fe80::1", // link-local
+      "::1", // loopback
+      "::",
+    ]) {
+      expect(isReservedHost(host), host).toBe(true)
+    }
+  })
+
+  it("reads an IPv4 literal in every notation a resolver accepts, not just the dotted quad", () => {
+    // All of these are 127.0.0.1 to `new URL()` and therefore to `fetch`.
+    expect(isReservedHost("0177.0.0.1")).toBe(true) // octal first byte
+    expect(isReservedHost("0x7f.0.0.1")).toBe(true) // hex first byte
+    expect(isReservedHost("0x7f000001")).toBe(true) // one hex number
+    expect(isReservedHost("2130706433")).toBe(true) // one decimal number
+    expect(isReservedHost("017700000001")).toBe(true) // one octal number
+    expect(isReservedHost("127.1")).toBe(true) // last part absorbs the rest
+    expect(isReservedHost("127.0.1")).toBe(true)
+    expect(isReservedHost("0xA9FEA9FE")).toBe(true) // 169.254.169.254, hex
+    expect(isReservedHost("2852039166")).toBe(true) // 169.254.169.254, decimal
+  })
+
+  it("refuses IPv6, including the four ways an IPv6 address can carry a private IPv4 one", () => {
+    expect(isReservedHost("[::1]")).toBe(true) // bracketed, the way URL.hostname reports it
+    expect(isReservedHost("fe80::1%en0")).toBe(true) // a zone id belongs to the socket, not the address
+    expect(isReservedHost("::ffff:127.0.0.1")).toBe(true) // v4-mapped, dotted
+    expect(isReservedHost("::ffff:7f00:1")).toBe(true) // v4-mapped, hex — the same address
+    expect(isReservedHost("::ffff:169.254.169.254")).toBe(true)
+    expect(isReservedHost("::127.0.0.1")).toBe(true) // v4-compatible, deprecated but routed
+    expect(isReservedHost("64:ff9b::127.0.0.1")).toBe(true) // NAT64
+    expect(isReservedHost("2002:7f00:1::")).toBe(true) // 6to4 wrapping 127.0.0.1
+    expect(isReservedHost("0:0:0:0:0:0:0:1")).toBe(true) // uncompressed loopback
+    expect(isReservedHost("fec0::1")).toBe(true) // site-local
+    expect(isReservedHost("ff02::1")).toBe(true) // multicast
+  })
+
+  it("refuses a single-label host and the suffixes that name a network rather than the internet", () => {
+    expect(isReservedHost("intranet")).toBe(true)
+    expect(isReservedHost("jenkins")).toBe(true) // a resolver completes this with a search domain
+    expect(isReservedHost("")).toBe(true)
+    for (const suffix of ["local", "localhost", "localdomain", "internal", "intranet", "corp", "lan", "home", "home.arpa"]) {
+      expect(isReservedHost(`box.${suffix}`), suffix).toBe(true)
+    }
+  })
+
+  it("normalises the spellings that would otherwise slip past: case, brackets, the FQDN dot", () => {
+    expect(isReservedHost("LOCALHOST")).toBe(true)
+    expect(isReservedHost("127.0.0.1.")).toBe(true)
+    expect(isReservedHost("METADATA.GOOGLE.INTERNAL.")).toBe(true)
+    expect(isReservedHost("  10.0.0.5  ")).toBe(true)
+  })
+
+  it("lets an ordinary public domain through — the honest case, which is most of them", () => {
+    for (const host of [
+      "resend.com",
+      "www.resend.com",
+      "docs.apify.com",
+      "example.com",
+      "example.co.uk",
+      "brightdata.com",
+      "sub.domain.with-hyphens.io",
+      "8.8.8.8", // a public IP literal is still public
+      "1.1.1.1",
+      "93.184.216.34",
+      "172.15.0.1", // one below the private block
+      "172.32.0.1", // one above it
+      "100.63.255.255", // one below CGNAT
+      "100.128.0.0", // one above it
+      "169.253.0.1", // one below link-local
+      "11.0.0.1",
+      "126.0.0.1",
+      "128.0.0.1",
+      "2606:4700::1111", // public IPv6
+    ]) {
+      expect(isReservedHost(host), host).toBe(false)
+    }
+  })
+
+  it("does NOT catch a public name whose DNS answer is private — which is why there is a second layer", () => {
+    // Stated as a test rather than only as a comment, because this is the exact
+    // shape of the hole the fetch-seam guard exists to close, and a future
+    // reader who "fixes" this line has moved the defence somewhere it cannot
+    // work. `127.0.0.1.nip.io` is a real public name with an A record of
+    // 127.0.0.1; nothing about how it is SPELLED is reserved.
+    expect(isReservedHost("127.0.0.1.nip.io")).toBe(false)
+    expect(isReservedHost("attacker-owned.com")).toBe(false)
+  })
+})
+
+describe("isIpLiteral", () => {
+  it("knows an address from a name, in every notation", () => {
+    for (const host of ["127.0.0.1", "8.8.8.8", "0177.0.0.1", "0x7f000001", "2130706433", "127.1", "::1", "fe80::1", "[::1]", "::ffff:127.0.0.1"]) {
+      expect(isIpLiteral(host), host).toBe(true)
+    }
+    for (const host of ["resend.com", "127.0.0.1.nip.io", "localhost", "8.8.8.8.in-addr.arpa", ""]) {
+      expect(isIpLiteral(host), host).toBe(false)
+    }
+  })
+})

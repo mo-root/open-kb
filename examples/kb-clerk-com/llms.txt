@@ -1,0 +1,9 @@
+# clerk.com market map
+
+> 137 entities with cited relations to clerk.com: competitor 42 · substitute 34 · integration 29 · discusses 15 · lists 14 · shaper 2 · dependency 1.
+
+- [README.md](README.md): the map at a glance and run health
+- [SKILL.md](SKILL.md): recipes for walking this map as an agent
+- [AGENTS.md](AGENTS.md): the honesty rules
+- [relations/competitor.md](relations/competitor.md): the rivals
+- [manifest.json](manifest.json): programmatic index

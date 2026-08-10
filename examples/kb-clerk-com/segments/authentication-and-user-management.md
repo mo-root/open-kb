@@ -1,0 +1,81 @@
+# Authentication and User Management
+
+77 entities, 6 straddling other segments.
+
+- [[aimultiple-com]] — lists
+- [[alternateoss-devaradise-com]] — lists
+- [[amplify-aws]] — competitor
+- [[appwrite-io]] — competitor
+- [[aserto-com]] — substitute
+- [[attractgroup-com]] — substitute
+- [[auth0alternatives-com]] — lists
+- [[authelia-com]] — competitor
+- [[authgear-com]] — competitor
+- [[autional-com]] — competitor
+- [[aws-amazon-com]] — dependency *(also: Developer Experience Tools, SaaS Billing Integration)*
+- [[betalectic-com]] — substitute
+- [[better-auth-com]] — competitor
+- [[beyondidentity-com]] — competitor
+- [[casdoor-github-io]] — competitor
+- [[cerbos-dev]] — integration
+- [[clever-cloud]] — substitute
+- [[cloudzero-com]] — substitute
+- [[code24x7-com]] — substitute
+- [[community-auth0-com]] — discusses
+- [[corbado-com]] — integration
+- [[cpl-thalesgroup-com]] — competitor
+- [[descope-com]] — competitor *(also: Multi-tenant Organization Management)*
+- [[dev-to]] — discusses *(also: Developer Experience Tools, Multi-tenant Organization Management)*
+- [[faststaq-com]] — substitute
+- [[forum-keycloak-org]] — discusses
+- [[freewareforlibraries-org]] — lists
+- [[frontegg-com]] — competitor *(also: Multi-tenant Organization Management)*
+- [[fusionauth-io]] — competitor
+- [[gainhq-com]] — substitute
+- [[gluu-org]] — competitor
+- [[goauthentik-io]] — competitor
+- [[gooddata-ai]] — integration
+- [[goteleport-com]] — competitor
+- [[harness-io]] — substitute
+- [[hasura-io]] — integration
+- [[identitymanagementinstitute-org]] — discusses
+- [[idura-eu]] — competitor
+- [[jscrambler-com]] — integration
+- [[keycloak-org]] — competitor
+- [[loginradius-com]] — competitor
+- [[logintc-com]] — competitor
+- [[logto-io]] — competitor
+- [[memberstack-com]] — competitor
+- [[miniorange-com]] — competitor
+- [[mui-com]] — integration
+- [[news-ycombinator-com]] — discusses
+- [[nordpass-com]] — substitute
+- [[okta-com]] — competitor
+- [[oloid-com]] — competitor
+- [[opensourcealternatives-to]] — lists
+- [[osohq-com]] — substitute
+- [[paloaltonetworks-com]] — substitute
+- [[prismatic-io]] — integration
+- [[rapidnative-com]] — substitute
+- [[repost-aws]] — discusses
+- [[scalekit-com]] — competitor
+- [[seamfix-com]] — competitor
+- [[security-stackexchange-com]] — discusses
+- [[skycloak-io]] — substitute
+- [[softwarerecs-stackexchange-com]] — discusses
+- [[sourceforge-net]] — lists
+- [[ssojet-com]] — competitor
+- [[strongdm-com]] — substitute
+- [[stytch-com]] — competitor
+- [[supertokens-com]] — competitor *(also: Multi-tenant Organization Management)*
+- [[taazaa-com]] — substitute
+- [[tenfold-security-com]] — competitor
+- [[transmitsecurity-com]] — competitor
+- [[univention-com]] — competitor
+- [[us-metoree-com]] — lists
+- [[ventureradar-com]] — lists
+- [[veriff-com]] — integration
+- [[winmagic-com]] — competitor
+- [[workos-com]] — competitor *(also: Multi-tenant Organization Management)*
+- [[zapier-com]] — integration
+- [[zuplo-com]] — integration

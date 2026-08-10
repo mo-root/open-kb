@@ -1,0 +1,15 @@
+{
+  "name": "@open-kb/sweep",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@open-kb/core": "workspace:*",
+    "@open-kb/providers": "workspace:*",
+    "ai": "^7.0.48",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": { "@types/node": "^22.10.0" }
+}

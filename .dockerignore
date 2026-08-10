@@ -1,0 +1,45 @@
+# Patterns match paths RELATIVE TO THE CONTEXT ROOT, so a rule written without
+# `**/` is anchored to the root and matches nowhere else. A bare `.env` excluded
+# only the one beside this file — the second live .env under .claude/worktrees/
+# went into every image. `**/` is what makes a rule mean "at any depth".
+# `.env.*` also drops .env.example: it documents a deploy, nothing here reads it.
+**/.env
+**/.env.*
+
+# Nothing below is a build input — the whole surviving context was checked and
+# contains none of them. They are here so the next secret to land in the tree
+# leaves by default, rather than repeating the .env lesson in a new shape.
+**/.envrc
+**/.npmrc
+**/.netrc
+**/.git-credentials
+**/*.pem
+**/*.key
+**/id_rsa*
+**/id_ed25519*
+
+**/node_modules
+**/.next
+**/dist
+**/*.tsbuildinfo
+**/.git
+
+# Owner-only, and none of it runs: an agent worktree (a whole second copy of this
+# repo, carrying its own .git, runs/ and .env), the build record, the design
+# record, README media.
+.claude
+.superpowers
+docs
+assets
+inspiration
+
+# Anchored at the two scratch directories rather than at `public/`, which Next.js
+# serves: naming the folder itself would silently drop the first real static asset
+# anyone adds. Today both children are all there is, so a clean checkout has no
+# public/ at all — Next treats it as optional, and these rules are the insurance.
+packages/web/public/canvases
+packages/web/public/graph-review
+
+# Root-anchored ON PURPOSE. `**/runs` would also match packages/web/app/runs/,
+# the route that lists runs. The worktree's copy leaves with .claude above.
+runs

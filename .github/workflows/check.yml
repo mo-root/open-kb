@@ -1,0 +1,151 @@
+# The gate: `pnpm check` and `pnpm test`, on every push and every pull request.
+#
+# THIS FILE HAS NEVER RUN. A workflow only executes on GitHub, this branch has
+# never been pushed, and the published `origin/main` is a single squashed v0.1.0
+# commit that sits ~215 behind. Nobody has watched this go green and nobody can
+# until someone pushes. What was actually verified before committing it is
+# narrower and worth stating exactly: the YAML parses, all three actions and the
+# pinned commits exist, and the two commands below were run in a fresh `git
+# clone` of this branch into an empty directory — committed state only, no
+# gitignored files, which is the closest local imitation of a runner there is —
+# where install, check and test each exited 0. The first real run may still fail
+# on something only a runner has. Treat the first push as the experiment.
+#
+# The purity gate, the prompt-drift tests and the byte-for-byte skill pins ARE
+# honour-system, present tense, and stay that way until this file has run on a
+# push. It is the only thing that CAN make them anything else; it has not done
+# so yet. Ten lines above this one says the file has never executed, and a
+# sentence here declaring the honour system over would contradict it.
+
+name: check
+
+# `push` is narrowed to the default branch on purpose. Bare `push:` alongside
+# `pull_request:` runs the whole job TWICE for one commit on any branch with a
+# PR open, and the concurrency block below cannot dedupe them: `github.ref` is
+# `refs/heads/<branch>` for the push and `refs/pull/<n>/merge` for the PR, so
+# they land in different groups and neither cancels the other.
+#
+# The `pull_request` half is inert against this repo today, and that is worth
+# knowing before someone waits on it: GitHub builds a PR from
+# `refs/pull/<n>/merge`, the merge of head into base, and `origin/main` here is
+# a squashed v0.1.0 with NO shared history with this branch — `git merge-base
+# origin/main HEAD` returns nothing. Until those histories are reconciled, the
+# push trigger is the only one that can fire.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A second push to the same branch makes the first run's answer irrelevant. The
+# group is event-aware so a push and a PR for one commit share it.
+concurrency:
+  group: check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# Nothing here reads or writes the repo through the API, and there are no
+# secrets to add — every test that needs a credential is gated behind
+# OPENKB_LIVE, which this file never sets and must never set. See the census
+# step at the bottom for what that costs in coverage.
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    # A hang detector, not a performance budget. Install + check + test is well
+    # under two minutes in a clean clone; the default ceiling is 360. Several
+    # suites spin on wall-clock loops and one spawns nested vitest processes, so
+    # a wedge is a real shape here, and six hours of it is a whole repo's
+    # concurrency budget spent on a run nobody is reading.
+    timeout-minutes: 15
+    steps:
+      # Pinned to commit SHAs, not to `@v7` or `@v4`. A tag is a movable
+      # pointer: whoever owns the action can repoint it at any commit, and a
+      # workflow that installs the toolchain and then runs the repo's own
+      # scripts is a place where that would be worth doing to somebody. The SHA
+      # is the version. The tag beside it is a comment for humans, and it is
+      # the tag those SHAs were resolved from on 2026-08-08 — if you bump one,
+      # bump both, and re-resolve rather than trusting this line.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # pnpm BEFORE node, because setup-node's `cache: pnpm` shells out to
+      # `pnpm store path` and needs pnpm to already exist.
+      #
+      # `version` is here because the root package.json has no `packageManager`
+      # field (open queue item 12b) and this action hard-errors with "No pnpm
+      # version is specified" when it can find neither. Corepack is the other
+      # option and it is the wrong one today: with no `packageManager` to read
+      # it resolves whatever pnpm its Node ships, which is not 10.23.0, and
+      # pnpm 9 and 10 disagree about running dependencies' lifecycle scripts —
+      # so a green run would have installed something a developer never did.
+      #
+      # Pinning HERE is not the same as pinning in package.json and does not
+      # pre-empt 12b. It binds this workflow and nothing else: a developer's
+      # shell, the Dockerfile's bare `corepack enable`, and anyone who clones
+      # the repo all still get whatever they happen to have. That gap is 12b's
+      # to close, in the one place all four read. Nor can this quietly disagree
+      # with the fix when it lands — the action throws "Multiple versions of
+      # pnpm specified" if a `packageManager` field says anything other than
+      # what is written here. That guarantee covers `packageManager` and NOT
+      # `devEngines.packageManager`, which the action also reads: with this
+      # `version:` set, a disagreeing `devEngines` is taken silently. So if 12b
+      # lands as `devEngines`, this line has to go in the same commit. When 12b
+      # lands either way, delete this line and let the field be the source.
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 10.23.0
+
+      # 20, matching `node:20-slim` in the Dockerfile and the version this was
+      # developed on. `engines` says ">=20", so 22 and 24 are claimed to work
+      # and are not tested here; a matrix would be testing a configuration
+      # nothing deploys. Widen it the day something runs on one.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 20
+          cache: pnpm
+
+      # --frozen-lockfile: a lockfile the install had to edit means the commit
+      # is not installable as committed, and CI should say so rather than
+      # quietly resolve something else and test that instead.
+      - run: pnpm install --frozen-lockfile
+
+      # Ten commands, three of them this repo's own guards. `check-skips.mjs`
+      # prints the census described below.
+      - run: pnpm check
+
+      # Plain `pnpm test`, deliberately not `pnpm test --reporter=...` or any
+      # other CI-only spelling. A command that differs between a laptop and a
+      # runner is the thing that lets the two disagree without either noticing,
+      # which is the same class of bug the census step exists to name.
+      - run: pnpm test
+
+      # WHAT THIS RUN DID NOT COVER, on the run's front page.
+      #
+      # A runner is a clean checkout, so `runs/` — gitignored, megabytes of paid
+      # output — is absent, and three suites that assert counts from real runs
+      # skip themselves. No count is written here on purpose: the pair was
+      # hardcoded and went stale three times in a day, silently each time, while
+      # the sentence around it kept sounding authoritative. The census below
+      # derives the real number every run from `vitest list`, which omits skipped
+      # tests — so read it there rather than trusting a comment. CI's green is
+      # the weaker green,
+      # and the default reporter barely says so — one of those three files gets
+      # a down-arrow and the other two get a green tick with `| 1 skipped` in
+      # the parenthetical. Three of the four missing tests are behind a tick.
+      #
+      # None of that is fixable from a workflow file and this does not pretend
+      # to fix it. It writes the gap down where the next person will read it.
+      # `pnpm check` already ran this script and already failed the job if a
+      # suite had gone dark undeclared; this only re-prints the census.
+      # `always()` because the census is read hardest on a RED run — "a green
+      # here is a green over 3 of 5 gated suites" matters most when something
+      # failed. Without it the implicit `success()` drops the step exactly then,
+      # and the run's front page is blank.
+      - name: what this run did not cover
+        if: always()
+        run: |
+          {
+            echo '```'
+            node scripts/check-skips.mjs
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
