@@ -4,6 +4,7 @@ import { isCompleted, listStoredRuns, type StoredRun } from "@/lib/runs";
 import { summaryOf } from "@/lib/kb-from-run";
 import { formatDuration, formatUsd, readRunCost } from "@/components/build/types";
 import { StatTile } from "@/components/viz";
+import { DEMO_REPO, isDemo } from "@/lib/demo";
 
 /**
  * The maps this deployment has bought.
@@ -122,9 +123,9 @@ export default async function RunsPage() {
 
   // Totals are of what was MEASURED. A failed run contributes nothing to them
   // rather than a zero, because a zero is a measurement and this is an absence.
-  const totalUsd = rows.reduce((n, r) => n + (r.run.result?.stats.usd || 0), 0);
+  const demo = isDemo();
+  const totalPlayers = rows.reduce((n, r) => n + (r.kb?.counts.player ?? 0), 0);
   const totalEntities = rows.reduce((n, r) => n + (r.kb?.notes ?? 0), 0);
-  const totalUnplaced = rows.reduce((n, r) => n + (r.kb?.unplaced ?? 0), 0);
   const failedCount = rows.filter((r) => r.kb === null).length;
 
   return (
@@ -137,10 +138,32 @@ export default async function RunsPage() {
             now, and a failed run wrote no JSON — it is here from its row and
             its spans. The old sentence described only the half that worked,
             which is the same quiet this page was widened to end. */}
-        <p className="mt-1 max-w-2xl text-sm text-slate-400">
-          Every sweep this deployment ended, read from what each one recorded
-          when it stopped — no live stream, no platform retention.
-        </p>
+        <div className="mt-1 flex flex-wrap items-start justify-between gap-4">
+          <p className="max-w-2xl text-sm text-slate-400">
+            Every sweep this deployment ended, read from what each one recorded
+            when it stopped. No live stream, no platform retention.
+          </p>
+          {/* THE WAY OUT OF A GALLERY. Every page here listed maps somebody
+              else had already built and none of them said how to build one, so
+              a visitor who wanted their own market had to guess. On a demo the
+              answer is the repo, because this deployment refuses runs on
+              purpose; anywhere else the answer is the box on the front page. */}
+          {demo ? (
+            <a
+              href={DEMO_REPO}
+              className="shrink-0 rounded-md border border-sky-500/40 bg-sky-500/10 px-3 py-1.5 text-xs font-medium text-sky-300 transition hover:border-sky-400/60 hover:bg-sky-500/20"
+            >
+              Map your own domain →
+            </a>
+          ) : (
+            <Link
+              href="/"
+              className="shrink-0 rounded-md border border-sky-500/40 bg-sky-500/10 px-3 py-1.5 text-xs font-medium text-sky-300 transition hover:border-sky-400/60 hover:bg-sky-500/20"
+            >
+              Map a domain →
+            </Link>
+          )}
+        </div>
       </header>
 
       {error ? (
@@ -165,18 +188,20 @@ export default async function RunsPage() {
               numbers failed to load. */}
           <div
             className={`mb-8 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-slate-800 bg-slate-800 ${
-              failedCount > 0 ? "sm:grid-cols-5" : "sm:grid-cols-4"
+              failedCount > 0 ? "sm:grid-cols-4" : "sm:grid-cols-3"
             }`}
           >
+            {/* WHAT A READER WANTS FROM A ROW OF NUMBERS, which is not what an
+                operator wants. `Spent` and `Unplaced` were the other two here,
+                and both answered a question nobody visiting had asked: one is
+                the owner's bill, the other is a count of things the engine
+                could not place, which reads as a defect rate on the first
+                screen. Both are still on the run's own page, where someone
+                debugging a run goes looking. Up here the tiles say how much
+                market is on the table. */}
             <StatTile label="Runs" value={String(rows.length)} />
             <StatTile label="Entities mapped" value={String(totalEntities)} />
-            <StatTile label="Spent" value={formatUsd(totalUsd)} />
-            <StatTile
-              label="Unplaced"
-              value={String(totalUnplaced)}
-              tone={totalUnplaced > 0 ? "text-amber-400" : undefined}
-              hint="seen, placed against nothing"
-            />
+            <StatTile label="Companies found" value={String(totalPlayers)} />
             {/* Only when there are any. A permanent "Failed 0" tile invites the
                 eye to a number that is almost always zero and teaches it to
                 stop looking; a tile that appears is a tile that is read. */}
