@@ -15,6 +15,7 @@
   "scripts": {
     "test": "vitest run",
     "check": "node scripts/check-core-purity.mjs && node scripts/check-test-collection.mjs && node scripts/check-skips.mjs && tsc -b && pnpm --filter @open-kb/web exec tsc --noEmit && tsc -p packages/core/tsconfig.tests.json && tsc -p packages/providers/tsconfig.tests.json && tsc -p packages/sweep/tsconfig.tests.json && tsc -p packages/swarm/tsconfig.tests.json && tsc -p tsconfig.root.json",
+    "batch": "tsx scripts/batch.ts",
     "bench": "tsx scripts/bench.ts",
     "diff": "tsx scripts/diff-runs.ts",
     "sweep": "tsx scripts/sweep.ts",

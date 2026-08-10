@@ -1,0 +1,93 @@
+# The gallery.
+#
+# Fifty anchors, chosen so the map can be CHECKED. A market map is judged on its
+# most obviously wrong row, so these are markets where a reader already knows who
+# the players are and will notice immediately if one is missing or invented.
+# Obscure markets hide bad output; famous ones convict it.
+#
+# Spread across fifteen categories rather than fifty dev-tools companies, because
+# a gallery that is all one shape reads as a tool that only works on one shape.
+#
+# Build with:
+#   set -a && . ./.env && set +a && npx tsx scripts/batch.ts scripts/gallery-domains.txt
+#
+# Roughly $1.66 and 12 minutes a map at the rates in runs/, so about $83 and ten
+# hours at the default two-at-a-time. Edit freely — one domain per line, # comments.
+
+# hosting and edge
+vercel.com
+netlify.com
+fly.io
+railway.app
+cloudflare.com
+
+# databases
+supabase.com
+neon.tech
+planetscale.com
+mongodb.com
+clickhouse.com
+
+# payments and fintech
+stripe.com
+adyen.com
+checkout.com
+ramp.com
+mercury.com
+
+# identity and auth
+clerk.com
+auth0.com
+workos.com
+
+# observability
+datadoghq.com
+sentry.io
+grafana.com
+honeycomb.io
+
+# AI and models
+openai.com
+anthropic.com
+huggingface.co
+replicate.com
+langchain.com
+
+# developer tools
+github.com
+gitlab.com
+linear.app
+cursor.com
+sourcegraph.com
+
+# design
+figma.com
+canva.com
+framer.com
+
+# web data
+brightdata.com
+apify.com
+zyte.com
+
+# go to market
+apollo.io
+clay.com
+hubspot.com
+
+# communications
+twilio.com
+resend.com
+postmarkapp.com
+
+# commerce
+shopify.com
+bigcommerce.com
+
+# security
+snyk.io
+1password.com
+
+# search
+algolia.com
+elastic.co
