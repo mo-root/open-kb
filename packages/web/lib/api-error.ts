@@ -420,6 +420,42 @@ export const namedFaults = {
    * `expected` is a constant lib/runs.ts spells out. Nothing from a caught
    * error, a provider or a URL crosses over.
    */
+  /**
+   * A run reached the most one map may cost here and was stopped at it —
+   * thrown by `withSpendCap` in app/api/map/route.ts, from the watchdog that
+   * reads the span stream's own running total.
+   *
+   * WHY IT IS ON THE SHELF. The test above is whether the reader has something
+   * to do about it, and this reader has three things, all of which the sentence
+   * has to carry: the run is not broken, everything it found before the stop is
+   * kept and readable, and a bigger map is available to anyone willing to run
+   * it on their own keys. A ref would send a visitor to a server log they
+   * cannot read, about a deliberate act, on the deployment's busiest surface.
+   * It is also the ONE ending a reader is most likely to misread as a bug,
+   * because a partial map looks exactly like a broken one.
+   *
+   * WHY IT CANNOT BE A LITERAL IN THE ROUTE. `failRun` in lib/runs.ts runs
+   * every failure through `faultNotice`, deliberately, because a sweep's throw
+   * is an OpenRouter or Bright Data error that can carry a request id or a
+   * fragment of a key. An app-authored sentence handed to it unbranded comes
+   * back out as "something went wrong, quote this ref" — which is what the
+   * deadline watchdog's own message does today.
+   *
+   * Both holes are numbers this app computed from its own configuration:
+   * `capUsd` is the ceiling in force, `spentUsd` the span stream's running
+   * total. Nothing caught, nothing from a provider, nothing from a URL.
+   */
+  runCostCeiling(capUsd: number, spentUsd: number): Error {
+    return new NamedFault(
+      `This map reached $${spentUsd.toFixed(2)}, which is the most — $${capUsd.toFixed(2)} — that ` +
+        `one map is allowed to cost on this deployment, and it was stopped there. Everything it ` +
+        `had already found is kept and is on the page. Nothing is broken and the domain you asked ` +
+        `about is not the problem: the limit is deliberate, and it is what stops a single map ` +
+        `spending a whole day's budget. Clone the repo and run it on your own keys for a map with ` +
+        `no ceiling on it.`,
+    )
+  },
+
   demoMapsMissing(cwd: string, expected: string): Error {
     return new NamedFault(
       `OPENKB_DEMO is on, so this deployment serves its committed maps and starts no runs — ` +
@@ -441,6 +477,26 @@ export const namedFaults = {
 // invites `namedFaultMessage(err) ?? err.message` at a call site, which reads as
 // helpful and is the original defect written in one line. Re-export it the day
 // something genuinely needs the null, and not before.
+/**
+ * Whether this app wrote the sentence inside this error.
+ *
+ * A BOOLEAN, DELIBERATELY, and that is the whole difference between this and
+ * the function below it. `namedFaultMessage` is not exported because a
+ * `string | null` invites `namedFaultMessage(err) ?? err.message` at a call
+ * site, which reads as helpful and is the original leak written in one line.
+ * There is no such move available from a boolean: a caller who learns the
+ * answer is yes still has to go through `faultNotice` to get the words.
+ *
+ * The one caller is `failRun` in lib/runs.ts, deciding between two sentences it
+ * already holds — its own "Stopped." literal for a run a person cancelled, and
+ * whatever `faultNotice` gives it. A named fault means the stop had a REASON
+ * this app can state (the spend cap is the first), and a reason beats "Stopped."
+ * for a reader looking at a map that ended early.
+ */
+export function isNamedFault(err: unknown): boolean {
+  return namedFaultMessage(err) !== null
+}
+
 function namedFaultMessage(err: unknown): string | null {
   if (!(err instanceof Error) || !err.message) return null
   // `Reflect.get` rather than an index, because `Error` declares no symbol

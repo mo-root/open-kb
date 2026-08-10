@@ -23,6 +23,24 @@ export interface RunRow {
   ended_at?: string | null
   error?: string | null
   result?: SweepResult | null
+  /**
+   * What the run cost, in dollars, written at its ending — successful or not.
+   *
+   * NOT DERIVED FROM `result`, and the difference is the whole point of the
+   * column. A run that failed at minute three has no result and still bought
+   * its searches, so `result->stats->usd` would count a bad afternoon as free.
+   * This is `SpanStream.totalUsd()`, which counts model AND search AND fetch,
+   * and it is what lib/spend-limits.ts adds up to answer "what has this
+   * deployment spent today".
+   */
+  usd?: number
+  /**
+   * Which visitor started it, as a salted hash — never an address. Written at
+   * the start, so a run counts against its visitor from the moment it exists
+   * rather than from the moment it ends. See `visitorOf` in lib/spend-limits.ts
+   * for why it is a hash and what it is a hash OF.
+   */
+  visitor?: string | null
 }
 
 function config(): { url: string; key: string } | null {
@@ -127,6 +145,222 @@ export async function listRuns(limit = 100): Promise<StoredRun[]> {
     },
     [],
   )
+}
+
+/**
+ * How many runs this deployment STARTED since an instant. `null` means the
+ * question could not be answered, which is not the same as zero.
+ *
+ * The distinction is the whole reason for the return type. `lib/public-runs.ts`
+ * meters a public deployment against this number, and a store that is down
+ * answering "0 runs today" would read as a full allowance and hand a stranger's
+ * script the account. Every other reader in this file falls back to an empty
+ * list because an empty gallery is a survivable lie; this one is the only
+ * caller whose fallback would spend money, so it gets an unanswerable answer
+ * and refuses on it.
+ *
+ * Counts the `runs` table itself rather than deriving from `listRuns`, and the
+ * difference is not efficiency. `listRuns` drops running rows and caps at a
+ * limit; an allowance has to count a run the moment it starts — before it can
+ * possibly have finished — and has to count the ones that failed, because a run
+ * that died at minute three already bought its searches.
+ *
+ * `select=id&limit=1` with `count=exact` rather than a bare `HEAD`: PostgREST
+ * puts the total in `Content-Range` either way, and asking for one row is the
+ * spelling that behaves the same across versions. It transfers one id.
+ */
+export async function countRunsSince(sinceIso: string): Promise<number | null> {
+  return quiet(
+    "countRunsSince",
+    async () => {
+      const res = await rest(
+        `runs?select=id&started_at=gte.${encodeURIComponent(sinceIso)}&limit=1`,
+        { headers: { Prefer: "count=exact" } },
+      )
+      if (!res || !res.ok) return null
+      // `0-0/137`, or `*/0` when nothing matched. The total is after the slash.
+      const total = res.headers.get("content-range")?.split("/")[1]
+      const n = Number(total)
+      return Number.isFinite(n) && n >= 0 ? n : null
+    },
+    null,
+  )
+}
+
+/** One row as the budget reads it: when it started, whether it is still going,
+ *  what it cost, and whose it was. Nothing else — a day's worth of `select=*`
+ *  would drag every finished map's whole `result` blob across the wire to
+ *  answer an arithmetic question. */
+export interface UsageRow {
+  started_at: string
+  status: RunStatus
+  usd: number
+  visitor: string | null
+}
+
+/**
+ * Every run this deployment started since an instant, as the four fields a
+ * budget needs.
+ *
+ * THREE OUTCOMES, NOT TWO, and the third is why this does not use `quiet`.
+ * `lib/spend-limits.ts` is the one caller in this file whose fallback would
+ * SPEND: a store that is down answering "no runs today" reads as a full
+ * day's budget and hands a stranger's script the account. So "could not read"
+ * has to be distinguishable from "read, and there were none", and a store that
+ * was never configured has to be distinguishable from both — the first two are
+ * a fault, and the third is a laptop.
+ *
+ * ONE REQUEST FOR THREE QUESTIONS. Today's spend, today's runs by this visitor,
+ * and how many are in flight are all answered from the same rows, so they are
+ * fetched once and counted in memory. The row count is bounded by the day cap
+ * divided by what a map costs — about two dozen — so this is a smaller response
+ * than a single finished map.
+ *
+ * `limit` is a guard, not a page. If a deployment ever starts more runs in a
+ * day than this, the count is short and the budget reads LOW, which spends. It
+ * is set far above any number the day cap can produce so that cannot happen;
+ * a deployment that reaches it has bigger problems than an inexact total.
+ */
+export async function usageSince(
+  sinceIso: string,
+  limit = 5000,
+): Promise<
+  | { kind: "counted"; rows: UsageRow[] }
+  | { kind: "unconfigured" }
+  | { kind: "unavailable"; why: string }
+> {
+  if (!configured()) return { kind: "unconfigured" }
+  try {
+    const res = await rest(
+      `runs?select=started_at,status,usd,visitor&started_at=gte.${encodeURIComponent(sinceIso)}` +
+        `&order=started_at.asc&limit=${limit}`,
+    )
+    if (!res) return { kind: "unconfigured" }
+    if (!res.ok) {
+      // The body is PostgREST's own words and stays out of anything a browser
+      // reads; the status is enough to tell a missing column (400/404) from a
+      // key that stopped working (401) in a log line.
+      const detail = await res.text().catch(() => "")
+      console.error(`[supabase] usageSince ${res.status}: ${detail}`)
+      return { kind: "unavailable", why: `the store answered ${res.status}` }
+    }
+    const rows = (await res.json()) as Partial<UsageRow>[]
+    return {
+      kind: "counted",
+      rows: rows.map((r) => ({
+        started_at: String(r.started_at ?? ""),
+        status: (r.status ?? "running") as RunStatus,
+        // A null column — every row written before the schema gained it — is
+        // read as zero rather than as a fault. It is a run whose cost was never
+        // recorded, and the budget undercounts it by exactly what it cost. The
+        // alternative is a deployment that refuses every run until yesterday's
+        // rows age out of the window, which is a worse answer to a migration
+        // that has already been applied.
+        usd: Number(r.usd ?? 0) || 0,
+        visitor: r.visitor ?? null,
+      })),
+    }
+  } catch (e) {
+    console.error("[supabase] usageSince:", e)
+    return { kind: "unavailable", why: "the store could not be reached" }
+  }
+}
+
+/** Which limit stopped a claim, and the three counts behind the decision. The
+ *  sentences are written in lib/spend-limits.ts; this is the arithmetic. */
+export interface ClaimCounts {
+  byVisitor: number
+  spentUsd: number
+  inFlight: number
+}
+
+export type ClaimResult =
+  | ({ kind: "claimed" } & ClaimCounts)
+  | ({ kind: "refused"; limit: "visitor" | "day" | "at-once" } & ClaimCounts)
+  | { kind: "unconfigured" }
+  | { kind: "unavailable"; why: string }
+
+/**
+ * Ask Postgres whether a run may start, and have it write the row if so.
+ *
+ * ONE ROUND TRIP, because the decision and the record are the same act. The
+ * shape this replaces — `usageSince`, decide in TypeScript, insert later — is
+ * correct for every request taken alone and worthless against a burst: fifty
+ * requests fired together all read the same empty day. `claim_run` in
+ * scripts/supabase-schema.sql takes a transaction-scoped advisory lock, counts,
+ * and inserts, so the fifty-first sees the first fifty.
+ *
+ * NOT `quiet`, for `usageSince`'s reason: the fallback here would SPEND. A
+ * store that is down, a migration that has not been run, a function PostgREST
+ * has not noticed yet — every one of those has to come back as "could not
+ * decide" and be refused, never as "nothing today".
+ */
+export async function claimRun(args: {
+  id: string
+  domain: string
+  queries: number
+  startedAt: string
+  visitor: string | null
+  since: string
+  windowMs: number
+  runCapUsd: number | null
+  dayCapUsd: number | null
+  perVisitorPerDay: number | null
+  atOnce: number | null
+}): Promise<ClaimResult> {
+  if (!configured()) return { kind: "unconfigured" }
+  try {
+    const res = await rest("rpc/claim_run", {
+      method: "POST",
+      body: JSON.stringify({
+        p_id: args.id,
+        p_domain: args.domain,
+        p_queries: args.queries,
+        p_started_at: args.startedAt,
+        p_visitor: args.visitor,
+        p_since: args.since,
+        p_window_ms: Math.round(args.windowMs),
+        p_run_cap: args.runCapUsd,
+        p_day_cap: args.dayCapUsd,
+        p_per_visitor: args.perVisitorPerDay,
+        p_at_once: args.atOnce,
+      }),
+    })
+    if (!res) return { kind: "unconfigured" }
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "")
+      console.error(`[supabase] claimRun ${res.status}: ${detail}`)
+      // 404 is the one an operator can act on directly: PostgREST answers it
+      // for a function it does not know, which is a deployment upgraded without
+      // re-running the schema. Named as such rather than as "the store answered
+      // 404", which reads like an outage and is not.
+      return {
+        kind: "unavailable",
+        why:
+          res.status === 404
+            ? "this deployment has no claim_run function — re-run scripts/supabase-schema.sql"
+            : `the store answered ${res.status}`,
+      }
+    }
+    const body = (await res.json()) as Record<string, unknown> | null
+    if (!body || typeof body.ok !== "boolean") {
+      return { kind: "unavailable", why: "the store answered something the budget could not read" }
+    }
+    const counts: ClaimCounts = {
+      byVisitor: Number(body.by_visitor ?? 0) || 0,
+      spentUsd: Number(body.spent_usd ?? 0) || 0,
+      inFlight: Number(body.in_flight ?? 0) || 0,
+    }
+    if (body.ok) return { kind: "claimed", ...counts }
+    const which = body.limit
+    if (which !== "visitor" && which !== "day" && which !== "at-once") {
+      return { kind: "unavailable", why: "the store refused a run without saying which limit" }
+    }
+    return { kind: "refused", limit: which, ...counts }
+  } catch (e) {
+    console.error("[supabase] claimRun:", e)
+    return { kind: "unavailable", why: "the store could not be reached" }
+  }
 }
 
 export async function getRunRow(id: string): Promise<StoredRun | null> {

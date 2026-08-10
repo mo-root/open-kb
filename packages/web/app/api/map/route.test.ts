@@ -135,6 +135,10 @@ beforeAll(async () => {
     "OPENKB_RUNS_DIR",
     "OPENKB_DEMO",
     "OPENKB_CEILING_USD",
+    "OPENKB_RUN_CAP_USD",
+    "OPENKB_DAY_CAP_USD",
+    "OPENKB_RUNS_PER_VISITOR_PER_DAY",
+    "OPENKB_RUNS_AT_ONCE",
     "SUPABASE_URL",
     "SUPABASE_SECRET_KEY",
     "BRIGHTDATA_API_TOKEN",
@@ -150,6 +154,16 @@ beforeAll(async () => {
   process.env.OPENKB_DEMO = ""
   // No ceiling, so the handler never asks OpenRouter what it has spent.
   process.env.OPENKB_CEILING_USD = ""
+  // Every spend limit off, and named one by one rather than left to a default.
+  // This file is about a run reaching durable storage; the limits have their own
+  // suite (limits.test.ts) which turns them on and drives the same route. A
+  // suite that inherited them would eventually fail on its fourth run of the
+  // day for a reason that has nothing to do with what it asserts, which is the
+  // kind of failure that gets a real guard deleted.
+  process.env.OPENKB_RUN_CAP_USD = "off"
+  process.env.OPENKB_DAY_CAP_USD = "off"
+  process.env.OPENKB_RUNS_PER_VISITOR_PER_DAY = "off"
+  process.env.OPENKB_RUNS_AT_ONCE = "off"
   process.env.SUPABASE_URL = "https://store.test"
   process.env.SUPABASE_SECRET_KEY = "k"
   process.env.BRIGHTDATA_API_TOKEN = "t"

@@ -252,6 +252,10 @@ beforeAll(async () => {
     "OPENKB_RUNS_DIR",
     "OPENKB_DEMO",
     "OPENKB_CEILING_USD",
+    "OPENKB_RUN_CAP_USD",
+    "OPENKB_DAY_CAP_USD",
+    "OPENKB_RUNS_PER_VISITOR_PER_DAY",
+    "OPENKB_RUNS_AT_ONCE",
     "SUPABASE_URL",
     "SUPABASE_SECRET_KEY",
     "BRIGHTDATA_API_TOKEN",
@@ -264,6 +268,14 @@ beforeAll(async () => {
   process.env.OPENKB_RUNS_DIR = dir
   process.env.OPENKB_DEMO = ""
   process.env.OPENKB_CEILING_USD = ""
+  // Every spend limit off. This suite runs the same route half a dozen times
+  // from one address, which is exactly what the per-visitor limit is for — it
+  // would refuse the fourth run and the failure would read as a budget bug. The
+  // limits have their own suite; see limits.test.ts.
+  process.env.OPENKB_RUN_CAP_USD = "off"
+  process.env.OPENKB_DAY_CAP_USD = "off"
+  process.env.OPENKB_RUNS_PER_VISITOR_PER_DAY = "off"
+  process.env.OPENKB_RUNS_AT_ONCE = "off"
   // No store, so nothing here has a reason to reach PostgREST.
   delete process.env.SUPABASE_URL
   delete process.env.SUPABASE_SECRET_KEY

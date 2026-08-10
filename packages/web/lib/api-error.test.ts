@@ -166,9 +166,36 @@ describe("namedFaults — the whole shelf", () => {
     // costs a red line here and someone reading the new entry before it ships.
     expect(Object.keys(namedFaults).sort()).toEqual([
       "demoMapsMissing",
+      "runCostCeiling",
       "runsDirIsRoot",
       "runsDirUnreadable",
     ])
+  })
+
+  it("lets a capped run say why it stopped instead of handing a visitor a ref", () => {
+    // The fourth entry, and the argument for it is the header's test: the
+    // reader has something to do about it. This one is read by a stranger
+    // staring at a map that stopped three quarters of the way through, which
+    // looks exactly like a bug — so the sentence has to say the run is not
+    // broken, that what it found is kept, and where an uncapped map comes from.
+    // Through `faultNotice`, because that is the only door lib/runs.ts uses.
+    const capped = namedFaults.runCostCeiling(0.41, 0.3612)
+    const shown = faultNotice(capped, "run test")
+    expect(shown).toBe(capped.message)
+    expect(shown).toContain("$0.41")
+    expect(shown).toContain("$0.36")
+    expect(shown).toContain("kept")
+    // And no ref, which is the whole difference: a ref is what a reader is
+    // given when there is nothing they can act on.
+    expect(shown).not.toMatch(/[0-9a-f]{12}/)
+  })
+
+  it("holds every hole to a number this app computed", () => {
+    // The shelf's rule is that a hole may be filled only with something the app
+    // itself worked out — never a caught error's words. Both of this entry's
+    // are dollars, so there is no string for a provider's prose to arrive in,
+    // and the types are what keep it that way.
+    expect(namedFaults.runCostCeiling(1.5, 1.2).message).not.toContain("Error")
   })
 
   it("mints the exact string that was measured escaping the pages", () => {

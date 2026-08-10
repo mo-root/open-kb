@@ -44,6 +44,10 @@ const EXPECTED = [
  *  this suite make a network call and count someone else's runs. */
 const KEYS = [
   "OPENKB_DEMO",
+  // In here because it MOVES the boundary this suite is about: an allowance
+  // lets `getStoredRun` answer out of the store by id. A developer with one
+  // set in their shell would otherwise flip half these assertions.
+  "OPENKB_PUBLIC_RUNS_PER_DAY",
   "OPENKB_DEMO_MAPS_DIR",
   "OPENKB_RUNS_DIR",
   "SUPABASE_URL",
@@ -214,6 +218,70 @@ describe("the gallery, in demo mode", () => {
       // And the six it does serve still open.
       const one = await getStoredRun(EXPECTED[3])
       expect(one?.domain).toBe("stripe.com")
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  /**
+   * THE ONE DOOR AN ALLOWANCE OPENS, and the one it does not.
+   *
+   * A public demo runs maps for strangers, so a stranger's own run has to be
+   * readable after they close the tab — that link is the promise the box makes
+   * ("your map lands at /kb/…") and a link that 404s is a lie. But the LISTING
+   * must not move: a gallery that filled up with whatever visitors typed today
+   * would also fill up with the operator's own unpublished runs out of the same
+   * table, which is the fifteen-maps leak two tests above, arriving by a new
+   * route.
+   *
+   * So the split is by SHAPE OF QUESTION rather than by trust: "show me
+   * everything" stays answered from the committed directory, and "show me this
+   * id" may reach the store. The ids that become reachable are
+   * `crypto.randomUUID()`s, so unlisted means unguessable and not merely
+   * undisplayed.
+   */
+  it("with an allowance, still lists the committed six and nothing else", async () => {
+    const forbidden = vi.fn(() => {
+      throw new Error("the demo's LISTING reached the network — an allowance must not open it")
+    })
+    vi.stubGlobal("fetch", forbidden)
+    try {
+      env({
+        OPENKB_DEMO: "1",
+        OPENKB_PUBLIC_RUNS_PER_DAY: "20",
+        SUPABASE_URL: "https://store.test",
+        SUPABASE_SECRET_KEY: "k",
+      })
+      const runs = await listStoredRuns()
+      expect(runs.map((r) => r.id).sort()).toEqual([...EXPECTED].sort())
+      expect(forbidden).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it("with an allowance, DOES ask the store for a run asked for by id", async () => {
+    // The other half, and the reason this test asserts on the REQUEST rather
+    // than on a returned run: what matters is that the question reaches
+    // Postgres at all. A demo without an allowance never sends it (the test two
+    // above proves that with the same stub, inverted).
+    const asked: string[] = []
+    vi.stubGlobal("fetch", (url: string) => {
+      asked.push(String(url))
+      return Promise.resolve(new Response("[]", { status: 200, headers: { "content-type": "application/json" } }))
+    })
+    try {
+      env({
+        OPENKB_DEMO: "1",
+        OPENKB_PUBLIC_RUNS_PER_DAY: "20",
+        SUPABASE_URL: "https://store.test",
+        SUPABASE_SECRET_KEY: "k",
+      })
+      const id = "583cb0eb-f4e1-44b4-a46c-7b8249329203"
+      expect(await getStoredRun(id)).toBeNull()
+      expect(asked.some((u) => u.includes(`runs?id=eq.${id}`))).toBe(true)
+      // And the committed six still open, from the directory, as they always did.
+      expect((await getStoredRun(EXPECTED[3]))?.domain).toBe("stripe.com")
     } finally {
       vi.unstubAllGlobals()
     }

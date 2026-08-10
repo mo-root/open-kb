@@ -2,9 +2,10 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { renderToStaticMarkup } from "react-dom/server"
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest"
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 import { BuildWorkflow } from "@/components/build/BuildWorkflow"
 import { DEMO_ASIDE, DEMO_REFUSAL, DEMO_REPO } from "@/lib/demo"
+import { MEASURED } from "@/lib/public-runs"
 import Home from "./page"
 
 /**
@@ -43,6 +44,17 @@ vi.mock("next/navigation", () => ({
     forward: () => {},
     refresh: () => {},
   }),
+}))
+
+/* The store, in this suite's hands. `runGate` counts today's runs through it,
+   and a page test that reached a real PostgREST would be measuring the network.
+   Only the counter is replaced: `listStoredRuns` still reads the committed maps
+   off disk exactly as it does in production, which is the half these tests are
+   actually about. */
+const countRunsSince = vi.fn<(since: string) => Promise<number | null>>()
+vi.mock("@/lib/store/supabase", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/store/supabase")>()),
+  countRunsSince: (since: string) => countRunsSince(since),
 }))
 
 /* The real registry, watched. `listStoredRuns` reads 8MB of committed JSON off
@@ -105,6 +117,7 @@ const VERCEL_EDGES = 6283
 
 const KEYS = [
   "OPENKB_DEMO",
+  "OPENKB_PUBLIC_RUNS_PER_DAY",
   "OPENKB_DEMO_MAPS_DIR",
   "OPENKB_RUNS_DIR",
   "SUPABASE_URL",
@@ -123,6 +136,13 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await rm(empty, { recursive: true, force: true })
+})
+
+beforeEach(() => {
+  countRunsSince.mockReset()
+  // A quiet day, so an allowance that is configured is an allowance that is
+  // open unless a test says otherwise.
+  countRunsSince.mockResolvedValue(0)
 })
 
 afterEach(() => {
@@ -293,6 +313,21 @@ describe("with OPENKB_DEMO on — the maps are the page", () => {
     expect(html.indexOf(DEMO_ASIDE)).toBeGreaterThan(html.indexOf('href="/kb/'))
   })
 
+  it("has no box, and does not mention an allowance it does not have", async () => {
+    // "With runs disabled nothing changes", asserted directly rather than
+    // inferred from the tests above still passing. `OPENKB_PUBLIC_RUNS_PER_DAY`
+    // is unset on every demo that exists today, and every one of them must go
+    // on rendering a gallery with no form in it.
+    env({ OPENKB_DEMO: "1" })
+    const html = await home()
+
+    expect(html).not.toContain("<input")
+    expect(html).not.toContain("runs left today")
+    expect(html).not.toContain("resets at 00:00 UTC")
+    // And it took no count, because there was no allowance to count against.
+    expect(countRunsSince).not.toHaveBeenCalled()
+  })
+
   it("says it cannot find its maps rather than rendering an empty page", async () => {
     // The lambda failure lib/runs.ts diagnoses, seen from the front page. An
     // operator who pointed OPENKB_DEMO_MAPS_DIR at the wrong place gets the
@@ -306,5 +341,153 @@ describe("with OPENKB_DEMO on — the maps are the page", () => {
     expect(html).not.toContain("already spent")
     // The way out is still on the page.
     expect(html).toContain(`href="${DEMO_REPO}"`)
+  })
+})
+
+/**
+ * THE TRY-IT PATH.
+ *
+ * A demo whose every door is shut is a gallery of maps somebody else paid for.
+ * `OPENKB_PUBLIC_RUNS_PER_DAY` is the one variable that opens the spending door,
+ * and this is what a stranger meets when it is set: a box, above the maps, with
+ * the count of runs left in it BEFORE they type — which is the whole difference
+ * between information and a door in the face.
+ */
+describe("with a daily allowance — the box is back, above the gallery", () => {
+  it("renders a live domain input and a live Map button", async () => {
+    env({ OPENKB_DEMO: "1", OPENKB_PUBLIC_RUNS_PER_DAY: "20" })
+    const html = await home()
+
+    expect(html).toContain('placeholder="resend.com"')
+    expect(html).toContain(">Map<")
+    // Live, not decorative. The input carries no `disabled` at all; the button
+    // carries one only because the field starts empty, which is the same state
+    // the ordinary deployment's button is in.
+    const input = html.match(/<input[^>]*placeholder="resend\.com"[^>]*>/)?.[0]
+    expect(input, "the domain input").toBeDefined()
+    expect(input).not.toMatch(/\sdisabled[=\s/>]/)
+  })
+
+  it("says how many runs are left today before the visitor types, not after", async () => {
+    // Item 2, and the reason it is a count and not a boolean: a stranger who
+    // types into a box that then refuses them has been wasted; a stranger who
+    // reads "13 of 20 left" and types anyway has been told the truth.
+    env({ OPENKB_DEMO: "1", OPENKB_PUBLIC_RUNS_PER_DAY: "20" })
+    countRunsSince.mockResolvedValue(7)
+    const html = await home()
+
+    expect(html).toContain("13 of 20")
+    expect(html).toContain("runs left today")
+    // And the count is of runs started TODAY, taken from midnight UTC.
+    expect(countRunsSince).toHaveBeenCalledTimes(1)
+    expect(countRunsSince.mock.calls[0]![0]).toMatch(/T00:00:00\.000Z$/)
+  })
+
+  it("quotes the cost in TIME and SIZE, both measured, and never in dollars", async () => {
+    // What a run costs the visitor is four minutes of their attention. The
+    // owner's twenty cents is not the visitor's business, and quoting it asks
+    // them to decide on the owner's behalf whether they are worth it.
+    env({ OPENKB_DEMO: "1", OPENKB_PUBLIC_RUNS_PER_DAY: "20" })
+    const html = await home()
+
+    expect(html).toContain(`about ${MEASURED.aboutMinutes} minutes`)
+    expect(html).toContain(`roughly ${MEASURED.aboutEntities} entities`)
+    expect(html).toContain("both measured")
+    expect(html).toContain("costs you nothing but the wait")
+    // The operator's price list is gone from this page — it is the right line
+    // for someone spending their own money and the wrong one for a stranger.
+    expect(html).not.toContain("$0.0015")
+  })
+
+  it("keeps the finished maps, under the box rather than instead of it", async () => {
+    // Item 5's real content: this is the same gallery, given a form on top,
+    // not a second page. All six maps, each still linking to itself.
+    env({ OPENKB_DEMO: "1", OPENKB_PUBLIC_RUNS_PER_DAY: "20" })
+    const html = await home()
+
+    for (const id of MAPS) expect(html, id).toContain(`href="/kb/${id}"`)
+    expect(html).toContain(LEDGER.entities)
+    expect(html).toContain("already spent")
+    // Order: the box first, the maps under it.
+    expect(html.indexOf('placeholder="resend.com"')).toBeLessThan(html.indexOf('href="/kb/'))
+  })
+
+  it("says the headline once, not twice", async () => {
+    // The gallery renders in its `bare` spelling here precisely so the reader
+    // does not get two "Map a market" headings and two identical paragraphs
+    // stacked around one form.
+    env({ OPENKB_DEMO: "1", OPENKB_PUBLIC_RUNS_PER_DAY: "20" })
+    const html = await home()
+
+    expect(html.split("Map a market").length - 1).toBe(1)
+    expect(html.split("the queries cannot look this company up").length - 1).toBe(1)
+    // …and it names what the maps below are, since they are not the visitor's.
+    expect(html).toContain("maps already built here")
+  })
+
+  it("still points at the repo, because the allowance is not the whole answer", async () => {
+    env({ OPENKB_DEMO: "1", OPENKB_PUBLIC_RUNS_PER_DAY: "20" })
+    const html = await home()
+
+    expect(html).toContain(DEMO_ASIDE)
+    expect(html).toContain(`href="${DEMO_REPO}"`)
+    // And never the API's paragraph-long refusal, which nobody on this page has
+    // asked for anything yet.
+    expect(html).not.toContain(DEMO_REFUSAL)
+  })
+})
+
+describe("with the allowance spent — a sentence, not a dead form", () => {
+  it("drops the box and says when it comes back", async () => {
+    // The alternative was a greyed-out input with "0 of 20" in it, and this
+    // codebase has had that argument once already: a disabled form teaches a
+    // visitor nothing except that they are not welcome.
+    env({ OPENKB_DEMO: "1", OPENKB_PUBLIC_RUNS_PER_DAY: "20" })
+    countRunsSince.mockResolvedValue(20)
+    const html = await home()
+
+    expect(html).not.toContain("<input")
+    expect(html).not.toContain(">Map<")
+    expect(html).toContain("resets at 00:00 UTC")
+    expect(html).toContain("20 maps a day")
+  })
+
+  it("still shows every map, which is the thing the visitor came for", async () => {
+    env({ OPENKB_DEMO: "1", OPENKB_PUBLIC_RUNS_PER_DAY: "20" })
+    countRunsSince.mockResolvedValue(20)
+    const html = await home()
+
+    for (const id of MAPS) expect(html, id).toContain(`href="/kb/${id}"`)
+    expect(html).toContain(LEDGER.entities)
+  })
+
+  it("a store it cannot count with renders the read-only page, unchanged", async () => {
+    // Fail closed, and fail QUIET: a database outage is not the visitor's
+    // business and there is nothing they can do about it. The page is byte for
+    // byte the one a read-only demo renders — asserted against that page rather
+    // than described, so a future edit to either has to move both.
+    env({ OPENKB_DEMO: "1", OPENKB_PUBLIC_RUNS_PER_DAY: "20" })
+    countRunsSince.mockResolvedValue(null)
+    const outage = await home()
+
+    env({ OPENKB_DEMO: "1" })
+    expect(outage).toBe(await home())
+  })
+})
+
+describe("an allowance on a deployment that is NOT a demo", () => {
+  it("gets the count without the gallery, and reads no directory for it", async () => {
+    // The allowance is about spending, not about the demo: an owner who caps
+    // their own password-protected instance gets the same line. What they do
+    // not get is six committed maps on their front page — /kb is where they
+    // browse what their own deployment has built.
+    env({ OPENKB_PUBLIC_RUNS_PER_DAY: "5", OPENKB_RUNS_DIR: empty })
+    countRunsSince.mockResolvedValue(1)
+    const html = await home()
+
+    expect(html).toContain("4 of 5")
+    expect(html).toContain("runs left today")
+    for (const id of MAPS) expect(html, id).not.toContain(id)
+    expect(listed).not.toHaveBeenCalled()
   })
 })

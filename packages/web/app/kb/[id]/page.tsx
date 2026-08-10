@@ -31,7 +31,13 @@ export default async function KbPage({
      everything past it reads `run.result`, and only `isCompleted` can promise
      it is there. */
   const kb = run && isCompleted(run) ? run : null;
-  const failed = run !== null && kb === null;
+  /* THREE STATES, NOT TWO. `failed` used to be "there is a run and it has no
+     map", which is also true of a run that is still going. The wait strip tells
+     a visitor they may close the tab and that their map lands here, so the
+     commonest way to reach this page is to arrive BEFORE the run has finished —
+     and it answered that arrival by saying their run had failed. */
+  const running = run !== null && run.status === "running";
+  const failed = run !== null && kb === null && !running;
 
   if (!kb) {
     /* A dead end is a bug, not an outcome.
@@ -91,6 +97,26 @@ export default async function KbPage({
       // line. The ref is what joins the reader's screen to that line; the id
       // would only be a second, forgeable way to spell it.
       error = faultNotice(err, "GET /kb/[id]");
+    }
+
+    /* STILL GOING. Its own answer, before the two failure spellings below,
+       because a visitor who followed the wait strip's promise ("close the tab,
+       your map lands here") arrives here on purpose and on time. Sending them
+       to the live run is the whole point of the link they were given. */
+    if (running) {
+      return (
+        <div className="mx-auto max-w-2xl px-5 py-16">
+          <div className="mb-1 font-mono text-sm text-sky-300">
+            <span className="text-sky-200">{id}</span> is still running
+          </div>
+          <p className="mb-6 mt-2 text-sm text-slate-400">
+            The map appears here when the run ends. Nothing is lost if you leave.{" "}
+            <Link href={`/runs/${id}`} className="text-sky-400 hover:text-sky-300">
+              Watch it work →
+            </Link>
+          </p>
+        </div>
+      );
     }
 
     return (

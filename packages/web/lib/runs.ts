@@ -2,8 +2,9 @@ import { access, mkdir, readdir, readFile, writeFile } from "node:fs/promises"
 import { constants as fsConstants, existsSync } from "node:fs"
 import path from "node:path"
 import { SpanStream, type Span } from "@open-kb/core"
-import { faultNotice, namedFaults, type RunsDirTrouble } from "./api-error"
+import { faultNotice, isNamedFault, namedFaults, type RunsDirTrouble } from "./api-error"
 import { isDemo } from "./demo"
+import { servesOwnRuns } from "./public-runs"
 import * as db from "./store/supabase"
 import type { SweepResult } from "@open-kb/sweep"
 
@@ -124,6 +125,17 @@ export interface RunRecord {
    * reader is the same process and the registry answers.
    */
   created?: Promise<void>
+
+  /**
+   * Whose run this is, as the salted hash lib/spend-limits.ts counts by — never
+   * an address. Null when nothing identified the caller, which is its own
+   * shared bucket rather than an exemption.
+   *
+   * Held on the record as well as written to the row because both terminal
+   * writes rebuild the row from scratch, and a column that only the START
+   * writes would be erased by the ending.
+   */
+  visitor?: string | null
 }
 
 /**
@@ -143,15 +155,39 @@ const runs: Registry = (g[KEY] ??= new Map())
  *  its whole span log, so an unbounded registry is an unbounded heap. */
 const KEEP_FINISHED = 20
 
-export function createRun(domain: string, queries: number): RunRecord {
+/**
+ * `visitor` is the salted hash lib/spend-limits.ts counts a day's runs by. It
+ * is optional because two callers have no visitor to name — the tests, and any
+ * future path that starts a run without a request behind it — and a run with no
+ * visitor simply counts towards the deployment's day and nobody's own
+ * allowance.
+ *
+ * WRITTEN AT THE START, not at the ending, and that is the difference between a
+ * limit and a suggestion. A visitor's allowance has to be spent by a run the
+ * moment it exists: three requests fired together must see each other, and a
+ * run recorded only when it finishes is a run three minutes of a shell loop
+ * cannot see at all.
+ */
+export function createRun(
+  domain: string,
+  queries: number,
+  opts: { visitor?: string | null; id?: string; startedAt?: number } = {},
+): RunRecord {
   const record: RunRecord = {
-    id: crypto.randomUUID(),
+    // GIVEN, when a spend gate already claimed it. `claim_run` writes the row
+    // inside the transaction that decides the run may start — that is what
+    // makes the limit binding under a burst — so the id and its instant are
+    // settled before this is called, and minting new ones here would leave the
+    // claim orphaned and the run uncounted. Minted here otherwise: the tests,
+    // and any path with no budget in front of it.
+    id: opts.id ?? crypto.randomUUID(),
     domain,
     queries,
-    startedAt: Date.now(),
+    startedAt: opts.startedAt ?? Date.now(),
     status: "running",
     spans: new SpanStream(),
     abort: new AbortController(),
+    visitor: opts.visitor ?? null,
   }
   runs.set(record.id, record)
   evict()
@@ -174,6 +210,13 @@ export function createRun(domain: string, queries: number): RunRecord {
       queries,
       status: "running",
       started_at: new Date(record.startedAt).toISOString(),
+      // Zero, honestly: nothing has been bought yet. The budget does not read
+      // this column for a running row — it holds such a row at the run's full
+      // cap instead, because a run that has spent something and recorded
+      // nothing counted at zero is how three concurrent runs walk a day's
+      // budget past its ceiling. See `count` in lib/spend-limits.ts.
+      usd: 0,
+      visitor: record.visitor,
     })
     // Held rather than voided: `finishRun` and `failRun` await it, so the tail
     // flush is part of the run being over rather than a race against shutdown.
@@ -284,7 +327,7 @@ async function settle(r: RunRecord, row: db.RunRow): Promise<void> {
  */
 export async function finishRun(id: string, result: SweepResult): Promise<void> {
   const r = runs.get(id)
-  if (!r) return
+  if (!r || !isFirstEnding(r, "finishRun")) return
   r.result = result
   r.status = "complete"
   r.endedAt = Date.now()
@@ -301,8 +344,40 @@ export async function finishRun(id: string, result: SweepResult): Promise<void> 
     status: "complete",
     started_at: new Date(r.startedAt).toISOString(),
     ended_at: new Date(r.endedAt).toISOString(),
+    usd: r.spans.totalUsd(),
+    visitor: r.visitor,
     result,
   })
+}
+
+/**
+ * THE FIRST ENDING WINS, and a second one is dropped where it stands.
+ *
+ * WHAT WAS BROKEN, and it was broken for the deadline watchdog before this
+ * file's budget ever existed. `withDeadline` in app/api/map/route.ts records the
+ * run as failed and THEN aborts the sweep — deliberately in that order, because
+ * `failRun` reads the abort signal to decide whether a run was stopped by a
+ * person, and telling a reader "Stopped. Everything found before you stopped it
+ * is kept." about a run nobody stopped is a lie. But the abort makes the sweep
+ * throw, the background task catches it, and it calls `failRun` a SECOND time —
+ * now with the signal aborted. So the row that said "this run ran out of clock"
+ * was immediately overwritten by one that said the visitor cancelled, on every
+ * single timed-out run. The careful ordering was undone one line later by a
+ * caller nobody had counted.
+ *
+ * The budget's watchdog stops runs the same way and would inherit the same
+ * defect, so the fix belongs here rather than in either watchdog: a run has one
+ * ending, it is the first one, and everything after it is the echo of a stop
+ * that has already been recorded.
+ *
+ * It is not an error to arrive second — it is the normal path — so this logs at
+ * debug volume and returns quietly rather than throwing into a background task
+ * whose whole job is to end cleanly.
+ */
+function isFirstEnding(r: RunRecord, who: string): boolean {
+  if (r.status === "running") return true
+  console.log(`[runs] ${who} for ${r.id.slice(0, 8)}: already ${r.status}, keeping the first ending`)
+  return false
 }
 
 /** A deliberate stop is an outcome, not a fault, so its sentence is a literal
@@ -342,11 +417,21 @@ const STOPPED = "Stopped. Everything found before you stopped it is kept."
  */
 export async function failRun(id: string, error: unknown): Promise<void> {
   const r = runs.get(id)
-  if (!r) return
+  if (!r || !isFirstEnding(r, "failRun")) return
   // A cancellation is not a crash. The sweep throws from its next checkpoint,
   // and everything it had already found is in the span table, so the reader is
   // told the run was stopped rather than that it broke.
-  const cancelled = r.abort.signal.aborted
+  //
+  // A STOP WITH A STATED REASON KEEPS ITS REASON, which is the second half of
+  // that rule and the one the spend cap needed. "Stopped." is what to say when
+  // the only thing the abort left behind is the word "aborted" — a person
+  // pressed the button and there is nothing to add. It is the wrong sentence
+  // when the caller aborted the run ITSELF and handed over an explanation this
+  // app wrote: `withSpendCap` in the map route stops the spending FIRST, which
+  // is correct with money in flight, and then records why. Reading the signal
+  // alone would answer that reader "you stopped this" about a run they were
+  // watching and did not touch.
+  const cancelled = r.abort.signal.aborted && !isNamedFault(error)
   r.error = cancelled ? STOPPED : faultNotice(error, `run ${id}`)
   // What the ROW keeps, which is MORE than what the reader sees. `r.error` is
   // bounded because a browser reads it; the column carries that sentence AND
@@ -391,6 +476,13 @@ export async function failRun(id: string, error: unknown): Promise<void> {
     status: "failed",
     started_at: new Date(r.startedAt).toISOString(),
     ended_at: new Date(r.endedAt).toISOString(),
+    // THE COLUMN A FAILED RUN EXISTS FOR, as far as the budget is concerned. A
+    // run that died at minute three bought its searches and produced no
+    // `result` to read a cost out of, so without this the day's total would
+    // treat a bad afternoon as free and go on spending against a budget it had
+    // already used.
+    usd: r.spans.totalUsd(),
+    visitor: r.visitor,
     error: durable,
   })
 }
@@ -434,17 +526,42 @@ function evict(): void {
  * cannot. The message names OPENKB_RUNS_DIR without hedging because it is
  * minted from the value that was actually read — see `checkedDir`.
  *
- * DEMO MODE TAKES NONE OF THIS PATH. `isDemo()` is the first line of the
- * function and it returns from `demoMapsDir`, which reads its own variable and
- * does its own walk. The reasoning for that split is written there; the short
- * version is that OPENKB_RUNS_DIR means "where new runs are written", a demo
- * writes none, and DEPLOY.md tells Vercel operators to point it at `/tmp`.
+ * DEMO MODE TAKES NONE OF THIS PATH, FOR READS. `isDemo()` is the first line of
+ * the function and it returns from `demoMapsDir`, which reads its own variable
+ * and does its own walk. The reasoning for that split is written there; the
+ * short version is that OPENKB_RUNS_DIR means "where new runs are written" and
+ * DEPLOY.md tells Vercel operators to point it at `/tmp`.
+ *
+ * WRITES ARE `writeDir()` BELOW, AND THE SPLIT IS NEW. This function used to
+ * answer both questions, which was safe for exactly as long as a demo wrote
+ * nothing. A demo with a daily allowance (lib/public-runs.ts) writes visitor
+ * runs, and with one function answering both, `persist` would have written them
+ * into `demo/maps/` — a tracked directory on a clone, and read-only in a
+ * serverless bundle, so the failure mode was either a polluted repository or a
+ * swallowed write. "Which maps does this deployment show" and "where does a
+ * finished run go" were always two questions; now they have two functions.
  */
 function runsDir(): string {
   // ABOVE the OPENKB_RUNS_DIR read, and that ordering is a deliberate reversal
   // of the obvious one. See `demoMapsDir` for why the more specific variable
   // has to win here.
   if (isDemo()) return demoMapsDir()
+  return writeDir()
+}
+
+/**
+ * Where a finished run's JSON is written. Never `demo/maps/`, whatever
+ * `OPENKB_DEMO` says — see the last paragraph above.
+ *
+ * A public demo therefore writes to `OPENKB_RUNS_DIR` (`/tmp` on Vercel) and
+ * READS its gallery from the committed maps, so the file it just wrote is not
+ * one it will list. That is deliberate rather than an oversight: a public
+ * deployment's visitor runs live in Postgres, which is where `getStoredRun`
+ * finds them by id and the only place that survives the instance — the local
+ * file is the same belt-and-braces copy every other deployment writes, kept so
+ * that a store outage loses bookkeeping rather than the map.
+ */
+function writeDir(): string {
   const fromEnv = process.env.OPENKB_RUNS_DIR
   if (fromEnv) return checkedDir(fromEnv)
   let dir = process.cwd()
@@ -711,16 +828,19 @@ function isCliRunId(id: unknown): id is string {
  * guards against: it needs an attacker who can already write into `runs/`, and
  * anyone who can do that can write a gallery entry directly and skip the link.
  */
-function runsPath(name: string): string {
-  const dir = path.resolve(runsDir())
+function runsPath(name: string, base: string = runsDir()): string {
+  const dir = path.resolve(base)
   const full = path.resolve(dir, name)
   if (!full.startsWith(dir + path.sep)) throw new Error(`outside runs/: ${name}`)
   return full
 }
 
-function fileFor(id: string): string {
+/** `base` defaults to the READ directory, which is what every caller but
+ *  `persist` wants. `persist` passes `writeDir()`, because a demo reads from a
+ *  directory it must not write into. */
+function fileFor(id: string, base: string = runsDir()): string {
   if (!isRunId(id)) throw new Error(`not a run id: ${id}`)
-  return runsPath(`${FILE_PREFIX}${id}.json`)
+  return runsPath(`${FILE_PREFIX}${id}.json`, base)
 }
 
 /* -------------------------------- what a failed read says about the directory */
@@ -861,8 +981,11 @@ async function persist(r: RunRecord): Promise<void> {
     status: r.status,
     result: r.result,
   }
-  await mkdir(runsDir(), { recursive: true })
-  await writeFile(fileFor(r.id), JSON.stringify(stored, null, 2), "utf8")
+  // `writeDir()`, not `runsDir()`: on a demo with a daily allowance the latter
+  // is the committed `demo/maps/`, and a visitor's run must not land there.
+  const dir = writeDir()
+  await mkdir(dir, { recursive: true })
+  await writeFile(fileFor(r.id, dir), JSON.stringify(stored, null, 2), "utf8")
 }
 
 /**
@@ -1013,11 +1136,16 @@ export async function listStoredRuns(): Promise<StoredRun[]> {
   // one of those nine was a real run of a real domain that nobody chose to
   // publish, on a URL whose entire purpose is being handed to strangers.
   //
-  // The registry goes with it, though it cannot currently hold anything —
-  // `createRun` is reachable only from the map route, which refuses first. It
-  // is skipped anyway so the guarantee is structural rather than a coincidence
-  // of today's call graph: a demo serves the directory it was given, and the
-  // list of things it will not also serve is not a list anyone has to maintain.
+  // The registry goes with it, and it CAN now hold something: a demo with a
+  // daily allowance (lib/public-runs.ts) starts real runs. That is the case
+  // this line was written ahead of, and the answer is unchanged — a public
+  // deployment's gallery is the curated six, not a feed of whatever strangers
+  // typed today, and not the operator's own Supabase alongside it. What a
+  // visitor gets instead is the link to their own run, which `getStoredRun`
+  // serves by id; `isDemo()` here rather than `servesOwnRuns()` is the whole
+  // difference between the two, and it is deliberate. A demo serves the
+  // directory it was given, and the list of things it will not also serve is
+  // not a list anyone has to maintain.
   if (!isDemo()) {
     for (const stored of await db.listRuns()) byId.set(stored.id, stored)
     for (const r of runs.values()) {
@@ -1038,14 +1166,25 @@ export async function listStoredRuns(): Promise<StoredRun[]> {
 /** One completed run. Memory first, a run that finished a moment ago is
  *  readable before its file lands. */
 export async function getStoredRun(id: string): Promise<StoredRun | null> {
-  // The same one-source rule the listing keeps, and it has to be kept in both
-  // places or they disagree: a gallery of six over a reader that will still
-  // serve a seventh to anyone who types its id. The store is the door that
-  // matters — a demo pointed at a configured Supabase would hand over any run
-  // in it, unlisted, to a guessed URL. See `listStoredRuns` for the fifteen
-  // maps that were measured coming through it.
-  const demo = isDemo()
-  const live = demo ? undefined : runs.get(id)
+  // The listing's one-source rule, narrowed by one case.
+  //
+  // A READ-ONLY demo still answers from the committed directory and nothing
+  // else, and it has to: a gallery of six over a reader that would serve a
+  // seventh to anyone who types its id is the same leak in a slower form. A
+  // demo pointed at a configured Supabase would otherwise hand over any run in
+  // it — see `listStoredRuns` for the fifteen maps that were measured coming
+  // through exactly that door.
+  //
+  // A demo WITH A DAILY ALLOWANCE serves its own store by id, and only by id.
+  // The visitor waited four minutes for that map and was handed its link before
+  // they needed it; refusing the link would make the promise false. What stays
+  // shut is the LISTING — `listStoredRuns` above is unchanged, so the gallery
+  // is still the curated six, strangers do not browse each other's runs, and
+  // the ids that became reachable are `crypto.randomUUID()`s rather than
+  // anything a reader could guess. `servesOwnRuns` is the one place that
+  // decision is written down.
+  const hidden = !servesOwnRuns()
+  const live = hidden ? undefined : runs.get(id)
   if (live) {
     const s = storedFrom(live)
     if (s) return s
@@ -1110,7 +1249,7 @@ export async function getStoredRun(id: string): Promise<StoredRun | null> {
       }
     }
   }
-  const row = demo ? null : await db.getRunRow(id)
+  const row = hidden ? null : await db.getRunRow(id)
   if (row) return row
   // Nothing anywhere, and the disk refused on the way past: that refusal is the
   // answer now, because "no such run" would be a claim this process cannot

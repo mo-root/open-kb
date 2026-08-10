@@ -3,11 +3,12 @@ import { homedir, tmpdir } from "node:os"
 import path from "node:path"
 import { format } from "node:util"
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
-import { faultNotice } from "./api-error"
+import { faultNotice, namedFaults } from "./api-error"
 import {
   cancelRun,
   createRun,
   failRun,
+  finishRun,
   getRun,
   getStoredRun,
   listStoredRuns,
@@ -1147,6 +1148,52 @@ describe("a run that fails", () => {
     )
     expect((await resultFrames(record))[0]?.message).toBe(getRun(record.id)?.error)
     expect(logged.filter((l) => /\[api\] fault/.test(l))).toHaveLength(0)
+  })
+
+  it("keeps a stop that HAS a reason over the sentence for one that does not", async () => {
+    // "Stopped." is what to say when the abort left nothing behind but the word
+    // "aborted" — a person pressed the button and there is nothing to add. It is
+    // the wrong sentence when the app aborted the run itself and knows why. The
+    // spend cap does exactly that: it stops the spending FIRST, because a
+    // Postgres write is a round trip and the engine goes on buying for the
+    // length of one, and then records the reason. Reading the signal alone would
+    // tell a visitor who touched nothing that they had stopped their own map.
+    const record = createRun("resend.com", 12)
+    expect(cancelRun(record.id)).toBe(true)
+    await failRun(record.id, namedFaults.runCostCeiling(0.41, 0.3844))
+
+    const shown = getRun(record.id)?.error ?? ""
+    expect(shown).not.toBe("Stopped. Everything found before you stopped it is kept.")
+    expect(shown).toContain("$0.41")
+    expect(shown).toContain("kept")
+    expect(logged.filter((l) => /\[api\] fault/.test(l))).toHaveLength(0)
+  })
+
+  it("keeps the FIRST ending and drops the second, whatever arrives after it", async () => {
+    // THE DEFECT THIS CLOSES, and it predates the spend cap. Both watchdogs in
+    // the map route abort the sweep to stop it working, and the abort makes the
+    // sweep throw, and the background task catches that throw and calls
+    // `failRun` a second time — by which point the signal is set. So the row
+    // that said "this run ran out of clock" was immediately overwritten by one
+    // saying the visitor cancelled, on every single timed-out run. The careful
+    // ordering in the watchdog was undone one line later by a caller nobody had
+    // counted, and no test could see it because the second write is the normal
+    // path.
+    const record = createRun("resend.com", 12)
+    await failRun(record.id, namedFaults.runCostCeiling(0.41, 0.3844))
+    const first = getRun(record.id)?.error
+    const endedAt = getRun(record.id)?.endedAt
+
+    record.abort.abort()
+    await failRun(record.id, new Error("aborted at wave 3"))
+
+    expect(getRun(record.id)?.error).toBe(first)
+    expect(getRun(record.id)?.endedAt).toBe(endedAt)
+    // And a completion arriving late does not overwrite a failure either: a run
+    // has one ending and it is the one that happened first.
+    await finishRun(record.id, { report: { domain: "resend.com", kept: 0, usd: 0 } } as never)
+    expect(getRun(record.id)?.status).toBe("failed")
+    expect(getRun(record.id)?.result).toBeUndefined()
   })
 })
 

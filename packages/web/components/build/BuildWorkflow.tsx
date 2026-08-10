@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { StatTile } from "@/components/viz";
 import { AgentPanel, type AgentChunk } from "./AgentPanel";
@@ -23,6 +23,9 @@ import {
   readResult,
   readTrace,
   readUnderstanding,
+  STAGES,
+  STAGE_BLURB,
+  STAGE_LABELS,
   type CostView,
   type FeedItem,
   type PlanView,
@@ -153,23 +156,66 @@ function isSpendDecision(agent: string, message: string): boolean {
 }
 
 /**
+ * What a visitor who is not paying needs to know before they type.
+ *
+ * Passed in rather than read here, because only a server component can see
+ * `OPENKB_PUBLIC_RUNS_PER_DAY` and only the store can count today's runs. The
+ * numbers are measured, not quoted from a rate card — see `MEASURED` in
+ * lib/public-runs.ts, which is where they are written down.
+ *
+ * ABSENT ON AN ORDINARY DEPLOYMENT, and that is the point: with no invite this
+ * component renders exactly what it has always rendered, down to the price line
+ * under the input, which is the right line for an operator who is spending
+ * their own money and the wrong one for a stranger who is spending none.
+ */
+export interface RunInvite {
+  /** Runs a day this deployment pays for. */
+  limit: number;
+  /** How many of them are left, counted before the page was drawn. */
+  remaining: number;
+  /** About how long one takes, in minutes. */
+  minutes: number;
+  /** About how many entities one returns. */
+  entities: number;
+}
+
+/**
  * THIS COMPONENT KNOWS NOTHING ABOUT THE DEMO, and it is the second thing to
  * have held that job.
  *
  * It took a `demo` prop for a while: app/page.tsx read `OPENKB_DEMO` (only a
  * server component can) and passed the answer down, and this surface responded
  * by disabling its own input, greying its own button and printing a paragraph
- * above both explaining why. That is a form that exists to say no. The demo now
+ * above both explaining why. That is a form that exists to say no. The demo
  * branches one level up — app/page.tsx renders a gallery of the maps instead of
- * this — so the run-starter is only ever mounted on a deployment that can
+ * this, or, when the deployment has a daily allowance, renders this WITH the
+ * gallery underneath it — so the run-starter is only ever mounted where it can
  * actually run, and every control on it is live by construction rather than by
  * a prop agreeing to be.
  *
- * The guard never lived here anyway. `POST /api/map` refuses with a 403 on
- * `isDemo()`, which is where it has to be: this is client code, and a reader
- * with the devtools open can call that endpoint whatever the page renders.
+ * It still knows nothing about the demo with `invite` in hand. The prop says
+ * how many runs are left, which is a fact about an allowance and not about a
+ * flag; a private deployment that sets a daily cap gets the same line.
+ *
+ * The guard never lived here anyway. `POST /api/map` refuses through `runGate`,
+ * which is where it has to be: this is client code, and a reader with the
+ * devtools open can call that endpoint whatever the page renders.
  */
-export function BuildWorkflow() {
+export function BuildWorkflow({
+  invite,
+  children,
+}: {
+  invite?: RunInvite;
+  /**
+   * Whatever the page wants under the run surface — on a public deployment,
+   * the maps it already holds.
+   *
+   * Rendered only while no run has started. A visitor who has typed a domain is
+   * watching their own run and a grid of somebody else's maps below it is a
+   * competing offer at the exact moment they committed to waiting four minutes.
+   */
+  children?: ReactNode;
+}) {
   const router = useRouter();
   /**
    * Send the reader to the finished map.
@@ -199,6 +245,22 @@ export function BuildWorkflow() {
   const [runId, setRunId] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  /**
+   * How long this run should take, in seconds, as the route worked it out from
+   * its own function limit — `budget.estimatedSeconds` on the start response.
+   *
+   * IT RODE BACK ON THAT RESPONSE FOR MONTHS AND NOTHING READ IT. The surface
+   * showed a rising elapsed counter and no denominator, which is a stopwatch,
+   * not progress: at 2m 30s a reader cannot tell whether they are nearly there
+   * or a third of the way in, and four minutes of that is how a visitor decides
+   * the thing is broken and closes the tab. The estimate is the denominator,
+   * and it is honest about being one — it comes from the same arithmetic that
+   * sized the run, so it is the app's own claim rather than a guess about it.
+   *
+   * Null until the run starts, and it stays null if a response somehow carries
+   * no budget. Nothing below invents a number for it: no estimate, no bar.
+   */
+  const [expectedSec, setExpectedSec] = useState<number | null>(null);
 
   const [states, setStates] = useState<Record<Stage, StageState>>(initialStates);
   const [stageLog, setStageLog] = useState<Partial<Record<Stage, string[]>>>({});
@@ -269,6 +331,7 @@ export function BuildWorkflow() {
     setStopped(false);
     setDecisions([]);
     setRunId(null);
+    setExpectedSec(null);
     startedAt.current = Date.now();
     setElapsed(0);
     setRunning(true);
@@ -282,7 +345,11 @@ export function BuildWorkflow() {
         signal: ctrl.signal,
       });
       const body = (await res.json().catch(() => null)) as
-        | { runId?: string; error?: string }
+        | {
+            runId?: string;
+            error?: string;
+            budget?: { estimatedSeconds?: number; clockSeconds?: number };
+          }
         | null;
       if (!res.ok || !body?.runId) {
         // The API rejects an input that names no company before starting a run,
@@ -292,6 +359,11 @@ export function BuildWorkflow() {
         return;
       }
       started = { runId: body.runId };
+      // The route's own estimate for the run it just sized. Guarded rather than
+      // trusted: a zero or a missing field would make the bar below divide by
+      // nothing, and `null` renders no bar at all, which is the honest fallback.
+      const est = body.budget?.estimatedSeconds;
+      if (typeof est === "number" && Number.isFinite(est) && est > 0) setExpectedSec(est);
     } catch (err) {
       if (ctrl.signal.aborted) return;
       setErrorText(err instanceof Error ? err.message : String(err));
@@ -484,6 +556,43 @@ export function BuildWorkflow() {
     ).catch(() => {});
   }, [input, addFeed]);
 
+  /**
+   * Distinct hosts any search has returned, whether or not one has been judged
+   * yet.
+   *
+   * THE FIRST NUMBER THAT MOVES. Entities arrive at the classify stage, two
+   * minutes in on a measured run, so `entities.length` sits at zero through the
+   * whole of the plan and sweep — the exact stretch where a visitor is deciding
+   * whether anything is happening. Hosts start landing with the first search
+   * result. It is a weaker fact than an entity (a host here is a URL somebody
+   * ranked, not a company this run has vouched for) and the label says so.
+   */
+  const hostsSeen = useMemo(() => {
+    const seen = new Set<string>();
+    for (const s of searches) {
+      for (const hit of s.hits) {
+        try {
+          seen.add(new URL(hit.url).hostname.replace(/^www\./, ""));
+        } catch {
+          // a hit whose URL will not parse is not a host, and not worth a throw
+        }
+      }
+    }
+    return seen.size;
+  }, [searches]);
+
+  /** The stage the rail is on, as a word the progress panel can say. Falls back
+   *  to the first stage before any frame has arrived — the run is reading the
+   *  company's own pages by then, so "Understand" is true rather than a guess. */
+  const activeStage: Stage = STAGES.find((s) => states[s] === "active") ?? "understand";
+
+  /** How far through the estimate this run is, capped at 100. A run that
+   *  overruns its estimate is not a run that is 130% done: the bar parks at the
+   *  end and the elapsed figure beside it keeps counting, which is what an
+   *  overrun actually looks like. */
+  const pct =
+    expectedSec === null ? null : Math.min(100, Math.round((elapsed / (expectedSec * 1000)) * 100));
+
   const messages: Partial<Record<Stage, string>> = {};
   const chips: Partial<Record<Stage, string[]>> = {};
   for (const [stage, lines] of Object.entries(stageLog) as [Stage, string[]][]) {
@@ -558,34 +667,148 @@ export function BuildWorkflow() {
           )}
         </div>
 
-        {/* What it costs is stated rather than discovered. $0.0015 is Bright
-            Data's SERP rate, and a query is THREE of those, not one — reading
-            only the first page of results was leaving most of a market unread
-            (7 hosts from page 1 against 37 across five pages on one measured
-            query). The model half depends on how much text comes back and
-            cannot be promised. */}
-        {/* AND WHAT BOUNDS IT, which the second half of this line used to get
-            wrong. "The planner keeps asking while it is still finding" is the
-            terminal's rule. A run started here also has to finish inside this
-            deployment's function limit, so it is given a query budget worked
-            out from that limit and stops at it — the plan card below names the
-            number once the run has one. Saying only the first half invited a
-            reader to read a narrow map as a weak engine. */}
-        <p className="mt-2 font-mono text-[10px] uppercase tracking-wider text-slate-500">
-          a question reads 3 result pages at $0.0015 each · here the planner asks as many as fit this host&rsquo;s
-          clock
-        </p>
+        {/* TWO READERS, TWO LINES, and which one is on screen is decided by who
+            is paying.
+
+            THE OPERATOR (no invite) gets the price. $0.0015 is Bright Data's
+            SERP rate, and a query is THREE of those, not one — reading only the
+            first page of results was leaving most of a market unread (7 hosts
+            from page 1 against 37 across five pages on one measured query). The
+            model half depends on how much text comes back and cannot be
+            promised. The second clause says what BOUNDS it: a run started here
+            has to finish inside this deployment's function limit, so it is
+            given a query budget worked out from that limit and stops at it —
+            the plan card below names the number once the run has one. Saying
+            only the first half invited a reader to read a narrow map as a weak
+            engine.
+
+            THE VISITOR (invite) gets the time, because that is the only thing
+            they are spending. A stranger quoted a bill they are not paying is
+            being asked to decide, on the owner's behalf, whether they are worth
+            twenty cents; a stranger told "about four minutes" is being told the
+            one thing that will actually make them leave. The count of runs left
+            is here rather than in a refusal for the same reason — a number
+            before you type is information, and the same number after you type
+            is a door in your face. */}
+        {invite ? (
+          <>
+            <p className="mt-2 font-mono text-[10px] uppercase tracking-wider text-slate-500">
+              <span className="tnum text-sky-300">
+                {invite.remaining} of {invite.limit}
+              </span>{" "}
+              {invite.limit === 1 ? "run" : "runs"} left today · about {invite.minutes} minutes ·
+              roughly {invite.entities} entities · both measured
+            </p>
+            <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-500">
+              It costs you nothing but the wait — this deployment pays the search and
+              model providers. Leaving the page does not stop the run.
+            </p>
+          </>
+        ) : (
+          <p className="mt-2 font-mono text-[10px] uppercase tracking-wider text-slate-500">
+            a question reads 3 result pages at $0.0015 each · here the planner asks as many as fit this host&rsquo;s
+            clock
+          </p>
+        )}
       </div>
+
+      {/* ---------------------------------------------------------- the wait -- */}
+      {/* FOUR MINUTES IS THE PRODUCT'S HARDEST SCREEN, and everything below it
+          was already on the page: the stage rail, the searches, the findings,
+          the feed. What was missing is the thing a person actually asks while
+          waiting — how far through am I, and has it found anything — and both
+          answers were spread across three panels a reader had to assemble
+          themselves while wondering whether to close the tab.
+
+          So: one strip, above the fold, on the four facts. The phase in words.
+          The clock against the run's OWN estimate rather than against nothing.
+          What it has seen so far, starting with hosts, which move a minute
+          before entities do. And the run's link, before it is needed rather
+          than after — the run outlives the tab, and a visitor who knows that
+          can leave without losing anything, which is a better outcome than one
+          who stays out of fear. */}
+      {runId && (
+        <div className="mb-5 rounded-lg border border-slate-800 bg-slate-900/30 px-4 py-3.5">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <span className="text-sm font-medium text-slate-200">
+              {running
+                ? STAGE_LABELS[activeStage]
+                : errorText
+                  ? "Stopped"
+                  : "Finished — opening the map"}
+            </span>
+            <span className="tnum shrink-0 font-mono text-[11px] text-slate-500">
+              {formatDuration(elapsed)}
+              {expectedSec !== null && <> of about {formatDuration(expectedSec * 1000)}</>}
+            </span>
+          </div>
+
+          <p className="mt-1 text-xs leading-relaxed text-slate-500">
+            {running
+              ? STAGE_BLURB[activeStage]
+              : errorText
+                ? "Everything the run found before it stopped is kept."
+                : "The map is written. Taking you to it."}
+          </p>
+
+          {/* No estimate, no bar. A progress bar with an invented denominator
+              is the one thing here worse than no bar at all. */}
+          {pct !== null && (
+            <div
+              className="mt-3 h-1 w-full overflow-hidden rounded-full bg-slate-800"
+              role="progressbar"
+              aria-valuenow={pct}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label="how far through its estimate this run is"
+            >
+              <div
+                className={`h-full rounded-full transition-[width] duration-1000 ease-linear ${
+                  running ? "bg-sky-500" : "bg-slate-600"
+                }`}
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+          )}
+
+          {/* The running tally, in the order the run produces it. Every one of
+              these is a count of something that arrived, so a reader watching
+              this line is watching the run work rather than watching a spinner
+              that would look identical if the process had died. */}
+          <div className="tnum mt-2.5 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[10px] uppercase tracking-wider text-slate-500">
+            <span>{searches.length} questions asked</span>
+            <span>{hostsSeen} hosts seen</span>
+            <span className={entities.length > 0 ? "text-sky-300" : undefined}>
+              {entities.length} on the map
+            </span>
+            <span>{formatUsd(cost?.usd)} spent</span>
+          </div>
+
+          <KeepLink runId={runId} ready={!running && !errorText} />
+        </div>
+      )}
 
       {/* ------------------------------------------------------------- spend -- */}
       {runId && (
         <div className="mb-6">
-          <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-slate-800 bg-slate-800 sm:grid-cols-3 lg:grid-cols-5">
+          <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-slate-800 bg-slate-800 sm:grid-cols-3 lg:grid-cols-6">
             <StatTile
               label="spent"
               value={formatUsd(cost?.usd)}
               hint="models + search, so far"
               trend={spendHistory}
+            />
+            {/* THE TILE THAT WAS MISSING, and it is the one a reader waiting
+                four minutes actually wants: what has this bought me. The count
+                was on the page — `FindingsPanel` has held it all along — but
+                three panels below the fold, under the searches and the trace,
+                which is not where anyone looks to find out whether the wait is
+                producing anything. */}
+            <StatTile
+              label="on the map"
+              value={entities.length}
+              hint="classified so far"
+              tone={entities.length > 0 ? "text-sky-300" : "text-slate-100"}
             />
             <StatTile label="elapsed" value={formatDuration(elapsed)} hint="wall clock" />
             {/* "questions asked", not "serp calls". Two different quantities
@@ -659,6 +882,69 @@ export function BuildWorkflow() {
           </div>
         </div>
       ) : null}
+
+      {/* The maps this deployment already holds, on a public front page. Gone
+          the moment a run starts — see the prop's own note.
+
+          `!runId` and not `!runId && !errorText`: a request REFUSED before a
+          run existed (the allowance ran out between the page render and the
+          click, a domain that names no company) leaves the reader with an error
+          panel, and taking the gallery away at the same time would leave them
+          with an error panel and nothing else. The maps are the fallback for
+          every ending that is not a run. */}
+      {!runId && children}
+    </div>
+  );
+}
+
+/**
+ * The run's own address, handed over before it is needed.
+ *
+ * WHY IT IS NOT A LINK WHILE THE RUN IS GOING. `/kb/<id>` is written when the
+ * run finishes, so following it mid-run reaches `notFound()` — and a visitor
+ * who clicks the link this app just gave them and lands on a 404 has been told
+ * something false about their own run. So it is text you can copy while the run
+ * is in flight and a link once there is something behind it. The sentence
+ * beside it is the part that matters most: the run is a background task on the
+ * server and closing the tab does not stop it, which almost nobody assumes.
+ *
+ * Copy is best-effort. `navigator.clipboard` needs a secure context and can be
+ * refused outright, so a failure leaves the button saying what it always said
+ * over a path that is selectable anyway, rather than reporting an error about a
+ * convenience.
+ */
+function KeepLink({ runId, ready }: { runId: string; ready: boolean }) {
+  const [copied, setCopied] = useState(false);
+  const href = `/kb/${runId}`;
+
+  const copy = useCallback(() => {
+    const url = typeof window === "undefined" ? href : new URL(href, window.location.origin).href;
+    void navigator.clipboard
+      ?.writeText(url)
+      .then(() => {
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 2000);
+      })
+      .catch(() => {});
+  }, [href]);
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-slate-800/70 pt-2.5 text-[11px] text-slate-500">
+      <span>{ready ? "Your map:" : "Close the tab if you like — the run keeps going. Your map lands at"}</span>
+      {ready ? (
+        <a href={href} className="font-mono text-sky-400 hover:text-sky-300">
+          {href}
+        </a>
+      ) : (
+        <code className="select-all font-mono text-slate-400">{href}</code>
+      )}
+      <button
+        type="button"
+        onClick={copy}
+        className="rounded border border-slate-800 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-slate-500 transition hover:border-slate-700 hover:text-slate-300"
+      >
+        {copied ? "copied" : "copy"}
+      </button>
     </div>
   );
 }

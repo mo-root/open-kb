@@ -1,12 +1,20 @@
 import { after } from "next/server"
 import { openrouter, createOpenRouter } from "@openrouter/ai-sdk-provider"
 import { sweep } from "@open-kb/sweep"
-import { queriesThatFit, runSeconds } from "@open-kb/core"
+import { queriesThatFit, runSeconds, type SpanStream } from "@open-kb/core"
 import { priceForModel } from "@open-kb/providers"
 import { normalizeDomain } from "@/lib/anchor"
 import { createRun, failRun, finishRun } from "@/lib/runs"
-import { guarded } from "@/lib/api-error"
-import { DEMO_REFUSAL, DEMO_REPO, isDemo } from "@/lib/demo"
+import { guarded, namedFaults } from "@/lib/api-error"
+import { DEMO_REPO } from "@/lib/demo"
+import { runGate } from "@/lib/public-runs"
+import {
+  LIMIT_VARS,
+  MEASURED_RUN_COST,
+  noteRunEnded,
+  spendGate,
+  tripAtUsd,
+} from "@/lib/spend-limits"
 
 /**
  * Start a map. Returns as soon as the run has an id, the sweep itself runs in
@@ -144,31 +152,76 @@ interface Body {
 const MAX_QUERIES = 120
 
 /**
- * What this deployment may spend, in total, ever.
+ * THE BACKSTOP AT THE PROVIDER, and no longer the budget.
  *
- * Auth decides WHO can start a run. This decides HOW MUCH, and the two are
- * independent: a password shared with ten people is ten people who can each
- * run two hundred maps against the same account.
+ * What it is: a cap on what the OpenRouter KEY has spent since a baseline,
+ * read from the provider. What it is not: this deployment's budget. The key is
+ * shared — measured on this project's key, $548 lifetime of which $42.90 was
+ * open-kb — so it counts other projects, it cannot see a cent of Bright Data
+ * (58% to 77% of a run's bill), and it is one reading taken before a run that
+ * then spends unwatched for four minutes. lib/spend-limits.ts is the budget
+ * now: counted from THIS deployment's own rows, in dollars, and enforced during
+ * the run as well as before it.
  *
- * Read from the provider rather than counted here, because a counter in this
- * process resets on every restart and forgets every run started by another
- * instance. The provider's own usage figure is the only number that is true
- * across both.
+ * This survives underneath because it sees something that one cannot: spending
+ * on the same key from outside this deployment — the CLI, the swarm scripts, a
+ * second deployment. Two guards, two blind spots, and they do not overlap.
+ *
+ * Read per request, NEVER at module scope. Next inlines `process.env.X` at
+ * build time for any statically analysable reference, so `const CEILING =
+ * Number(process.env.OPENKB_CEILING_USD ?? 0)` became `const CEILING = 0` in
+ * the bundle, `if (CEILING > 0)` became `if (false)`, and the whole guard was
+ * tree-shaken out. The deployment reported itself protected and had no ceiling
+ * in it at all.
  */
 /**
- * Read per request, NEVER at module scope.
+ * FAILS CLOSED ON A TYPO, which is the fix this function most needed.
  *
- * Next inlines `process.env.X` at build time for any statically analysable
- * reference, so `const CEILING = Number(process.env.OPENKB_CEILING_USD ?? 0)`
- * became `const CEILING = 0` in the bundle, `if (CEILING > 0)` became `if
- * (false)`, and the whole guard was tree-shaken out. The deployment reported
- * itself protected and had no ceiling in it at all.
+ * It used to be `Number(process.env.OPENKB_CEILING_USD ?? 0)` and nothing else.
+ * `Number("$5")` is `NaN`, `NaN > 0` is false, so `OPENKB_CEILING_USD=$5` — the
+ * single likeliest way to write it — silently removed the only guard on the
+ * balance while DEPLOY.md's checklist went on saying it was set. A limit that
+ * disappears when you get it slightly wrong is worse than no limit, because a
+ * missing one is visible in the dashboard.
  *
- * A function body defers the read to run time, which is when the host actually
- * sets the variable.
+ * So there are three readings, not two: a number, nothing at all, and a value
+ * nobody can act on. The third refuses every run and names itself.
  */
-function ceilingUsd(): number {
-  return Number(process.env.OPENKB_CEILING_USD ?? 0)
+function ceilingUsd(): { usd: number } | { bad: string } {
+  return dollarsOrBad("OPENKB_CEILING_USD")
+}
+
+/** The reading the ceiling counts from, so it meters this deployment's life
+ *  rather than the key's. Parsed the same way and for the same reason: a
+ *  malformed base silently becomes 0, which turns a $5 ceiling on a $548 key
+ *  into a deployment that refuses every run and cannot say why. */
+function ceilingBaseUsd(): { usd: number } | { bad: string } {
+  return dollarsOrBad("OPENKB_CEILING_BASE_USD")
+}
+
+/**
+ * Not `setting()` from lib/spend-limits.ts, and the difference is the
+ * convention rather than the parse. This pair spells "no ceiling" as 0 or
+ * unset, which is what DEPLOY.md has told operators for as long as it has
+ * existed; the budget spells it as the word "off", precisely so no typo can
+ * produce it. Sharing one function would mean giving one of the two a meaning
+ * it does not have, in the file where being wrong costs money.
+ */
+function dollarsOrBad(name: string): { usd: number } | { bad: string } {
+  const raw = process.env[name]
+  // `Number(" ")` is 0, so an unset-or-blank value is settled before any parse.
+  // Zero is this pair's own long-standing spelling of "no ceiling".
+  if (raw === undefined || raw.trim() === "") return { usd: 0 }
+  const n = Number(raw.trim())
+  if (!Number.isFinite(n) || n < 0) {
+    return {
+      bad:
+        `${name} is ${JSON.stringify(raw.trim().slice(0, 40))}, which is not an amount in dollars. ` +
+        `Write a plain number, e.g. 5 — no $ sign — or remove the variable to spend without a ` +
+        `provider-side ceiling.`,
+    }
+  }
+  return { usd: n }
 }
 
 async function spentSoFar(): Promise<number | null> {
@@ -188,12 +241,14 @@ async function spentSoFar(): Promise<number | null> {
 /**
  * Wrapped for the UNHANDLED path only, and nothing below moves.
  *
- * Every refusal in this handler — 400 for a non-JSON body, 400 for a domain
- * that names no company, 400 for an out-of-range query count, 503 for missing
- * credentials, 503 for an unreachable provider, 429 for the spend ceiling — is
- * a `return`, not a throw. `guarded` never sees a `return`, so all six keep
- * their exact status and their exact sentence. They are the answer, not a
- * fault.
+ * Every refusal in this handler — 403 or 429 from the run gate, 400 for a
+ * non-JSON body, 400 for a domain that names no company, 400 for an
+ * out-of-range query count, 503 for missing credentials, 503 for a limit that
+ * does not parse, 429 for a budget that is spent or a visitor who has had
+ * their share or a deployment that is busy, 503 for a store that cannot be
+ * counted, 503 for an unreachable provider, 429 for the provider ceiling — is
+ * a `return`, not a throw. `guarded` never sees a `return`, so every one keeps
+ * its exact status and its exact sentence. They are the answer, not a fault.
  *
  * What it does catch is the path that had no answer at all: `createRun` and the
  * `Response.json` after it. This is the endpoint that spends money, so it is
@@ -214,34 +269,47 @@ export const POST = guarded(async (req: Request) => {
   const startedAt = Date.now()
 
   /**
-   * The read-only demo, refused first — before the body is even parsed.
+   * MAY A RUN START HERE AT ALL — asked first, before the body is even parsed.
    *
    * FIRST, and the position is the feature. Every other refusal below is about
    * the REQUEST: this domain names no company, that query count is out of
-   * range, these credentials are missing. Demo mode is about the DEPLOYMENT,
-   * and it is true before the request is read, so validating a body this
-   * handler will never act on only buys the caller a more specific complaint
-   * about an input that was never the problem. It also keeps the guard
-   * unconditional: there is no ordering of bad input that reaches `createRun`
-   * past this line.
+   * range, these credentials are missing. This one is about the DEPLOYMENT, and
+   * it is true before the request is read, so validating a body this handler
+   * will never act on only buys the caller a more specific complaint about an
+   * input that was never the problem. It also keeps the guard unconditional:
+   * there is no ordering of bad input that reaches `createRun` past this line.
    *
-   * 403, not 500 and not 503. Nothing failed — the server understood the
-   * request perfectly and is configured to refuse it, which is what 403 means.
-   * 503 would say "try again later" about a deployment that will answer the
-   * same way forever, and `guarded` never sees this at all, because a refusal
-   * is a `return` rather than a throw and therefore keeps its status, its
-   * sentence, and its silence in the log.
+   * IT USED TO BE `if (isDemo())` AND ONE SENTENCE. A demo now has a third
+   * state between "read-only" and "spending freely" — an allowance, in runs per
+   * day — and the three answers differ in status, in prose and in what a client
+   * should do next, so the decision moved to `runGate` in lib/public-runs.ts
+   * where the page can read the same one. The argument for a second variable
+   * rather than a new meaning for `OPENKB_DEMO` is written there; the part that
+   * matters here is that an unconfigured deployment reaches no network on this
+   * line and answers exactly what it answered before.
    *
-   * `demo: true` rides alongside the sentence so a client can branch on the
-   * fact rather than on the prose. BuildWorkflow does not need it — it is told
-   * at render time by the server component and never sends this request — but
-   * anything else pointed at this endpoint deserves a machine-readable answer,
-   * and matching on an English sentence is how a caller breaks on a reword.
+   * `demo: true` rides alongside the read-only sentence so a client can branch
+   * on the fact rather than on the prose — matching on an English sentence is
+   * how a caller breaks on a reword. It is deliberately NOT sent for the other
+   * two refusals: those are about an allowance, not about a read-only
+   * deployment, and a client that read `demo` off them would tell its user to
+   * go and clone the repo when the true answer is "tomorrow".
+   *
+   * `guarded` never sees any of this — a refusal is a `return` rather than a
+   * throw, so it keeps its status, its sentence, and its silence in the log.
    */
-  if (isDemo()) {
+  const gate = await runGate()
+  if (!gate.open) {
     return Response.json(
-      { error: DEMO_REFUSAL, demo: true, repo: DEMO_REPO },
-      { status: 403 },
+      {
+        error: gate.refusal,
+        ...(gate.reason === "read-only" ? { demo: true, repo: DEMO_REPO } : {}),
+        // The numbers behind the sentence, for anything that would rather read
+        // a quota than parse prose. Absent on the read-only deployment, which
+        // has no allowance to report.
+        ...(gate.limit > 0 ? { runsPerDay: gate.limit, remainingToday: gate.remaining } : {}),
+      },
+      { status: gate.status },
     )
   }
 
@@ -289,12 +357,61 @@ export const POST = guarded(async (req: Request) => {
     )
   }
 
-  // Checked before a run exists, so a refused request costs nothing. A null
-  // reading means the provider did not answer: that is not a licence to spend,
-  // so it refuses too. Failing closed on the one guard that protects the
-  // balance is the only defensible direction.
+  /**
+   * THE BUDGET, asked before a run exists so that a refused request costs
+   * nothing.
+   *
+   * Four limits in one round trip to this deployment's own rows: what a single
+   * map may cost, what the deployment may spend in a UTC day, how many maps one
+   * visitor gets a day, and how many may be in flight at once. The arithmetic,
+   * the defaults and the argument for each are in lib/spend-limits.ts.
+   *
+   * IT FAILS CLOSED IN EVERY DIRECTION — a store it cannot reach, a limit that
+   * is not a number, a day cap below a run cap. Each refuses and says which,
+   * because the alternative is what the ceiling below it did for months: read
+   * `NaN`, compare false, and let the run through while reporting a limit.
+   *
+   * The refusal's sentence goes to the caller and its `log` goes to stderr,
+   * deliberately split. A visitor is owed why and when it lifts; an operator
+   * who has locked themselves out of their own deployment is owed the name of
+   * the variable, which is not a thing to put in a public body.
+   */
+  // The provider-side pair is PARSED here, above the store round trip, because
+  // reading an environment variable is free and a deployment whose limits do not
+  // parse should not be asking Postgres anything. Its comparison still happens
+  // below, where it needs a reading from OpenRouter.
   const ceiling = ceilingUsd()
-  if (ceiling > 0) {
+  const ceilingBase = ceilingBaseUsd()
+  if ("bad" in ceiling || "bad" in ceilingBase) {
+    const why = "bad" in ceiling ? ceiling.bad : (ceilingBase as { bad: string }).bad
+    console.error(`[map] refused: ${why}`)
+    return Response.json(
+      { error: `This deployment's spending limits are misconfigured, so it is not starting any run until that is fixed. ${why}` },
+      { status: 503 },
+    )
+  }
+
+  // MINTED HERE, BEFORE THE GATE, because the gate writes the row. `claim_run`
+  // counts today's runs and inserts this id inside one transaction, which is
+  // the only place the count and the record cannot be separated by a burst.
+  const runId = crypto.randomUUID()
+  const spend = await spendGate({
+    id: runId,
+    domain,
+    headers: req.headers,
+    budgetQueries: QUERY_BUDGET,
+    runWindowMs: maxDuration * 1000,
+    aboutSeconds: runSeconds(QUERY_BUDGET),
+  })
+  if (!spend.ok) {
+    console.error(`[map] refused: ${spend.log}`)
+    return Response.json({ error: spend.error }, { status: spend.status })
+  }
+
+  // The provider-side backstop, underneath this deployment's own budget and
+  // measuring something it cannot see. A null reading means the provider did
+  // not answer: that is not a licence to spend, so it refuses too.
+  if (ceiling.usd > 0) {
     const spent = await spentSoFar()
     if (spent === null) {
       return Response.json(
@@ -302,11 +419,10 @@ export const POST = guarded(async (req: Request) => {
         { status: 503 },
       )
     }
-    const base = Number(process.env.OPENKB_CEILING_BASE_USD ?? 0)
-    if (spent - base >= ceiling) {
+    if (spent - ceilingBase.usd >= ceiling.usd) {
       return Response.json(
         {
-          error: `this deployment has spent its $${ceiling} ceiling. Nothing is broken; the limit is deliberate.`,
+          error: `this deployment has spent its $${ceiling.usd} ceiling. Nothing is broken; the limit is deliberate.`,
         },
         { status: 429 },
       )
@@ -314,11 +430,35 @@ export const POST = guarded(async (req: Request) => {
   }
 
   const modelId = process.env.OPENKB_MODEL ?? "deepseek/deepseek-v4-flash"
+  // THE COEFFICIENTS BEHIND THE DEFAULT RUN CAP WERE MEASURED ON ONE MODEL, and
+  // a dearer one bills six to eight times as much per query — two runs in
+  // `runs/` prove it. Said once, in the log, at the moment it could matter,
+  // rather than left for an operator to discover as maps that stop three
+  // quarters of the way through. Silent on the default model, which is every
+  // deployment that has not gone looking.
+  if (modelId !== MEASURED_RUN_COST.model && !process.env[LIMIT_VARS.runCap]) {
+    console.warn(
+      `[map] ${LIMIT_VARS.runCap} is unset, so a run's ceiling is derived from costs measured on ` +
+        `${MEASURED_RUN_COST.model}; this deployment runs ${modelId}. Set ${LIMIT_VARS.runCap} if maps stop early.`,
+    )
+  }
+
   // `createRun` still records a definite number — its `queries` column is a
   // bookkeeping field a run's whole history reads, not the sweep's own input.
   // 0 means "no override was requested", the same convention `ceilingUsd()`
   // above uses for "no ceiling", rather than reintroducing the 40 default.
-  const record = createRun(domain, queries ?? 0)
+  //
+  // The visitor rides along so the run counts against its own allowance from
+  // the instant it exists rather than from the instant it ends — three requests
+  // fired together have to be able to see each other.
+  const record = createRun(domain, queries ?? 0, {
+    visitor: spend.visitor,
+    // The claim's own id and instant. The upsert inside `createRun` lands on
+    // the row `claim_run` already wrote, so the run has one row and one start
+    // rather than a claim and a second run that never counted.
+    id: runId,
+    startedAt: Date.parse(spend.startedAt),
+  })
 
   // Not awaited by the RESPONSE. The whole point of the registry is that the run
   // outlives this request; awaiting here would turn a 200-in-a-millisecond into
@@ -371,7 +511,7 @@ export const POST = guarded(async (req: Request) => {
         // The same figure the guard above checked at request time. 0 means
         // unset (see `ceilingUsd()`'s own convention), which is honestly "no
         // ceiling" rather than a ceiling of zero dollars.
-        ceilingUsd: ceiling > 0 ? ceiling : null,
+        ceilingUsd: ceiling.usd > 0 ? ceiling.usd : null,
         signal: record.abort.signal,
         onLog: (line) => console.log(`[${record.id.slice(0, 8)}] ${line}`),
       })
@@ -392,6 +532,12 @@ export const POST = guarded(async (req: Request) => {
       // run that spent money died, and losing it is how a browser ends up
       // polling a 404 forever.
       await failRun(record.id, e)
+    } finally {
+      // What the run actually cost, back into the in-process ledger, so a
+      // storeless deployment stops holding it at its cap. On a deployment with
+      // a store this is a lookup that finds nothing: `finishRun` and `failRun`
+      // have already written the same figure to the row.
+      noteRunEnded(record.id, record.spans.totalUsd())
     }
   })()
 
@@ -402,9 +548,13 @@ export const POST = guarded(async (req: Request) => {
   // swallows its own write failures, so there is nothing here for the runtime
   // to report as an unhandled task.
   //
-  // Wrapped in the watchdog rather than handed over bare, so the invocation ends
-  // on this app's terms a margin before it ends on the platform's.
-  after(withDeadline(task, record, startedAt))
+  // TWO WATCHDOGS, NESTED, because a run can be stopped by either of the two
+  // things it can run out of, and they are counted in different units. The
+  // spend cap is inside: it settles first and the clock keeps running over it,
+  // which is the correct nesting — a run stopped for money still has to be
+  // recorded before the deadline arrives. Each cancels its own watcher when the
+  // task ends, however it ends, so neither can fire into a finished run.
+  after(withDeadline(withSpendCap(task, record, spend.runCapUsd), record, startedAt))
 
   // THE ROW BEFORE THE ID. The browser opens the stream the instant it has a
   // run id, and that request is a different invocation with an empty registry
@@ -529,6 +679,121 @@ function withDeadline(
       },
     )
   })
+}
+
+/**
+ * End the run just before it costs more than one map is allowed to cost.
+ *
+ * WHAT THIS IS FOR, and why the check that already existed is not it. The
+ * ceiling above is read once, before the run, from the provider's cumulative
+ * key usage. A run that starts a cent under it can then spend for four minutes
+ * with nothing watching, and the reading that would have caught it is taken
+ * after the money is gone. A cap that is only checked before the spending is
+ * not a cap on the spending; it is a cap on STARTING, which is a different and
+ * much weaker promise.
+ *
+ * WHY THE SPAN STREAM AND NOT THE PROVIDER. `SpanStream.runningUsd` is this
+ * run's own total, updated as each span lands, and it counts model AND search
+ * AND fetch. The provider's figure counts one of those three — and 58% to 77%
+ * of a run's bill is Bright Data, which OpenRouter has never heard of. It is
+ * also free: the number is already in hand, so watching it costs no request and
+ * has no reading to fail.
+ *
+ * A SUBSCRIBER, NOT A POLL. `stream()` is a genuine fan-out — every consumer
+ * gets its own cursor over the shared log — so this reads every span the pump
+ * reads, wakes only when one is emitted, and unsubscribes on the way out. A
+ * timer would either check too rarely to stop anything or spin for four
+ * minutes.
+ *
+ * IT TRIPS BELOW THE CAP, at `tripAtUsd`, and the gap is the same idea as
+ * `DEADLINE_MARGIN_S` in the other currency: between the span that crosses the
+ * line and the engine reaching its next abort checkpoint, whatever was already
+ * in flight still lands and still bills. lib/spend-limits.ts sizes that reserve
+ * and shows its working.
+ *
+ * ORDER, AND IT IS THE REVERSE OF `withDeadline`'S. That watchdog records the
+ * run and then aborts, because `failRun` reads the abort signal to decide
+ * whether a person stopped the run, and "Stopped. Everything found before you
+ * stopped it is kept." is a lie told to a visitor who stopped nothing. Correct
+ * there, wrong here: `failRun` is a round trip to Postgres, and a run that goes
+ * on buying searches for the length of a database write is a run spending
+ * exactly the money this watchdog exists to stop. Thirty seconds of clock is
+ * something to spend on a clean ending; dollars are not. So the abort comes
+ * FIRST and the record second — and the sentence survives because
+ * `namedFaults.runCostCeiling` is app-authored, which `failRun` now prefers
+ * over its cancellation literal for precisely this case.
+ *
+ * The abort and the `failRun` call are in one synchronous block, so no
+ * microtask can slip between them: the engine's own throw reaches the task's
+ * catch, and its `failRun`, only after this one has already claimed the ending.
+ * `isFirstEnding` in lib/runs.ts drops the second, which is what keeps this
+ * sentence on the row.
+ *
+ * A NAMED FAULT, so the sentence survives. Everything `failRun` is handed goes
+ * through `faultNotice`, which replaces anything this app did not brand with
+ * "something went wrong, quote this ref" — correct for an OpenRouter error and
+ * exactly wrong for a deliberate, explicable stop that a visitor is looking at
+ * right now.
+ */
+function withSpendCap(
+  task: Promise<void>,
+  record: { id: string; abort: AbortController; status: string; spans: SpanStream },
+  capUsd: number | null,
+): Promise<void> {
+  // Off is off: no subscriber, no branch in the hot path, and the promise
+  // handed on is the one that came in.
+  if (capUsd === null) return task
+
+  const trip = tripAtUsd(capUsd)
+  /** Set BEFORE the write it guards, so the wrapper below knows there is an
+   *  ending in flight that it has to wait for. */
+  let stopping = false
+
+  const watching = (async () => {
+    for await (const span of record.spans.stream()) {
+      // A RUN THAT IS ALREADY OVER IS NOT STOPPED AGAIN. Closing the stream
+      // wakes this loop with whatever was still buffered, and the last span of
+      // a perfectly good run can sit above the trip point — the trip is below
+      // the cap, and the cap is above what a healthy run costs, but "above" is
+      // a median with a spread. Without this line such a run would be logged as
+      // capped after it had already succeeded.
+      if (record.status !== "running") break
+      if (span.runningUsd < trip) continue
+      stopping = true
+      console.error(
+        `[${record.id.slice(0, 8)}] spend cap: $${span.runningUsd.toFixed(4)} against this ` +
+          `deployment's $${capUsd.toFixed(2)} a map, stopping with $${(capUsd - trip).toFixed(2)} ` +
+          `held back so the ending can be written (${LIMIT_VARS.runCap})`,
+      )
+      // Before the record, deliberately, and in the same synchronous block as
+      // the call below it. See the note above: what is being raced here is
+      // money, not a log line.
+      record.abort.abort()
+      await failRun(record.id, namedFaults.runCostCeiling(capUsd, span.runningUsd))
+      // `failRun` closed the stream, so the loop would end here anyway.
+      // Breaking says so, and unsubscribes on the way out.
+      break
+    }
+  })()
+
+  return (async () => {
+    await task.catch(() => {})
+    // AWAITED ONLY WHEN IT IS DOING SOMETHING, and the asymmetry is deliberate.
+    // If this watcher stopped the run, its `failRun` is the run's ending and
+    // the invocation may not end in front of it. If it did not, the run ended
+    // some other way and this loop is either already finished — the stream is
+    // closed, which is the only thing a terminal write does — or parked on a
+    // stream nothing will ever close, which is a shape `finishRun` can produce
+    // by returning early for a record the registry has evicted. Awaiting
+    // unconditionally would hang the invocation on that case until the platform
+    // killed it; abandoning a parked subscriber costs one object that dies with
+    // the request.
+    if (stopping) {
+      await watching.catch((e: unknown) => {
+        console.error(`[${record.id.slice(0, 8)}] spend cap watcher stopped:`, e)
+      })
+    }
+  })()
 }
 
 /** The default `openrouter` export reads OPENROUTER_API_KEY at module scope,

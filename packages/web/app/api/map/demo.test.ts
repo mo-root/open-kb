@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 /* POST /api/map with the demo flag on, and — just as importantly — off.
    ---------------------------------------------------------------------------
@@ -44,9 +44,15 @@ vi.mock("@openrouter/ai-sdk-provider", () => ({
   createOpenRouter: () => () => ({}),
 }))
 
+/** The store, so `runGate` can be told what today looks like without a network.
+ *  Nothing else in this handler's path touches PostgREST — `@/lib/runs` is
+ *  already a stub above. */
+const countRunsSince = vi.fn<(since: string) => Promise<number | null>>()
+vi.mock("@/lib/store/supabase", () => ({ countRunsSince }))
+
 let POST: (req: Request) => Promise<Response>
 
-const KEYS = ["OPENKB_DEMO", "OPENKB_CEILING_USD"] as const
+const KEYS = ["OPENKB_DEMO", "OPENKB_PUBLIC_RUNS_PER_DAY", "OPENKB_CEILING_USD"] as const
 const saved: Record<string, string | undefined> = {}
 
 beforeAll(async () => {
@@ -65,6 +71,13 @@ afterEach(() => {
   sweep.mockClear()
   createRun.mockClear()
   afterTasks.length = 0
+})
+
+beforeEach(() => {
+  countRunsSince.mockReset()
+  // A quiet day by default: an allowance that is configured is an allowance
+  // that is open, unless a test says otherwise.
+  countRunsSince.mockResolvedValue(0)
 })
 
 function post(body: unknown): Promise<Response> {
@@ -188,4 +201,151 @@ describe("with OPENKB_DEMO unset", () => {
     const res = await post("not json at all")
     expect(res.status).toBe(400)
   })
+})
+
+/**
+ * THE DOOR, OPENED — `OPENKB_DEMO=1` plus `OPENKB_PUBLIC_RUNS_PER_DAY`.
+ *
+ * The demo stops refusing. Everything asserted here is asserted WITHOUT
+ * starting a run: `createRun` and `sweep` still throw if they are so much as
+ * touched, so "the guard let this through" is proved by the handler reaching
+ * its NEXT refusal rather than by watching it spend. That is the only way to
+ * test a spending endpoint honestly, and it is the same trick the flag-unset
+ * block above already uses.
+ */
+describe("with a daily allowance and room left in it", () => {
+  it("stops refusing — the demo guard is no longer the answer", async () => {
+    // The whole item, in one assertion. The same request that got a 403 above
+    // now falls through to the ordinary body check, which is exactly as far as
+    // a test that must not spend can follow it.
+    process.env.OPENKB_DEMO = "1"
+    process.env.OPENKB_PUBLIC_RUNS_PER_DAY = "20"
+    const res = await post("not json at all")
+
+    expect(res.status).toBe(400)
+    expect(((await res.json()) as { error?: string }).error).toBe("body must be JSON")
+    expect(createRun).not.toHaveBeenCalled()
+    expect(sweep).not.toHaveBeenCalled()
+  })
+
+  it("counts the day before it decides, from midnight UTC", async () => {
+    process.env.OPENKB_DEMO = "1"
+    process.env.OPENKB_PUBLIC_RUNS_PER_DAY = "20"
+    await post("not json at all")
+
+    expect(countRunsSince).toHaveBeenCalledTimes(1)
+    expect(countRunsSince.mock.calls[0]![0]).toMatch(/T00:00:00\.000Z$/)
+  })
+
+  it("says nothing about a demo now that it is not refusing as one", async () => {
+    process.env.OPENKB_DEMO = "1"
+    process.env.OPENKB_PUBLIC_RUNS_PER_DAY = "20"
+    const body = (await (await post({ domain: "   " })).json()) as Record<string, unknown>
+
+    // The ordinary refusal, with its own sentence and no allowance chatter.
+    expect(String(body.error)).toMatch(/does not name a company/)
+    expect(body).not.toHaveProperty("demo")
+    expect(body).not.toHaveProperty("repo")
+  })
+})
+
+describe("with the allowance spent", () => {
+  it("refuses with 429 and starts nothing", async () => {
+    process.env.OPENKB_DEMO = "1"
+    process.env.OPENKB_PUBLIC_RUNS_PER_DAY = "20"
+    countRunsSince.mockResolvedValue(20)
+    const res = await post({ domain: "resend.com" })
+
+    expect(res.status).toBe(429)
+    expect(createRun).not.toHaveBeenCalled()
+    expect(sweep).not.toHaveBeenCalled()
+    expect(afterTasks).toHaveLength(0)
+  })
+
+  it("answers with the numbers as well as the sentence", async () => {
+    // A client that would rather read a quota than parse prose gets one. The
+    // sentence is for a person; these two are so a caller does not have to
+    // match on English that will be reworded.
+    process.env.OPENKB_DEMO = "1"
+    process.env.OPENKB_PUBLIC_RUNS_PER_DAY = "20"
+    countRunsSince.mockResolvedValue(20)
+    const body = (await (await post({ domain: "resend.com" })).json()) as {
+      error?: string
+      demo?: boolean
+      runsPerDay?: number
+      remainingToday?: number
+    }
+
+    expect(body.runsPerDay).toBe(20)
+    expect(body.remainingToday).toBe(0)
+    expect(body.error).toMatch(/resets at 00:00 UTC/)
+    // NOT flagged as a demo refusal, deliberately. A client that read `demo`
+    // here would send its user off to clone the repo when the true answer is
+    // "tomorrow", and the repo is not the remedy for a spent allowance.
+    expect(body).not.toHaveProperty("demo")
+    expect(body).not.toHaveProperty("repo")
+  })
+
+  it("refuses before it reads the body, so no input can route around it", async () => {
+    process.env.OPENKB_DEMO = "1"
+    process.env.OPENKB_PUBLIC_RUNS_PER_DAY = "20"
+    countRunsSince.mockResolvedValue(99)
+    for (const body of ["not json at all", {}, { domain: "" }, { domain: "resend.com", queries: 9999 }]) {
+      const label = JSON.stringify(body)
+      expect((await post(body)).status, label).toBe(429)
+    }
+    expect(createRun).not.toHaveBeenCalled()
+  })
+
+  it("meters a deployment that is not a demo too", async () => {
+    // The allowance is about spending, not about the gallery — an owner capping
+    // their own password-protected instance gets the cap.
+    delete process.env.OPENKB_DEMO
+    process.env.OPENKB_PUBLIC_RUNS_PER_DAY = "2"
+    countRunsSince.mockResolvedValue(2)
+    const res = await post({ domain: "resend.com" })
+
+    expect(res.status).toBe(429)
+    expect(createRun).not.toHaveBeenCalled()
+  })
+})
+
+describe("with an allowance it cannot count against", () => {
+  it("fails closed with a 503 rather than spending an uncounted run", async () => {
+    // The safety argument, at the endpoint. `countRunsSince` returns null for a
+    // store that is absent, unreachable, or answering an error, and a null read
+    // is not a licence to spend — a deployment that ran what it could not count
+    // would have no limit at all on the day its database went down.
+    process.env.OPENKB_DEMO = "1"
+    process.env.OPENKB_PUBLIC_RUNS_PER_DAY = "20"
+    countRunsSince.mockResolvedValue(null)
+    const res = await post({ domain: "resend.com" })
+    const body = (await res.json()) as { error?: string; demo?: boolean }
+
+    expect(res.status).toBe(503)
+    expect(body.error).toMatch(/cannot reach the database/i)
+    expect(body).not.toHaveProperty("demo")
+    expect(createRun).not.toHaveBeenCalled()
+    expect(sweep).not.toHaveBeenCalled()
+    expect(afterTasks).toHaveLength(0)
+  })
+})
+
+describe("with an allowance nobody can act on", () => {
+  it.each(["0", "off", "lots", "-3", ""])(
+    "reads %j as no allowance, so a demo stays read-only",
+    async (value) => {
+      // The expensive direction of a typo is a door that opens. This is the
+      // cheap one, and it is the one this parser is tuned for: an unreadable
+      // allowance leaves the deployment exactly as it was.
+      process.env.OPENKB_DEMO = "1"
+      process.env.OPENKB_PUBLIC_RUNS_PER_DAY = value
+      const res = await post({ domain: "resend.com" })
+
+      expect(res.status).toBe(403)
+      expect(((await res.json()) as { demo?: boolean }).demo).toBe(true)
+      // And nothing was counted, because there was nothing to count against.
+      expect(countRunsSince).not.toHaveBeenCalled()
+    },
+  )
 })

@@ -186,11 +186,17 @@ For a deployment that really is meant to run:
 | `BRIGHTDATA_UNLOCKER_ZONE` | yes | name of a **Web Unlocker** zone |
 | `OPENROUTER_API_KEY` | yes | model provider key |
 | `KB_USER` / `KB_PASSWORD` | **on any public deployment** | basic auth. Unset means OPEN, and the start endpoint takes a domain and spends real money |
-| `OPENKB_CEILING_USD` | **on any public deployment** | ceiling on cumulative MODEL spend, checked before a run starts. It does not meter Bright Data, and it cannot stop a run already under way. Unset means unlimited |
-| `OPENKB_CEILING_BASE_USD` | no | the key's usage reading when you deployed, so the ceiling counts from now rather than from the key's whole history |
+| `OPENKB_RUN_CAP_USD` | no — **has a default** | the most one map may cost. Unset, it is derived from the query budget `maxDuration` affords: **$0.41** at 300s, $1.51 at 800s. Enforced *during* the run against the span stream's own total, which counts model + search + fetch. `off` removes it |
+| `OPENKB_DAY_CAP_USD` | no — **has a default** | the most this deployment will spend on maps in a UTC day, counted from its own rows in Postgres. Default **$5.00**, about 22 maps. `off` removes it |
+| `OPENKB_RUNS_PER_VISITOR_PER_DAY` | no — **has a default** | maps one visitor gets a day. Default **3**. `off` removes it |
+| `OPENKB_RUNS_AT_ONCE` | no — **has a default** | maps this deployment builds at the same time. Default **3**. `off` removes it |
+| `OPENKB_VISITOR_SALT` | recommended on a public deployment | salts the hash of a visitor's address before it is stored. Without it the `visitor` column is a hash of a 32-bit space, which is minutes of work to reverse |
+| `OPENKB_CEILING_USD` | no | a *provider-side* backstop underneath the four above: a ceiling on the OpenRouter KEY's cumulative usage. The key is shared, so this counts other projects too, and it meters no Bright Data at all. Unset means no provider-side ceiling |
+| `OPENKB_CEILING_BASE_USD` | no | the key's usage reading when you deployed, so that ceiling counts from now rather than from the key's whole history |
 | `SUPABASE_URL` / `SUPABASE_SECRET_KEY` | strongly recommended, **required on Vercel** | without them a container restart loses every run — and on Vercel there is no disk to fall back to, so runs are lost as soon as the instance goes |
 | `OPENKB_RUNS_DIR` | **on Vercel**, set to `/tmp/openkb-runs` | where run JSON is written. Other hosts get it from `next.config.ts`; on Vercel that runs at build time on another machine, so it has to be a real project variable pointing at the only writable path |
-| `OPENKB_DEMO` | **on any URL you hand to strangers** | `1` makes this a read-only demo: no run can be started, and the gallery serves the six committed maps. See below |
+| `OPENKB_DEMO` | **on any URL you hand to strangers** | `1` makes this a demo: the gallery serves the six committed maps, and no run can be started unless the next row says otherwise. See below |
+| `OPENKB_PUBLIC_RUNS_PER_DAY` | no — **unset means the demo refuses every run** | how many maps a day this deployment will buy for visitors. `20` is about $4 at the measured $0.147–$0.202 a run. Unset, `0`, or anything unparseable is a closed door |
 | `OPENKB_DEMO_MAPS_DIR` | no | which maps a demo serves. Unset, it finds `demo/maps/` itself. Deliberately **not** `OPENKB_RUNS_DIR`, which means something else |
 
 ## The three guards, and what each does not do
@@ -198,18 +204,57 @@ For a deployment that really is meant to run:
 **Auth** decides who. It stops a stranger and a crawler. It does not stop an
 invited person running two hundred maps.
 
-**The ceiling** decides how much. It is read from the provider's own usage figure
-rather than counted in the process, because a counter resets on restart and knows
-nothing about runs started by another instance. It fails CLOSED: if the provider
-cannot be reached, no run starts.
+**The budget** decides how much, and it is four numbers rather than one. A cap on
+a single map, enforced while the map is being built; a cap on the day, counted
+from this deployment's own rows; a cap per visitor; and a cap on how many run at
+once. They compose into one promise: **the day's spend cannot pass
+`OPENKB_DAY_CAP_USD`**, because every dollar is either already recorded against a
+finished run or reserved at the cap of one still going, and no run may exceed its
+cap. All four fail CLOSED — an unreadable store, a value that is not a number, a
+day cap below a run cap: each refuses the run and says which. `OPENKB_CEILING_USD`
+survives underneath as a provider-side backstop, because it can see spending on
+the same key from outside this deployment (the CLI, a second deployment) that
+nothing here can.
+
+Details worth knowing before you tune them:
+
+- **Every one is on by default.** A deployment that opens its door should not
+  open it onto an unmetered account. Raise them in one line, or write the word
+  `off` — a word, so that no typo, blank field or stray space can turn a limit
+  off by accident.
+- **The day cap needs the schema.** `scripts/supabase-schema.sql` adds
+  `runs.usd` and `runs.visitor` and the `claim_run` function; re-run the whole
+  file against an existing project, every statement in it is idempotent. Without
+  them the deployment refuses every run rather than guessing, and says so.
+- **Three of the four are decided inside Postgres, on purpose.** Counting
+  today's runs and then starting one is two round trips, and a burst fits
+  between them: twenty requests fired together all read the same empty day and
+  all start. Measured on the shape that did: 20 admitted against a limit of 3,
+  and $4.92 committed against a $1.00 day cap. `claim_run` counts and writes the
+  run's row in one transaction under an advisory lock, so the twentieth request
+  sees the first nineteen. If a deployment starts answering 503 with
+  `no claim_run function` in its log, that is this — re-run the schema file.
+- **The per-visitor limit needs a proxy in front.** It reads the LAST entry of
+  `x-forwarded-for` (or `x-vercel-forwarded-for` / `x-real-ip` first), because
+  every proxy appends and the leftmost entry is whatever the client sent. On a
+  bare `next start` box nothing writes those headers and every caller shares one
+  bucket; there the day cap and the concurrency limit are the real defence.
+- **The run cap's default was measured on one model.** `deepseek/deepseek-v4-flash`,
+  over 18 sweeps in `runs/`: `usd = 0.0146 + 0.0106 × queries`, which puts an
+  18-query run at $0.205 and corroborates six hosted runs measured at
+  $0.147–$0.202. A dearer model bills six to eight times that per query — set
+  `OPENKB_RUN_CAP_USD` yourself if you change `OPENKB_MODEL`, or maps will stop
+  early. The route logs a line saying so.
 
 **Demo mode** decides whether. `OPENKB_DEMO=1` closes the one endpoint that can
 spend, and it is the only one of the three that leaves a useful site behind
-when it is on.
+when it is on. `OPENKB_PUBLIC_RUNS_PER_DAY` is how you open it again by a
+measured amount — a fourth setting, and the only one whose absence is safe in
+both directions.
 
-The first two are a pair — set both or neither leaves the obvious hole. The
-third replaces the need for them, and the next section is about when to reach
-for it instead.
+Auth is the one you have to remember; the budget is already on. Demo mode
+replaces the need for auth, and the next section is about when to reach for it
+instead.
 
 ## The read-only demo
 
@@ -224,8 +269,9 @@ With the flag on:
 - `POST /api/map` answers **403** with a plain sentence — this is a read-only
   demo, clone the repo and bring your own keys. Not a 500, not "temporarily
   unavailable", and not a spinner that never resolves.
-- The map page says the same thing above a disabled input, so nobody types a
-  domain into a control that is going to ignore them.
+- The front page is the six maps, not a form. There is no disabled input to
+  type into and no refusal to read on arrival — the 403 above answers a
+  request, and nobody on that page has made one.
 - Every read route is untouched. The gallery, the graph, the notes, the search
   and the zip export all work.
 - The runs directory defaults to `demo/maps/` — six real sweeps, committed,
@@ -248,34 +294,138 @@ itself, which is what a normal deployment should do.
 To change which maps ship, edit the list in `scripts/build-demo-maps.ts` and run
 `pnpm demo:maps`. Do not hand-edit the JSON.
 
-## Sizing the ceiling
+## Letting strangers run one
 
-`.env` is gitignored, so a clone ships with **no ceiling at all** — set one before
-the deployment is reachable by anyone. `OPENKB_CEILING_USD=5` is the invite-gated
-setting: enough for a couple of runs by someone you handed the link to.
+A read-only demo is a gallery of maps somebody else paid for. **Set
+`OPENKB_PUBLIC_RUNS_PER_DAY` to a whole number and the demo starts buying runs
+for visitors, up to that many a day.**
 
-Size it knowing what it does not cover. It is a **preflight** check on cumulative
-OpenRouter usage, so:
+```
+OPENKB_DEMO=1
+OPENKB_PUBLIC_RUNS_PER_DAY=20
+```
 
-- it cannot stop a run already under way — one stored run cost **$5.07 on its own**;
-- concurrent requests all read the same figure and can start together past it;
-- Bright Data spend is outside it entirely, and on the current config that is the
-  larger share of the bill;
-- a malformed value parses to `NaN` and silently disables the check.
+### What it costs you
 
-Treat it as a brake on *starting* runs, not a cap on what a deployment can spend.
-Until those gaps are closed, do not leave a deployment reachable without
-`KB_USER`/`KB_PASSWORD` set.
+Measured over six real runs through the deployed app: **$0.147 to $0.202 a run**,
+returning **197 to 275 entities in 166 to 255 seconds**. So the exposure is about
+twenty cents a visitor, and the variable is a dollar figure wearing a count —
+`20` is roughly `$4.00` a day, `100` is roughly `$20.00`.
 
-Read the key's current usage first and set the base, so the ceiling counts
-from your deploy:
+### Why it is a count and not a switch
+
+There is no configuration in which runs are allowed and no limit is set, because
+the limit *is* the switch. A boolean plus a separate cap has one more state than
+this does, and that state — the switch on, the cap forgotten — is an unmetered
+public endpoint. Unset is zero is closed, which is what every existing
+deployment and every clone already has, so upgrading to this version changes
+nothing anywhere until somebody writes a number.
+
+### Why it is not `OPENKB_DEMO=2`
+
+`OPENKB_DEMO` does three jobs and only one of them is about spending. It also
+decides that the front page leads with the maps, and that **every surface serves
+only the committed `demo/maps/`, never your own Supabase** — a boundary that was
+added after a demo built against this repo listed fifteen maps rather than six,
+nine of them real runs of real domains that nobody chose to publish. Widening
+that flag would have opened the gallery and the spending door with one edit.
+
+### What a visitor gets
+
+- A box above the gallery, saying **how many runs are left today before they
+  type** — not after they are refused — plus what a run costs them, which is
+  about four minutes and roughly 230 entities. They are never quoted your bill.
+- A live view of the run: phase, elapsed against the run's own estimate, hosts
+  seen, entities placed, dollars spent.
+- **Their run's link, before they need it.** The run is a background task on the
+  server and closing the tab does not stop it, so the map lands at `/kb/<id>`
+  whether they wait or not. That link is served **by id only** — the gallery
+  stays the curated six, so visitors do not browse each other's runs and they
+  never see yours.
+- When the day is spent: no box, and a sentence saying when the count resets
+  (00:00 UTC). Not a greyed-out form.
+
+### What it requires
+
+**Supabase.** The count is `select count(*) from runs where started_at >= today`,
+and there is nowhere else to ask — an in-process counter forgets every run
+started by another instance and resets on every restart. If the store cannot be
+reached, `POST /api/map` answers **503 and starts nothing**: a reading that could
+not be taken is not a licence to spend. The front page renders as the read-only
+demo for as long as that lasts.
+
+### What it does not do
+
+It counts runs, not dollars. A run that fails at minute three still bought its
+searches and still counts — which is the honest direction — but the allowance
+itself cannot see Bright Data spend or a model that suddenly costs more. That is
+what `OPENKB_DAY_CAP_USD` is for, and it is on by default underneath this one:
+whichever of the two runs out first is the one that closes the door, and the
+dollar cap is the one that stays true when the price of a run changes. And
+neither is auth: if some of the maps should not be public, keep
+`KB_USER`/`KB_PASSWORD` on too.
+
+## Sizing the budget
+
+A clone ships with the budget already on: **$0.41 a map, $5.00 a day, 3 maps a
+visitor, 3 at a time.** `.env` being gitignored is no longer the same hazard it
+was — the numbers live in the code, not in a file a clone does not get, and the
+only way to have no budget is to write `off` on purpose.
+
+What a map costs, so the numbers mean something. Measured two ways that agree:
+six real runs through the deployed app came in at **$0.147–$0.202**, and a fit
+over the 18 current-shape sweeps in `runs/` says `usd = 0.0146 + 0.0106 ×
+queries`, which is **$0.205** for the 18 queries a 300s host affords. Between
+58% and 77% of that is Bright Data SERP — exactly one call per fired query — and
+the rest is the model.
+
+So $5.00 a day is about 22 maps, and one visitor's three maps is about $0.62.
+Raise `OPENKB_DAY_CAP_USD` for a busier day; it is the only one of the four most
+deployments ever need to touch.
+
+### What the caps do and do not cover
+
+- The **run cap** is enforced *during* the run, against the span stream's own
+  running total, which counts model, search and fetch alike. It trips below the
+  cap — `max($0.05, 25% of it)` is held back — so that the calls already in
+  flight when the line is crossed still fit underneath. A run therefore ends AT
+  its cap, not past it.
+- The **day cap** cannot be walked past by concurrency. A run still going is
+  held against the budget at the most it can still cost and settles to its real
+  cost when it ends, so N runs in flight commit N caps rather than nothing at
+  all. A new run starts only if a whole cap still fits, which means the last few
+  cents of a day go unspent rather than buying half a map.
+- Turning the **run cap off keeps the day cap but weakens it**, from a ceiling
+  to a preflight check: with nothing to reserve, several runs started together
+  commit nothing and can carry the day past its limit before any of them records
+  a cost. The two are worth keeping together.
+- The **per-visitor limit** is only as good as the proxy in front of it. See the
+  note above; on a bare box it degrades to one shared bucket, which is safe but
+  blunt.
+- A **stale `running` row** — a run whose instance died without writing its
+  ending — is counted at its cap for the rest of the day. A deployment losing
+  several runs a day will run out of budget early, which is the right answer to
+  a deployment that is losing runs.
+
+### The provider-side backstop
+
+`OPENKB_CEILING_USD` is now optional and is not the budget. It is a preflight
+check on the OpenRouter key's cumulative usage, which is useful for exactly one
+thing the caps above cannot see: spending on the same key from somewhere else —
+the CLI, `scripts/swarm.ts`, a second deployment. It still cannot stop a run
+already under way, still meters no Bright Data, and still counts every other
+project on that key. It no longer disappears on a typo: a malformed value
+refuses every run and names itself.
+
+Read the key's current usage first and set the base, so it counts from your
+deploy rather than from the key's whole history:
 
 ```bash
 curl -s https://openrouter.ai/api/v1/key -H "Authorization: Bearer $OPENROUTER_API_KEY"
 ```
 
 `OPENKB_CEILING_BASE_USD` = that `usage` figure. `OPENKB_CEILING_USD` = what you are
-willing to lose.
+willing to lose across everything on the key.
 
 ## Deploy
 
@@ -288,15 +438,35 @@ Or point Railway/Render/Fly at the repo; they will find the Dockerfile.
 
 ## Before you share the URL
 
-If this is a public demo, the first three boxes collapse into one:
+If this is a **read-only** demo, the first three boxes collapse into one:
 
-- [ ] `OPENKB_DEMO=1` set, and you have confirmed the Map button is disabled and
+- [ ] `OPENKB_DEMO=1` set, `OPENKB_PUBLIC_RUNS_PER_DAY` unset, and
       `curl -X POST <url>/api/map -d '{"domain":"resend.com"}'` answers 403
+- [ ] the front page shows six maps and no input box
 - [ ] the gallery at `/kb` lists six maps, and one of them opens
+
+If it is a demo that **buys runs for visitors**, add:
+
+- [ ] `OPENKB_PUBLIC_RUNS_PER_DAY` set to a number you are willing to see
+      multiplied by $0.20, and the front page says how many are left today
+- [ ] `SUPABASE_URL` set and the schema run — without it every run is refused
+      with a 503, on purpose
+- [ ] one run started from the deployment itself, left to finish with the tab
+      CLOSED, and its `/kb/<id>` link opened afterwards
+- [ ] `scripts/supabase-schema.sql` re-run, so `runs.usd`, `runs.visitor` and
+      the `claim_run` function exist — the budget counts from those two columns
+      and claims through that function, and refuses every run without them
+- [ ] `OPENKB_DAY_CAP_USD` set to a number you are willing to lose in one day,
+      or left at its $5.00 default
+- [ ] `OPENKB_VISITOR_SALT` set to anything unguessable
+- [ ] `OPENKB_CEILING_USD` set as the provider-side backstop underneath it all
 
 Otherwise, for a deployment that really is meant to run:
 
 - [ ] `KB_USER` and `KB_PASSWORD` set, and you have opened the URL in a private window to confirm it asks
-- [ ] `OPENKB_CEILING_USD` set, and `OPENKB_CEILING_BASE_USD` set to the key's usage at deploy time
 - [ ] `SUPABASE_URL` set, and `scripts/supabase-schema.sql` already run against that project
+- [ ] the budget's defaults read and either accepted or raised — they are ON,
+      so a deployment you run maps on yourself stops at $5.00 a day and three
+      maps an address unless you say otherwise
+- [ ] `OPENKB_CEILING_USD` and `OPENKB_CEILING_BASE_USD` set if the key is shared with anything else
 - [ ] one run started and finished on the deployment itself, not just locally
