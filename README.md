@@ -2,7 +2,7 @@
 
 <img src="./assets/mark.svg" alt="" width="76" height="76" />
 
-# open&#183;kb
+# open&#183;knowledge base
 
 ### The open knowledge base for markets
 
