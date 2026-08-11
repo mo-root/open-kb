@@ -98,14 +98,24 @@ const QUERIES = stringFlag("queries")
 /**
  * The outer wall clock, per run, in seconds.
  *
- * Thirty minutes. The slowest sweep in `runs/` finished at 1,599 seconds
- * (shopify.com, 4,251 entities) and the median is about 500, so this clears the
- * worst real run by roughly 12%. It is a backstop for a process that stopped
- * making progress, not a budget: a run killed here has already spent its money
- * and produced nothing, which is exactly why it is set above the slowest thing
- * that has ever legitimately finished rather than at a round number.
+ * One hour, raised from thirty minutes, and the raise is the interesting part.
+ * Thirty was set against the 58 sweeps then in `runs/` — median 211s, p90
+ * 1,052s, slowest legitimate finish 1,599s — and it was already wrong when it
+ * was written: figma.com went on to finish normally at 1,973 seconds, having
+ * paid $1.69 and produced 1,979 entities and 2,074 edges. Under a 1,800s cap
+ * that map is killed at 91% done and recorded as a FAILURE, having spent every
+ * dollar of it. That is the worst outcome this file can produce, and it is
+ * strictly worse than waiting on a wedged run: a cap that is too high costs one
+ * worker slot for an extra half hour, a cap that is too low costs the map.
+ *
+ * The distribution also shifts UNDER us. Fixing the classifier so that sellers
+ * come back as one kind took figma from 6 company rows to 1,147, and the link
+ * phase is quadratic-ish in that count — so every historical duration here was
+ * measured on an engine that had less to link than the current one does. An
+ * hour clears the slowest real finish by 82% and still catches a true wedge,
+ * which is all a backstop is for.
  */
-const TIMEOUT_S = flag("timeout", 1800)
+const TIMEOUT_S = flag("timeout", 3600)
 
 const RETRIES = flag("retries", 1, 0)
 
