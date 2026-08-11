@@ -2702,10 +2702,76 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    *
    * Free, and it costs no wall clock worth measuring.
    */
+  /**
+   * A NAME THE RUN STORES IN CAPITALS IS MATCHED IN CAPITALS.
+   *
+   * The match is case-insensitive because a page writing "figma" means Figma.
+   * That breaks on a name stored shouted. `user.com.sg` is a Singapore UX
+   * agency whose entity name is "USER", and `\buser\b` fires on every page in
+   * a design corpus that says user interface, user testing, user stories. It
+   * collected 141 edges on runs/sweep-figma-com-20260810173400.json — second
+   * only to the anchor's 251 — from reddit, medium, youtube and g2, none of
+   * which had heard of it.
+   *
+   * A writer who means the company shouts it back: "NVIDIA DGX Cloud",
+   * "NVIDIA GPUs". A writer using the word does not. Counted over that run's
+   * 5,061 stored titles and descriptions, the exact spelling "USER" occurs 0
+   * times while the case-insensitive form occurs 316; a real brand is written
+   * in its own case nearly always — Figma 1,487 of 1,498 occurrences, Adobe
+   * 287 of 290, Webflow 205 of 206, Miro 168 of 171.
+   * So an all-capitals term is matched exactly. Everything else — every
+   * Capitalised brand, every lowercase one, and every host, which is
+   * lowercased where the terms are built below — keeps today's match.
+   *
+   * MEASURED by replaying this pass over the stored SERP rows of all 28 runs
+   * in runs/ that carry them, each at the engine era it was written under.
+   * 682 of 42,058 name-derived edges go, 1.6%. No edge is invented, no
+   * relation changes, the anchor's own in-degree is unchanged on all 28, and
+   * no entity whose name is not all-capitals loses a single edge on any of
+   * them — figma's adobe.com (81), sketch.com (75), handoff.com (74),
+   * framer.com (67), webflow.com (55) and miro.com (49) are untouched.
+   *
+   * The 682 are 55 (entity, run) pairs carrying 46 distinct names. Eight names
+   * are 564 of them, and all eight are an ordinary English word: USER 141 -> 0
+   * on figma, TIME 112 -> 0 on openai ("these five actually save time"),
+   * FIRST 93 -> 1 on cloudflare ("cloud-first", "first catalogs all
+   * applications"), BILL 72 -> 9 on shopify and 20 -> 2 on stripe, TODAY
+   * 60 -> 0 on twilio, CORE 33 -> 1 on stripe, INBOX 27 -> 0, REAL 19 -> 0.
+   *
+   * WHAT IT COSTS is in the other 38 names, which lose 118 between them and
+   * none more than 11. That tail is mixed: more shouted ordinary words
+   * (SUBSCRIBE 11, ONES 8, EARLY 6) beside real brands whose name is an
+   * acronym some page wrote in mixed case. Those are the losses that are not
+   * recoverable — nvidia.com 14 -> 11 on vercel, and the three rows it drops
+   * are genuine ("Nvidia, AMD, Broadcom, AWS"); zitadel.com 9 across three
+   * clerk runs to "Zitadel"; dotnet.microsoft.com 9 -> 2, whose name is stored
+   * ".NET" and whose pages write ".Net"; geetest.com 5 -> 0 to "GeeTest".
+   * Reading the tail entity by entity, roughly 60 of those 118 are real
+   * mentions now gone. Roughly, because the line between a shouted word and a
+   * shouted brand is a reading and not a measurement — WIRED and Writer are
+   * both — so it is given as a range. The measured part is the 682 and the 0.
+   *
+   * WHAT IT DOES NOT FIX is most of the bug, and deliberately. This is the one
+   * shape where capitals give the word away. The common shape — an ordinary
+   * word Capitalised, which is also how a headline writes any word — is
+   * untouched: handoff.com keeps all 74 of its edges here, batch.com all 50,
+   * format.com 42, instantly.ai 32. Case cannot reach them. On this run 3,340
+   * of 4,714 titles of three or more real words capitalise nearly all of them,
+   * so "Handoff" in "Design Handoff Best Practices" is spelled exactly like
+   * Handoff the company; matching every name case-sensitively was measured and
+   * it costs sketch.com 75 -> 63, handoff.com 74 -> 51, batch.com 50 -> 38
+   * while leaving most of those three standing, and on cloudflare it takes
+   * nginx.org 84 -> 16 because that brand is styled lowercase. Letting a
+   * shouted name also match its Title-cased spelling, to spare Nvidia and
+   * Zitadel, was measured too: it puts 47 of USER's 141 back.
+   */
+  const shouted = (term: string) =>
+    /[A-Z]/.test(term) && term === term.toUpperCase();
+
   const namesIt = (haystack: string, needle: string): boolean =>
     new RegExp(
       `\\b${needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
-      "i",
+      shouted(needle) ? "" : "i",
     ).test(haystack);
 
   {
