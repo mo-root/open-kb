@@ -12,7 +12,7 @@ import { SpanStream, discover } from "../packages/core/src/index.js"
 import { brightDataFetch, priceForModel } from "../packages/providers/src/index.js"
 
 const anchor = process.argv[2] ?? "resend.com"
-const MODEL = process.env.OPENKB_MODEL ?? "deepseek/deepseek-v4-flash"
+const MODEL = process.env.OPENKB_MODEL ?? "deepseek/deepseek-v4-flash-0731"
 const PRICING = priceForModel(MODEL)
 
 const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY! })

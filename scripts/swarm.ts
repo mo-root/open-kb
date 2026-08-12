@@ -134,10 +134,10 @@ const familyFloor: boolean | number | undefined =
           ? Number(famRaw)
           : undefined
 
-const LEAD = process.env.OPENKB_SWARM_LEAD_MODEL ?? "deepseek/deepseek-v4-flash"
-const PEEK = process.env.OPENKB_SWARM_PEEK_MODEL ?? "deepseek/deepseek-v4-flash"
-const READ = process.env.OPENKB_SWARM_READ_MODEL ?? process.env.OPENKB_MODEL ?? "deepseek/deepseek-v4-flash"
-const DIG = process.env.OPENKB_SWARM_DIG_MODEL ?? process.env.OPENKB_MODEL ?? "deepseek/deepseek-v4-flash"
+const LEAD = process.env.OPENKB_SWARM_LEAD_MODEL ?? "deepseek/deepseek-v4-flash-0731"
+const PEEK = process.env.OPENKB_SWARM_PEEK_MODEL ?? "deepseek/deepseek-v4-flash-0731"
+const READ = process.env.OPENKB_SWARM_READ_MODEL ?? process.env.OPENKB_MODEL ?? "deepseek/deepseek-v4-flash-0731"
+const DIG = process.env.OPENKB_SWARM_DIG_MODEL ?? process.env.OPENKB_MODEL ?? "deepseek/deepseek-v4-flash-0731"
 
 const skill = readFileSync(new URL("../prompts/swarm/skill.md", import.meta.url), "utf8")
 

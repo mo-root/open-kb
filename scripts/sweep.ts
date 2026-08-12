@@ -22,7 +22,7 @@ const anchor = process.argv[2] ?? "resend.com"
 // spend ceiling as the only brake — could never actually be exercised from a
 // terminal. A numeric third arg still bounds a probe exactly as before.
 const TARGET = process.argv[3] !== undefined ? Number(process.argv[3]) : undefined
-const MODEL = process.env.OPENKB_MODEL ?? "deepseek/deepseek-v4-flash"
+const MODEL = process.env.OPENKB_MODEL ?? "deepseek/deepseek-v4-flash-0731"
 
 const spans = new SpanStream()
 

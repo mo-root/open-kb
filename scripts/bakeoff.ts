@@ -26,10 +26,10 @@ interface Contestant {
 }
 
 const CONTESTANTS: Contestant[] = [
-  { key: "deepseek-off", model: "deepseek/deepseek-v4-flash", note: "reasoning off, fast hosts (current default)" },
+  { key: "deepseek-off", model: "deepseek/deepseek-v4-flash-0731", note: "reasoning off, fast hosts (current default)" },
   {
     key: "deepseek-think",
-    model: "deepseek/deepseek-v4-flash",
+    model: "deepseek/deepseek-v4-flash-0731",
     env: { OPENKB_DEEPSEEK_REASONING: "bounded" },
     note: "bounded reasoning — does thinking earn its latency?",
   },

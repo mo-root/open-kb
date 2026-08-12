@@ -8,7 +8,7 @@ import { brightDataSearch, brightDataFetch, priceForModel } from "../packages/pr
 import { openrouter } from "@openrouter/ai-sdk-provider"
 
 const anchor = process.argv[2] ?? "resend.com"
-const MODEL = process.env.OPENKB_MODEL ?? "deepseek/deepseek-v4-flash"
+const MODEL = process.env.OPENKB_MODEL ?? "deepseek/deepseek-v4-flash-0731"
 
 const creds = {
   token: process.env.BRIGHTDATA_API_TOKEN!,
