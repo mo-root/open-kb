@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto"
+import { reserveUsd, tripAtUsd } from "@open-kb/core"
 import { DEMO_REPO } from "./demo"
 import { dayStartedAt, untilReset } from "./public-runs"
 import * as db from "./store/supabase"
@@ -88,12 +89,16 @@ import type { UsageRow } from "./store/supabase"
  * stopped early rather than a bill nobody expected, which is the direction this
  * whole file errs in.
  *
- * WHY THIS TABLE IS NOT IN `@open-kb/core` BESIDE clock.ts. clock.ts is shared
- * because two consumers need it — the route sizes a run before it starts and
- * the engine's planner asks mid-run whether another round still fits — and a
- * second copy of "hosts per query" would drift. Dollars have one consumer: the
- * deployment that pays. The engine takes `ceilingUsd` as an opaque number it
- * reports and never enforces, so there is nothing on that side to keep in step.
+ * WHY THIS TABLE IS NOT IN `@open-kb/core` BESIDE clock.ts, THOUGH THE WATCHDOG
+ * THAT READS IT IS. What core owns is the MECHANISM — `withSpendCap`, and the
+ * reserve it holds back to stop a run at a cap rather than past it — because
+ * four callers now need exactly one copy of that ordering argument: this route
+ * and the three CLI entrypoints. What core must not own is what a run may cost,
+ * because the two payers disagree about it by an order of magnitude and for good
+ * reasons: this file derives $0.41 from the queries a 300s host affords, and
+ * `scripts/spend-caps.ts` measures $8.00 from what an unbounded CLI run actually
+ * costs. A shared default would be wrong for both. The engine still takes
+ * `ceilingUsd` as an opaque number it reports and never enforces.
  */
 export const MEASURED_RUN_COST = {
   /** How many runs the fit is over. */
@@ -148,36 +153,26 @@ export function defaultRunCapUsd(queries: number): number {
 
 /**
  * How much of a run's ceiling is held back so the run can be STOPPED at it
- * rather than discovered past it.
+ * rather than discovered past it, and the total it is stopped at.
  *
- * The deadline watchdog reserves 30 seconds to write an ending down. This is
- * the same idea in the other currency: between the span that crosses the line
- * and the engine reaching its next abort checkpoint, whatever was already in
- * flight still lands and still bills. The reserve is what that costs.
+ * BOTH LIVE IN `@open-kb/core` NOW, beside the watchdog that reads them, and are
+ * re-exported here because this file's own refusals quote them and half the repo
+ * imports them from this name. The deadline watchdog reserves 30 seconds to
+ * write an ending down; this is the same idea in the other currency, it is the
+ * watchdog's own parameter rather than a policy of this deployment's, and it
+ * acquired three more callers the day the CLI entrypoints got a cap
+ * (`scripts/spend-caps.ts`). Core shows the arithmetic and its working.
  *
- * `max($0.05, 25% of the cap)` — the shape `Ledger.finishReserveUsd` in
- * `@open-kb/core` already uses for the same job, with a wider fraction because
- * the thing being reserved against here is concurrency rather than one closing
- * turn. At the default 18-query cap that is $0.10, and the trip point lands at
- * $0.31 — 1.5× the worst real run of that size, so it does not fire on a
- * healthy one.
- *
- * WHAT $0.10 ACTUALLY BUYS, from the composition above: 250 classify calls, or
- * 12 SERP calls. The rank pool is 8 wide (`OPENKB_RANK_CONCURRENCY`), so a
- * trip during rank overruns by about half a cent. The one thing that can be
- * wider is a search wave, at 20 — but a whole run's search spend is bounded by
- * `maxQueries × $0.0086`, which at 18 queries is $0.155 for the entire run,
- * and the trip point is $0.31. So the honest bound is: a run can end over its
- * cap, by at most what was in flight, and what can be in flight is cents.
+ * WHAT IT COMES TO HERE. `max($0.05, 25% of the cap)` at the default 18-query
+ * cap is $0.10, so the trip point lands at $0.31 — 1.5× the worst real run of
+ * that size, so it does not fire on a healthy one. From the composition above,
+ * $0.10 buys 250 classify calls or 12 SERP calls; the rank pool is 8 wide
+ * (`OPENKB_RANK_CONCURRENCY`), so a trip during rank overruns by about half a
+ * cent. The one thing that can be wider is a search wave, at 20 — but a whole
+ * run's search spend is bounded by `maxQueries × $0.0086`, which at 18 queries
+ * is $0.155 for the entire run, against a trip point of $0.31.
  */
-export function reserveUsd(capUsd: number): number {
-  return Math.max(0.05, 0.25 * capUsd)
-}
-
-/** The running total at which a run is stopped, so that it ENDS at its cap. */
-export function tripAtUsd(capUsd: number): number {
-  return Math.max(0, capUsd - reserveUsd(capUsd))
-}
+export { reserveUsd, tripAtUsd }
 
 /* ─────────────────────────────────────────────────────────────── the settings */
 

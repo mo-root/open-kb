@@ -6,12 +6,24 @@
  * you see here is what the browser runs.
  *
  * Usage:  set -a && . ./.env && set +a && npx tsx scripts/sweep.ts resend.com [nQueries]
+ *
+ * The run stops itself at $8.00 — see the watchdog below and the numbers behind
+ * that figure in `scripts/spend-caps.ts`. `OPENKB_CLI_RUN_CAP_USD` changes it;
+ * the word `off` removes it. A stopped run is written to
+ * `runs/stopped-<domain>-<stamp>.json` with its spans, and exits 6.
  */
 import { openrouter } from "@openrouter/ai-sdk-provider"
-import { SpanStream } from "../packages/core/src/index.js"
+import { SpanStream, withSpendCap, type Span, type SpendTrip } from "../packages/core/src/index.js"
 import { priceForModel } from "../packages/providers/src/index.js"
 import { sweep, readUi } from "../packages/sweep/src/index.js"
-import { fatal } from "./fatal.js"
+import { EXIT, fatal } from "./fatal.js"
+import {
+  CLI_LIMIT_VARS,
+  DEFAULT_RUN_CAP_USD,
+  capUsdOrExit,
+  cappedReason,
+  stoppedRun,
+} from "./spend-caps.js"
 
 const anchor = process.argv[2] ?? "resend.com"
 // Unset unless a third arg is given — the normal case, and now the same
@@ -25,33 +37,91 @@ const TARGET = process.argv[3] !== undefined ? Number(process.argv[3]) : undefin
 const MODEL = process.env.OPENKB_MODEL ?? "deepseek/deepseek-v4-flash-0731"
 
 const spans = new SpanStream()
+const startedAt = Date.now()
 
-// There is no live ceiling here — the web route's `OPENKB_CEILING_USD` guard
-// is a pre-run refusal, not something that watches a run already in flight,
-// and the CLI has nothing like it at all. `spans.totalUsd()` already tracks
-// the running total as every span is billed, so the only missing piece was
-// printing it. Prefixing every log line costs nothing and turns "did this
-// just blow past $4" from a guess into something read off the screen.
-const out = await sweep({
-  domain: anchor,
-  queries: TARGET,
-  pages: Number(process.env.OPENKB_PAGES ?? 4),
-  // Search-wave width. The provider adapter obeys retry-afters, so pushing
-  // this is observable-safe: too wide answers as 429s and pacing, never loss.
-  concurrency: Number(process.env.OPENKB_SEARCH_CONCURRENCY ?? 0) || undefined,
-  skipModelLinking: process.env.OPENKB_SKIP_MODEL_LINKING === "1",
-  spans,
-  creds: {
-    token: process.env.BRIGHTDATA_API_TOKEN!,
-    serpZone: process.env.BRIGHTDATA_SERP_ZONE!,
-    unlockerZone: process.env.BRIGHTDATA_UNLOCKER_ZONE!,
+/**
+ * THE LIVE CEILING THIS FILE USED TO SAY IT DID NOT HAVE.
+ *
+ * The comment here read "There is no live ceiling here — the web route's
+ * `OPENKB_CEILING_USD` guard is a pre-run refusal, not something that watches a
+ * run already in flight, and the CLI has nothing like it at all", and printing
+ * the running total on every log line was the whole of the remedy. It made a
+ * runaway readable by someone watching the screen; the runs that cost $5.15 and
+ * $6.83 both happened with that line in place.
+ *
+ * `withSpendCap` is the watchdog the web route already runs, lifted into
+ * `@open-kb/core` so both surfaces enforce one thing. It subscribes to this
+ * stream, and at the trip point it aborts the sweep and hands the trip back
+ * here. `scripts/spend-caps.ts` chooses the $8.00 default and defends it against
+ * the measured runs.
+ */
+const RUN_CAP_USD = capUsdOrExit(CLI_LIMIT_VARS.runCap, DEFAULT_RUN_CAP_USD)
+const abort = new AbortController()
+/** Set by the watchdog, read after the engine has unwound: a trip means this run
+ *  has an ending already decided, and the tail of this file writes it. A holder
+ *  rather than a bare `let` so that nothing here reads as narrowed to `null` —
+ *  the only writer is a callback, and the compiler cannot see into it. */
+const capStop: { trip: SpendTrip | null } = { trip: null }
+/** A RUN THAT IS ALREADY OVER MUST NOT BE STOPPED. The watchdog reads the span
+ *  log through its own cursor, so a span emitted in the run's last moments can
+ *  still be waiting to be read when the engine returns — and closing the stream
+ *  hands the loop whatever was buffered. Without this, a healthy run whose final
+ *  total happens to sit above the trip point would be recorded as capped after
+ *  it had already succeeded. Same guard as `record.status !== "running"` on the
+ *  web route, spelled for a process that has no run registry. */
+const engine = { running: true }
+
+console.log(
+  `sweep on ${anchor}: ` +
+    (RUN_CAP_USD === null
+      ? `no spend cap (${CLI_LIMIT_VARS.runCap} is off)`
+      : `stopping at $${RUN_CAP_USD.toFixed(2)} (${CLI_LIMIT_VARS.runCap})`),
+)
+
+const out = await withSpendCap(
+  sweep({
+    domain: anchor,
+    queries: TARGET,
+    pages: Number(process.env.OPENKB_PAGES ?? 4),
+    // Search-wave width. The provider adapter obeys retry-afters, so pushing
+    // this is observable-safe: too wide answers as 429s and pacing, never loss.
+    concurrency: Number(process.env.OPENKB_SEARCH_CONCURRENCY ?? 0) || undefined,
+    skipModelLinking: process.env.OPENKB_SKIP_MODEL_LINKING === "1",
+    spans,
+    creds: {
+      token: process.env.BRIGHTDATA_API_TOKEN!,
+      serpZone: process.env.BRIGHTDATA_SERP_ZONE!,
+      unlockerZone: process.env.BRIGHTDATA_UNLOCKER_ZONE!,
+    },
+    model: openrouter(MODEL),
+    modelId: MODEL,
+    pricing: priceForModel(MODEL),
+    runId: `cli-${Date.now()}`,
+    // The running total still rides on every line. The cap makes it a bound
+    // rather than a warning, but the operator watching a run still wants to see
+    // where it is against that bound.
+    onLog: (line) => console.log(`$${spans.totalUsd().toFixed(3)}  ${line}`),
+    signal: abort.signal,
+  }).finally(() => {
+    engine.running = false
+  }),
+  {
+    spans,
+    capUsd: RUN_CAP_USD,
+    abort,
+    stillRunning: () => engine.running,
+    announce: (trip) => console.error(`\n${cappedReason(trip, "sweep")}`),
+    // Remembering, not writing. The engine is mid-unwind here and its last spans
+    // have not landed; `scripts/spend-caps.ts` argues the timing where the
+    // record's shape is defined.
+    record: (trip) => {
+      capStop.trip = trip
+    },
   },
-  model: openrouter(MODEL),
-  modelId: MODEL,
-  pricing: priceForModel(MODEL),
-  runId: `cli-${Date.now()}`,
-  onLog: (line) => console.log(`$${spans.totalUsd().toFixed(3)}  ${line}`),
-}).catch((e) => fatal(e, "sweep"))
+  // A cap stop arrives as the engine's own `aborted` throw. `fatal` would print
+  // it as a mystery and exit 1, so this catch takes the stop before `fatal` can
+  // have it — everything else is still a genuine failure and still goes there.
+).catch((e: unknown) => (capStop.trip ? null : fatal(e, "sweep")))
 spans.close()
 
 // Every query the run actually fired, including whatever the widening loop
@@ -63,25 +133,16 @@ spans.close()
 // and never read here before; walked once now that the run has finished and
 // the stream is closed, so this drains the whole log instead of racing it.
 const searched: Record<string, unknown>[] = []
+const spanRows: Span[] = []
 for await (const span of spans.stream()) {
+  spanRows.push(span)
   const ui = readUi(span)
   if (ui?.ns === "results" && ui.frame.kind === "searched") searched.push(ui.frame)
 }
 
-const { stats, entities } = out
-const keep = entities.filter((e) => e.kind !== "noise")
-const count = (arr: string[]) => arr.reduce<Record<string, number>>((a, k) => ((a[k] = (a[k] ?? 0) + 1), a), {})
-
-console.log(`\n${"=".repeat(80)}`)
-console.log(`${keep.length} on the map (${entities.length - keep.length} judged noise) from ${stats.hosts} hosts`)
-console.log(`kinds     `, count(keep.map((e) => e.kind)))
-console.log(`relations `, count(keep.map((e) => e.relation)))
-console.log(`\n${stats.queries} queries · ${stats.serpCalls} SERP calls · ${stats.results} results`)
-console.log(`tokens ${stats.tokIn.toLocaleString()} in / ${stats.tokOut.toLocaleString()} out`)
-console.log(`$${stats.usd.toFixed(4)} · ${stats.seconds.toFixed(0)}s`)
-
 const { writeFileSync, mkdirSync } = await import("node:fs")
 mkdirSync("runs", { recursive: true })
+
 // Stamped, because the filename used to be the domain alone and a second run of
 // the same company silently destroyed the first. A 771-second, $1.26, 388-entity
 // map of brightdata.com was overwritten by a 10-query smoke test that happened to
@@ -119,6 +180,76 @@ mkdirSync("runs", { recursive: true })
 // cannot do better than its resolution, and pretending otherwise is how the
 // minute version read as safe for as long as it did.
 const stamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "")
+
+/**
+ * THE ENDING OF A RUN THAT WAS STOPPED AT ITS CAP.
+ *
+ * Written here rather than in the watchdog because the spans above are only
+ * complete now — see `stoppedRun` in scripts/spend-caps.ts. Its own prefix, so
+ * the gallery cannot read a stopped run as an empty map, and so a night's
+ * `runs/` directory says at a glance which domains were cut off.
+ *
+ * `out` IS STILL CHECKED, and this is not belt-and-braces. The link phase skips
+ * on an aborted signal instead of throwing — deliberately, because by then every
+ * entity is found, judged and cited and the edges are an enrichment on top of a
+ * map that already exists. So a cap that trips during linking gives back a real
+ * map with fewer edges, and that map is worth writing as a map. Only a stop that
+ * left nothing to write takes the branch below.
+ */
+if (out === null && capStop.trip) {
+  const path = `runs/stopped-${anchor.replace(/\W+/g, "-")}-${stamp}.json`
+  writeFileSync(
+    path,
+    JSON.stringify(
+      stoppedRun({
+        engine: "sweep",
+        domain: anchor,
+        trip: capStop.trip,
+        finalUsd: spans.totalUsd(),
+        seconds: (Date.now() - startedAt) / 1000,
+        spans: spanRows,
+      }),
+      null,
+      2,
+    ),
+  )
+  console.log(`\n${"=".repeat(80)}`)
+  console.log(cappedReason(capStop.trip, "sweep"))
+  console.log(
+    `\n$${spans.totalUsd().toFixed(4)} spent in total — $${(spans.totalUsd() - capStop.trip.spentUsd).toFixed(4)} ` +
+      `of it by calls already in flight when the cap fired, which is what the reserve is for.`,
+  )
+  console.log(`\nwrote ${path} (${spanRows.length} spans, ${searched.length} queries logged)`)
+  // Not `fatal`: nothing failed. A caller — scripts/batch.ts above all — needs to
+  // tell "this run cost what it was allowed to cost" from "this run broke",
+  // because the first must not be retried and the second should be.
+  process.exit(EXIT.capped)
+}
+
+const { stats, entities } = out!
+const keep = entities.filter((e) => e.kind !== "noise")
+const count = (arr: string[]) => arr.reduce<Record<string, number>>((a, k) => ((a[k] = (a[k] ?? 0) + 1), a), {})
+
+console.log(`\n${"=".repeat(80)}`)
+console.log(`${keep.length} on the map (${entities.length - keep.length} judged noise) from ${stats.hosts} hosts`)
+console.log(`kinds     `, count(keep.map((e) => e.kind)))
+console.log(`relations `, count(keep.map((e) => e.relation)))
+console.log(`\n${stats.queries} queries · ${stats.serpCalls} SERP calls · ${stats.results} results`)
+console.log(`tokens ${stats.tokIn.toLocaleString()} in / ${stats.tokOut.toLocaleString()} out`)
+console.log(`$${stats.usd.toFixed(4)} · ${stats.seconds.toFixed(0)}s`)
+
 const path = `runs/sweep-${anchor.replace(/\W+/g, "-")}-${stamp}.json`
 writeFileSync(path, JSON.stringify({ ...out, searched }, null, 2))
 console.log(`\nwrote ${path} (${searched.length} queries logged)`)
+
+// A MAP THAT WAS STILL STOPPED. Only reachable when the cap fired during the
+// link phase, which skips on an aborted signal rather than throwing, so the
+// engine returned everything it had found with some pairs left unlinked. The map
+// above is real and is written as a map; this says why it has fewer edges than
+// it would have had, and exits `capped` so a batch does not retry a domain that
+// will cost the same cap again.
+if (capStop.trip) {
+  console.log(`\n${cappedReason(capStop.trip, "sweep")}`)
+  console.log(`The map above is complete; the cap stopped it while it was linking.`)
+  process.exit(EXIT.capped)
+}

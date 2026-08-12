@@ -27,6 +27,14 @@ export const EXIT = {
   auth: 4,
   /** Rate limited or overloaded — the same run might work later. */
   backoff: 5,
+  /**
+   * The run cost what one run is allowed to cost and was stopped at it. Not a
+   * failure of the provider, the market or the code, and — unlike every other
+   * code here — NOT SOMETHING TO RETRY: the next attempt spends the same cap to
+   * reach the same place. `scripts/batch.ts` branches on exactly this to skip
+   * its retry, which is why it is a code and not a message.
+   */
+  capped: 6,
   /** Anything else. */
   other: 1,
 } as const

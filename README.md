@@ -183,11 +183,19 @@ infinity, so that half never fires until you set a number. All 22 stored sweeps
 carrying a kernel block ran with it off and demoted zero hosts on it. The
 commercial-stance half is live and does fire.
 
-**The spend ceiling brakes starting runs, not running ones.** The web app refuses
-to begin a run once cumulative model spend crosses your limit. It cannot halt a
-run already going, it does not meter web access, and two requests can pass it
-together. Put `KB_USER` and `KB_PASSWORD` on anything reachable, and read
-[DEPLOY.md](./DEPLOY.md).
+**Every run is stopped at a price, while it is running.** A watchdog subscribes
+to the run's own span stream — which counts model *and* search *and* fetch, where
+a provider's usage figure counts one of the three — and ends the run just below
+its cap, holding back a reserve so the ending can be written rather than
+discovered. The web app caps a map at $0.41 on a 300s host and adds a day
+budget, a per-visitor allowance and a concurrency limit, all claimed in one
+transaction. The CLI caps a run at $8.00 and a `batch` list at $50.00; set
+`OPENKB_CLI_RUN_CAP_USD` or `OPENKB_BATCH_CAP_USD` to change either, or to the
+word `off` to remove it. A stopped run is recorded, with its spans, and says
+which cap stopped it. `OPENKB_CEILING_USD` survives underneath as a
+provider-side preflight backstop, and it is the one thing here that cannot halt a
+run already going. Put `KB_USER` and `KB_PASSWORD` on anything reachable, and
+read [DEPLOY.md](./DEPLOY.md).
 
 <br />
 

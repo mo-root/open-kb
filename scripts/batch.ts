@@ -4,6 +4,11 @@
  * Usage:  set -a && . ./.env && set +a && npx tsx scripts/batch.ts scripts/gallery-domains.txt
  *         npx tsx scripts/batch.ts list.txt --concurrency 2 --queries 60 --timeout 1800
  *         npx tsx scripts/batch.ts list.txt --resume runs/batch-20260810T151102.jsonl
+ *         OPENKB_BATCH_CAP_USD=310 npx tsx scripts/batch.ts scripts/gallery-domains.txt
+ *
+ * The list stops itself at $50.00 and each run inside it at $8.00; both are
+ * argued in `scripts/spend-caps.ts`, and the fourth form above is what the
+ * 79-domain gallery list wants if it is to finish in one go.
  *
  * WHY THIS IS NOT A SHELL LOOP. Building a gallery means fifty sweeps back to
  * back — about ten hours and eighty dollars at the rates in `runs/`. Three
@@ -33,6 +38,14 @@
  */
 import { spawn } from "node:child_process"
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs"
+import { EXIT } from "./fatal.js"
+import {
+  CLI_LIMIT_VARS,
+  DEFAULT_LIST_CAP_USD,
+  DEFAULT_RUN_CAP_USD,
+  capUsdOrExit,
+  listRoom,
+} from "./spend-caps.js"
 
 interface Outcome {
   anchor: string
@@ -41,6 +54,10 @@ interface Outcome {
   detail: string
   seconds: number
   usd: number | null
+  /** The child stopped itself at the per-run cap. Not a failure and not a
+   *  success: the money was spent, the map was not finished, and retrying would
+   *  spend the same cap to reach the same place. */
+  capped?: true
   attempt: number
   at: string
 }
@@ -119,6 +136,37 @@ const TIMEOUT_S = flag("timeout", 3600)
 
 const RETRIES = flag("retries", 1, 0)
 
+/**
+ * TWO CAPS, BECAUSE THIS FILE MULTIPLIES.
+ *
+ * The three things this file was built to survive — a run that hangs, a run that
+ * dies, the batch itself dying — are all about TIME, and every one of them was
+ * closed. Money was not: `spent` below was printed after every domain and
+ * compared to nothing, so a 50-domain list projected to $69 at the measured
+ * median run and $187 at the worst, and nothing in this file could stop it. It
+ * is the largest single exposure in the repo, because it is the only entrypoint
+ * a person deliberately walks away from.
+ *
+ *   per run    enforced by the CHILD, not here. Each sweep is its own process
+ *              and `scripts/sweep.ts` now caps itself against its own span
+ *              stream, which is the only place that can see a run's spending as
+ *              it happens — this process sees a domain's cost once, when the
+ *              child has already exited and the money is gone. `process.env` is
+ *              inherited by every child (see `spawn` below), so an operator's
+ *              `OPENKB_CLI_RUN_CAP_USD` reaches all of them, and the default
+ *              applies when they set nothing. Read here only so the arithmetic
+ *              below can reserve against it and so the header line can quote it.
+ *   per list   enforced here, and it is the one that matters: no single run cap
+ *              bounds fifty runs.
+ *
+ * `scripts/spend-caps.ts` chooses both defaults and defends them — including why
+ * the per-list default is deliberately TIGHT where the per-run one is loose:
+ * stopping a list costs nothing, because `--resume` picks up exactly what is
+ * still owed, while stopping a run costs the run.
+ */
+const RUN_CAP_USD = capUsdOrExit(CLI_LIMIT_VARS.runCap, DEFAULT_RUN_CAP_USD)
+const LIST_CAP_USD = capUsdOrExit(CLI_LIMIT_VARS.listCap, DEFAULT_LIST_CAP_USD)
+
 const anchors = readFileSync(listPath, "utf8")
   .split("\n")
   .map((l) => l.replace(/#.*$/, "").trim())
@@ -173,10 +221,25 @@ const stamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "")
 const manifest = resumeFrom ?? `runs/batch-${stamp}.jsonl`
 
 const todo = queue.filter((a) => !alreadyDone.has(a))
+const money =
+  (LIST_CAP_USD === null ? `no list cap (${CLI_LIMIT_VARS.listCap} is off)` : `$${LIST_CAP_USD.toFixed(2)} for the list`) +
+  " · " +
+  (RUN_CAP_USD === null ? `no run cap (${CLI_LIMIT_VARS.runCap} is off)` : `$${RUN_CAP_USD.toFixed(2)} a run`)
 console.log(
   `${todo.length} to build` +
     (alreadyDone.size ? `, ${alreadyDone.size} already done` : "") +
     ` · ${CONCURRENCY} at a time · ${TIMEOUT_S}s cap each · manifest ${manifest}`,
+)
+// Said before anything is spent, and said in dollars. The projection is the
+// point: the measured median run is $1.386 and the worst is $3.736, so a reader
+// can see whether their list fits inside the cap before it stops halfway. Left
+// off an empty list, where "$0-$0" is arithmetic nobody asked for.
+console.log(
+  money +
+    (todo.length
+      ? ` · this list projects to $${(todo.length * 1.386).toFixed(0)}-$${(todo.length * 3.736).toFixed(0)} ` +
+        `at the measured median and worst run`
+      : ""),
 )
 if (!todo.length) {
   console.log("nothing left to do")
@@ -250,29 +313,61 @@ function runOne(anchor: string, attempt: number): Promise<Outcome> {
       const mine = after.find((f) => !before.has(f) && f.startsWith(`sweep-${anchor.replace(/\W+/g, "-")}-`))
       if (mine) before.add(mine)
 
+      // STOPPED AT ITS OWN CAP, and this is read from the EXIT CODE rather than
+      // from the files, because it is the one outcome the files cannot tell
+      // apart. A capped sweep writes `runs/stopped-<anchor>-<stamp>.json`, whose
+      // name begins with neither prefix this function looks for and whose shape
+      // is deliberately not a map. Without this branch the domain would land in
+      // the manifest as `exit 6` — a mystery — and be retried, which spends the
+      // same cap a second time to reach the same place.
+      const capped = code === EXIT.capped
+      const stopFile = capped
+        ? after.find((f) => !before.has(f) && f.startsWith(`stopped-${anchor.replace(/\W+/g, "-")}-`))
+        : undefined
+      if (stopFile) before.add(stopFile)
+
       let usd: number | null = null
-      if (mine) {
+      const costOf = (file: string): number | null => {
         try {
-          const d = JSON.parse(readFileSync(`runs/${mine}`, "utf8")) as { stats?: { usd?: number } }
-          usd = typeof d.stats?.usd === "number" ? d.stats.usd : null
+          const d = JSON.parse(readFileSync(`runs/${file}`, "utf8")) as { stats?: { usd?: number } }
+          return typeof d.stats?.usd === "number" ? d.stats.usd : null
         } catch {
           // A truncated file is a failed run wearing a filename. Left null, and
           // `ok` below is false because there is no readable map.
+          return null
         }
       }
+      if (mine) usd = costOf(mine)
+      // The stopped record carries the real total, in-flight overrun and all. If
+      // it cannot be read, the run is charged at its cap: the money is gone
+      // either way, and the list's budget must not be told a stopped run was
+      // free. Same pessimism `count()` in lib/spend-limits.ts applies to a run
+      // whose ending was lost.
+      if (capped && usd === null) usd = (stopFile ? costOf(stopFile) : null) ?? RUN_CAP_USD
 
       // WROTE A READABLE MAP, not "exited zero". A sweep that throws after
       // writing is still a map, and one that exits zero having written nothing
       // is not — the second is what a killed process looks like from here.
+      //
+      // A CAPPED RUN THAT WROTE A MAP IS STILL A MAP. The cap can fire during
+      // the link phase, which skips instead of throwing, and the sweep then
+      // writes a complete map with fewer edges and exits `capped` anyway. There
+      // is nothing to retry and nothing to mourn: the row says `ok`, and the
+      // detail says the cap is why the edges are thin.
       const ok = Boolean(mine) && usd !== null
       resolve({
         anchor,
         ok,
+        ...(capped ? { capped: true as const } : {}),
         detail: ok
-          ? `runs/${mine}`
-          : killed
-            ? `killed at the ${TIMEOUT_S}s cap`
-            : `exit ${code}${tail.trim() ? ` — ${tail.trim().split("\n").slice(-3).join(" / ")}` : ""}`,
+          ? capped
+            ? `runs/${mine} — stopped at the run cap while linking`
+            : `runs/${mine}`
+          : capped
+            ? `stopped at the $${(RUN_CAP_USD ?? 0).toFixed(2)} run cap${stopFile ? ` — runs/${stopFile}` : ""}`
+            : killed
+              ? `killed at the ${TIMEOUT_S}s cap`
+              : `exit ${code}${tail.trim() ? ` — ${tail.trim().split("\n").slice(-3).join(" / ")}` : ""}`,
         seconds,
         usd,
         attempt,
@@ -300,16 +395,63 @@ function runOne(anchor: string, attempt: number): Promise<Outcome> {
 const outcomes: Outcome[] = []
 let cursor = 0
 let spent = 0
+/** Runs started and not yet settled. Held against the budget at a whole run cap
+ *  each, which is what makes the list cap a ceiling rather than a hope —
+ *  `listRoom` in scripts/spend-caps.ts argues it. */
+let inFlight = 0
+/** Set once the budget refuses another run. A flag rather than a list: both
+ *  workers can reach the check, and which domain each was holding at that
+ *  instant is an interleaving detail. What is still owed is read off the
+ *  outcomes at the end, where it is the same answer every time. */
+let budgetStopped = false
 
 async function worker(): Promise<void> {
   for (;;) {
     const i = cursor++
     if (i >= todo.length) return
     const anchor = todo[i]!
-    let out = await runOne(anchor, 1)
-    for (let attempt = 2; !out.ok && attempt <= RETRIES + 1; attempt++) {
-      console.log(`  ${anchor} failed (${out.detail}) — retry ${attempt - 1} of ${RETRIES}`)
-      out = await runOne(anchor, attempt)
+
+    // THE CHECK THAT DID NOT EXIST. `spent` was printed on every line below and
+    // compared to nothing, so this loop would start the fiftieth domain exactly
+    // as readily as the first. It is made BEFORE the run rather than after,
+    // because after is a reading taken when the money is already gone.
+    //
+    // Nothing in flight is killed. A sweep 20 minutes in has spent nearly all of
+    // what it will spend and is about to write a map for it; killing it converts
+    // money into nothing, which is the outcome this whole file is arranged to
+    // avoid. The budget stops the NEXT run, and the reservation above is what
+    // keeps that honest.
+    const room = listRoom({ settledUsd: spent, inFlight, runCapUsd: RUN_CAP_USD, listCapUsd: LIST_CAP_USD })
+    if (!room.ok) {
+      // Said once, by whichever worker gets here first. The other reaches the
+      // same conclusion a moment later and has nothing to add.
+      if (!budgetStopped) {
+        console.log(
+          `\nstopping: $${room.committedUsd.toFixed(2)} of the $${(LIST_CAP_USD ?? 0).toFixed(2)} list budget is ` +
+            `committed` +
+            (inFlight ? ` (${inFlight} still running, held at $${(RUN_CAP_USD ?? 0).toFixed(2)} each)` : "") +
+            `, which leaves no room for another run. Nothing is lost — every map built is on disk and the ` +
+            `manifest knows what is owed.`,
+        )
+      }
+      budgetStopped = true
+      cursor = todo.length
+      return
+    }
+
+    inFlight++
+    let out: Outcome
+    try {
+      out = await runOne(anchor, 1)
+      // A CAPPED RUN IS NOT RETRIED. Every other failure here is worth another
+      // attempt because it might not happen twice; this one will, and it costs a
+      // full cap to find out. See `EXIT.capped`.
+      for (let attempt = 2; !out.ok && !out.capped && attempt <= RETRIES + 1; attempt++) {
+        console.log(`  ${anchor} failed (${out.detail}) — retry ${attempt - 1} of ${RETRIES}`)
+        out = await runOne(anchor, attempt)
+      }
+    } finally {
+      inFlight--
     }
     outcomes.push(out)
     spent += out.usd ?? 0
@@ -317,7 +459,7 @@ async function worker(): Promise<void> {
     const n = outcomes.length
     const failed = outcomes.filter((o) => !o.ok).length
     console.log(
-      `[${n}/${todo.length}] ${out.ok ? "ok  " : "FAIL"} ${anchor.padEnd(24)} ` +
+      `[${n}/${todo.length}] ${out.ok ? "ok  " : out.capped ? "CAP " : "FAIL"} ${anchor.padEnd(24)} ` +
         `${String(out.seconds).padStart(5)}s ${out.usd === null ? "     —" : `$${out.usd.toFixed(3)}`}` +
         `  ·  $${spent.toFixed(2)} spent, ${failed} failed`,
     )
@@ -328,15 +470,53 @@ const startedAt = Date.now()
 await Promise.all(Array.from({ length: Math.min(CONCURRENCY, todo.length) }, () => worker()))
 
 const failed = outcomes.filter((o) => !o.ok)
+const capped = outcomes.filter((o) => o.capped)
+/** What the budget left undone, in list order — read off the outcomes rather
+ *  than accumulated by the workers, so two workers stopping at once cannot
+ *  reorder it or drop the domain one of them was holding. */
+const attempted = new Set(outcomes.map((o) => o.anchor))
+const unstarted = budgetStopped ? todo.filter((a) => !attempted.has(a)) : []
 console.log(`\n${"=".repeat(78)}`)
 console.log(
-  `${outcomes.length - failed.length}/${outcomes.length} built · $${spent.toFixed(2)} · ` +
-    `${Math.round((Date.now() - startedAt) / 60000)} minutes`,
+  `${outcomes.length - failed.length}/${outcomes.length} built · $${spent.toFixed(2)}` +
+    (LIST_CAP_USD === null ? "" : ` of $${LIST_CAP_USD.toFixed(2)}`) +
+    ` · ${Math.round((Date.now() - startedAt) / 60000)} minutes`,
 )
+if (capped.length) {
+  console.log(
+    `\n${capped.length} ${capped.length === 1 ? "domain" : "domains"} stopped at the ` +
+      `$${(RUN_CAP_USD ?? 0).toFixed(2)} run cap. A resume will run ${capped.length === 1 ? "it" : "them"} ` +
+      `again under whatever ${CLI_LIMIT_VARS.runCap} is set to then; under the same cap ` +
+      `${capped.length === 1 ? "it" : "they"} will stop in the same place.`,
+  )
+}
 if (failed.length) {
   console.log(`\n${failed.length} failed:`)
   for (const f of failed) console.log(`  ${f.anchor.padEnd(24)} ${f.detail}`)
+}
+// THE RESUME LINE IS NOT ONLY FOR FAILURES. A list stopped by its own budget has
+// nothing in `failed` and everything still to do, and the whole argument for a
+// tight default list cap is that stopping costs nothing BECAUSE this line exists.
+// It used to print only when something had failed, which is exactly when a
+// budget-stopped batch would not have shown it.
+if (failed.length || unstarted.length) {
+  if (unstarted.length) {
+    console.log(
+      `\n${unstarted.length} not started: ${unstarted.slice(0, 6).join(", ")}` +
+        (unstarted.length > 6 ? `, and ${unstarted.length - 6} more` : "") +
+        `\nRaise ${CLI_LIMIT_VARS.listCap} — this list wants about ` +
+        `$${Math.ceil(todo.length * 3.736 + CONCURRENCY * (RUN_CAP_USD ?? 0))} to be sure of finishing in one ` +
+        `go — or just resume, as often as it takes.`,
+    )
+  }
   console.log(`\nresume with:  npx tsx scripts/batch.ts ${listPath} --resume ${manifest}`)
 }
 // Non-zero when anything failed, so a wrapper or a cron job can tell.
+//
+// A DOMAIN THAT WAS NEVER STARTED IS NOT A FAILURE. A batch that stopped at its
+// own budget did exactly what it was told to do, and its unstarted domains are
+// not in `failed` — so a nightly wrapper is not paged for a limit working. A
+// domain that STARTED and hit the per-run cap without producing a map is
+// counted, because from here that domain has no map, which is the question this
+// exit code answers.
 process.exit(failed.length ? 1 : 0)

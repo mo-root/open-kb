@@ -12,6 +12,12 @@
  * defaults to 600s, overridable via OPENKB_SWARM_WALL (ms) — reasons at the
  * constant below.
  *
+ * Underneath the ledger's ceiling there is now a hard stop at TWICE it, watching
+ * realized spend rather than reservations — the overruns the ledger structurally
+ * cannot catch. `OPENKB_CLI_RUN_CAP_USD` overrides it, `off` removes it, and a
+ * run stopped by it is written to `runs/stopped-<domain>-<stamp>.json` with its
+ * spans and its ending. The watchdog below argues all of it.
+ *
  * --from-sweep <path>: the sweep→swarm handoff. Loads a prior sweep run of
  * the SAME domain (validated; a different market is refused by name) and
  * seeds the board from it when orientation lands: peek missions that verify
@@ -52,7 +58,13 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { join } from "node:path"
 import { openrouter } from "@openrouter/ai-sdk-provider"
-import { SpanStream, composePrompt, type Span } from "../packages/core/src/index.js"
+import {
+  SpanStream,
+  composePrompt,
+  withSpendCap,
+  type Span,
+  type SpendTrip,
+} from "../packages/core/src/index.js"
 import { brightDataFetch, brightDataSearch, priceForModel } from "../packages/providers/src/index.js"
 import {
   fromSweepArgv,
@@ -61,7 +73,14 @@ import {
   validateSweepRun,
   type SweepRunLike,
 } from "../packages/swarm/src/index.js"
-import { fatal } from "./fatal.js"
+import { EXIT, fatal } from "./fatal.js"
+import {
+  CLI_LIMIT_VARS,
+  SWARM_CAP_HEADROOM,
+  capUsdOrExit,
+  cappedReason,
+  stoppedRun,
+} from "./spend-caps.js"
 
 // The AI SDK's warning hook, installed as a function: real SDK warnings still
 // print (prefixed, once per event), while the OpenRouter provider's per-turn
@@ -154,6 +173,7 @@ const creds = {
 }
 
 const spans = new SpanStream()
+const startedAt = Date.now()
 
 // The span stream, kept: run 1's spans died with the process, and "did the
 // lead ever attempt a spawn" became unanswerable an hour later. Every span —
@@ -164,39 +184,147 @@ const spanPump = (async () => {
   for await (const s of spans.stream()) spanRows.push(s)
 })()
 
+/**
+ * THE CAP THE LEDGER CANNOT BE.
+ *
+ * `ceilingUsd` above is real and the `Ledger` is not decoration — it reserves
+ * every mission's allowance out of the pool before the mission runs, and it
+ * refuses the ones that do not fit. What it cannot do is enforce, because it
+ * only ever sees money that has ALREADY BEEN PAID: `overrunAbort` is consulted
+ * at a tool boundary with the caller's own figure, so by its own comment it
+ * "stops the NEXT call, never the increment that crossed". Measured across the
+ * 44 missions in the swarm runs in `runs/`: 24 settled above their allowance,
+ * the worst at 2.17×. And `ledger.spentUsd()` — the realized total — is read in
+ * exactly three places in this codebase, all three of them reporting.
+ *
+ * So this watches realized spend and the ledger plans against reservations.
+ * They catch different failures and neither replaces the other.
+ *
+ * DERIVED FROM THE CEILING, not from the flat CLI default: a run told to spend
+ * $1.50 and a run told to spend $5.00 are different sizes of run, and only this
+ * ceiling knows which one this is. `SWARM_CAP_HEADROOM` in scripts/spend-caps.ts
+ * argues the multiple. `OPENKB_CLI_RUN_CAP_USD` overrides it outright.
+ */
+const RUN_CAP_USD = capUsdOrExit(CLI_LIMIT_VARS.runCap, SWARM_CAP_HEADROOM * ceilingUsd)
+const abort = new AbortController()
+/** A holder, not a bare `let`: the only writer is the watchdog's callback and
+ *  the compiler cannot see into it. */
+const capStop: { trip: SpendTrip | null; ending: unknown } = { trip: null, ending: undefined }
+/** A run that is already over must not be stopped; scripts/sweep.ts carries the
+ *  argument. It matters more here, because this run ends by DRAINING — every
+ *  in-flight mission is awaited and settled after the last decision — so the
+ *  gap between "the orchestrator has finished" and "the spans have stopped
+ *  arriving" is wider than a sweep's. */
+const engine = { running: true }
+
+console.log(
+  RUN_CAP_USD === null
+    ? `spend cap off (${CLI_LIMIT_VARS.runCap}); the ledger's $${ceilingUsd.toFixed(2)} ceiling is the only bound`
+    : `spend cap $${RUN_CAP_USD.toFixed(2)} on a $${ceilingUsd.toFixed(2)} ceiling (${CLI_LIMIT_VARS.runCap})`,
+)
+
 // Every line wears the running total the span stream has actually billed —
 // model turns via the runner's hooks, SERP rows and fetches at the port —
 // so "did this just blow past the ceiling" is read off the screen, not
-// guessed. The ledger enforces; this only shows.
-const run = await runSwarm({
-  domain,
-  ceilingUsd,
-  wallClockMs,
-  // Lane count. Six was the design's number; the env widens the pool when the
-  // model provider's rate allows — an idle lane costs nothing, a missing one
-  // queues work behind the clock.
-  lanes: Number(process.env.OPENKB_SWARM_LANES ?? 0) || undefined,
-  ...(familyFloor === undefined ? {} : { familyFloor }),
-  ...(fromSweep === undefined ? {} : { fromSweep }),
-  skill,
-  classifyPrompt,
-  search: brightDataSearch(creds),
-  fetch: brightDataFetch(creds),
-  models: { lead: openrouter(LEAD), peek: openrouter(PEEK), read: openrouter(READ), dig: openrouter(DIG) },
-  pricing: {
-    lead: priceForModel(LEAD),
-    peek: priceForModel(PEEK),
-    read: priceForModel(READ),
-    dig: priceForModel(DIG),
+// guessed. The ledger plans; the cap above enforces; this shows.
+const run = await withSpendCap(
+  runSwarm({
+    domain,
+    ceilingUsd,
+    wallClockMs,
+    // Lane count. Six was the design's number; the env widens the pool when the
+    // model provider's rate allows — an idle lane costs nothing, a missing one
+    // queues work behind the clock.
+    lanes: Number(process.env.OPENKB_SWARM_LANES ?? 0) || undefined,
+    ...(familyFloor === undefined ? {} : { familyFloor }),
+    ...(fromSweep === undefined ? {} : { fromSweep }),
+    skill,
+    classifyPrompt,
+    search: brightDataSearch(creds),
+    fetch: brightDataFetch(creds),
+    models: { lead: openrouter(LEAD), peek: openrouter(PEEK), read: openrouter(READ), dig: openrouter(DIG) },
+    pricing: {
+      lead: priceForModel(LEAD),
+      peek: priceForModel(PEEK),
+      read: priceForModel(READ),
+      dig: priceForModel(DIG),
+    },
+    spans,
+    runId: `cli-${Date.now()}`,
+    onLog: (line) => console.log(`$${spans.totalUsd().toFixed(3)}  ${line}`),
+    signal: abort.signal,
+  }).finally(() => {
+    engine.running = false
+  }),
+  {
+    spans,
+    capUsd: RUN_CAP_USD,
+    abort,
+    stillRunning: () => engine.running,
+    announce: (trip) => console.error(`\n${cappedReason(trip, "swarm")}`),
+    record: (trip) => {
+      capStop.trip = trip
+    },
   },
-  spans,
-  runId: `cli-${Date.now()}`,
-  onLog: (line) => console.log(`$${spans.totalUsd().toFixed(3)}  ${line}`),
-}).catch((e) => fatal(e, "swarm"))
+).catch((e: unknown) => {
+  if (!capStop.trip) return fatal(e, "swarm")
+  // THE ORCHESTRATOR'S OWN ENDING, off the error it threw. `abortedEnd()` closes
+  // the books before it rejects — in-flight missions settle, every claim is
+  // closed, and the `SwarmEnding` it attaches carries the node and edge counts,
+  // the realized spend and the full residue: precisely what would have been done
+  // next, ranked. Dropping that on the floor would throw away the most useful
+  // thing a stopped swarm produces.
+  capStop.ending = (e as { ending?: unknown }).ending
+  return null
+})
 spans.close()
+await spanPump
 
-const out = serializeSwarmRun(run)
-const { ending, finish } = run
+/**
+ * THE ENDING OF A SWARM STOPPED AT ITS CAP.
+ *
+ * The orchestrator's abort path rejects rather than returning, so there is no
+ * map to serialize — `abortedEnd()` is the one ending of the seven that does not
+ * produce a renderable artifact, and that is its behaviour, not something this
+ * cap introduced. What it does produce is the ending above and the spans below,
+ * and both are written: the run cost real money and must not vanish because it
+ * was stopped on purpose. Its own filename prefix, so nothing reads a stopped
+ * swarm as an empty map.
+ */
+if (run === null && capStop.trip) {
+  mkdirSync("runs", { recursive: true })
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "")
+  const path = `runs/stopped-${domain.replace(/\W+/g, "-")}-${stamp}.json`
+  writeFileSync(
+    path,
+    JSON.stringify(
+      stoppedRun({
+        engine: "swarm",
+        domain,
+        trip: capStop.trip,
+        finalUsd: spans.totalUsd(),
+        seconds: (Date.now() - startedAt) / 1000,
+        spans: spanRows,
+        ending: capStop.ending,
+      }),
+      null,
+      2,
+    ),
+  )
+  console.log(`\n${"=".repeat(80)}`)
+  console.log(cappedReason(capStop.trip, "swarm"))
+  console.log(
+    `\n$${spans.totalUsd().toFixed(4)} spent in total against a $${ceilingUsd.toFixed(2)} ledger ceiling — ` +
+      `$${(spans.totalUsd() - capStop.trip.spentUsd).toFixed(4)} of it by calls already in flight when the ` +
+      `cap fired, which is what the reserve is for.`,
+  )
+  console.log(`\nwrote ${path} (${spanRows.length} spans)`)
+  // Nothing failed; the run cost what it was allowed to cost. See EXIT.capped.
+  process.exit(EXIT.capped)
+}
+
+const out = serializeSwarmRun(run!)
+const { ending, finish } = run!
 const count = (arr: string[]) => arr.reduce<Record<string, number>>((a, k) => ((a[k] = (a[k] ?? 0) + 1), a), {})
 
 console.log(`\n${"=".repeat(80)}`)
@@ -228,7 +356,8 @@ const path = `runs/swarm-${domain.replace(/\W+/g, "-")}-${stamp}.json`
 writeFileSync(path, JSON.stringify(out, null, 2))
 console.log(`\nwrote ${path}`)
 
-await spanPump
+// `spanPump` is already drained: it is awaited beside `spans.close()`, above,
+// because the stopped-run branch there needs every span too.
 const spansPath = path.replace(/\.json$/, ".spans.jsonl")
 writeFileSync(spansPath, spanRows.map((s) => JSON.stringify(s)).join("\n") + "\n")
 console.log(`wrote ${spansPath} (${spanRows.length} spans)`)

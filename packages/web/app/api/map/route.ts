@@ -1,20 +1,20 @@
 import { after } from "next/server"
 import { openrouter, createOpenRouter } from "@openrouter/ai-sdk-provider"
 import { sweep } from "@open-kb/sweep"
-import { queriesThatFit, runSeconds, type SpanStream } from "@open-kb/core"
+import {
+  queriesThatFit,
+  runSeconds,
+  withSpendCap,
+  type SpanStream,
+  type SpendCapOpts,
+} from "@open-kb/core"
 import { priceForModel } from "@open-kb/providers"
 import { normalizeDomain } from "@/lib/anchor"
 import { createRun, failRun, finishRun } from "@/lib/runs"
 import { guarded, namedFaults } from "@/lib/api-error"
 import { DEMO_REPO } from "@/lib/demo"
 import { runGate } from "@/lib/public-runs"
-import {
-  LIMIT_VARS,
-  MEASURED_RUN_COST,
-  noteRunEnded,
-  spendGate,
-  tripAtUsd,
-} from "@/lib/spend-limits"
+import { LIMIT_VARS, MEASURED_RUN_COST, noteRunEnded, spendGate } from "@/lib/spend-limits"
 
 /**
  * Start a map. Returns as soon as the run has an id, the sweep itself runs in
@@ -554,7 +554,7 @@ export const POST = guarded(async (req: Request) => {
   // which is the correct nesting — a run stopped for money still has to be
   // recorded before the deadline arrives. Each cancels its own watcher when the
   // task ends, however it ends, so neither can fire into a finished run.
-  after(withDeadline(withSpendCap(task, record, spend.runCapUsd), record, startedAt))
+  after(withDeadline(withSpendCap(task, spendCapFor(record, spend.runCapUsd)), record, startedAt))
 
   // THE ROW BEFORE THE ID. The browser opens the stream the instant it has a
   // run id, and that request is a different invocation with an empty registry
@@ -684,32 +684,15 @@ function withDeadline(
 /**
  * End the run just before it costs more than one map is allowed to cost.
  *
- * WHAT THIS IS FOR, and why the check that already existed is not it. The
- * ceiling above is read once, before the run, from the provider's cumulative
- * key usage. A run that starts a cent under it can then spend for four minutes
- * with nothing watching, and the reading that would have caught it is taken
- * after the money is gone. A cap that is only checked before the spending is
- * not a cap on the spending; it is a cap on STARTING, which is a different and
- * much weaker promise.
+ * THE WATCHDOG ITSELF IS `withSpendCap` IN `@open-kb/core`, and every general
+ * argument for it is written there: why it reads the span stream rather than the
+ * provider's usage figure, why it subscribes rather than polls, why it trips
+ * below the cap, and why the abort comes before the record. It lives in core
+ * because this surface is no longer its only caller — the three CLI entrypoints
+ * in `scripts/` had no dollar bound at all, and they enforce the same one now.
  *
- * WHY THE SPAN STREAM AND NOT THE PROVIDER. `SpanStream.runningUsd` is this
- * run's own total, updated as each span lands, and it counts model AND search
- * AND fetch. The provider's figure counts one of those three — and 58% to 77%
- * of a run's bill is Bright Data, which OpenRouter has never heard of. It is
- * also free: the number is already in hand, so watching it costs no request and
- * has no reading to fail.
- *
- * A SUBSCRIBER, NOT A POLL. `stream()` is a genuine fan-out — every consumer
- * gets its own cursor over the shared log — so this reads every span the pump
- * reads, wakes only when one is emitted, and unsubscribes on the way out. A
- * timer would either check too rarely to stop anything or spin for four
- * minutes.
- *
- * IT TRIPS BELOW THE CAP, at `tripAtUsd`, and the gap is the same idea as
- * `DEADLINE_MARGIN_S` in the other currency: between the span that crosses the
- * line and the engine reaching its next abort checkpoint, whatever was already
- * in flight still lands and still bills. lib/spend-limits.ts sizes that reserve
- * and shows its working.
+ * WHAT IS LEFT HERE is the part that is only true of this surface, and it is the
+ * three fields below.
  *
  * ORDER, AND IT IS THE REVERSE OF `withDeadline`'S. That watchdog records the
  * run and then aborts, because `failRun` reads the abort signal to decide
@@ -717,15 +700,14 @@ function withDeadline(
  * stopped it is kept." is a lie told to a visitor who stopped nothing. Correct
  * there, wrong here: `failRun` is a round trip to Postgres, and a run that goes
  * on buying searches for the length of a database write is a run spending
- * exactly the money this watchdog exists to stop. Thirty seconds of clock is
- * something to spend on a clean ending; dollars are not. So the abort comes
- * FIRST and the record second — and the sentence survives because
- * `namedFaults.runCostCeiling` is app-authored, which `failRun` now prefers
- * over its cancellation literal for precisely this case.
+ * exactly the money the watchdog exists to stop. So core aborts FIRST and calls
+ * `record` second — and the sentence survives because
+ * `namedFaults.runCostCeiling` is app-authored, which `failRun` now prefers over
+ * its cancellation literal for precisely this case.
  *
- * The abort and the `failRun` call are in one synchronous block, so no
- * microtask can slip between them: the engine's own throw reaches the task's
- * catch, and its `failRun`, only after this one has already claimed the ending.
+ * The abort and the `failRun` call are in one synchronous block, so no microtask
+ * can slip between them: the engine's own throw reaches the task's catch, and
+ * its `failRun`, only after this one has already claimed the ending.
  * `isFirstEnding` in lib/runs.ts drops the second, which is what keeps this
  * sentence on the row.
  *
@@ -734,66 +716,30 @@ function withDeadline(
  * "something went wrong, quote this ref" — correct for an OpenRouter error and
  * exactly wrong for a deliberate, explicable stop that a visitor is looking at
  * right now.
+ *
+ * THE STATUS CHECK, because a run can end while its last spans are still
+ * arriving. See `stillRunning` in core.
  */
-function withSpendCap(
-  task: Promise<void>,
+function spendCapFor(
   record: { id: string; abort: AbortController; status: string; spans: SpanStream },
   capUsd: number | null,
-): Promise<void> {
-  // Off is off: no subscriber, no branch in the hot path, and the promise
-  // handed on is the one that came in.
-  if (capUsd === null) return task
-
-  const trip = tripAtUsd(capUsd)
-  /** Set BEFORE the write it guards, so the wrapper below knows there is an
-   *  ending in flight that it has to wait for. */
-  let stopping = false
-
-  const watching = (async () => {
-    for await (const span of record.spans.stream()) {
-      // A RUN THAT IS ALREADY OVER IS NOT STOPPED AGAIN. Closing the stream
-      // wakes this loop with whatever was still buffered, and the last span of
-      // a perfectly good run can sit above the trip point — the trip is below
-      // the cap, and the cap is above what a healthy run costs, but "above" is
-      // a median with a spread. Without this line such a run would be logged as
-      // capped after it had already succeeded.
-      if (record.status !== "running") break
-      if (span.runningUsd < trip) continue
-      stopping = true
+): SpendCapOpts {
+  return {
+    spans: record.spans,
+    capUsd,
+    abort: record.abort,
+    stillRunning: () => record.status === "running",
+    announce: (trip) =>
       console.error(
-        `[${record.id.slice(0, 8)}] spend cap: $${span.runningUsd.toFixed(4)} against this ` +
-          `deployment's $${capUsd.toFixed(2)} a map, stopping with $${(capUsd - trip).toFixed(2)} ` +
-          `held back so the ending can be written (${LIMIT_VARS.runCap})`,
-      )
-      // Before the record, deliberately, and in the same synchronous block as
-      // the call below it. See the note above: what is being raced here is
-      // money, not a log line.
-      record.abort.abort()
-      await failRun(record.id, namedFaults.runCostCeiling(capUsd, span.runningUsd))
-      // `failRun` closed the stream, so the loop would end here anyway.
-      // Breaking says so, and unsubscribes on the way out.
-      break
-    }
-  })()
-
-  return (async () => {
-    await task.catch(() => {})
-    // AWAITED ONLY WHEN IT IS DOING SOMETHING, and the asymmetry is deliberate.
-    // If this watcher stopped the run, its `failRun` is the run's ending and
-    // the invocation may not end in front of it. If it did not, the run ended
-    // some other way and this loop is either already finished — the stream is
-    // closed, which is the only thing a terminal write does — or parked on a
-    // stream nothing will ever close, which is a shape `finishRun` can produce
-    // by returning early for a record the registry has evicted. Awaiting
-    // unconditionally would hang the invocation on that case until the platform
-    // killed it; abandoning a parked subscriber costs one object that dies with
-    // the request.
-    if (stopping) {
-      await watching.catch((e: unknown) => {
-        console.error(`[${record.id.slice(0, 8)}] spend cap watcher stopped:`, e)
-      })
-    }
-  })()
+        `[${record.id.slice(0, 8)}] spend cap: $${trip.spentUsd.toFixed(4)} against this ` +
+          `deployment's $${trip.capUsd.toFixed(2)} a map, stopping with ` +
+          `$${trip.heldBackUsd.toFixed(2)} held back so the ending can be written ` +
+          `(${LIMIT_VARS.runCap})`,
+      ),
+    record: (trip) => failRun(record.id, namedFaults.runCostCeiling(trip.capUsd, trip.spentUsd)),
+    onRecordFailure: (e) =>
+      console.error(`[${record.id.slice(0, 8)}] spend cap watcher stopped:`, e),
+  }
 }
 
 /** The default `openrouter` export reads OPENROUTER_API_KEY at module scope,

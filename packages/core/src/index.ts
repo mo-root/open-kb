@@ -53,6 +53,13 @@ export {
   type SettleOutcome,
   type DrawOutcome,
 } from "./ledger.js"
+export {
+  withSpendCap,
+  reserveUsd,
+  tripAtUsd,
+  type SpendTrip,
+  type SpendCapOpts,
+} from "./spend-cap.js"
 export { BreakerTable, type BreakerState, type StrikeCount } from "./breaker.js"
 export {
   buildAuditPacket,
