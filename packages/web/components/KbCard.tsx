@@ -73,8 +73,14 @@ const n = (v: number) => v.toLocaleString("en-US");
  * the line, because the reader can argue with a zero and cannot argue with an
  * absence. The two showcase rows are conditional on the run having recorded
  * the field at all (see each), and on the six committed maps both are present
- * on all six: markets 5 · 3 · 3 · 8 · 4 · 2, links 487 · 517 · 1,796 · 3,017 ·
- * 2,351 · 6,283.
+ * on all six: markets 5 · 3 · 3 · 8 · 4 · 2, links 487 · 499 · 1,796 · 2,794 ·
+ * 1,969 · 4,080.
+ *
+ * Four of those six link counts moved when `withoutStolenNames` landed, because
+ * the maps carried rows wearing the anchor's own name and those rows had minted
+ * edges. The numbers here are what the card prints today; the JSON on disk still
+ * holds the larger ones, and that is the point of the repair rather than a
+ * disagreement with it.
  */
 export function KbCard({ kb, showcase = false }: { kb: KbSummary; showcase?: boolean }) {
   const m = kb.manifest;

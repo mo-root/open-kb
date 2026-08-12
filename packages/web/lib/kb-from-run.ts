@@ -1,5 +1,6 @@
 import { onMap } from "@open-kb/sweep"
-import type { Entity, SweepResult } from "@open-kb/sweep"
+import type { Entity, EntityEdge, SweepResult } from "@open-kb/sweep"
+import { withoutStolenNames } from "@open-kb/core"
 import { COMPANY_TYPES, nodeTypeOf, type NodeType } from "./nodeTypes"
 import type {
   GraphEdge,
@@ -269,9 +270,24 @@ interface Placed {
   relevance: number
 }
 
-function place(result: SweepResult): { kept: Placed[]; noise: Entity[] } {
+/**
+ * The map as this reader may show it, and the map's own edges beside it.
+ *
+ * `withoutStolenNames` is imported from the engine for the same reason `onMap`
+ * is: a stored map can hand a stranger the anchor's own name, and the browser
+ * and the exported vault have to reach the identical verdict about it. It is
+ * defined once, in core, where both can see it — the rule and its measurements
+ * are written down there. It is why `place` hands back `edges`: the edges a
+ * withdrawn name minted go with the name, and a caller that read
+ * `result.edges` separately would draw the ones this dropped.
+ *
+ * On every map written since the engine learned to refuse this at write time,
+ * it returns exactly what it was given.
+ */
+function place(result: SweepResult): { kept: Placed[]; noise: Entity[]; edges: EntityEdge[] } {
   const kept: Placed[] = []
   const noise: Entity[] = []
+  const map = withoutStolenNames(result)
 
   /**
    * The anchor is `company.md`. Drop it if it also comes back as a player.
@@ -285,7 +301,7 @@ function place(result: SweepResult): { kept: Placed[]; noise: Entity[] } {
    */
   const anchorHost = (result.anchor || "").trim().toLowerCase().replace(/^www\./, "")
 
-  for (const e of dedupe(result.entities)) {
+  for (const e of dedupe(map.entities)) {
     const host = (e.domain || e.name || "").trim().toLowerCase().replace(/^www\./, "")
     if (anchorHost && host === anchorHost) continue
 
@@ -305,7 +321,7 @@ function place(result: SweepResult): { kept: Placed[]; noise: Entity[] } {
       relevance: RELATION_WEIGHT[e.relation] ?? RELATION_WEIGHT.none,
     })
   }
-  return { kept, noise }
+  return { kept, noise, edges: map.edges }
 }
 
 /** An entity's provenance lanes: its `foundBy` entries trimmed, blanks
@@ -442,7 +458,7 @@ export function manifestOf(run: CompletedRun): KbManifest {
 }
 
 export function summaryOf(run: CompletedRun): KbSummary {
-  const { kept, noise } = place(run.result)
+  const { kept, noise, edges } = place(run.result)
   const counts = emptyCounts()
   counts.core = 1 // the anchor
   for (const p of kept) counts[p.type] += 1
@@ -462,7 +478,14 @@ export function summaryOf(run: CompletedRun): KbSummary {
     // optional on `SweepResult`, and a run recorded before it existed measured
     // no relations rather than zero of them; both read as 0 here, which is the
     // one place the distinction does not change what a reader is told.
-    edges: run.result.edges?.length ?? 0,
+    //
+    // `place`'s count, not the file's: an edge a withdrawn name minted is not
+    // one this map has. On the four affected gallery maps the card falls by
+    // 2,826 links in total — vercel 6,283 -> 4,080 is the biggest — and on
+    // every other map the two counts are the same number. Those two figures are
+    // pinned by app/page.test.tsx, which is why they have to be the measured
+    // ones and not the remembered ones.
+    edges: edges.length,
     segments: segmentsOf(run.result, kept),
   }
 }
@@ -581,7 +604,7 @@ export function noteOf(run: CompletedRun, path: string): NoteView | null {
  */
 export function graphOf(run: CompletedRun): GraphView {
   const r = run.result
-  const { kept, noise } = place(r)
+  const { kept, noise, edges: measured } = place(r)
 
   const caps = r.decomposition?.capabilities ?? []
   const marketKey = (s: string) => s.trim().toLowerCase()
@@ -680,7 +703,7 @@ export function graphOf(run: CompletedRun): GraphView {
   // twice by two batches that saw it from opposite sides.
   const byDomain = new Map(kept.map((p) => [p.entity.domain.toLowerCase().replace(/^www\./, ""), p.path]))
   const seen = new Set<string>()
-  for (const e of run.result.edges ?? []) {
+  for (const e of measured) {
     const from = byDomain.get(e.from.toLowerCase().replace(/^www\./, ""))
     const to = byDomain.get(e.to.toLowerCase().replace(/^www\./, ""))
     if (!from || !to || from === to) continue

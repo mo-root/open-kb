@@ -463,6 +463,192 @@ describe("segments, provenance rendered as segmentation", () => {
 })
 
 /**
+ * A STORED MAP THAT GAVE A STRANGER THE ANCHOR'S NAME.
+ *
+ * `place` runs every row past `withoutStolenNames` (core/src/export-kb.ts,
+ * where the rule and the corpus it was measured on are written down). These
+ * cover what the four reader surfaces do with the verdict: the row stays, its
+ * name becomes its host, its kind goes back to unsettled, and the edges the
+ * name minted go with the name.
+ */
+describe("a name the stored map never owned", () => {
+  /** The `run()` fixture's anchor is anchor.com, so "Anchor" is the label a
+   *  foreign host has no business wearing. */
+  const wearing = (domain: string, name: string, relation = "competitor", kind = "product") => ({
+    ...entity(domain, relation, kind),
+    name,
+  })
+
+  it("keeps the row, under its host, wearing the reason", () => {
+    const r = run([entity("real.com", "competitor"), wearing("aws.example", "Anchor")])
+    const g = graphOf(r)
+    const node = g.nodes.find((n) => n.domain === "aws.example")!
+    expect(node.title).toBe("aws.example")
+    expect(node.kind).toBe("unknown")
+    expect(node.relation).toBe("unknown")
+    expect(node.group).toBe("unplaced")
+    expect(node.what).toBe("")
+
+    const note = noteOf(r, node.id)!
+    expect(note.title).toBe("aws.example")
+    expect(note.because).toBe(
+      "the stored map gave this host the anchor's own identity, so nothing it said about it stands",
+    )
+
+    // Nothing was deleted: the anchor and both hosts are still notes, and only
+    // the one that was really a company is counted as one.
+    const s = summaryOf(r)
+    expect(s.notes).toBe(3)
+    expect(s.companies).toBe(1)
+  })
+
+  it("spares a host whose own spelling carries the name", () => {
+    const g = graphOf(
+      run([
+        // The anchor reached another way — a second TLD and a subdomain. Both
+        // are foreign to `registrableHost`, and both really are the anchor.
+        wearing("anchor.fr", "Anchor", "competitor", "company"),
+        wearing("docs.anchor.com", "Anchor", "integration"),
+        // And a third party that is genuinely called this, the clerk.io case.
+        wearing("anchor.io", "Anchor"),
+      ]),
+    )
+    for (const host of ["anchor.fr", "docs.anchor.com", "anchor.io"]) {
+      const node = g.nodes.find((n) => n.domain === host)!
+      expect(node.title, host).toBe("Anchor")
+      expect(node.kind, host).not.toBe("unknown")
+    }
+  })
+
+  it("drops the links the name minted and keeps the links it did not", () => {
+    const r = run(
+      [
+        wearing("aws.example", "Anchor"),
+        wearing("anchor.fr", "Anchor", "competitor", "company"),
+        entity("blog.example", "covers", "publisher"),
+        entity("react.example", "integration"),
+        entity("forum.example", "discusses", "community"),
+      ],
+      [
+        // Bought with the stolen name, and the only evidence for it is that a
+        // page said "Anchor" — which this row is not.
+        { from: "blog.example", to: "aws.example", relation: "covers", why: 'a page on blog.example names "Anchor"', confidence: "measured" },
+        // Same sentence, the other way round: the page really is on this host
+        // and the end it lands on is the one that owns the name.
+        { from: "aws.example", to: "anchor.fr", relation: "competitor", why: 'a page on aws.example names "Anchor"', confidence: "measured" },
+        // A different term entirely.
+        { from: "aws.example", to: "react.example", relation: "integration", why: 'a page on aws.example names "React"', confidence: "measured" },
+        // The paid pass, which wrote prose rather than quoting a term.
+        { from: "aws.example", to: "forum.example", relation: "discusses", why: "engineers argue about it there", confidence: "inferred" },
+      ],
+    )
+    const peers = graphOf(r)
+      .edges.filter((e) => !e.source.startsWith("markets/") && e.source !== "company.md")
+      .map((e) => `${e.source} -> ${e.target}`)
+      .sort()
+    expect(peers).toEqual([
+      "unplaced/aws.example.md -> communities/forum.example.md",
+      "unplaced/aws.example.md -> players/anchor.fr.md",
+      "unplaced/aws.example.md -> players/react.example.md",
+    ])
+    // And the card counts what the map has, not what the file holds.
+    expect(summaryOf(r).edges).toBe(3)
+  })
+
+  it("changes nothing on a map that never did it", () => {
+    const entities = [entity("a.com", "competitor"), entity("b.com", "integration")]
+    const edges = [{ from: "a.com", to: "b.com", relation: "integration", why: 'a page on a.com names "b.com"', confidence: "measured" }]
+    const s = summaryOf(run(entities, edges))
+    expect(s.edges).toBe(1)
+    expect(s.notes).toBe(3)
+    expect(graphOf(run(entities, edges)).nodes.map((n) => n.title).sort()).toEqual(["a.com", "anchor.com", "b.com"])
+  })
+})
+
+/**
+ * AND THE SAME THING AGAINST THE FOUR COMMITTED MAPS THAT HAVE IT.
+ *
+ * `demo/maps/` is the public gallery, so these rows are what a stranger sees.
+ * The fixtures above prove the rule; this proves it fires on the files being
+ * served, and pins the price so a change to either side has to come past it.
+ * Every number here was measured off the committed file.
+ */
+describe("the gallery's own stolen names", () => {
+  const MAPS = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "demo", "maps")
+  const stored = (file: string): CompletedRun => ({
+    id: file.slice("sweep-".length, -".json".length),
+    domain: "",
+    queries: 0,
+    startedAt: 0,
+    endedAt: 1,
+    status: "complete",
+    result: JSON.parse(readFileSync(join(MAPS, file), "utf8")),
+  })
+
+  /** file -> the hosts that were wearing the anchor's name, and what the map
+   *  said each of them was before the reader withdrew it. */
+  const THEFTS: Array<[string, Array<[string, string]>]> = [
+    ["sweep-vercel-com-202608062351.json", [
+      ["aws.amazon.com", "product/competitor, 328 links"],
+      ["facebook.com", "product/none, 330"],
+      ["redis.io", "product/competitor, 318"],
+      ["expo.dev", "publisher/lists, 316"],
+      ["exasol.com", "unknown/unknown, 315"],
+      ["examples.tely.ai", "product/none, 315"],
+      ["eginnovations.com", "unknown/unknown, 315"],
+    ]],
+    ["sweep-supabase-com-202608070017.json", [
+      ["aws.amazon.com", "product/dependency, 105"],
+      ["facebook.com", "product/none, 107"],
+      ["exoscale.com", "product/competitor, 97"],
+      ["widgets.weforum.org", "product/competitor, 97"],
+    ]],
+    ["sweep-stripe-com-202608070005.json", [["exalate.com", "product/shaper, 223"]]],
+    ["sweep-clerk-com-202608062258.json", [
+      ["shopify.com", "product/competitor, 9"],
+      ["eginnovations.com", "product/competitor, 9"],
+    ]],
+  ]
+
+  it.each(THEFTS)("%s: every borrowed name goes back to its host", (file, hosts) => {
+    const g = graphOf(stored(file))
+    for (const [host] of hosts) {
+      const node = g.nodes.find((n) => n.domain === host)
+      expect(node, host).toBeDefined()
+      // Still on the map — the host was really found — and no longer claiming
+      // to be the company the map is of.
+      expect(node!.title, host).toBe(host)
+      expect(node!.kind, host).toBe("unknown")
+      expect(node!.relation, host).toBe("unknown")
+    }
+  })
+
+  /** The headline each card prints, before and after, on the four maps that
+   *  had it and the two that did not. `companies` only moves for a row the
+   *  count included: 8 of the 14 were `product` with a relation. */
+  it.each([
+    ["sweep-vercel-com-202608062351.json", 842, 840, 6283, 4080],
+    ["sweep-supabase-com-202608070017.json", 443, 440, 2351, 1969],
+    ["sweep-stripe-com-202608070005.json", 1008, 1007, 3017, 2794],
+    ["sweep-clerk-com-202608062258.json", 179, 177, 517, 499],
+    ["sweep-brightdata-com-202608042230.json", 442, 442, 487, 487],
+    ["sweep-cursor-com-202608070032.json", 321, 321, 1796, 1796],
+  ])("%s: %i companies -> %i, %i links -> %i", (file, _was, companies, _hadLinks, links) => {
+    const s = summaryOf(stored(file))
+    expect(s.companies).toBe(companies)
+    expect(s.edges).toBe(links)
+  })
+
+  it("leaves the anchor's own row alone", () => {
+    const g = graphOf(stored("sweep-vercel-com-202608062351.json"))
+    expect(g.nodes.find((n) => n.id === "company.md")!.title).toBe("vercel.com")
+    // nextjs.org is Vercel's, and the run named it "Next.js by Vercel". A rule
+    // matching anything CONTAINING the label would take that name too.
+    expect(g.nodes.find((n) => n.domain === "nextjs.org")!.title).toBe("Next.js by Vercel")
+  })
+})
+
+/**
  * Straddler edges: the one real structure `foundBy` adds to the map. The edge
  * builder used to keep only the first resolvable lane, so an entity found by
  * two markets sat wholly inside one. The remaining resolvable lanes now draw

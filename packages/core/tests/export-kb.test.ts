@@ -322,3 +322,56 @@ describe("the agent door", () => {
     expect(readme).not.toContain("relations/unknown.md")
   })
 })
+
+/**
+ * A stored map that gave a stranger the anchor's name, on its way out of the
+ * app. `withoutStolenNames` runs first inside `exportKbFiles`, so the vault and
+ * the browser reach the same verdict; the rule itself is documented beside it.
+ *
+ * This was not theoretical. At the commit before this one,
+ * `runs/exports/kb-sweep-vercel-com-202608062351/entities/aws-amazon-com.md`
+ * opened `name: Vercel / domain: aws.amazon.com / kind: product / relation:
+ * competitor` under the heading `# Vercel`, and 9 of the 14 such rows in the
+ * committed maps cleared the gates above.
+ */
+describe("a name the stored map never owned", () => {
+  const stolen = {
+    anchor: "vercel.com",
+    entities: [
+      { name: "Vercel", domain: "aws.amazon.com", kind: "product", relation: "competitor", what: "Frontend hosting.", why: "It sells the same thing.", spans: ["deploy in seconds"], descGrounded: 0.28 },
+      // The anchor reached another way, which the rule spares: its own host
+      // spells the name.
+      { name: "Vercel", domain: "vercel.fr", kind: "company", relation: "competitor", what: "Frontend hosting.", why: "The anchor's French site." },
+      { name: "Neighbour", domain: "n.example", kind: "company", relation: "competitor", what: "A rival.", why: "Same shortlist." },
+    ],
+    edges: [
+      { from: "n.example", to: "aws.amazon.com", relation: "competitor", why: 'a page on n.example names "Vercel"', confidence: "measured" },
+      { from: "aws.amazon.com", to: "n.example", relation: "competitor", why: 'a page on aws.amazon.com names "Neighbour"', confidence: "measured" },
+    ],
+  }
+
+  it("ships no page under a name the run never settled", () => {
+    const files = exportKbFiles(stolen)
+    const get = (p: string) => files.find((f) => f.path === p)?.content ?? ""
+    // Nothing left to say — no description, no reason, no receipt — so the
+    // `silent` gate takes it, and no page in the vault is titled "Vercel".
+    expect(get("entities/aws-amazon-com.md")).toBe("")
+    // Gone from the manifest and the graph too, not merely from the pages.
+    expect(files.filter((f) => f.content.includes("aws.amazon.com"))).toEqual([])
+    // The look-alike keeps its name and its page.
+    expect(get("entities/vercel-fr.md")).toContain("# Vercel")
+    // And the edge bought with the stolen name is not a wikilink anywhere.
+    expect(get("entities/n-example.md")).not.toContain("aws-amazon-com")
+    expect(get("graph.json")).not.toContain('names \\"Vercel\\"')
+  })
+
+  it("declines on an anchor whose label is too short to identify anything", () => {
+    // judge.ts's own floor: a one- or two-letter label matches names that have
+    // nothing to do with the anchor, so the rule does not fire at all.
+    const files = exportKbFiles({
+      anchor: "x.com",
+      entities: [{ name: "X", domain: "other.example", kind: "company", relation: "competitor", what: "A rival.", why: "Same buyer." }],
+    })
+    expect(files.find((f) => f.path === "entities/other-example.md")?.content ?? "").toContain("# X")
+  })
+})

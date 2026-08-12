@@ -105,7 +105,13 @@ const ANCHORS = [
  */
 const LEDGER = {
   entities: "8,569",
-  edges: "14,451",
+  // 14,451 until the reader learned to withdraw a name a stored map had given
+  // to a stranger. Four of the six maps carry such a row, and the 2,826 links
+  // that go with them were bought by a page naming the anchor and booked
+  // against someone else: vercel -2,203, supabase -382, stripe -223, clerk -18.
+  // The entity count does not move — every one of those rows is still here,
+  // under its own host.
+  edges: "11,625",
   usd: "$8.4022",
   clock: "72m 43s",
 }
@@ -132,8 +138,13 @@ const LEDGER = {
  *  stored corpus is such a row, and 38.5% on figma.com, so it cannot be
  *  rounded away. See `KbSummary.companies`. */
 const STRIPE_ENTITIES = "2,522"
-const STRIPE_COMPANIES = "1,008"
-const VERCEL_LINKS = "6,283"
+/** One lower than the 1,008 this pinned before: `exalate.com` was filed as
+ *  "Stripe", `product`, `shaper`, and a row wearing a name the run never
+ *  settled is not a company in this market. It is still on the map. */
+const STRIPE_COMPANIES = "1,007"
+/** 6,283 before. 2,203 of vercel's links were minted by seven strangers
+ *  wearing the name "Vercel" — `aws.amazon.com` alone held 331 of them. */
+const VERCEL_LINKS = "4,080"
 
 const KEYS = [
   "OPENKB_DEMO",

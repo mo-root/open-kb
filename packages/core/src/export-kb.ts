@@ -5,10 +5,15 @@
  * the map, in a shape that leaves the app.
  *
  * Structural types, not imports (the drift.ts precedent): both engines'
- * run JSONs satisfy them, and core stays free of the sweep's vocabulary.
+ * run JSONs satisfy them, and core stays free of the sweep's vocabulary. That
+ * is about the SHAPES; drift.ts imports `registrableHost` from core's own
+ * `url.ts` all the same, and so does the stolen-name repair below, because a
+ * host rule restated is a host rule that can drift.
  * The export is a build artifact — regenerated, never hand-edited; a change
  * belongs upstream in the engine, so the folder always matches its run.
  */
+import { registrableHost } from "./url.js"
+
 
 export interface ExportEntity {
   name: string
@@ -41,7 +46,7 @@ export interface ExportEntity {
  * is a row the run had already declined to place, so honesty and safety cut in
  * the same direction and one gate serves both.
  */
-export type DropReason = "noise" | "silent" | "unrelated" | "commentary" | "personal" | "unexplained"
+export type DropReason = "noise" | "silent" | "withdrawn" | "unrelated" | "commentary" | "personal" | "unexplained"
 
 /** A description the RUN wrote that says the site belongs to a person. The map
  *  is of a market; a market has no natural-person members, and a machine-written
@@ -74,12 +79,23 @@ const PERSONAL_HOST = /^[a-z0-9-]+\.(?:medium|substack|tistory|wordpress)\.com$|
  *               shortlist and communities are where its buyers argue; all five
  *               are bounded and load-bearing. "Also writes about this" is not.
  * - `personal`  see PERSONAL_PROSE.
+ * - `withdrawn` the row wore the anchor's own name and `withoutStolenNames`
+ *               took it back. It reaches `silent`'s test — the description and
+ *               the reason went with the name — but it is not the same thing
+ *               and must not be counted as it: these hosts WERE read, and the
+ *               run really did learn something about them. It learned it about
+ *               the wrong subject. Saying "unreadable this run" of
+ *               `aws.amazon.com` would be a second false claim replacing the
+ *               first, so it gets its own reason and its own line in the tally.
  * - `unexplained` AGENTS.md promises every refusal wears its reason. An
  *               `unknown` with no `because` is a refusal that does not, so the
  *               export cannot honour the promise by shipping it.
  */
 export function exportDrop(e: ExportEntity): DropReason | null {
   if (e.kind === "noise") return "noise"
+  // Before `silent`, which it would otherwise match, and which would report a
+  // host that answered us as one that did not.
+  if (e.because === WITHDRAWN) return "withdrawn"
   if (!e.what && !e.why && !e.spans?.length) return "silent"
   if (e.relation === "none") return "unrelated"
   if (e.relation === "covers") return "commentary"
@@ -93,6 +109,7 @@ const DROP_LABEL: Record<DropReason, string> = {
   noise: "judged unrelated to this market",
   unrelated: "judged unrelated to this market",
   silent: "unreadable this run",
+  withdrawn: "stripped of the anchor's name they were given",
   commentary: "publishing near the market, not in it",
   personal: "personal, not a market entity",
   unexplained: "refused with no stated reason",
@@ -157,12 +174,199 @@ function segmentOf(e: ExportEntity): string {
   return e.foundBy?.[0] ?? "unattributed"
 }
 
+/* --------------------------------------------- a name the run never owned */
+
+/** The rows the repair below reads and rewrites. Structural like `ExportEntity`
+ *  above, and wider than it: the sweep's `Entity` carries the three
+ *  measurements of a `what` (`spans`, `descGrounded`, `descSpans`) that do not
+ *  survive the `what` being withdrawn, so they are named here to be cleared. */
+export interface NamedRow {
+  name: string
+  domain?: string
+  kind: string
+  relation: string
+  what?: string
+  why?: string
+  because?: string
+  spans?: string[]
+  descGrounded?: number
+  descSpans?: { verified: number; claimed: number }
+}
+
+/** An edge as the naming pass writes it: what it joins, and the sentence that
+ *  bought it. `relation` and `confidence` ride along untouched. */
+export interface MintedEdge {
+  from: string
+  to: string
+  why?: string
+}
+
+/** Judge's identity key, restated: it lives inside `judgeHosts` and there is
+ *  nothing to import. Case and punctuation go because "eGain", "e-gain" and
+ *  "EGAIN" are one name. */
+const identityKey = (text: string) => text.toLowerCase().replace(/[^a-z0-9]/g, "")
+
+const norm = (host: string) => host.trim().toLowerCase().replace(/^www\./, "")
+
+/**
+ * The anchor's label, by judge.ts's rule and not an approximation of it.
+ *
+ * `judge.ts:164` reads it off `registrableHost(anchor).split(".")[0]`. Stripping
+ * `www.` and taking the first label instead agrees on every anchor stored today
+ * — all twenty are apex — and disagrees the moment one is not. On
+ * `docs.example.com` the shortcut reads the label as "docs", and then any row
+ * named "Docs" is a stranger wearing the anchor's identity: measured on a
+ * synthetic run, gitbook.com named "Docs" lost its name, kind, relation and its
+ * one edge, and wore a sentence that was false about it. That is reachable
+ * through the front door — `normalizeDomain` passes `docs.stripe.com` and
+ * `blog.vercel.com` through untouched, and scripts/sweep.ts hands `argv[2]`
+ * straight to the engine — so it is a live path with no occurrences yet rather
+ * than an impossibility.
+ *
+ * `registrableHost` is imported rather than restated for the reason the rest of
+ * this file gives for importing anything: a second copy of a rule is a rule that
+ * can disagree with itself, and this one already did.
+ */
+const anchorLabelOf = (anchor: string) => identityKey(registrableHost(norm(anchor)).split(".")[0] ?? "")
+
+/** What the row wears instead of the name, in judge.ts's own words for the same
+ *  verdict (`judge.ts`, the anchor-imposter branch) — one clause different,
+ *  because there the model had just answered and here the answer is on disk. */
+const WITHDRAWN = "the stored map gave this host the anchor's own identity, so nothing it said about it stands"
+
+/**
+ * A STORED MAP WHERE A STRANGER WEARS THE ANCHOR'S NAME, repaired as it is read.
+ *
+ * The linker resolves a mention to an entity BY NAME, so a second entity called
+ * "Vercel" collects every page in the run that mentions Vercel. Measured over
+ * every map in `runs/` and `demo/maps/`: 37 rows on 14 of them carry a name
+ * that reduces to the anchor's own label on a host that does not spell it —
+ * `aws.amazon.com` named "Vercel" (331 edges), `eginnovations.com` named
+ * "Shopify" (594, against shopify.com's own 665), `exalate.com` named "Stripe"
+ * (223). Four of the fourteen are the committed gallery maps, so a reader can
+ * see AWS labelled "Vercel, competitor" on the front page today.
+ *
+ * THE ENGINE ALREADY REFUSES THIS AT WRITE TIME — judge.ts downgrades a host
+ * the model answered about with the anchor's identity, and the sweep's naming
+ * pass awards a spelling to one owner. Both landed after these maps were
+ * built, and rebuilding them all costs money and hours, so the same verdict is
+ * reached again by reading for everything already on disk. On a map written
+ * since, this changes nothing: `runs/sweep-figma-com-20260810173400.json` has
+ * 0 such rows and comes back byte-identical.
+ *
+ * WHAT IT DOES is judge.ts's downgrade, word for word: the row survives under
+ * its own host and everything the run said beneath the stolen name goes with
+ * it — the kind, the relation, the description and the reason were all about a
+ * different subject. Not deleted: `aws.amazon.com` is a real host that really
+ * appeared, and deleting it would lose that. The name is the only part that
+ * was never real.
+ *
+ * WHO IT SPARES: a host whose own spelling contains the label keeps its name.
+ * That is the sweep's `backed` test — the owner contest in its naming pass —
+ * and it separates a genuine namesake from an imposter with no list of
+ * exceptions to maintain. Two rows in the corpus need it and both are the
+ * anchor reached another way: one anchor's French site under `.fr` instead of
+ * `.com`, 87 edges, and `raw.githubusercontent.com` on the github map, 277 —
+ * `registrableHost` alone calls both of those foreign. `clerk.io`, the Danish
+ * company genuinely called Clerk, would keep its name for the same reason if a
+ * clerk.com run ever surfaced it. The anchor's own row and every subdomain of
+ * it are spared for free, because the label is read off the anchor's host and
+ * that host always spells it. A label under three characters declines to fire
+ * at all, judge's rule and judge's reason: "x.com" would match names with
+ * nothing to do with it.
+ *
+ * THE EDGES DIE WITH THE NAME THAT MINTED THEM, in one direction only. The
+ * naming pass writes `a page on <host> names "<term>"` with `to` set to the
+ * entity that owns the term, so an edge whose TARGET is a repaired row and
+ * whose reason quotes the name that row just lost was bought with that name
+ * and nothing else: 7,558 of them across the 14 files, 2,205 on the vercel map
+ * alone. An edge that merely touches such a row stands. 10 run the other way
+ * and each points at the term's real owner — `facebook.com -[competitor]->
+ * vercel.com`, "a page on facebook.com names \"Vercel\"", which is true and is
+ * about the anchor. 77 were minted by a different term entirely
+ * (`aws.amazon.com -> react.dev`, "names \"React\""). 14 come from the paid
+ * co-occurrence pass.
+ *
+ * WHAT THAT COSTS, because it is not free. Those 14 are prose this pass cannot
+ * re-read: 12 describe the host truthfully as itself ("Both are major cloud
+ * platforms … AWS and Google Cloud"), and 2 repeat the theft — both copies of
+ * the supabase map's `facebook.com -[discusses]-> quora.com`, "Facebook's
+ * product (Supabase)". They survive, hanging off a node that now says the name
+ * went unsettled. Two stale sentences against 12 measured edges, and the
+ * alternative deletes evidence the run really collected.
+ *
+ * The 14 are 7 distinct edges seen twice, because the supabase and vercel maps
+ * each exist as a run and again as a committed gallery copy. De-duplicated the
+ * split is 6 and 1. Counting the files rather than the edges is the honest way
+ * round — the repair runs per file — but a 13/1 split cannot be built from
+ * either view of this set, and an earlier draft of this comment claimed one.
+ *
+ * The surviving edges also keep the relation the run recorded, which was
+ * computed with the row still in the rival set. Re-deriving it here would be
+ * inventing a relation the run never wrote, so it is left alone and said out
+ * loud instead.
+ */
+export function withoutStolenNames<E extends NamedRow, D extends MintedEdge>(run: {
+  anchor?: string
+  entities: readonly E[]
+  edges?: readonly D[]
+}): { entities: E[]; edges: D[]; stripped: string[] } {
+  const edges = [...(run.edges ?? [])]
+  const anchorLabel = anchorLabelOf(run.anchor ?? "")
+  if (anchorLabel.length < 3) return { entities: [...run.entities], edges, stripped: [] }
+
+  /** host -> the name it is losing, which is also the term its edges quote. */
+  const stolen = new Map<string, string>()
+  const entities = run.entities.map((e) => {
+    const host = norm(e.domain ?? "")
+    // No host is no repair: the host is what stands in for the name, and a row
+    // without one has nothing to fall back to.
+    if (!host) return e
+    if (identityKey(e.name ?? "") !== anchorLabel) return e
+    if (identityKey(host).includes(anchorLabel)) return e
+    stolen.set(host, e.name)
+    // The cast is the price of staying generic: the caller keeps its own row
+    // type, and TypeScript cannot prove a spread of `E` with a wider `kind`
+    // written over it is still `E`. Every field written here is one `NamedRow`
+    // declares, so the shape is right even where the proof is not.
+    return {
+      ...e,
+      name: host,
+      kind: "unknown",
+      what: "",
+      relation: "unknown",
+      why: "",
+      because: WITHDRAWN,
+      spans: undefined,
+      descGrounded: undefined,
+      descSpans: undefined,
+    } as E
+  })
+  if (!stolen.size) return { entities, edges, stripped: [] }
+
+  return {
+    entities,
+    edges: edges.filter((ed) => {
+      const name = stolen.get(norm(ed.to ?? ""))
+      return !name || !(ed.why ?? "").includes(`names "${name}"`)
+    }),
+    stripped: [...stolen.keys()],
+  }
+}
+
 /** Build every file of the export. Deterministic: same run, same bytes. */
 export function exportKbFiles(run: ExportRunLike): ExportedFile[] {
   const anchor = run.anchor ?? "the anchor"
+  // Read before it is written out, for the same reason the browser reads it
+  // that way: 9 of the 14 imposter rows clear the gates below at HEAD, and
+  // `runs/exports/kb-sweep-vercel-com-202608062351/entities/aws-amazon-com.md`
+  // opens `name: Vercel / domain: aws.amazon.com` under the heading `# Vercel`.
+  // Repaired, they carry no description, no reason and no receipt, so
+  // `exportDrop`'s existing `silent` gate takes them without a new rule.
+  const repaired = withoutStolenNames(run)
   const kept: ExportEntity[] = []
   const dropped = new Map<DropReason, number>()
-  for (const e of run.entities) {
+  for (const e of repaired.entities) {
     const why = exportDrop(e)
     if (why) dropped.set(why, (dropped.get(why) ?? 0) + 1)
     else kept.push(e)
@@ -177,7 +381,7 @@ export function exportKbFiles(run: ExportRunLike): ExportedFile[] {
   // graph is therefore the induced subgraph on what survived — both ends or
   // neither. (The old code kept every edge touching a kept node, which was only
   // ever safe because nothing this run linked to a dropped one.)
-  const edges = (run.edges ?? []).filter((ed) => bySlug.has(slugifyRef(ed.from)) && bySlug.has(slugifyRef(ed.to)))
+  const edges = repaired.edges.filter((ed) => bySlug.has(slugifyRef(ed.from)) && bySlug.has(slugifyRef(ed.to)))
   const edgesOf = (slug: string) => edges.filter((ed) => slugifyRef(ed.from) === slug || slugifyRef(ed.to) === slug)
 
   // The tier vocabulary is the swarm's; a sweep run has no tiers to report.

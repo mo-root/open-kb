@@ -195,22 +195,29 @@ describe("stripe.com, as it is committed", () => {
     result: JSON.parse(readFileSync(MAP, "utf8")) as SweepResult,
   }
 
-  it("shows 1,008 companies — not 1, and not the 1,273 that includes other markets", () => {
+  it("shows 1,007 companies — not 1, and not the 1,272 that includes other markets", () => {
     const summary = summaryOf(run)
     // The reading layer's own numbers, pinned so a change to `place` or
     // `KIND_GROUP` has to come past this test rather than quietly re-scoring
     // the front page.
-    expect(summary.counts).toEqual({ core: 477, product: 1272, player: 1, community: 772 })
+    //
+    // Each of these is one lower than the number this test pinned before the
+    // reader learned to withdraw a stolen name, and the one row is
+    // `exalate.com`, which this map stored as "Stripe", `product`, `shaper`.
+    // It is still here — 2,522 notes, unchanged — but under its own host and
+    // in `core`, the group for a kind the run never settled. The 223 edges it
+    // collected on the name went with it: 3,017 links -> 2,794.
+    expect(summary.counts).toEqual({ core: 478, product: 1271, player: 1, community: 772 })
     expect(summary.notes).toBe(2522)
-    expect(summary.edges).toBe(3017)
+    expect(summary.edges).toBe(2794)
     // THE THREE NUMBERS THIS MAP CAN PRODUCE, and only one of them is true.
     //   1      `counts.player` — the pre-merge taxonomy bug, "1 company" for
     //          a payments market, which is what KIND_FLOOR was hiding.
-    //   1,273  the union of the merged kinds, which counts 265 hosts this run
+    //   1,272  the union of the merged kinds, which counts 265 hosts this run
     //          judged to sell into a different market (dart.deloitte.com:
     //          "accounting research materials, not payments").
-    //   1,008  the union minus those, which is what "in this market" means.
-    expect(summary.companies).toBe(1008)
+    //   1,007  the union minus those, which is what "in this market" means.
+    expect(summary.companies).toBe(1007)
     expect(summary.counts.product + summary.counts.player - summary.companies).toBe(265)
     // `unplaced` is the WHOLE map's `relation: "none"` count — 485 — because it
     // includes the publishers and communities placed nowhere too. The 265 above
@@ -219,11 +226,11 @@ describe("stripe.com, as it is committed", () => {
     expect(summary.unplaced).toBe(485)
 
     const html = renderToStaticMarkup(<KbCard kb={summary} showcase />)
-    expect(html).toContain("1,008</span>")
-    expect(html).not.toContain("1,273</span>")
+    expect(html).toContain("1,007</span>")
+    expect(html).not.toContain("1,272</span>")
     expect(html).toContain("companies in this market")
     expect(html).toContain("2,522</span> entities")
-    expect(html).toContain("3,017</span> links")
+    expect(html).toContain("2,794</span> links")
     expect(html).toContain("online payment acceptance")
     expect(html).toContain("stripe.com")
   })

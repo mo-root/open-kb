@@ -88,9 +88,12 @@ export {
   exportDrop,
   exportKbFiles,
   slugOf,
+  withoutStolenNames,
   type DropReason,
   type ExportEntity,
   type ExportEdge,
   type ExportRunLike,
   type ExportedFile,
+  type MintedEdge,
+  type NamedRow,
 } from "./export-kb.js"

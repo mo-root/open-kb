@@ -269,21 +269,29 @@ export interface KbSummary {
   /** Hosts the run paid for and the classifier threw away as `kind: "noise"`. */
   noise: number
   /**
-   * Relations the run recorded BETWEEN two entities — the count in the run, as
-   * the run wrote it.
+   * Relations the run recorded BETWEEN two entities, MINUS the ones a withdrawn
+   * name minted.
    *
    * It is the number that separates a map from a list: `notes` says how many
    * companies were found, this says how many of them the run could join to each
-   * other. On the six committed demo maps it ranges from 487 to 6,283 against
+   * other. On the six committed demo maps it ranges from 487 to 4,080 against
    * comparable entity counts, which is the difference between a scatter of
    * hosts and a market with a shape.
    *
-   * NOT the edge count the canvas draws, and the gap is real rather than
-   * rounding. `graphOf` adds the anchor's market edges and one home edge per
-   * entity, and it drops any relation whose two ends are not both on the map
-   * (6,283 → 5,906 on vercel.com — about 6%, and it is the noise hosts being
-   * excluded, which is correct). So this is the RUN's measurement, reported as
-   * the run's, and every surface that shows it says so.
+   * IT USED TO BE THE FILE'S OWN COUNT and this doc used to say so. It stopped
+   * being that when `withoutStolenNames` landed: a row wearing the anchor's own
+   * name collected every page in the run that mentioned the anchor, and those
+   * edges were bought with a name the row never owned. Four of the six demo maps
+   * carry them — vercel 6,283 → 4,080, supabase 2,351 → 1,969, stripe 3,017 →
+   * 2,794, clerk 517 → 499, 2,826 in total — and on every other map on disk the
+   * two counts are still the same number. A map written since the engine fix is
+   * untouched by definition.
+   *
+   * NOT the edge count the canvas draws either, and that gap is separate.
+   * `graphOf` adds the anchor's market edges and one home edge per entity, and
+   * drops any relation whose two ends are not both on the map. So this is the
+   * run's measurement with one class of false edge removed — say it that way on
+   * any surface that shows it, rather than calling it the run's own number.
    */
   edges: number
   /** The market segments provenance already drew, largest first, unattributed
