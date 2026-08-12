@@ -835,7 +835,10 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   /** A wave adding fewer new hosts than this is reaching ground already covered.
    *  The harness's backstop for a model that keeps asking while learning nothing. */
   const MIN_NEW_HOSTS = Math.max(1, Math.floor(opts.minNewHosts ?? 8));
-  /** How many co-occurring pairs to ask about. Bounds the linking stage's cost. */
+  /** How many co-occurring pairs to ask a model about. Bounds the linking
+   *  stage's cost, and is applied to what is left AFTER the free naming pass
+   *  has answered what it can — a cap on paid questions, not on the pairs the
+   *  selector found. */
   const MAX_PAIRS = Math.max(0, Math.floor(opts.maxPairs ?? 600));
   /** Most queries any single product may take. */
   const PER_PRODUCT = Math.max(1, Math.floor(opts.perProduct ?? 5));
@@ -1487,6 +1490,16 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     a.centrality === b.centrality ? 0 : a.centrality === "core" ? -1 : 1,
   );
 
+  /** A product row by the name a `covers` entry — or the adoption below —
+   *  calls it. Trimmed and case-folded, because `covers` is the model quoting
+   *  its own product list back to itself, and a quote that came back in a
+   *  different case would otherwise cost that product both its `does` and its
+   *  `foundAt` for no reason a reader could see. */
+  const productNamed = (name: string) =>
+    decomp.products.find(
+      (p) => p.name.trim().toLowerCase() === name.trim().toLowerCase(),
+    );
+
   // Every product gets a hand. The funding contest died with the spec of
   // 2026-08-04: a product left unfunded is an entire market the map never
   // sees, which is the exact failure phase 3 exists to prevent. Core markets
@@ -1520,7 +1533,76 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       }
     }
   }
-  say("plan", `${funded.length} products, every one dealt an opening hand`);
+
+  /**
+   * A PRODUCT NO CAPABILITY CLAIMED IS STILL A PRODUCT.
+   *
+   * The queues above are built from `covers`, which is the model's grouping of
+   * the product list — and the grouping drops some of the list. MEASURED over
+   * the 25 runs on disk carrying a modern decomposition: 113 of 408 discovered
+   * products (27.7%) appear in no `covers` entry, so they drew no catalog call,
+   * no strip terms and not one query. cloudflare funded 1 of its 71 products,
+   * supabase 7 of 29, github 12 of 24, linear.app 0 of 5. Nothing said so: the
+   * coverage line below counts queries per MARKET, and a market whose one
+   * remembered product got a hand reports itself covered while three of its
+   * siblings were never asked about.
+   *
+   * So every name in `decomp.products` the drains above did not fund is adopted
+   * by the capability it reads closest to and dealt the same hand as any other
+   * product. Closeness is word overlap against that capability's own name, job
+   * and covers list — free, deterministic, and re-derived from sentences this
+   * run has already paid for. Ties keep the first capability in `ranked`, which
+   * is core-ordered, so a product nothing matches lands in what the company is
+   * bought for rather than in a side line.
+   */
+  const closestMarket = (p: { name: string; does: string }) => {
+    const words = (s: string) =>
+      new Set(
+        s
+          .toLowerCase()
+          .split(/[^a-z0-9]+/)
+          .filter((w) => w.length > 2),
+      );
+    const mine = words(`${p.name} ${p.does}`);
+    let best: (typeof ranked)[number] | undefined;
+    let bestScore = -1;
+    for (const c of ranked) {
+      const theirs = words(`${c.name} ${c.does} ${c.covers.join(" ")}`);
+      let n = 0;
+      for (const w of mine) if (theirs.has(w)) n += 1;
+      if (n > bestScore) {
+        bestScore = n;
+        best = c;
+      }
+    }
+    return best;
+  };
+  const adopted: { market: (typeof ranked)[number]; product: string }[] = [];
+  {
+    const dealt = new Set(funded.map((f) => f.product.trim().toLowerCase()));
+    for (const p of decomp.products) {
+      const name = p.name.trim();
+      if (!name || dealt.has(name.toLowerCase())) continue;
+      dealt.add(name.toLowerCase());
+      const market = closestMarket(p);
+      // No capabilities at all is a decomposition with nothing to adopt into.
+      // Every product is then already funded under its own market by the
+      // drains above, so this loop simply has nothing to do.
+      if (market) adopted.push({ market, product: name });
+    }
+    // Core first among the adopted, for the same reason the drains run core
+    // first: the opening hand is sliced from the FRONT when a clock is on.
+    for (const a of adopted)
+      if (a.market.centrality === "core") funded.push(a);
+    for (const a of adopted)
+      if (a.market.centrality !== "core") funded.push(a);
+  }
+  say(
+    "plan",
+    adopted.length
+      ? `${funded.length} products, every one dealt an opening hand — ${adopted.length} of them named by no capability`
+      : `${funded.length} products, every one dealt an opening hand`,
+  );
 
   // Debranded ask per product. Small on purpose: the templates already hold
   // the center, so the model's few are spent where templates cannot go.
@@ -1575,7 +1657,21 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
             anchor,
             target: debrandedAsk,
             product,
-            productDoes: market.does,
+            // THIS PRODUCT'S JOB, not its market's.
+            //
+            // `understand` is asked for `products[].does` — "what this product
+            // does, stripped of the company's own naming" — which is exactly
+            // the debranded sentence this call turns into search terms. It was
+            // computed, paid for and then thrown away: every sibling in a group
+            // was handed `market.does`, one capability one-liner, identical for
+            // all of them, so three products sharing a capability were stripped
+            // from the same description and asked to differ anyway.
+            //
+            // Falls back to the capability's line when the product carries
+            // none — including the case where `covers` was empty and the
+            // capability was funded under its own name, where there is no
+            // product row to find.
+            productDoes: productNamed(product)?.does.trim() || market.does,
             market: market.name,
             centrality: market.centrality,
             sells: decomp.sells,
@@ -1595,8 +1691,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
             product,
             terms,
             generic: out.generic,
-            foundAt:
-              decomp.products.find((p) => p.name === product)?.foundAt ?? "",
+            foundAt: productNamed(product)?.foundAt ?? "",
           });
           const hand = openingHand(product, terms, { branded: !out.generic });
           reserve.set(product, hand.reserve);
@@ -1679,8 +1774,10 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     opts.queries !== undefined ? planned.slice(0, target) : [...planned];
   // The clock's ceiling, applied to the opening as well as to the widening loop
   // below — a hand dealt before the first search is still a hand this run has
-  // to be able to rank. Sliced rather than sampled: `funded` put the core
-  // markets first, so the first N are the queries the company is bought for.
+  // to be able to rank. Sliced rather than sampled: `funded` is core markets
+  // first — the capabilities' own products core-before-adjacent, then the
+  // products no capability claimed in the same order — so the first N are the
+  // queries the company is bought for.
   const queries =
     QUERY_CEILING === null ? opening : opening.slice(0, QUERY_CEILING);
   if (QUERY_CEILING !== null && opening.length > queries.length) {
@@ -1720,6 +1817,28 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         `every one of the ${core.length} core markets got at least one query`,
       );
     }
+    // A market-level count cannot see a product-level hole, which is why this
+    // is said separately. The line above was true on every one of the 25 runs
+    // measured and 113 of their 408 products still drew nothing, because the
+    // capability that covered the market had one product in `covers` and the
+    // rest of its siblings were nowhere. Stated here so a reader sees the
+    // condition on the run that has it, rather than an auditor reconstructing
+    // it from the files afterwards.
+    if (adopted.length) {
+      const shown = adopted
+        .slice(0, 6)
+        .map((a) => `${a.product} → ${a.market.name}`);
+      say(
+        "plan",
+        `${adopted.length} of ${decomp.products.length} products were in no capability's covers list, ` +
+          `and were dealt a hand under the nearest market: ${shown.join(", ")}` +
+          (adopted.length > shown.length
+            ? `, and ${adopted.length - shown.length} more`
+            : ""),
+      );
+    }
+    for (const a of adopted)
+      think("plan", `adopted — ${a.product} → ${a.market.name}`);
   }
   // The truncation warning only applies when opts.queries actually clamped the
   // catalog — the normal, unset case never slices, so "using the first N"
@@ -2352,6 +2471,11 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    * a community while Y Combinator is an accelerator: that is one company
    * swallowing a completely different entity. These labels name a section of a
    * site rather than a thing in its own right.
+   *
+   * `parentOf` is asked TWICE, and both places have to agree or the fold is
+   * half a fold: here, where a row becomes a company's evidence, and in the
+   * co-occurrence selector below, which read the raw host for as long as this
+   * comment has existed and silently dropped every folded row it saw.
    */
   const SECTION = new Set([
     "docs",
@@ -2648,7 +2772,20 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     for (const h of hits) {
       let host: string;
       try {
-        host = new URL(h.url).hostname.toLowerCase().replace(/^www\./, "");
+        // FOLDED EXACTLY AS `byHost` FOLDS IT, and for the same reason: the
+        // entity store above keyed every row by `parentOf(host)`, so
+        // `keptHosts` holds parents and a row that arrived on `docs.`, `blog.`
+        // or `api.` failed the test below and was thrown away here, after the
+        // fold had already decided it was the parent's evidence. Re-deriving
+        // the host from the url without the fold is the same expression the
+        // store uses (:2513) minus the one line that makes it mean a company.
+        //
+        // MEASURED: 3,726 rows corpus-wide, 1,906 of 49,143 (3.9%) on the
+        // current-engine runs, every one of them invisible to pair selection
+        // for the life of the run.
+        host = parentOf(
+          new URL(h.url).hostname.toLowerCase().replace(/^www\./, ""),
+        );
       } catch {
         continue;
       }
@@ -2669,10 +2806,16 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         }
       }
     }
+    // Every pair that qualified, strongest first and UNCAPPED. `MAX_PAIRS`
+    // used to cut the list here, one step before the free naming pass had said
+    // which of these it already answered — so the cap spent its slots on
+    // questions a retrieved page had settled for nothing (1,624 of 14,748 paid
+    // slots corpus-wide, 11.0%) and the pairs it cut were recorded nowhere at
+    // all. The cut is now taken below, on what is actually left to ask, and it
+    // reports what it took.
     return [...score.entries()]
       .filter(([, n]) => n >= 2)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, MAX_PAIRS)
       .map(([k, n]) => {
         const [a, b] = k.split("|") as [string, string];
         return { a, b, seen: n };
@@ -2989,13 +3132,37 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
 
   // Whatever the free pass already answered is not worth asking a model about.
   const resolved = new Set(edges.map((e) => [e.from, e.to].sort().join("|")));
-  const unresolved = coPairs.filter(
+  const unanswered = coPairs.filter(
     (p) => !resolved.has([p.a, p.b].sort().join("|")),
   );
+  /**
+   * THE CAP, taken here rather than in the selector above.
+   *
+   * `MAX_PAIRS` bounds what the PAID pass costs, so it has to be applied to
+   * what the paid pass would actually ask — the pairs left after the free
+   * naming pass has taken its share. Applied one step earlier, to the selected
+   * list, it kept pairs a page had already resolved and then dropped them,
+   * paying nothing for them and buying nothing with the slots they held: 1,624
+   * of 14,748 paid slots corpus-wide, 11.0%, wasted that way.
+   *
+   * And what the cut costs is now counted. The cap binds on 21 of 28 runs and
+   * truncated 51,919 of 66,667 qualifying pairs with no counter anywhere, so a
+   * map missing edges because the market was busy looked identical to a map
+   * missing them because the market was quiet.
+   */
+  const unresolved = unanswered.slice(0, MAX_PAIRS);
+  const truncatedPairs = unanswered.length - unresolved.length;
   if (resolved.size) {
     say(
       "link",
-      `${coPairs.length - unresolved.length} of ${coPairs.length} pairs already answered by a page`,
+      `${coPairs.length - unanswered.length} of ${coPairs.length} pairs already answered by a page`,
+    );
+  }
+  if (truncatedPairs) {
+    say(
+      "link",
+      `${unanswered.length} pairs are still open and this run may ask about ${MAX_PAIRS} — ` +
+        `asking the ${unresolved.length} strongest, leaving ${truncatedPairs} unasked`,
     );
   }
 
@@ -3212,6 +3379,13 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     relations: count(keep.map((e) => e.relation)),
     families: count(asked.map((q) => q.family)),
     strips,
+    /** Products `understand` found that no capability's `covers` claimed, and
+     *  that the plan adopted into the nearest market rather than leaving
+     *  unasked. 113 of 408 products across the 25 runs on disk that had this
+     *  fault, and each one was a market its map never looked at. Zero is the
+     *  healthy reading and the common one; a large number means the grouping
+     *  step is losing the list it was given. */
+    unclaimedProducts: adopted.length,
     readPages,
     usd,
     seconds,
@@ -3248,6 +3422,12 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
              *  is the case that actually killed run 31704112. Two different
              *  facts and a reader needs both. */
             unlinkedPairs: unlinked,
+            /** Pairs that qualified and were never asked, because `maxPairs`
+             *  cut them. A third fact again: not the clock and not a failure,
+             *  but the size of the linking budget meeting a busier market than
+             *  it was set for. It went uncounted until now, and the cap binds
+             *  on 21 of the 28 runs on disk. */
+            truncatedPairs,
           },
     cost: {
       usd,
