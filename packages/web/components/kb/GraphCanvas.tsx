@@ -130,6 +130,14 @@ interface FLink {
   /** measured = a page named both ends; inferred = model reasoning. Inferred
    *  draws dashed. */
   confidence: string;
+  /** True when the reading layer DREW this wire out of the run's provenance
+   *  (anchor to market, market to entity, the straddle) rather than the run
+   *  measuring it between two hosts. Most links on most maps are this, and the
+   *  label such an edge carries is the entity's relation to the ANCHOR, not a
+   *  claim about the two ends it joins — which is what the link tooltip says
+   *  out loud. It changes no paint: the straddle lanes already dash themselves
+   *  off `confidence`, and the two fields answer different questions. */
+  provenance: boolean;
 }
 
 // A serialisable snapshot of the clicked node, drives the React detail card.
@@ -803,9 +811,23 @@ export function GraphCanvas({
     );
     const orphanCount = nodes.filter((n) => n.relation === "none").length;
 
+    // How much of the wiring the run actually measured, and how many entities
+    // it never related to anything. `measuredLinks` is counted here rather than
+    // guessed from `confidence`, which says measured-vs-inferred about real
+    // edges and says nothing about the lane edges this reader draws — those
+    // arrive flagged `provenance` (see lib/kb-from-run.ts `graphOf`).
+    //
+    // `unlinked` is read off the payload, never defaulted to 0: a graph served
+    // by a build that predates the field has not measured 0 unlinked entities,
+    // it has measured nothing, and the readout stays away rather than printing
+    // the most flattering possible number.
+    const measuredLinks = links.filter((l) => l.provenance !== true).length;
+    const unlinked = typeof graph?.unlinked === "number" ? graph.unlinked : null;
+
     return {
       degById, adj, maxRel, maxDeg, share, maxTitle, hubId,
       typeCounts, presentTypes, topSet, activeLinks, orphanCount,
+      measuredLinks, unlinked,
     };
   }, [graph]);
 
@@ -887,6 +909,7 @@ export function GraphCanvas({
           parentDeg: Math.max(s.deg, t.deg),
           relation: l.label ?? "",
           confidence: l.confidence ?? "measured",
+          provenance: l.provenance === true,
         };
       });
     return { nodes, links, byId, clusterOf };
@@ -1387,9 +1410,20 @@ export function GraphCanvas({
     const t = asNode(l.target);
     if (!s || !t) return "";
     const blurb = RELATION_BLURB[l.relation] ?? "";
+    // WHERE THIS WIRE CAME FROM, which the two lines above cannot say. A lane
+    // edge wears the entity's own relation as its label, so without this it
+    // reads exactly like a measured relation between the two ends it joins —
+    // and on most maps most links are lanes. Provenance first: it is a
+    // different question from measured-vs-inferred, and it outranks it.
+    const how = l.provenance
+      ? "a query in this market returned this host — not a measured relation between these two"
+      : l.confidence === "inferred"
+        ? "the model reasoned this relation from what it read"
+        : "a retrieved page named both ends";
     return (
       `<div style="color:${palette.text}">${escapeHtml(t.title)} → ${escapeHtml(l.relation)}</div>` +
-      `<div style="color:${palette.muted};font-size:11px">${escapeHtml(blurb)}</div>`
+      `<div style="color:${palette.muted};font-size:11px">${escapeHtml(blurb)}</div>` +
+      `<div style="color:${palette.muted};font-size:10px">${escapeHtml(how)}</div>`
     );
   };
 
@@ -1703,24 +1737,50 @@ export function GraphCanvas({
             ? graph.nodes.length
             : `${visibleNodeCount}/${graph.nodes.length}`}{" "}
           nodes · {meta.activeLinks.length} links
+          {/* Of which the run measured how many. The rest are the lanes this
+              reader draws from provenance, and on most maps they are the large
+              majority — a links count on its own reads as a map full of
+              relations when it is mostly a map full of retrieval. */}
+          <span
+            className="ml-1 text-slate-500"
+            title="Links the run measured between two hosts and cited a page for. The remainder are provenance lanes drawn from foundBy — a query in that market returned that host, which is not a claim that two things are related."
+          >
+            ({meta.measuredLinks} measured)
+          </span>
           {hiddenNodes > 0 && (
             <span className="ml-2 text-slate-500">
               ({hiddenNodes} unplaced hidden)
             </span>
           )}
         </span>
-        {/* The two numbers v1 shipped `dangling` and `orphans` for, said out
-            loud. v1's reasoning holds exactly: "a dead wikilink and an
-            unreachable note are the two most useful things a reader can know
-            about a KB, and hiding them would make every KB look finished." */}
-        {(meta.orphanCount > 0 || graph.dangling.length > 0) && (
+        {/* The numbers v1 shipped `dangling` and `orphans` for, said out loud.
+            v1's reasoning holds exactly: "a dead wikilink and an unreachable
+            note are the two most useful things a reader can know about a KB,
+            and hiding them would make every KB look finished."
+
+            `unlinked` is the third, and it is the one that can report the
+            failure the other two cannot. Every entity hangs off the market that
+            found it, so a map where nothing was related to anything still shows
+            almost no unreachable nodes — 0.5% corpus-wide against 57% of nodes
+            with no measured neighbour. It is not derived here: the reading
+            layer counts it (lib/kb-from-run.ts `graphOf`), because "touched by
+            no measured edge" is a fact about the run, not about this canvas. */}
+        {(meta.orphanCount > 0 || (meta.unlinked ?? 0) > 0 || graph.dangling.length > 0) && (
           <span className="tnum flex flex-wrap items-center gap-x-3 gap-y-1">
             {meta.orphanCount > 0 && (
               <span
                 className="text-amber-400/90"
-                title="On the map, connected to nothing: the classifier saw these hosts and would not place them against the anchor. Shown, not hidden — a map that reports none is usually a map that stopped looking."
+                title="The classifier saw these hosts and would not place them against the anchor. They still hang off the market whose queries surfaced them, so they are on the map — shown, not hidden, because a map that reports none is usually a map that stopped looking."
               >
                 {meta.orphanCount} unplaced
+              </span>
+            )}
+            {meta.unlinked !== null && meta.unlinked > 0 && (
+              <span
+                className="text-amber-400/90"
+                title="On the map and related to nothing: the run found these hosts but never measured an edge from them to another host. Retrieval worked and linking did not, which the node and link counts above cannot tell you."
+              >
+                {meta.unlinked} unlinked
               </span>
             )}
             {graph.dangling.length > 0 && (
@@ -1799,12 +1859,16 @@ export function GraphCanvas({
         {/* visually-hidden summary for assistive tech (the canvas is opaque) */}
         <p className="sr-only">
           Force-directed market map of {graph.nodes.length} entities and{" "}
-          {graph.edges.length} relations. Nodes are sized by placement and
-          coloured by type ({meta.presentTypes.map((t) => TYPE_LABEL[t]).join(", ")}
-          ). The anchor is {meta.maxTitle}. {meta.orphanCount} entities carry no
-          relation to the anchor and {graph.dangling.length} hosts were discarded
-          as noise. Use the type filters to show or hide segments; select a node
-          to open its detail card, then use its Open entity button to read it.
+          {graph.edges.length} links, {meta.measuredLinks} of them measured
+          between two hosts and the rest drawn from which market's queries found
+          each host. Nodes are sized by placement and coloured by type (
+          {meta.presentTypes.map((t) => TYPE_LABEL[t]).join(", ")}). The anchor
+          is {meta.maxTitle}. {meta.orphanCount} entities carry no relation to
+          the anchor
+          {meta.unlinked !== null && `, ${meta.unlinked} are related to no other host`},
+          and {graph.dangling.length} hosts were discarded as noise. Use the type
+          filters to show or hide segments; select a node to open its detail
+          card, then use its Open entity button to read it.
         </p>
 
         <ForceGraph2D

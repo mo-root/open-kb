@@ -101,6 +101,15 @@ const RELATION_WEIGHT: Record<string, number> = {
   lists: 38,
   covers: 35,
   discusses: 32,
+  // `unknown` is a refusal, not a rejection, and the two must not rank alike.
+  // It was missing from this table, so the `?? RELATION_WEIGHT.none` fallback
+  // below sorted every unsettled host at 15 — the weight reserved for a host
+  // the classifier looked at and affirmatively ruled out. 5,770 rows across the
+  // runs on disk carry `relation: unknown`, and viewTypes' own gloss for it is
+  // "claimed but not confirmed by the available evidence", which is a smaller
+  // claim than "not a competitor". It sits above `none` and below every settled
+  // relation: not proven is not the same as disproven, and neither is placement.
+  unknown: 20,
   none: 15,
 }
 
@@ -298,6 +307,14 @@ function place(result: SweepResult): { kept: Placed[]; noise: Entity[]; edges: E
    * the map is of.
    *
    * Dropped, not merged: `company.md` comes from a full page read.
+   *
+   * The row goes; the HOST does not stop being an endpoint. `graphOf` builds
+   * its edge index from `kept`, so for a long time the anchor host resolved to
+   * nothing there and every measured edge with the anchor at either end was
+   * deleted at read time — 944 pairs across the six gallery maps alone. The
+   * index now re-registers the anchor host against `ANCHOR_PATH` by hand; see
+   * the `byDomain` note in `graphOf`. Anything that changes this loop has to
+   * leave that registration standing.
    */
   const anchorHost = (result.anchor || "").trim().toLowerCase().replace(/^www\./, "")
 
@@ -601,6 +618,15 @@ export function noteOf(run: CompletedRun, path: string): NoteView | null {
  * existed, or an entity whose market the planner invented mid-run and the
  * decomposition never named, still attaches to the anchor rather than being
  * dropped.
+ *
+ * TWO KINDS OF WIRE COME OUT OF HERE, and they are not the same claim. The
+ * lane edges — anchor to market, market to entity, the straddle — are drawn by
+ * this function out of the run's own provenance, and each means "a query in
+ * this market returned this host". The rest come from `result.edges`, where the
+ * run measured a relation between two hosts and cited a page for it. Every edge
+ * of the first kind is stamped `provenance: true`, and `unlinked` counts the
+ * entities that only ever got that kind, because a map made entirely of the
+ * first kind is a map that found things and never related them.
  */
 export function graphOf(run: CompletedRun): GraphView {
   const r = run.result
@@ -659,10 +685,22 @@ export function graphOf(run: CompletedRun): GraphView {
   ]
 
   // The anchor sells into its markets.
+  //
+  // `provenance: true` on this and on every lane edge below. The flag is what
+  // lets a reader tell the two halves of this wiring apart: an edge this
+  // function DREW from the decomposition and from `foundBy`, versus an edge the
+  // run MEASURED between two hosts and cited a page for. Both used to arrive
+  // indistinguishable, which is how the canvas came to report 0.5% orphans on a
+  // corpus where 57% of nodes had no measured neighbour — almost every node
+  // touched an edge, and almost none of those edges said two things are
+  // related. It is a separate field on purpose: `confidence` is measured vs
+  // inferred, a property of edges the RUN asserts, 73-88% of which are
+  // inferred, and overloading it would have changed what every real edge means.
   const edges: GraphEdge[] = caps.map((c) => ({
     source: ANCHOR_PATH,
     target: marketPath(c.name),
     label: "sells",
+    provenance: true,
   }))
 
   // Each entity hangs off the market whose queries surfaced it. `foundBy` is
@@ -681,18 +719,26 @@ export function graphOf(run: CompletedRun): GraphView {
   // wearing confidence `inferred`, so the canvas's existing dashed-for-inferred
   // style keeps them visibly subordinate to the home lane. No new rendering:
   // the straddle is pure data.
+  //
+  // `homeLabel` remembers what each entity's home edge ended up SAYING, because
+  // the measured pass below has to know: an anchor-to-entity edge that repeats
+  // the relation this lane already labels is the same sentence drawn twice.
+  const homeLabel = new Map<string, string>()
   for (const p of kept) {
     const lanes = [
       ...new Set((p.entity.foundBy ?? []).map((m) => marketIds.get(marketKey(m))).filter((id): id is string => Boolean(id))),
     ]
     const home = lanes[0]
     if (home) {
-      edges.push({ source: home, target: p.path, label: p.entity.relation === "none" ? "found" : p.entity.relation })
+      const label = p.entity.relation === "none" ? "found" : p.entity.relation
+      homeLabel.set(p.path, label)
+      edges.push({ source: home, target: p.path, label, provenance: true })
       for (const lane of lanes.slice(1)) {
-        edges.push({ source: lane, target: p.path, label: "found", confidence: "inferred" })
+        edges.push({ source: lane, target: p.path, label: "found", confidence: "inferred", provenance: true })
       }
     } else if (p.entity.relation !== "none") {
-      edges.push({ source: ANCHOR_PATH, target: p.path, label: p.entity.relation })
+      homeLabel.set(p.path, p.entity.relation)
+      edges.push({ source: ANCHOR_PATH, target: p.path, label: p.entity.relation, provenance: true })
     }
   }
 
@@ -701,7 +747,23 @@ export function graphOf(run: CompletedRun): GraphView {
   // model naming something it remembers, and a dangling edge is worse than a
   // missing one. Deduplicated in both directions, since a pair can be reported
   // twice by two batches that saw it from opposite sides.
+  //
+  // THE ANCHOR IS AN ENDPOINT TOO. `place` drops the anchor's own entity row —
+  // it has a node already, built from a full page read — and this index was
+  // built from `kept` alone, so `anchor.com` resolved to nothing here and every
+  // edge with the anchor at either end failed the both-ends test one line
+  // below. That deleted 944 distinct anchor pairs across the six gallery maps
+  // (vercel 330, stripe 271, cursor 166, supabase 123, brightdata 30, clerk 24)
+  // and 2,704 across the current-engine runs on disk. Nothing else was being
+  // lost: self-edges and genuinely off-map ends both measured 0.
   const byDomain = new Map(kept.map((p) => [p.entity.domain.toLowerCase().replace(/^www\./, ""), p.path]))
+  const anchorHost = (r.anchor || "").trim().toLowerCase().replace(/^www\./, "")
+  if (anchorHost) byDomain.set(anchorHost, ANCHOR_PATH)
+
+  // What is touched by an edge between two HOSTS, which is the only wiring that
+  // means "these two are related". The lane edges above are not in it; see
+  // `unlinked` at the bottom for what that number is for.
+  const linked = new Set<string>()
   const seen = new Set<string>()
   for (const e of measured) {
     const from = byDomain.get(e.from.toLowerCase().replace(/^www\./, ""))
@@ -710,6 +772,23 @@ export function graphOf(run: CompletedRun): GraphView {
     const key = [from, to].sort().join("|") + e.relation
     if (seen.has(key)) continue
     seen.add(key)
+    // RESTATEMENT RULE, and it is worth being exact about what recovering these
+    // edges buys. Of the 944 anchor pairs, 645 (68%) carry the relation the
+    // entity's own home lane is already labelled with — the audit measured the
+    // same split, 66%, over 18 maps — so drawing them adds a second wire making
+    // a claim the reader can already read off the first. Where the entity fell
+    // back to the anchor star it is literally the same wire, same two ends and
+    // same label, 45 times across the gallery. Those are dropped. The other 299
+    // (32%) say something the canvas has nowhere else — a relation the run
+    // measured from a page that the classifier's own per-entity verdict did not
+    // carry, or the only edge a `relation: none` host has — and those are drawn.
+    // Gallery totals: 10,602 peer edges -> 10,901.
+    if (from === ANCHOR_PATH || to === ANCHOR_PATH) {
+      const other = from === ANCHOR_PATH ? to : from
+      if (homeLabel.get(other) === e.relation) continue
+    }
+    linked.add(from)
+    linked.add(to)
     edges.push({ source: from, target: to, label: e.relation, confidence: (e as { confidence?: "measured" | "inferred" }).confidence })
   }
 
@@ -725,8 +804,24 @@ export function graphOf(run: CompletedRun): GraphView {
     // the classifier declined to place against the anchor but that a link edge
     // joins to another player is on the map, and calling it unplaced would
     // report a gap that is not there.
+    //
+    // It counts PROVENANCE edges too, and that is why it cannot be read as a
+    // linking meter. Almost every entity carries `foundBy`, so almost every
+    // entity hangs off a market lane, so this array is near-empty however badly
+    // the run linked: 210 of 38,209 nodes corpus-wide, 0.5%. On the six gallery
+    // maps it reports 5 entities in total — five of clerk's 444, zero on the
+    // other five maps. That is a true statement about reachability and a
+    // useless one about relations, so `unlinked` below is the other number.
     orphans: kept
       .filter((p) => !edges.some((e) => e.source === p.path || e.target === p.path))
       .map((p) => p.path),
+    // Entities no MEASURED edge touches: on the map, and joined to no other
+    // host by anything the run read a page for. This is the number that answers
+    // "is this map linking", and it is nothing like the one above — after the
+    // anchor fix it reads 43.3% (vercel) to 88.7% (brightdata) of entities on
+    // the six gallery maps, 4,472 of 8,563 overall, against `orphans`' 0.5%.
+    // A count rather than the paths: the paths would be most of the map, and
+    // the surfaces that show it show a number.
+    unlinked: kept.filter((p) => !linked.has(p.path)).length,
   }
 }

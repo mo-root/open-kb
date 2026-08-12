@@ -463,8 +463,20 @@ export interface GraphEdge {
   label: string
   /** measured = a retrieved page named both ends; inferred = the model
    *  reasoned it. 73–88% of a map's edges are inferred, and until this field
-   *  the canvas drew them identically. */
+   *  the canvas drew them identically.
+   *
+   *  It does NOT say whether the run measured the edge at all: the straddle
+   *  lanes are provenance and wear `inferred` for the dashed style. Read
+   *  `provenance` first, then this. */
   confidence?: "measured" | "inferred"
+  /** True on an edge this reader DREW rather than one the run measured: the
+   *  anchor to its markets, an entity to the market whose queries surfaced it,
+   *  the straddle lanes. It means "a query in this market returned this host",
+   *  which is not a claim that two things are related, and it is set on nearly
+   *  every entity — which is why a map can look fully wired and have measured
+   *  almost no relations. Absent means the run measured this edge between two
+   *  hosts and cited a page for it (`confidence` then says which kind). */
+  provenance?: true
 }
 
 export interface DanglingLink {
@@ -496,9 +508,18 @@ export interface GraphView {
    *  dead link, and hiding them would make every map look like it found only
    *  signal. */
   dangling: DanglingLink[]
-  /** v1: notes unreachable from company.md. Ours: entities the classifier
-   *  placed on the map but would not connect to the anchor, `relation: none`.
-   *  They have no edge, so they are unreachable in the literal sense, and the
-   *  count is the most honest number on the page. */
+  /** v1: notes unreachable from company.md. Ours: entities on the map that no
+   *  edge of any kind touches — unreachable in the literal sense.
+   *
+   *  It counts provenance edges, so it is a reachability number and not a
+   *  linking one: 210 of 38,209 nodes corpus-wide, 0.5%, on a corpus where 57%
+   *  of nodes have no measured neighbour at all. Read it as "nothing on the
+   *  canvas points at this", never as "the map is wired". `unlinked` is the
+   *  number for that, and the two are meant to be read together. */
   orphans: string[]
+  /** Entities on the map that no MEASURED edge touches: the run found them and
+   *  never related them to another host. The linking meter — 43.3% to 88.7% of
+   *  entities per gallery map, 4,472 of 8,563 — and the one number here that
+   *  can report a linking failure, which `orphans` structurally cannot. */
+  unlinked: number
 }
