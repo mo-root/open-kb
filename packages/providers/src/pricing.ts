@@ -14,7 +14,9 @@ import type { ModelPricing } from "@open-kb/core"
 
 /**
  * $/M tokens by OpenRouter id, every row re-checked against
- * `GET https://openrouter.ai/api/v1/models` on **2026-08-08**.
+ * `GET https://openrouter.ai/api/v1/models` on **2026-08-12**. All four rows
+ * that existed on 2026-08-08 still read exactly what they read then; the
+ * dated-snapshot row below is the only addition.
  *
  * Two rows were wrong when this table was consolidated, and wrong in the
  * direction nobody notices: the 2026-08-06 figures had deepseek-v4-flash at
@@ -29,6 +31,24 @@ import type { ModelPricing } from "@open-kb/core"
  */
 export const MODEL_PRICES: Record<string, ModelPricing> = {
   "deepseek/deepseek-v4-flash": { inUsdPerM: 0.14, outUsdPerM: 0.28 },
+  /**
+   * The dated snapshot behind the floating alias above, and cheaper than it:
+   * 0.08/0.18 against 0.14/0.28, i.e. 43% off input and 36% off output for
+   * what the provider serves as the same model.
+   *
+   * IT IS HERE BECAUSE THE ALIAS MOVES. A run published as evidence has to be
+   * reproducible, and `deepseek-v4-flash` is a pointer the vendor can
+   * repoint under a map that is already on the web claiming what it cost.
+   * Pinning the date fixes both the behaviour and the bill.
+   *
+   * Adding the row is not optional once the id is used: `priceForModel` prices
+   * an unknown id at the pessimistic floor, 1.5/9.0, which is 19x this row's
+   * input and 50x its output. A run on an unlisted id does not merely report a
+   * wrong bill — the per-run cap in packages/web/lib/spend-limits.ts is
+   * enforced against that number, so the run is stopped for spending money it
+   * never spent.
+   */
+  "deepseek/deepseek-v4-flash-0731": { inUsdPerM: 0.08, outUsdPerM: 0.18 },
   "google/gemini-3-flash-preview": { inUsdPerM: 0.5, outUsdPerM: 3.0 },
   "google/gemini-3.1-flash-lite": { inUsdPerM: 0.25, outUsdPerM: 1.5 },
   "google/gemini-3.5-flash": { inUsdPerM: 1.5, outUsdPerM: 9.0 },
