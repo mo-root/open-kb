@@ -63,6 +63,21 @@ for an industry: those are pages about products rather than products. Read what 
 
 {{productPages}}
 
+## Its comparison pages are read by something else
+
+Sitemaps carry `/compare/`, `/versus/` and `/alternatives/` paths, and on those the company names
+its own rivals in its own words. Measured on shopify.com: 42 such urls naming 34 distinct rivals, 12
+of which never reached that run's 4,251-entity map. A separate pass harvests them, so collecting
+rivals is not your job and a list of them here would only arrive twice under two spellings.
+
+Two things about those pages ARE yours:
+
+- A `/compare/x-vs-y` page is not a product. Like a pricing page or a solutions page, it is a page
+  *about* products — do not turn one into a `products` entry.
+- A rival's name is not a coinage. `coinages` holds the words THIS company invented; a competitor's
+  name put there is banned from every query the run makes, which is the exact opposite of why those
+  pages are being read.
+
 ## The index and the front page
 
 Everything the company publishes about itself, condensed. Use it to catch what the product pages

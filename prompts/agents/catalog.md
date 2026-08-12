@@ -20,18 +20,37 @@ nothing else. A query that would find this product's rivals and the company's ot
 same time is a query about the company, and the company is not the subject.
 
 Write up to {{target}} queries: what a buyer types when they need this job done and have never heard
-of any vendor that does it.
+of {{anchor}}. They may well have heard of somebody else, and type that.
 
 ## Absolute rules
 
-- **Never name a VENDOR.** Not "{{anchor}}", not any of these invented words: {{coinages}}, and not
-  a competitor's — you do not know any yet, and naming one bounds the search to pages someone
-  already wrote about that company. A vendor is anything that could end up as a node on this map.
+- **Never name the ANCHOR.** Not "{{anchor}}", and not any of these invented words: {{coinages}}.
+  Search the anchor's own name and you get the anchor back: its pages, its docs, its press, and the
+  finite set of articles someone already wrote about it. A query naming it is dropped before it is
+  bought, so nothing is gained by slipping one through.
 
-  Four kinds of proper noun are NOT vendors, and each is worth more than a category term:
+- **The ban stops at the anchor. Name anyone ELSE.** Avoiding proper nouns was never the rule;
+  refusing to ride {{anchor}}'s brand was. A rival, a well-known open-source tool in this category,
+  a gatekeeper, a named obstacle — none of those is the anchor, and each opens a door the anchor's
+  name cannot.
 
-  - **A protocol, standard, spec, clause or error code.** These have no proprietor whose pages
-    become the ceiling, so they behave like market terms.
+  Measured: hand-written market queries name a third-party proper noun 42.8% of the time, 211 of
+  493. Queries written under this prompt do so 0.85% of the time, 7 of 826. That is why each wave
+  comes back reading like the one before it — a query that names nobody collides with nothing.
+
+  Real queries from a hand-built corpus, every one of them legal here:
+
+      Magento alternatives
+      Oxylabs vs Bright Data vs Zyte
+      Tavily vs Exa vs Firecrawl
+      scrapy cloudflare 403 forbidden bypass
+      playwright datadome detected bot access denied
+      undetected-chromedriver blocked cloudflare not working
+
+  Four kinds of proper noun pay most, because none of them has a proprietor whose own pages become
+  the ceiling:
+
+  - **A protocol, standard, spec, clause or error code.**
   - **The gatekeeper**, with the code or reason it emits. The gatekeeper is the external system
     whose job is to reject your buyer's work: a bot defence, a spam filter, an inspector, a
     certifying body, a payment network, a regulator.
@@ -42,12 +61,10 @@ of any vendor that does it.
   is a market query; `<gatekeeper> pricing` is a look-up.
 
 - **Keep them short and loose.** Three to six words, at most one operator, at most one quoted
-  phrase. Every term is ANDed, so each multiplies the constraint, and a quoted phrase is the hardest
-  constraint of all. A catalog written without this rule came back full of `"cf-challenge-running"`
-  and returned 1.6 results per search where seven is normal.
-
-- **A `site:` operator takes a real hostname.** `site:hackernews` matches nothing;
-  `site:news.ycombinator.com` is the domain.
+  phrase, and never a `site:` — the `platform` field carries that, and the code writes it. Every
+  term is ANDed, so each multiplies the constraint, and a quoted phrase is the hardest constraint of
+  all. A catalog written without this rule came back full of `"cf-challenge-running"` and returned
+  1.6 results per search where seven is normal.
 
 - Each query must ask a DIFFERENT question. Two rephrasings of one idea buy the same page twice.
 
@@ -73,10 +90,37 @@ bought from your terms, so every query you write must earn its place by finding 
    market hits. Two to four words.
 3. **The DIY route.** The open-source or hand-rolled way, plus the word meaning it stopped working.
 4. **Where this product's buyers argue.** The forum, Q&A tag or newsletter for this job.
+5. **The collision.** Two or three players you already know, crossed: `Magento alternatives`,
+   `Tavily vs Exa vs Firecrawl`. Code buys `<term> alternatives` with the category term in that
+   slot; only you can put NAMES there, and the page that answers names the rest of the field. If
+   {{anchor}} is one of the three you were about to cross, cross the other two.
 
 Apply the agent-demand lens from the doctrine: if this product's buyer can be an AI agent or the
 team building one, at least one of your queries comes from that world — and if you cannot name the
 consumer, the socket and the failure, the lens does not apply and no query should pretend it does.
+
+## Last: choose each query's platform
+
+Every query carries a `platform`, and the code renders the `site:` prefix from it. Yours is the
+choice of platform and the short plain terms beside it; typing the operator into `q` yourself only
+stacks a second constraint on the one already applied.
+
+Until this section existed, nothing here named the field, and stored queries show what that bought:
+`site:` targeting fell from 31.9% of the 426 queries written before 4 August to 2.1% of the 1,490
+written since. Nobody decided platforms had stopped paying — they simply stopped being asked for.
+
+`web` is the default and is right most of the time — it is the only value that can return a vendor's
+homepage, a roundup or a directory. The rest each narrow to one place a market argues in:
+
+- `reddit` — the buyer at 2am, and the thread asking what to use instead.
+- `hackernews` — the launch, and the comment under it naming three competitors.
+- `stackoverflow` — the error, with a version number and an accepted answer.
+- `github` — issues and READMEs: the DIY route, and the word for how it broke.
+- `producthunt` — the entrant too new for any roundup to list yet.
+- `x` — the announcement, and the argument beneath it.
+
+Choose one when the answer lives in a conversation rather than on a page someone sold. Then write
+FEWER words than you would for `web`: the platform is already most of the constraint.
 
 Give every query a one-line `why`: what it is expected to surface that the others will not.
 

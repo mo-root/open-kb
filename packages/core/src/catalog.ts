@@ -14,6 +14,11 @@
  *
  * Nothing here fetches. It decides WHICH urls are worth fetching and what to
  * make of the bodies, so it stays testable without a network.
+ *
+ * The same sitemap is read twice, for two different facts. `candidatesFromSitemap`
+ * wants the product pages and drops everything else; `rivalsFromSitemap` (below)
+ * reads the comparison urls that first read discards, where a company names its
+ * rivals in a slug for free.
  */
 
 /** A candidate product page, before anything has been fetched. */
@@ -161,6 +166,161 @@ export function candidatesFromLinks(html: string, base: string, limit = 25): Can
     }
   }
   return rank(abs, limit)
+}
+
+/**
+ * A rival's NAME, read off a comparison url the anchor published about itself.
+ *
+ * A LEAD, NOT AN ENTITY, and the distinction is the whole of this type's
+ * contract. `magento` here is a string a marketing team typed into a slug: it
+ * has no domain, no fetched page and no quote behind it. Nothing may write one
+ * of these onto the map as a rival on the strength of the slug — a lead is
+ * resolved and judged exactly like a host that arrived from a search, or it is
+ * not used at all. What it is for is asking a better question.
+ */
+export interface RivalLead {
+  /** The name as a query would spell it: slug hyphens become spaces. */
+  name: string
+  /** How many of the anchor's own comparison urls named it. */
+  seen: number
+  /** One url that named it, so a lead is checkable rather than asserted. */
+  foundAt: string
+}
+
+/**
+ * Path prefixes holding a comparison rather than a product.
+ *
+ * Every one of these is dropped by `CONTENT` above, correctly — they contain no
+ * products. Being dropped was also the end of them: the urls went in the bin
+ * because nothing else in the run ever read them.
+ */
+const COMPARISON = /^\/(compare|comparisons?|versus|vs|alternatives?|alternative-to)(\/|$)/i
+
+/**
+ * Namespaces whose own name IS the comparison, so one segment under them is a
+ * rival and nothing else: `/versus/<x>`, `/alternatives/<x>`.
+ *
+ * `compare` is deliberately absent. MEASURED on one commerce platform's sitemap
+ * (838 urls, fetched 2026-08-12): 40 urls sit in these namespaces, 36 of them
+ * carry a `-vs-` separator, and all four that do not — `/compare`,
+ * `/compare/tco`, `/compare/time-to-value`, `/compare/sitespeed` — are pages
+ * about the comparison rather than about a company. Reading a bare
+ * `/compare/<slug>` as a name buys those four and nothing else.
+ */
+const NAMES_ONE_RIVAL = /^(versus|vs|alternatives?|alternative-to)$/i
+
+/** `a-vs-b`, `a_versus_b`. The separator every comparison slug measured used. */
+const VS = /[-_](?:vs|versus)[-_]/i
+
+/**
+ * Words that frame a comparison rather than name a company.
+ *
+ * Small and literal. It exists for two shapes the sitemap actually contains:
+ * a slug that is entirely framing (`shopify-vs-custom-platform` — "custom
+ * platform" is not a vendor) and a name wearing framing at one end
+ * (`<x>-comparison`, `best-<x>`), where the name is still in there and only
+ * the frame comes off. Every word here would be a strange company name and a
+ * useless search on its own; a word that could plausibly be a vendor — `square`,
+ * `base` — is not in this list, because the cost of dropping a real rival is
+ * higher than the cost of one weak query.
+ */
+const GENERIC_IN_SLUG = new Set([
+  "alternative", "alternatives", "best", "compare", "comparison", "comparisons",
+  "competitor", "competitors", "cost", "costs", "custom", "enterprise",
+  "features", "free", "migration", "open", "platform", "platforms", "price",
+  "pricing", "review", "reviews", "software", "solution", "solutions", "source",
+  "switch", "tool", "tools", "top", "versus", "vs", "website", "websites",
+])
+
+/** The anchor's own words, as a slug would spell them: `shopify.com` -> shopify. */
+function anchorWords(anchor: string): Set<string> {
+  const host = (anchor.replace(/^[a-z]+:\/\//i, "").split("/")[0] ?? "").replace(/^www\./i, "")
+  const label = host.split(".")[0] ?? ""
+  return new Set(label.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean))
+}
+
+/**
+ * One side of a comparison slug, as a name — or null when it is not one.
+ *
+ * The anchor's own side is dropped by name: `shopify-enterprise-vs-adobe` is
+ * the anchor twice and Adobe once, and a run that searched its own name here
+ * would be doing the exact thing this engine refuses to do.
+ */
+function rivalName(part: string, anchor: Set<string>): string | null {
+  const words = part
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    // A year in a slug is when the page was written, not who it is about.
+    .filter((w) => !/^(19|20)\d{2}$/.test(w))
+  // Four words is already a phrase. A company name in a slug is one or two.
+  if (!words.length || words.length > 4) return null
+  if (words.some((w) => anchor.has(w))) return null
+  if (words.every((w) => GENERIC_IN_SLUG.has(w))) return null
+  while (words.length > 1 && GENERIC_IN_SLUG.has(words[0]!)) words.shift()
+  while (words.length > 1 && GENERIC_IN_SLUG.has(words.at(-1)!)) words.pop()
+  // "ai", "go" and other two-letter names lose here. Deliberate: a two-letter
+  // token is far more often an abbreviation in a slug than a vendor, and a
+  // one-word search for one buys a page of noise.
+  if (words.join("").length < 3) return null
+  return words.join(" ")
+}
+
+/**
+ * The rivals an anchor names in its own comparison urls.
+ *
+ * Free by construction: these are the urls `rank()` already threw away, out of
+ * a sitemap every run already downloads. On the measured sitemap above the 36
+ * separator-carrying urls gave 26 distinct names, every one of them a company
+ * — and five of those names were absent, as companies, from the 4,251-entity
+ * map the run that downloaded those same bytes produced.
+ *
+ * PRECISION IS NOT THE SAME AS PROOF. An earlier count of the same namespace,
+ * taken before any filtering, found 22 of its 34 raw tokens already on that
+ * map — the channel is precise rather than noisy. Precise still does not make
+ * a token an entity. See `RivalLead`: every one of these is a lead to be
+ * resolved and judged, never a rival to be written down.
+ */
+export function rivalsFromComparisonUrls(
+  urls: readonly string[],
+  anchor: string,
+  limit = 40,
+): RivalLead[] {
+  const mine = anchorWords(anchor)
+  const found = new Map<string, RivalLead>()
+  for (const url of urls) {
+    const path = pathOf(url)
+    if (!path || !COMPARISON.test(path)) continue
+    const segs = path.split("/").filter(Boolean)
+    const ns = segs[0]!.toLowerCase()
+    const slug = segs[1] ?? ""
+    if (!slug) continue
+    const parts = slug.split(VS)
+    // `a-vs-b-vs-c` is three rivals on one page, which is the roundup shape and
+    // the densest url in the whole namespace.
+    const sides = parts.length > 1 ? parts : NAMES_ONE_RIVAL.test(ns) ? [slug] : []
+    for (const side of sides) {
+      const name = rivalName(side, mine)
+      if (!name) continue
+      const prev = found.get(name)
+      if (prev) prev.seen += 1
+      else found.set(name, { name, seen: 1, foundAt: url })
+    }
+  }
+  return [...found.values()]
+    // Most-named first: a company the anchor wrote three comparison pages about
+    // is more central to its market than one it wrote a single page about.
+    // Alphabetical within a tie, so two runs of the same sitemap agree.
+    .sort((a, b) => b.seen - a.seen || a.name.localeCompare(b.name))
+    .slice(0, limit)
+}
+
+/** The same read, from the sitemap bytes rather than from a url list — the form
+ *  the sweep calls, beside `candidatesFromSitemap` and over the identical
+ *  `<loc>` entries. Two consumers, one download, no second fetch. */
+export function rivalsFromSitemap(xml: string, anchor: string, limit = 40): RivalLead[] {
+  const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]!)
+  return rivalsFromComparisonUrls(locs, anchor, limit)
 }
 
 export interface PageFacts {

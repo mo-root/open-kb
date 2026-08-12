@@ -29,11 +29,13 @@ import {
   candidatesFromSitemap,
   candidatesFromLinks,
   isSitemapIndex,
+  rivalsFromSitemap,
   readPageFacts,
   renderPageFacts,
   dedupeFacts,
   openingHand,
   companyHand,
+  rivalHand,
   banned,
   MEASURED_PHASE_COSTS,
   rankSeconds,
@@ -43,6 +45,7 @@ import {
   type FetchPort,
   type ModelPricing,
   type PageFacts,
+  type RivalLead,
   type SearchPort,
   type SearchResult,
   type SpanStream,
@@ -210,6 +213,103 @@ export const PLATFORMS = [
   "producthunt",
   "x",
 ] as const;
+
+/**
+ * Where each platform actually lives, for `site:`.
+ *
+ * The enum above is filled in on every query the catalog agent writes and it
+ * reached no query string. MEASURED over every run in `runs/` (1,999 query
+ * records): 1,522 carry the hardcoded `platform: "web"` this file stamps on its
+ * own templates, and the 477 where the model chose something else — reddit 162,
+ * stackoverflow 117, github 105, hackernews 72, producthunt 14, x 7 — changed
+ * nothing about what was bought. A field nobody renders is a field the model is
+ * answering into a bin, and here it was answering into it 23.9% of the time.
+ *
+ * The hosts are the ones a search engine indexes, which is not always the one
+ * the name suggests — `site:hackernews` matches nothing at all, the site is
+ * `news.ycombinator.com`, and the catalog prompt spent months warning a model
+ * about that in prose while no code rendered either. `x.com` is where the
+ * platform's own links point now; posts
+ * written before the rename are indexed under `twitter.com` and are not
+ * reachable through this, because `site:` takes one host and guessing which
+ * era a query wants is not something this table can do.
+ *
+ * `web` maps to no host on purpose: it is the absence of a scope, not a scope.
+ */
+export const PLATFORM_SITES: Record<string, string> = {
+  web: "",
+  reddit: "reddit.com",
+  hackernews: "news.ycombinator.com",
+  github: "github.com",
+  stackoverflow: "stackoverflow.com",
+  producthunt: "producthunt.com",
+  x: "x.com",
+};
+
+/**
+ * How long a query may be and still be worth scoping to one site.
+ *
+ * MEASURED, on the two corpora this engine is judged against: the hand-written
+ * market queries median 5 words, open-kb's own median 4. A `site:` prefix
+ * spends one of those terms on the scope, so a scoped query gets the
+ * hand-written median for its actual question and no more. It is not a style
+ * rule — a narrow site scope AND a sentence is the shape that returns an empty
+ * page and bills for it anyway.
+ */
+export const MAX_SCOPED_WORDS = 6;
+
+/**
+ * Render a query's platform into the query, or leave it alone and say so.
+ *
+ * A LONG QUERY IS FIRED UNSCOPED RATHER THAN TRUNCATED. Cutting
+ * "how do i find one request across a hundred containers" down to six words
+ * leaves a fragment that means something else, so the choice here is between a
+ * mangled scoped query and an honest unscoped one, and the unscoped one at
+ * least still asks the question. The refusal is counted (`report.platform`),
+ * because "the model keeps writing sentences at a platform" is a fact about
+ * the prompt that only shows up if someone counts it.
+ *
+ * Idempotent: a query that already carries its own `site:` is left exactly as
+ * written, and re-rendering a rendered query changes nothing. That matters
+ * because this runs at fire time, where a query arrives by three different
+ * roads — the opening hand, a reserve release, a freshly invented widening
+ * query — and only one of them passes through the planner.
+ *
+ * THE ANCHOR'S OWN SITE IS NOT A PLATFORM, and `anchorHost` is what makes that
+ * checkable. Six of the seven hosts in the table are companies this engine can
+ * be pointed at, and one of them already is: `runs/` holds a github.com sweep
+ * whose catalog tagged nine debranded queries `platform: "github"`. Rendered
+ * blind, four of those become `site:github.com git leak prevention tool free`
+ * and the like — a NON-BRANDED query naming the anchor and, worse, bounded to
+ * the anchor's own pages, which is the one thing this engine exists not to do.
+ * `banned()` cannot catch it: it runs in the planner, and this runs at the
+ * wire. Replayed over the stored corpus the guard is the difference between 5
+ * anchor-naming non-branded queries and the 1 that was already there.
+ *
+ * Refused BEFORE the length test, because the reason such a query goes out
+ * unscoped is whose site it is, not how long it is, and a counter that said
+ * `tooLong` would send the next reader to the prompt to fix the wrong thing.
+ */
+export function scopeToPlatform(
+  q: string,
+  platform: string,
+  anchorHost = "",
+): { q: string; scoped: boolean; tooLong: boolean; anchorOwned: boolean } {
+  const host = PLATFORM_SITES[platform] ?? "";
+  const body = q.trim();
+  if (!host || !body || /\bsite:/i.test(body))
+    return { q, scoped: false, tooLong: false, anchorOwned: false };
+  if (anchorHost && registrableHost(host) === registrableHost(anchorHost))
+    return { q, scoped: false, tooLong: false, anchorOwned: true };
+  if (body.split(/\s+/).length > MAX_SCOPED_WORDS - 1)
+    return { q, scoped: false, tooLong: true, anchorOwned: false };
+  return {
+    q: `site:${host} ${body}`,
+    scoped: true,
+    tooLong: false,
+    anchorOwned: false,
+  };
+}
 
 export const ENTITY_KINDS = [
   "company",
@@ -1289,6 +1389,11 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    * since a direct fetch is free.
    */
   const productPages: PageFacts[] = [];
+  /**
+   * Rivals the anchor named in its own comparison urls — see below for why this
+   * is free, and `RivalLead` in core for why a lead is not an entity.
+   */
+  const rivalLeads: RivalLead[] = [];
   {
     const raw = async (u: string) => {
       const r = await fetcher.get(u, "direct", { signal });
@@ -1303,6 +1408,36 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       xml = first ? await raw(first) : "";
     }
     if (xml) candidates = candidatesFromSitemap(xml, PRODUCT_PAGES);
+
+    /**
+     * THE SAME BYTES, READ A SECOND TIME, FOR ZERO DOLLARS.
+     *
+     * `candidatesFromSitemap` keeps the product urls and drops
+     * `/compare`, `/vs` and `/alternatives` — right, those namespaces hold no
+     * products. Until now the drop was also the end of them: every run
+     * downloaded a file in which the company names its rivals in plain text and
+     * threw that half away.
+     *
+     * MEASURED on shopify.com/sitemap.xml, fetched 2026-08-12: 838 urls, 40 in
+     * those namespaces, 26 distinct rival names out of them and no false
+     * positives. Of those 26, five (magento, etsy, woocommerce, wix,
+     * squarespace) appear as companies nowhere in the 4,251-entity map that
+     * same run produced. A second market the same day, brex.com/sitemap.xml,
+     * 2,330 urls: eight names — airbase, amex, bill, concur, divvy, expensify,
+     * mercury, ramp — again with nothing that is not a company.
+     *
+     * WHAT IT DOES NOT REACH, so nobody reads a zero as a fact about the
+     * company: a sitemap INDEX is followed one child deep and only into the
+     * first child (see just above), so an anchor whose comparison pages live in
+     * a later child yields nothing here. figma.com and notion.so are both that
+     * shape. Fixing it means fetching more sitemaps, which is a different
+     * decision from this one, which is free.
+     *
+     * Costs one function call over bytes already in memory. No fetch, no SERP,
+     * no model. What it produces is NAMES — leads to be resolved and judged
+     * like any other host, never rivals to be written onto the map.
+     */
+    if (xml) rivalLeads.push(...rivalsFromSitemap(xml, anchor));
 
     // The nav ALWAYS, merged rather than used as a fallback. One company's
     // sitemap has 118 urls of which twelve are products and another's has none,
@@ -1341,6 +1476,22 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       );
       for (const f of productPages)
         think("understand", `${new URL(f.url).pathname} — ${f.heading}`);
+    }
+
+    if (rivalLeads.length) {
+      say(
+        "understand",
+        `the company's own comparison urls name ${rivalLeads.length} other companies — ` +
+          `leads to search for, not entities: ${rivalLeads
+            .slice(0, 8)
+            .map((r) => r.name)
+            .join(", ")}${rivalLeads.length > 8 ? ", …" : ""}`,
+      );
+      for (const r of rivalLeads)
+        think(
+          "understand",
+          `rival lead — ${r.name} (named in ${r.seen} comparison url${r.seen === 1 ? "" : "s"}, e.g. ${r.foundAt})`,
+        );
     }
   }
 
@@ -1737,12 +1888,61 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     term: undefined,
   }));
 
+  /**
+   * The rival-grounded hand, and THE CAP IT IS BOUGHT UNDER.
+   *
+   * These are new SERP purchases — the only part of this channel that is not
+   * free — so the cap is derived rather than picked: a run may buy at most as
+   * many rival-grounded queries as it already bought BRANDED ones. The channel
+   * that names other people's brands may not cost more than the channel that
+   * names the anchor's own, which is the same market read from the other side
+   * and has never needed a bigger budget than this.
+   *
+   * That number is a fact about the run, not a constant: three from
+   * `companyHand`, plus one per product whose name is not generic. It scales
+   * with how many products the anchor sells, so a big catalog buys a big rival
+   * hand — MEASURED as branded queries actually asked on the runs in `runs/`:
+   * shopify 27, cloudflare 21, twilio 19, vercel 14, stripe/github/mongodb 11,
+   * supabase 5, and 0 for a run whose products were all generically named. At
+   * $0.0067-$0.0086 a query that is $0.00 to $0.23 of SERP per run, and nearer
+   * $0.40 counting the ranking those extra hits pay for. A company that
+   * publishes no comparison urls pays nothing, because `rivalLeads` is empty.
+   *
+   * Placed last, so a run under a query ceiling spends the ceiling on the
+   * proven families first and this one loses its slots before they do.
+   */
+  const brandedBought = [...catalogs.flat(), ...company].filter(
+    (q) => q.family === "branded",
+  ).length;
+  const rivals: SweptQuery[] = rivalHand(
+    rivalLeads.map((r) => r.name),
+    brandedBought,
+  ).map((fq) => ({
+    q: fq.q,
+    // Same reading as the other hands make: a pair query is someone weighing
+    // two vendors, a bare `alternatives` is someone about to leave one.
+    intent: fq.q.includes(" vs ") ? "evaluation" : "switching",
+    platform: "web",
+    why: fq.why,
+    market: "",
+    family: fq.family,
+    product: undefined,
+    term: fq.term,
+  }));
+  if (rivalLeads.length) {
+    say(
+      "plan",
+      `${rivals.length} rival-grounded queries from ${rivalLeads.length} names the company itself published — ` +
+        `capped at ${brandedBought}, the size of this run's branded hand`,
+    );
+  }
+
   // Deduplicated across lenses: they were told to stay in their own lane, but
   // "best X alternatives" is reachable from two of the three, and a repeat is a
   // query bought twice.
   const seenQ = new Set<string>();
   const cat = {
-    queries: [...catalogs.flat(), ...company].filter((q) => {
+    queries: [...catalogs.flat(), ...company, ...rivals].filter((q) => {
       const k = q.q.trim().toLowerCase();
       if (seenQ.has(k)) return false;
       seenQ.add(k);
@@ -1869,13 +2069,19 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   // "0 accidentally name the company" on catalogs where a quarter of the queries
   // named a third party. A query that looks the anchor up is bought for nothing,
   // so it does not get bought.
+  //
+  // The rival hand is filtered here too, and this is where its names meet the
+  // coinages for the first time: they were read off url slugs before
+  // `understand` ran, so a lead that is really the anchor wearing another
+  // spelling survives extraction and dies here. Everything but `branded` is
+  // subject to it.
   if (named.length) {
     const drop = new Set(named.map((q) => q.q));
     for (let i = queries.length - 1; i >= 0; i--)
       if (drop.has(queries[i]!.q)) queries.splice(i, 1);
     say(
       "plan",
-      `catalog: ${queries.length} queries (dropped ${named.length} debranded/plain queries that named the anchor)`,
+      `catalog: ${queries.length} queries (dropped ${named.length} that named the anchor without being branded)`,
     );
     for (const q of named) think("plan", `dropped, names the anchor: ${q.q}`);
   } else {
@@ -1933,6 +2139,16 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     product?: string;
   }> = [];
 
+  /** What the platform field actually bought, counted at the wire rather than
+   *  inferred from the query text afterwards. See `scopeToPlatform`. */
+  let scopedQueries = 0;
+  let tooLongToScope = 0;
+  /** Queries whose platform was the anchor's own site, fired unscoped. Counted
+   *  apart from `tooLong` because it is a fact about WHO this run is mapping,
+   *  not about how the catalog agent writes. */
+  let anchorOwnedScope = 0;
+  const scopedBy: Record<string, number> = {};
+
   /**
    * The distinct hosts seen so far, maintained as results land rather than
    * folded out of `hits` on every question.
@@ -1962,6 +2178,35 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   /** Search one query and record everything it produced. The pool below calls
    *  this; nothing here knows about batches or waves. */
   const runOne = async (planned: SweptQuery) => {
+    /**
+     * THE PLATFORM, RENDERED WHERE THE QUERY IS BOUGHT.
+     *
+     * Written onto the query object rather than into a local, so the record and
+     * the wire cannot disagree: `asked` holds these same objects, and
+     * `marketOf`/`familyOf`/`byQ` further down join a result row back to its
+     * query BY ITS TEXT. A local `site:`-prefixed string would search one thing
+     * and file the answer under another, and every host that arrived through a
+     * scoped query would lose its market.
+     *
+     * `site:` is also a strong medicine: on the generation before this one it
+     * was on 31.9% of queries (426 distinct) and is on 2.1% now (1,490
+     * distinct) — within the model's own debranded family, 31.9% -> 3.7%. That
+     * collapse is why the field exists in the schema at all, and it is not an
+     * argument for putting the prefix back everywhere: it goes on where the
+     * catalog agent asked for a forum, and nowhere else.
+     */
+    {
+      const scope = scopeToPlatform(planned.q, planned.platform, anchor);
+      if (scope.scoped) {
+        planned.q = scope.q;
+        scopedQueries += 1;
+        scopedBy[planned.platform] = (scopedBy[planned.platform] ?? 0) + 1;
+      } else if (scope.anchorOwned) {
+        anchorOwnedScope += 1;
+      } else if (scope.tooLong) {
+        tooLongToScope += 1;
+      }
+    }
     const [r] = await search.search([planned.q]);
     if (!r) return;
     {
@@ -3318,6 +3563,13 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
 
   // A family contributing nothing must be reported, not absorbed: the doctrine
   // or the templates have a hole and the only way anyone finds it is here.
+  //
+  // `rival` is deliberately not in this list. The other three are dealt from
+  // the anchor's own products and always have something to ask; the rival hand
+  // is dealt from urls the anchor may simply never have published, and a run
+  // that asks none of it is reporting a fact about the company rather than a
+  // hole in this engine. `report.rivals` carries that number where it means
+  // something.
   {
     const fam = count(asked.map((q) => q.family));
     for (const f of ["plain", "debranded", "branded"] as const) {
@@ -3379,6 +3631,49 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     relations: count(keep.map((e) => e.relation)),
     families: count(asked.map((q) => q.family)),
     strips,
+    /**
+     * The free channel's yield, so it is measurable rather than assumed.
+     *
+     * `found` is names read off the anchor's own comparison urls, `queries` is
+     * how many of them this run could afford to ask about under `cap`, and
+     * `reachedMap` is how many of the names ended up as an entity on the map by
+     * ANY route — a name-match against a kept row, not proof that this channel
+     * put it there. A run where `found` is high and `reachedMap` is low is the
+     * case worth looking at: the anchor is naming rivals the sweep is not
+     * finding. Zero across the board is the honest reading for a company that
+     * publishes no comparison pages, and costs nothing.
+     */
+    rivals: (() => {
+      const squash = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+      const onMap = new Set<string>();
+      for (const e of keep) {
+        onMap.add(squash(e.name));
+        onMap.add(squash(registrableHost(e.domain || e.name).split(".")[0] ?? ""));
+      }
+      return {
+        found: rivalLeads.length,
+        cap: brandedBought,
+        queries: asked.filter((q) => q.family === "rival").length,
+        reachedMap: rivalLeads.filter((r) => onMap.has(squash(r.name))).length,
+        leads: rivalLeads.map((r) => ({
+          name: r.name,
+          seen: r.seen,
+          foundAt: r.foundAt,
+        })),
+      };
+    })(),
+    /** What the `platform` field bought. `scoped` queries carry a `site:` the
+     *  code rendered from it; `tooLong` are the ones that named a platform in a
+     *  sentence and were fired unscoped rather than truncated; `anchorOwned`
+     *  are the ones whose platform was this anchor's own site, which is never
+     *  scoped and is non-zero only when the run is mapping one of the seven.
+     *  See `scopeToPlatform`. */
+    platform: {
+      scoped: scopedQueries,
+      tooLong: tooLongToScope,
+      anchorOwned: anchorOwnedScope,
+      byPlatform: scopedBy,
+    },
     /** Products `understand` found that no capability's `covers` claimed, and
      *  that the plan adopted into the nearest market rather than leaving
      *  unasked. 113 of 408 products across the 25 runs on disk that had this

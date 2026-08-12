@@ -40,7 +40,7 @@ things that solve the same problem a different way, what this is built on and wh
 plugs into it, and where these buyers actually gather and talk.
 
 If something is missing, write queries aimed at THAT — not more of what has already
-been asked. Every rule from before still binds: never name a company, describe what
+been asked. Every rule from before still binds: never name the anchor, describe what
 things do, and each query must ask something the others do not.
 
 You are deciding whether to spend more of the run's money. Saying `enough` when the map has an

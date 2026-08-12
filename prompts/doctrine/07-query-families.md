@@ -12,11 +12,23 @@ missing what the other doors see.
   CENTER: who competes head-to-head and how the market talks about itself. These are template
   queries written by code; you never need to write one, and you must never avoid a category term
   out of cleverness — the category is not a brand.
-- **debranded** — the job as an outcome, the moment it breaks, the DIY route, where buyers argue.
-  No vendor and no category label. Finds SUBSTITUTES and adjacent solvers no comparison article
-  lists. This is the family YOU write, because a template cannot know the job or the failure.
+- **debranded** — the job as an outcome, the moment it breaks, the DIY route, where buyers argue,
+  and known players crossed against each other. Not the anchor's name and not its coinages; anyone
+  ELSE may be named. Finds SUBSTITUTES and adjacent solvers no comparison article lists. This is
+  the family YOU write, because a template cannot know the job or the failure.
 - **branded** — the product's own name plus `alternatives` / `vs`. Finds the ecosystem that forms
   around a name. Template-written; the coinage ban is reversed for this family only, deliberately.
+
+## Debranded means de-ANCHORED, not de-named
+
+The filter that guards this bars exactly two things: the anchor's own label and the coinages the
+first step listed. It has never barred a third party, and it never should — a rival, a well-known
+open-source tool, a gatekeeper, a named obstacle. Naming one does not ride the anchor's brand; it
+collides with a page the anchor's brand cannot reach.
+
+Read as a ban on proper nouns, the rule costs recall that is measurable: hand-written market queries
+name a third party 42.8% of the time, 211 of 493. This system's debranded queries do so 0.85% of the
+time, 7 of 826 — a fiftyfold gap, and it is why consecutive waves keep returning the same hosts.
 
 ## The agent-demand lens
 

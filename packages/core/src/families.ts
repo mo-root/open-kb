@@ -1,5 +1,5 @@
 /**
- * The three query families, and the templates that guarantee two of them.
+ * The four query families, and the templates that guarantee three of them.
  *
  * A catalog prompt instructed on five clever shapes still skipped the single
  * highest-yield query a market has: the bare category term. One manual search
@@ -7,15 +7,21 @@
  * queries missed. So the boring families are code: deterministic, free, and
  * immune to a model having a clever day. Only the debranded family — where
  * judgement actually pays — is written by a model.
+ *
+ * `plain` and `branded` are templates over a product; `rival` is a template
+ * over a name the anchor published about someone else (`rivalHand`, and
+ * `rivalsFromSitemap` in catalog.ts for where the names come from).
  */
-export type QueryFamily = "plain" | "debranded" | "branded"
+export type QueryFamily = "plain" | "debranded" | "branded" | "rival"
 
 export interface FamilyQuery {
   q: string
   family: QueryFamily
-  /** The product this query hunts alternatives for. */
+  /** The product this query hunts alternatives for; "" for the company-level
+   *  and rival-grounded hands, which are about no single product. */
   product: string
-  /** The stripped term it expanded from; "" for branded. */
+  /** The stripped term it expanded from; "" for branded, and the rival's name
+   *  for the rival family, so a record says which name grounded the query. */
   term: string
   /** One line: what this shape buys that the others do not. */
   why: string
@@ -75,6 +81,67 @@ export function companyHand(company: string): FamilyQuery[] {
 }
 
 /**
+ * The hand grounded in someone else's name.
+ *
+ * WHY THIS IS NOT A BREACH OF THE THESIS. The rule is that a non-branded query
+ * never rides the ANCHOR's own name: it must find the market by describing the
+ * job, not by looking the company up. Naming a rival is a different act. A
+ * buyer comparing vendors types other people's brands constantly — measured on
+ * the hand-written market corpus, 42.8% of its queries (211 of 493) name a
+ * third-party proper noun, against 0.85% of open-kb's non-branded queries
+ * (7 of 826). That ~50x gap is not the thesis working, it is a shape the
+ * engine simply never had.
+ *
+ * TWO SHAPES, AND WHAT EACH BUYS:
+ *
+ *   `<rival> alternatives` — the shortlist page the anchor SITS ON rather than
+ *   the one it wrote about itself. One such roundup names ten companies
+ *   including the anchor, and it is the only shape that reaches a vendor
+ *   nobody wrote an anchor-comparison about.
+ *
+ *   `<rivalA> vs <rivalB>` — two rivals, neither of them the anchor. The
+ *   existing `<company> vs` template leaves the right-hand side empty and lets
+ *   the search engine guess who to fill it with; naming both sides asks for a
+ *   page that exists.
+ *
+ * The split is two thirds to `alternatives`, remainder to pairs. The
+ * alternatives shape is the one with a measured reach; the pair shape is an
+ * argument. A channel spends more on the evidence than on the argument.
+ *
+ * Pairs are drawn from consecutive names in the caller's order, which is
+ * most-named-first, so no name is bought twice in this shape — a pair that
+ * repeats a name buys a second look at the same shortlist.
+ *
+ * `budget` is a hard cap on the whole hand, and the caller derives it from
+ * something real (see the sweep). Zero names or zero budget returns nothing,
+ * which is the normal outcome for an anchor that publishes no comparison pages.
+ */
+export function rivalHand(rivals: readonly string[], budget: number): FamilyQuery[] {
+  const names = rivals.map((r) => r.trim()).filter(Boolean)
+  const cap = Math.max(0, Math.floor(budget))
+  if (!names.length || !cap) return []
+
+  const out: FamilyQuery[] = []
+  const seen = new Set<string>()
+  const push = (q: string, term: string, why: string) => {
+    const k = q.trim().toLowerCase()
+    if (out.length >= cap || seen.has(k)) return
+    seen.add(k)
+    out.push({ q, family: "rival", product: "", term, why })
+  }
+
+  for (const n of names.slice(0, Math.ceil((cap * 2) / 3)))
+    push(`${n} alternatives`, n, "the shortlist a rival sits on — where this market names ten vendors at once")
+  for (let i = 0; i + 1 < names.length; i += 2)
+    push(
+      `${names[i]} vs ${names[i + 1]}`,
+      `${names[i]}, ${names[i + 1]}`,
+      "two rivals head to head, neither of them the anchor",
+    )
+  return out
+}
+
+/**
  * Does this query accidentally name the anchor?
  *
  * Branded is exempt: naming the anchor is that family's entire point — its
@@ -82,6 +149,17 @@ export function companyHand(company: string): FamilyQuery[] {
  * `companyHand` and `openingHand`, never by the model. Everything else that
  * names the anchor's own name or one of its coinages got there by accident
  * and is bought for nothing.
+ *
+ * RIVAL IS NOT EXEMPT, and that is a decision rather than an oversight. Its
+ * queries name a third party, which this check has never tested for and which
+ * the thesis has never forbidden — a rival's name is not the anchor's name.
+ * But the names it is built from come out of the anchor's own url slugs, and a
+ * slug can hand back the anchor under a spelling the strip did not catch: an
+ * acquired brand, an enterprise tier, a coinage. `rivalHand` runs before
+ * `understand` has returned, so it cannot know the coinages; this check runs
+ * after, so it can. A rival-grounded query that also names the anchor is
+ * therefore dropped exactly like a plain one — the recall it would have bought
+ * is worth less than the rule it would have broken.
  *
  * Pulled out of the sweep's opening-batch filter so the widening loop can run
  * the identical check on reserve-released and freshly-invented queries —

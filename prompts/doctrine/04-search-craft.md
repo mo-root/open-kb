@@ -5,25 +5,25 @@ doctrine: 04-search-craft
 
 One category term is one question. Several descriptions at several specificities are several
 questions, and they reach different pages — measured at roughly twice the distinct vendors, with
-almost no overlap.
-
-Write what the thing does the way a buyer would say it, then vary it: broader, narrower, from the
-buyer's angle, from the technique's angle.
+almost no overlap. Running several is not repetition.
 
 ## What each shape buys
-
-Each of these returns a different *kind of page*, which is why running several is not repetition.
 
 - **The category as a buyer names it** — vendor homepages and category roundups.
 - **The job, phrased as an outcome** — reaches substitutes, the companies solving the same problem a
   different way. Nothing else finds them.
-- **The buyer's problem in their own words, at the moment it breaks** — forums and threads that no
-  category term reaches. Those places are findings themselves, not only routes to vendors.
+- **The buyer's problem at the moment it breaks** — a named tool crossed with a symptom:
+  `scrapy cloudflare 403 forbidden bypass`, `playwright datadome detected bot access denied`. The
+  symptom vocabulary is small and reusable: blocked, 403, rate limit, detected, keeps breaking, not
+  working, timeout. Reaches forums no category term does, where someone who gave up on the DIY route
+  was told what to buy — and those are findings themselves, not only routes to vendors.
 - **The technique underneath** — vendors who sell one mechanism. In one market this shape alone
   surfaced two vendors nothing else found.
 - **The format delivered** — a feed, a webhook, a dashboard, a dump. Each has its own vendors.
 - **Roundup hunting** — "best", "top", "alternatives", "vs". Cheap, and one good roundup names ten
-  companies.
+  companies. Better with NAMES in it: `Oxylabs vs Bright Data vs Zyte`. Nobody writes a comparison
+  page about a category, so crossing two or three players you know returns the page naming the rest.
+  Naming a rival is not naming the anchor; only the anchor and its coinages are barred.
 - **Certifications, standards, registries, trade bodies** — in markets without comparison content
   this is the shape that works. It returns *directories* rather than competitors, and a directory
   naming a hundred manufacturers is worth more than one competitor.
@@ -32,28 +32,29 @@ Each of these returns a different *kind of page*, which is why running several i
 
 Ask: **would a buyer who had never heard of this company type this?**
 
-Two ways a term fails, with different signatures.
+Three ways a term fails, each with its own signature.
 
-**Too branded.** The results are the company's own properties. Watch for coinages that look
-perfectly generic — a product name with a common noun attached is not a market. And the company's
-properties include its open-source projects, its docs domains and its repos, whose addresses may not
-contain its name at all. One tested term returned the company to itself while appearing to return a
-market.
+**Too branded.** The results are the company's own properties — which include its open-source
+projects, its docs domains and its repos, whose addresses may not contain its name at all. Watch for
+coinages that look perfectly generic: a product name with a common noun attached is not a market.
+One tested term returned the company to itself while looking like a market.
 
-**Too generic.** Clean of the brand, and still wrong, because it names a different market. Nothing
-in the results looks like an error — they are real companies, just not this market's. The only way
-to catch it is to ask whether what came back actually does the job the anchor does.
+**Too generic.** Clean of the brand, and still wrong: it names a different market. Nothing looks
+like an error — real companies, just not this market's. Ask whether what came back does the anchor's
+job.
 
 **Too long.** Every term is ANDed, so each one multiplies the constraint.
 `HTTP 403 Forbidden on python requests but works in browser` is a sentence, not a query: it matches
 only the pages where someone wrote that sentence, and a market is not in those pages.
 
-Three to six words, at most one operator, and **at most one quoted phrase**. Quotes are the hardest
-constraint there is: they demand an exact string, so a quoted phrase that few people write returns
-the few pages that wrote it. Measured, after this file first asked for literal strings: a catalog of
-twenty queries came back full of `"cf-challenge-running"`, `"HTTP 403"` and `"403 Forbidden"`, and
-the run returned 1.6 results per search where seven is normal. Quote a phrase only when thousands of
-people would write it that way; otherwise say it unquoted and let the engine match loosely.
+Count the words before deciding this applies. That sentence is TEN. `scrapy 403 forbidden bypass` is
+FOUR, and a different animal: a named tool, the code it emitted, and what the buyer wants done. The
+rule bars the sentence, never the error.
+
+Three to six words, at most one operator, and **at most one quoted phrase**. Quotes demand an exact
+string, so a phrase few people write returns the few pages that wrote it: a catalog of twenty
+queries came back full of `"cf-challenge-running"` and `"403 Forbidden"`, and returned 1.6 results
+per search where seven is normal. Quote only what thousands would write that way.
 
 A query that wants to say two things is two queries. Splitting is free, over-constraining is not.
 
@@ -61,13 +62,9 @@ A query that wants to say two things is two queries. Splitting is free, over-con
 
 The vaguer the term, the more of your results are people writing *about* the market rather than
 being in it. Review sites appeared in every loose query tested and in none of the tight ones. If
-your results are filling with listicle farms, tighten.
+listicle farms fill your results, tighten.
 
 ## Batch, watch, and follow what pays
 
-One call carries many queries — one turn should buy a whole wave.
-
-Then look at what came back. Which shapes are returning real players *in this market* — vendors,
-products, the places its buyers gather? Spend there. This is a judgement you make during the run, not an order fixed in advance.
-
-Stop when new searches keep returning what you have already recorded.
+One call carries many queries — one turn should buy a whole wave. Then look at what came back and
+spend where real players *in this market* are appearing, not where you planned to spend.

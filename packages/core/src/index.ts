@@ -41,7 +41,14 @@ export * from "./prompts.js"
 export * from "./investigator.js"
 export * from "./catalog.js"
 export * from "./discovery.js"
-export { openingHand, companyHand, banned, type FamilyQuery, type QueryFamily } from "./families.js"
+export {
+  openingHand,
+  companyHand,
+  rivalHand,
+  banned,
+  type FamilyQuery,
+  type QueryFamily,
+} from "./families.js"
 export { Board, type Mission, type MissionTier, type BoardRow, type BoardOutcome } from "./board.js"
 export {
   Ledger,

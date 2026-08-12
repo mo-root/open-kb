@@ -1,0 +1,176 @@
+import { describe, expect, it } from "vitest"
+import {
+  candidatesFromSitemap,
+  rivalsFromComparisonUrls,
+  rivalsFromSitemap,
+} from "../src/catalog.js"
+
+/**
+ * The slug shapes here are real ones, taken off shopify.com/sitemap.xml
+ * (838 urls, fetched 2026-08-12) and ramp.com, which is where the extraction's
+ * rules came from. The four rejected `/compare/*` slugs are that file's four
+ * separator-less urls, and not one of them is a company.
+ */
+
+const u = (host: string, path: string) => `https://${host}${path}`
+
+describe("rivalsFromComparisonUrls", () => {
+  it("reads both sides of a `-vs-` slug and drops the anchor's own", () => {
+    const leads = rivalsFromComparisonUrls(
+      [u("www.shopify.com", "/compare/shopify-vs-woocommerce")],
+      "shopify.com",
+    )
+    expect(leads.map((l) => l.name)).toEqual(["woocommerce"])
+    expect(leads[0]).toMatchObject({
+      seen: 1,
+      foundAt: "https://www.shopify.com/compare/shopify-vs-woocommerce",
+    })
+  })
+
+  it("reads a three-way roundup as three rivals, minus the anchor", () => {
+    const leads = rivalsFromComparisonUrls(
+      [u("shopify.com", "/compare/bigcommerce-vs-salesforce-vs-shopify")],
+      "shopify.com",
+    )
+    expect(leads.map((l) => l.name).sort()).toEqual(["bigcommerce", "salesforce"])
+  })
+
+  it("takes the single segment under a namespace that IS the comparison", () => {
+    const leads = rivalsFromComparisonUrls(
+      [u("ramp.com", "/versus/brex"), u("ramp.com", "/alternatives/expensify")],
+      "ramp.com",
+    )
+    expect(leads.map((l) => l.name).sort()).toEqual(["brex", "expensify"])
+  })
+
+  it("refuses a bare `/compare/<slug>`, which is where the non-names live", () => {
+    const leads = rivalsFromComparisonUrls(
+      [
+        u("shopify.com", "/compare"),
+        u("shopify.com", "/compare/tco"),
+        u("shopify.com", "/compare/tco/webinar"),
+        u("shopify.com", "/compare/time-to-value"),
+        u("shopify.com", "/compare/sitespeed"),
+      ],
+      "shopify.com",
+    )
+    expect(leads).toEqual([])
+  })
+
+  it("strips the anchor wearing a tier, and keeps the rival beside it", () => {
+    const leads = rivalsFromComparisonUrls(
+      [
+        u("shopify.com", "/compare/shopify-enterprise-vs-adobe"),
+        u("shopify.com", "/compare/shopify-enterprise-vs-salesforce-commercecloud"),
+      ],
+      "shopify.com",
+    )
+    // Multi-word slugs stay one name: `salesforce-commercecloud` is a product
+    // line, not two companies.
+    expect(leads.map((l) => l.name).sort()).toEqual(["adobe", "salesforce commercecloud"])
+  })
+
+  it("drops a side that is all framing and no company", () => {
+    const leads = rivalsFromComparisonUrls(
+      [
+        u("shopify.com", "/compare/shopify-vs-custom-platform"),
+        u("shopify.com", "/compare/shopify-vs-open-source"),
+      ],
+      "shopify.com",
+    )
+    expect(leads.map((l) => l.name)).toEqual([])
+  })
+
+  it("takes the framing off a name and leaves the name", () => {
+    const leads = rivalsFromComparisonUrls(
+      [
+        u("acme.com", "/compare/acme-vs-webflow-pricing"),
+        u("acme.com", "/compare/acme-vs-wix-2024"),
+      ],
+      "acme.com",
+    )
+    expect(leads.map((l) => l.name).sort()).toEqual(["webflow", "wix"])
+  })
+
+  it("counts how often a name was published and puts the most-named first", () => {
+    const leads = rivalsFromComparisonUrls(
+      [
+        u("shopify.com", "/compare/shopify-vs-wix"),
+        u("shopify.com", "/compare/godaddy-vs-wix-vs-shopify"),
+        u("shopify.com", "/compare/shopify-vs-etsy"),
+      ],
+      "shopify.com",
+    )
+    expect(leads.map((l) => `${l.seen} ${l.name}`)).toEqual(["2 wix", "1 etsy", "1 godaddy"])
+  })
+
+  it("reads a comparison url that sits under a locale prefix", () => {
+    const leads = rivalsFromComparisonUrls(
+      [u("shopify.com", "/de-de/compare/shopify-vs-magento")],
+      "shopify.com",
+    )
+    expect(leads.map((l) => l.name)).toEqual(["magento"])
+  })
+
+  it("returns NAMES, never domains — a lead has to be resolved like any host", () => {
+    const leads = rivalsFromComparisonUrls(
+      [u("shopify.com", "/compare/shopify-vs-woocommerce")],
+      "shopify.com",
+    )
+    for (const l of leads) {
+      expect(l.name).not.toContain(".")
+      expect(l.name).not.toContain("/")
+    }
+  })
+
+  it("honours the limit and stays stable between two reads of one sitemap", () => {
+    const urls = ["wix", "magento", "etsy", "webflow"].map((r) =>
+      u("shopify.com", `/compare/shopify-vs-${r}`),
+    )
+    expect(rivalsFromComparisonUrls(urls, "shopify.com", 2).map((l) => l.name)).toEqual([
+      "etsy",
+      "magento",
+    ])
+    expect(rivalsFromComparisonUrls(urls, "shopify.com")).toEqual(
+      rivalsFromComparisonUrls(urls, "shopify.com"),
+    )
+  })
+})
+
+describe("rivalsFromSitemap", () => {
+  const xml =
+    `<urlset>` +
+    [
+      "/products/checkout",
+      "/pricing",
+      "/blog/how-to-sell",
+      "/compare/acme-vs-woocommerce",
+      "/compare/acme-vs-magento",
+      "/compare/tco",
+    ]
+      .map((p) => `<url><loc>https://acme.com${p}</loc></url>`)
+      .join("") +
+    `</urlset>`
+
+  it("reads the rivals out of the same bytes the product hunt reads", () => {
+    expect(rivalsFromSitemap(xml, "acme.com").map((l) => l.name)).toEqual([
+      "magento",
+      "woocommerce",
+    ])
+  })
+
+  it("takes nothing the product hunt wanted, and leaves it nothing", () => {
+    const products = candidatesFromSitemap(xml).map((c) => c.url)
+    const rivals = rivalsFromSitemap(xml, "acme.com").map((l) => l.foundAt)
+    expect(products).toEqual([
+      "https://acme.com/pricing",
+      "https://acme.com/products/checkout",
+    ])
+    expect(products.filter((p) => rivals.includes(p))).toEqual([])
+  })
+
+  it("finds nothing in a sitemap with no comparison pages, and says so quietly", () => {
+    expect(rivalsFromSitemap(`<urlset><url><loc>https://acme.com/pricing</loc></url></urlset>`, "acme.com")).toEqual([])
+    expect(rivalsFromSitemap("", "acme.com")).toEqual([])
+  })
+})
