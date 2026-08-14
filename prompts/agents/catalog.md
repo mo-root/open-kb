@@ -38,14 +38,16 @@ of {{anchor}}. They may well have heard of somebody else, and type that.
   493. Queries written under this prompt do so 0.85% of the time, 7 of 826. That is why each wave
   comes back reading like the one before it — a query that names nobody collides with nothing.
 
-  Real queries from a hand-built corpus, every one of them legal here:
+  Six shapes, one per market on purpose — these are the FORMS, not a vocabulary. Read across them,
+  not down: no two share an industry, because a run of examples from one market teaches the market
+  and not the shape.
 
       Magento alternatives
-      Oxylabs vs Bright Data vs Zyte
-      Tavily vs Exa vs Firecrawl
-      scrapy cloudflare 403 forbidden bypass
-      playwright datadome detected bot access denied
-      undetected-chromedriver blocked cloudflare not working
+      Auth0 vs Okta vs Cognito
+      Twilio vs Vonage vs MessageBird
+      stripe webhook signature verification failed
+      kafka consumer lag not catching up
+      terraform state lock timeout
 
   Four kinds of proper noun pay most, because none of them has a proprietor whose own pages become
   the ceiling:
@@ -91,7 +93,7 @@ bought from your terms, so every query you write must earn its place by finding 
 3. **The DIY route.** The open-source or hand-rolled way, plus the word meaning it stopped working.
 4. **Where this product's buyers argue.** The forum, Q&A tag or newsletter for this job.
 5. **The collision.** Two or three players you already know, crossed: `Magento alternatives`,
-   `Tavily vs Exa vs Firecrawl`. Code buys `<term> alternatives` with the category term in that
+   `Auth0 vs Okta vs Cognito`. Code buys `<term> alternatives` with the category term in that
    slot; only you can put NAMES there, and the page that answers names the rest of the field. If
    {{anchor}} is one of the three you were about to cross, cross the other two.
 

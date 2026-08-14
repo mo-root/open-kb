@@ -13,15 +13,15 @@ almost no overlap. Running several is not repetition.
 - **The job, phrased as an outcome** — reaches substitutes, the companies solving the same problem a
   different way. Nothing else finds them.
 - **The buyer's problem at the moment it breaks** — a named tool crossed with a symptom:
-  `scrapy cloudflare 403 forbidden bypass`, `playwright datadome detected bot access denied`. The
-  symptom vocabulary is small and reusable: blocked, 403, rate limit, detected, keeps breaking, not
+  `kafka consumer lag not catching up`, `terraform state lock timeout`. The symptom vocabulary is
+  small and reusable in every market: blocked, 403, rate limit, detected, keeps breaking, not
   working, timeout. Reaches forums no category term does, where someone who gave up on the DIY route
   was told what to buy — and those are findings themselves, not only routes to vendors.
 - **The technique underneath** — vendors who sell one mechanism. In one market this shape alone
   surfaced two vendors nothing else found.
 - **The format delivered** — a feed, a webhook, a dashboard, a dump. Each has its own vendors.
 - **Roundup hunting** — "best", "top", "alternatives", "vs". Cheap, and one good roundup names ten
-  companies. Better with NAMES in it: `Oxylabs vs Bright Data vs Zyte`. Nobody writes a comparison
+  companies. Better with NAMES in it: `Auth0 vs Okta vs Cognito`. Nobody writes a comparison
   page about a category, so crossing two or three players you know returns the page naming the rest.
   Naming a rival is not naming the anchor; only the anchor and its coinages are barred.
 - **Certifications, standards, registries, trade bodies** — in markets without comparison content
@@ -47,7 +47,7 @@ job.
 `HTTP 403 Forbidden on python requests but works in browser` is a sentence, not a query: it matches
 only the pages where someone wrote that sentence, and a market is not in those pages.
 
-Count the words before deciding this applies. That sentence is TEN. `scrapy 403 forbidden bypass` is
+Count the words before deciding this applies. That sentence is TEN. `kafka consumer lag timeout` is
 FOUR, and a different animal: a named tool, the code it emitted, and what the buyer wants done. The
 rule bars the sentence, never the error.
 
