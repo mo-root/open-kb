@@ -3,6 +3,7 @@ import {
   candidatesFromSitemap,
   candidatesFromLinks,
   isSitemapIndex,
+  sitemapChildren,
   readPageFacts,
   renderPageFacts,
   dedupeFacts,
@@ -87,6 +88,41 @@ describe("candidate selection", () => {
     expect(isSitemapIndex(sitemap(["https://x.com/sitemap-1.xml", "https://x.com/sitemap-2.xml"]))).toBe(true)
     expect(isSitemapIndex(sitemap(["https://x.com/products/a"]))).toBe(false)
     expect(isSitemapIndex("")).toBe(false)
+  })
+
+  /**
+   * The bug this replaces: every caller followed the FIRST child only, so
+   * alphabetical order decided what a run read. resend.com's first child is
+   * `/blog/sitemap.xml` — 166 posts, zero products — while `/migrate/` five
+   * entries down names five rivals in its slugs.
+   */
+  it("returns every child of an index, content-named ones last", () => {
+    const out = sitemapChildren(
+      sitemap([
+        "https://x.com/blog/sitemap.xml",
+        "https://x.com/docs/sitemap.xml",
+        "https://x.com/migrate/sitemap.xml",
+        "https://x.com/other/sitemap.xml",
+      ]),
+    )
+    expect(out).toHaveLength(4)
+    // The children a product or rival can actually live in come first…
+    expect(out.slice(0, 2)).toEqual([
+      "https://x.com/migrate/sitemap.xml",
+      "https://x.com/other/sitemap.xml",
+    ])
+    // …and the blog is still read, just never INSTEAD of them.
+    expect(out).toContain("https://x.com/blog/sitemap.xml")
+  })
+
+  it("caps the children it hands back, dropping content-named ones first", () => {
+    const kids = [
+      "https://x.com/blog/sitemap.xml",
+      ...Array.from({ length: 12 }, (_, i) => `https://x.com/section-${String(i).padStart(2, "0")}/sitemap.xml`),
+    ]
+    const out = sitemapChildren(sitemap(kids), 12)
+    expect(out).toHaveLength(12)
+    expect(out).not.toContain("https://x.com/blog/sitemap.xml")
   })
 })
 

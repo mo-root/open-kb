@@ -137,6 +137,38 @@ export function isSitemapIndex(xml: string): boolean {
 }
 
 /**
+ * A sitemap index's child sitemaps, in the order they are worth fetching.
+ *
+ * Every caller of `isSitemapIndex` used to follow exactly ONE child: the first
+ * `<loc>` in the file. Alphabetical order decided what a run read, and on the
+ * company that surfaced this the first child was `/blog/sitemap.xml` — so
+ * phase one read 166 blog posts, found zero products and zero rival names,
+ * and never saw the `/migrate/` sitemap naming five rivals or the child
+ * holding the actual page inventory. The nav merge happened to save that run;
+ * a company with a thin nav has nothing to save it.
+ *
+ * So: all of them, content-heavy ones last. The reorder matters because the
+ * caller caps how many it fetches, and a cap spent on the blog is the same
+ * bug with a bigger number. The namespaces pushed back are the ones CONTENT
+ * already drops url-by-url — a child sitemap NAMED for one of them can only
+ * yield urls the filter discards (`rivalsFromSitemap` is the one exception,
+ * and comparison pages live beside products, not in a blog sitemap).
+ *
+ * Pure: takes bytes, returns urls, fetches nothing.
+ */
+export function sitemapChildren(xml: string, limit = 12): string[] {
+  const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]!)
+  const contentNamed = (u: string) => {
+    try {
+      return CONTENT.test(new URL(u).pathname)
+    } catch {
+      return true
+    }
+  }
+  return [...locs.filter((u) => !contentNamed(u)), ...locs.filter(contentNamed)].slice(0, limit)
+}
+
+/**
  * Product urls linked from a page the run already has.
  *
  * The fallback for a site with no useful sitemap: one company's has 118 urls

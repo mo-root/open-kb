@@ -3,7 +3,7 @@ import { z } from "zod"
 import type { FetchPort, SpanStream } from "./index.js"
 import type { ModelPricing } from "./pricing.js"
 import { sniff } from "./sniff.js"
-import { candidatesFromSitemap, candidatesFromLinks, isSitemapIndex, readPageFacts } from "./catalog.js"
+import { candidatesFromSitemap, candidatesFromLinks, isSitemapIndex, sitemapChildren, readPageFacts } from "./catalog.js"
 import { loadPrompt } from "./prompts.js"
 
 /**
@@ -122,9 +122,11 @@ export async function discover(opts: DiscoverOptions): Promise<DiscoveryResult> 
         inputSchema: z.object({}),
         execute: async () => {
           let xml = await raw(`${origin}/sitemap.xml`)
+          // An index's children, all of them — following only the first let
+          // alphabetical order pick what the agent saw. See sitemapChildren.
           if (xml && isSitemapIndex(xml)) {
-            const first = /<loc>([^<]+)<\/loc>/.exec(xml)?.[1]
-            xml = first ? await raw(first) : ""
+            const bodies = await Promise.all(sitemapChildren(xml).map(raw))
+            xml = bodies.filter(Boolean).join("\n")
           }
           let cands = xml ? candidatesFromSitemap(xml, 60) : []
           const home = await raw(`${origin}/`)

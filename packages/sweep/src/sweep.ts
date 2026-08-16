@@ -29,6 +29,7 @@ import {
   candidatesFromSitemap,
   candidatesFromLinks,
   isSitemapIndex,
+  sitemapChildren,
   rivalsFromSitemap,
   readPageFacts,
   renderPageFacts,
@@ -1402,10 +1403,15 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
 
     let candidates = [] as ReturnType<typeof candidatesFromSitemap>;
     let xml = await raw(`https://${anchor}/sitemap.xml`);
-    // A sitemap of sitemaps: folding it here would return nothing but more xml.
+    // A sitemap of sitemaps: follow the children, ALL of them, and read their
+    // bodies as one file. Following only the first `<loc>` let alphabetical
+    // order decide what a run read — on resend.com that was the blog sitemap,
+    // 166 posts, zero products, zero rivals, while `/migrate/sitemap.xml` five
+    // entries away named customer-io, mailchimp, mailgun, postmark and
+    // sendgrid. Concurrent and direct, so eleven children cost what one did.
     if (xml && isSitemapIndex(xml)) {
-      const first = /<loc>([^<]+)<\/loc>/.exec(xml)?.[1];
-      xml = first ? await raw(first) : "";
+      const bodies = await Promise.all(sitemapChildren(xml).map(raw));
+      xml = bodies.filter(Boolean).join("\n");
     }
     if (xml) candidates = candidatesFromSitemap(xml, PRODUCT_PAGES);
 
