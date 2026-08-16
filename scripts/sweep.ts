@@ -87,6 +87,10 @@ const out = await withSpendCap(
     // this is observable-safe: too wide answers as 429s and pacing, never loss.
     concurrency: Number(process.env.OPENKB_SEARCH_CONCURRENCY ?? 0) || undefined,
     skipModelLinking: process.env.OPENKB_SKIP_MODEL_LINKING === "1",
+    // `OPENKB_DISCOVERY=agent` runs phase one as the discovery agent instead of
+    // the single call — the A/B this flag exists for. Anything else, including
+    // unset, is the unchanged default.
+    discovery: process.env.OPENKB_DISCOVERY === "agent" ? "agent" : undefined,
     spans,
     creds: {
       token: process.env.BRIGHTDATA_API_TOKEN!,

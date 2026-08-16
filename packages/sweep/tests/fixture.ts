@@ -217,7 +217,7 @@ export const SERP: Record<string, SearchHit[]> = {
  * UI rail: `plan` issues both the catalog and the assess calls, and `write`
  * issues none at all. These are model calls, not stages.
  */
-export type CallPhase = "understand" | "catalog" | "assess" | "classify" | "link"
+export type CallPhase = "understand" | "catalog" | "assess" | "classify" | "link" | "discovery"
 
 const PHASE_BY_KEY: Array<[CallPhase, string]> = [
   ["understand", "capabilities"],
@@ -256,6 +256,9 @@ export function pairsOf(prompt: string): LinkPair[] {
   return out
 }
 
+/** One turn of the discovery agent: tool calls, or the text that ends the loop. */
+export type DiscoveryTurn = { tools: Array<{ toolName: string; input: unknown }> } | { text: string }
+
 export interface Script {
   understand?: (prompt: string) => unknown
   catalog?: (product: string, prompt: string) => unknown
@@ -263,6 +266,10 @@ export interface Script {
   assess?: (round: number, prompt: string) => unknown
   classify?: (host: string, prompt: string) => unknown
   link?: (pairs: LinkPair[], prompt: string) => unknown
+  /** The discovery agent's turns, `turn` counting model calls from 0. Only
+   *  reached when the run sets `discovery: "agent"`; the default script mirrors
+   *  what `understand` answers, so the two modes describe one company. */
+  discovery?: (turn: number, prompt: string) => DiscoveryTurn
 }
 
 /** Every model call the run made, in order. */
@@ -375,6 +382,34 @@ export function defaultScript(): Required<Script> {
             ],
           },
     assess: () => ({ enough: true, missing: "", draw: [], queries: [] }),
+    discovery: (turn) =>
+      turn === 0
+        ? {
+            tools: [
+              {
+                toolName: "submitProduct",
+                input: { name: "Log Search Cloud", does: "searches application logs", foundAt: `https://${ANCHOR}/products/log-search` },
+              },
+              {
+                toolName: "submitProduct",
+                input: { name: "Uptime Alerts", does: "pages the on-call engineer", foundAt: `https://${ANCHOR}/products/uptime-alerts` },
+              },
+            ],
+          }
+        : turn === 1
+          ? {
+              tools: [
+                {
+                  toolName: "finish",
+                  input: {
+                    sells: "hosted log search and uptime alerts for small platform teams",
+                    buyer: "a platform team of five to fifty engineers who have just had an incident nobody could explain",
+                    coinages: [COINAGE],
+                  },
+                },
+              ],
+            }
+          : { text: "the catalogue is complete" },
     classify: (host) => CLASSIFY[host] ?? unknownHost(host),
     link: (pairs) => ({
       edges: [
@@ -513,6 +548,39 @@ export async function runFixture(opts: FixtureOptions = {}): Promise<Harness> {
         .map((c) => c.text ?? "")
         .join("\n")
       if (!text) throw new Error("the fixture model was handed a prompt with no text in it")
+
+      // No JSON response format means this is not one of the engine's five
+      // generateObject calls — it is the discovery agent taking a turn through
+      // ToolLoopAgent, which only ever asks for text and tool calls. Turns are
+      // counted by prior assistant messages rather than tool results, because
+      // one turn may carry several tool calls and their results may arrive as
+      // one message or many.
+      const rf = responseFormat as { type?: string } | undefined
+      if (!rf || rf.type !== "json") {
+        const turn = prompt.filter((m) => m.role === "assistant").length
+        calls.push({ phase: "discovery", prompt: text, subject: String(turn) })
+        const step = script.discovery(turn, text)
+        if ("text" in step) {
+          return {
+            content: [{ type: "text" as const, text: step.text }],
+            finishReason: { unified: "stop" as const, raw: undefined },
+            usage: USAGE,
+            warnings: [],
+          }
+        }
+        return {
+          content: step.tools.map((c, i) => ({
+            type: "tool-call" as const,
+            toolCallId: `disc-${turn}-${i}`,
+            toolName: c.toolName,
+            input: JSON.stringify(c.input),
+          })),
+          finishReason: { unified: "tool-calls" as const, raw: undefined },
+          usage: USAGE,
+          warnings: [],
+        }
+      }
+
       const phase = phaseOf(responseFormat)
       const subject = phase === "catalog" ? productOf(text) : phase === "classify" ? hostOf(text) : ""
       calls.push({ phase, prompt: text, subject })

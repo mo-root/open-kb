@@ -31,6 +31,7 @@ import {
   isSitemapIndex,
   sitemapChildren,
   rivalsFromSitemap,
+  discover,
   readPageFacts,
   renderPageFacts,
   dedupeFacts,
@@ -539,6 +540,14 @@ const Decomposition = z.object({
     ),
 });
 
+/**
+ * The judgement the discovery agent does not make: brand + the market grouping.
+ * Agent-mode phase one asks for exactly this over the agent's product list —
+ * the same two fields, cut from the same schema, so the two discovery modes
+ * cannot drift apart on what a capability is.
+ */
+const Grouping = Decomposition.pick({ brand: true, capabilities: true });
+
 const PlannedQuery = z.object({
   q: z.string(),
   intent: z.enum(INTENTS),
@@ -794,6 +803,25 @@ export interface SweepOptions {
   skipModelLinking?: boolean;
   /** How many of the company's own product pages to read. 0 uses the index only. */
   productPages?: number;
+  /**
+   * How phase one reads the company: `"call"` (default) hands a model one
+   * pre-fetched packet and takes its single answer; `"agent"` runs the
+   * discovery agent from @open-kb/core, which pulls the corpus itself —
+   * maps the product pages, reads the ones it judges worth reading, follows
+   * what it learns, and submits products as it confirms them.
+   *
+   * A FLAG, NOT A MIGRATION. The two must run side by side on the same anchor
+   * before either is declared the engine, because the case for the agent is a
+   * measured one — a single call read three products off a company with dozens
+   * — and the case has to survive being re-measured on the current engine.
+   * `"call"` is byte-identical to the behaviour before this field existed.
+   *
+   * The agent finds products; it does not group them into markets. That
+   * judgement — the grouping the whole search budget is divided by — stays a
+   * separate call either way (`prompts/agents/group.md` in agent mode, folded
+   * into the understand answer in call mode).
+   */
+  discovery?: "call" | "agent";
   /** Bounds the model's per-product debranded ask (clamped to 2-3 regardless of
    *  a larger value here; the floor of 2 is not configurable). Templates cover
    *  plain and branded and are not affected — this only trims how many
@@ -1567,19 +1595,107 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     );
   }
 
-  const decomp = await call(
-    "understand",
-    `read ${anchor} — ${pages.length} page${pages.length === 1 ? "" : "s"}`,
-    Decomposition,
-    prompt("understand", {
-      pages: pages.join("\n\n"),
-      productPages: productPages.length
-        ? renderPageFacts(productPages)
-        : "(none found: no sitemap or nav gave product urls, so work from the pages above)",
-    }),
-    // Worth thinking about: everything downstream descends from these sentences.
-    { think: "medium", maxOutputTokens: 8_000 },
-  );
+  /** The single-call reading, unchanged — the default path, and agent mode's
+   *  fallback when the investigation comes back empty-handed. */
+  const understandByCall = () =>
+    call(
+      "understand",
+      `read ${anchor} — ${pages.length} page${pages.length === 1 ? "" : "s"}`,
+      Decomposition,
+      prompt("understand", {
+        pages: pages.join("\n\n"),
+        productPages: productPages.length
+          ? renderPageFacts(productPages)
+          : "(none found: no sitemap or nav gave product urls, so work from the pages above)",
+      }),
+      // Worth thinking about: everything downstream descends from these sentences.
+      { think: "medium", maxOutputTokens: 8_000 },
+    );
+
+  const decomp: Decomposition = await (async () => {
+    if (opts.discovery !== "agent") return understandByCall();
+
+    // The agent pulls its own corpus: maps the product pages, reads what it
+    // judges worth reading, submits products as it confirms them. See
+    // `SweepOptions.discovery` for why this is a flag and not the engine.
+    say(
+      "understand",
+      `investigating ${anchor} — the agent pulls its own pages (discovery: agent)`,
+    );
+    const dStarted = Date.now();
+    const d = await discover({
+      anchor,
+      runId,
+      parentId: null,
+      model: opts.model,
+      fetch: fetcher,
+      spans,
+      pricing,
+      modelName: modelId,
+      signal,
+    });
+    // Fold the agent's spend into this run's totals the same way call() does.
+    // discover() emits its own per-turn spans; this is the run's ledger, which
+    // reads tokIn/tokOut and the bill lines, and must not miss a phase.
+    let agentIn = 0;
+    let agentOut = 0;
+    for (const s of d._steps ?? []) {
+      agentIn += s.usage?.inputTokens ?? 0;
+      agentOut += s.usage?.outputTokens ?? 0;
+    }
+    tokIn += agentIn;
+    tokOut += agentOut;
+    bill(
+      "llm",
+      "understand",
+      usdFor(agentIn, agentOut),
+      Date.now() - dStarted,
+      true,
+    );
+    say(
+      "understand",
+      `the agent read ${d.pagesRead} pages in ${d.steps} turns and submitted ${d.products.length} products`,
+    );
+
+    // An investigation that found nothing is not a reading of the company; it
+    // is a failed one. The packet for the single call is already in hand and
+    // paid for, so the run falls back rather than shipping an empty market.
+    if (!d.products.length) {
+      say(
+        "understand",
+        `the agent submitted no products — falling back to the single-call reading`,
+      );
+      return understandByCall();
+    }
+
+    // The judgement the agent does not make: group the products into the
+    // markets the search budget is divided across.
+    const grouped = await call(
+      "understand",
+      `group ${d.products.length} products into markets`,
+      Grouping,
+      prompt("group", {
+        anchor,
+        sells: d.sells,
+        buyer: d.buyer,
+        products: d.products
+          .map(
+            (p) =>
+              `- ${p.name} — ${p.does}${p.foundAt ? ` (${p.foundAt})` : ""}`,
+          )
+          .join("\n"),
+      }),
+      { think: "medium", maxOutputTokens: 8_000 },
+    );
+    return {
+      sells: d.sells,
+      buyer: d.buyer,
+      brand: grouped.brand,
+      products: d.products,
+      capabilities: grouped.capabilities,
+      coinages: d.coinages,
+    };
+  })();
 
   say("understand", `sells: ${decomp.sells}`);
   say(
