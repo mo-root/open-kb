@@ -209,6 +209,9 @@ export async function discover(opts: DiscoverOptions): Promise<DiscoveryResult> 
           const host = origin.slice("https://".length)
           const probes = [
             `${origin}/llms.txt`,
+            // The full variant inlines the docs content itself — when a company
+            // serves it, one fetch can replace most of an investigation.
+            `${origin}/llms-full.txt`,
             `https://docs.${host}/llms.txt`,
             `https://docs.${host}/`,
             `${origin}/docs`,
@@ -222,8 +225,12 @@ export async function discover(opts: DiscoverOptions): Promise<DiscoveryResult> 
               readUrls.add(url)
               // llms.txt IS an index, written for exactly this reader — hand
               // its text over rather than a link list scraped from markdown.
+              // The -full variant carries the docs content inline and earns a
+              // larger slice; both are bounded because whatever comes back here
+              // rides in the agent's context for every turn that follows.
               if (/\.txt$/.test(new URL(url).pathname)) {
-                return { url, kind: "llms-txt" as const, text: sniff({ url, httpStatus: 200, body }).text.slice(0, 4_000) }
+                const cap = /llms-full/.test(url) ? 12_000 : 4_000
+                return { url, kind: "llms-txt" as const, text: sniff({ url, httpStatus: 200, body }).text.slice(0, cap) }
               }
               const facts = readPageFacts(url, body)
               return { url, kind: "docs-index" as const, heading: facts?.heading ?? "", links: docLinks(body, url) }
