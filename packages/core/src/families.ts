@@ -171,7 +171,15 @@ export function banned(q: string, family: QueryFamily, anchorName: string, coina
   if (family === "branded") return false
   const forbidden = [anchorName, ...coinages].filter(Boolean)
   if (!forbidden.length) return false
-  return new RegExp(`\\b(${forbidden.map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\b`, "i").test(q)
+  // Lookarounds, not \b: a word boundary cannot assert between two non-word
+  // characters, so a coinage edged with punctuation — "C++", ".NET",
+  // "Copilot+" — was silently unenforceable while every letter-edged name in
+  // the same alternation still matched. Real runs list such coinages (a
+  // measured corpus held 10 punctuation-edged of 400 distinct), and this
+  // predicate is the ban's one implementation, so a miss here is a miss
+  // everywhere.
+  const alts = forbidden.map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")
+  return new RegExp(`(?<![a-z0-9])(${alts})(?![a-z0-9])`, "i").test(q)
 }
 
 const plain = (product: string, q: string, term: string, why: string): FamilyQuery => ({

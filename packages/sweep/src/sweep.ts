@@ -610,6 +610,12 @@ export type SweptQuery = PlannedQuery & {
   family: QueryFamily;
   product?: string;
   term?: string;
+  /** The text the wire actually saw, when `scopeToPlatform` rendered a
+   *  `site:` onto it. `q` stays the WRITTEN text: the widening dedupe and the
+   *  result joins key on it, and overwriting it blinded the dedupe — the same
+   *  wire string was bought twice when a widening round re-proposed a query
+   *  whose record had been mutated to its scoped form. */
+  fired?: string;
 };
 
 /**
@@ -934,7 +940,7 @@ export function rankThinkLine(e: Judged): string | null {
 
 export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   const {
-    domain: anchor,
+    domain: rawDomain,
     spans,
     creds,
     model,
@@ -949,6 +955,19 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     onLog,
     signal,
   } = opts;
+  /**
+   * The anchor, as a HOST and nothing else. The CLI hands over argv raw, and
+   * `www.stripe.com` ran fine — the site resolves — while the anchor-name ban
+   * silently tested the word "www" instead of the brand, so every accidental
+   * anchor-naming query was bought for nothing. A scheme or a path fails the
+   * same way. The web route normalizes on its own; the engine cannot depend on
+   * every caller remembering to.
+   */
+  const anchor = rawDomain
+    .toLowerCase()
+    .replace(/^[a-z]+:\/\//, "")
+    .replace(/\/.*$/, "")
+    .replace(/^www\./, "");
   // One renderer per run: templates composed on first use, rendered per call.
   // The prompts on disk cannot change mid-run, and the per-host classify call
   // used to recompose them inside the rank pool for every residue host.
@@ -1780,17 +1799,29 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    */
   const knownPlayers = (() => {
     const seen = new Set<string>();
-    const names = [
-      ...rivalLeads.map((r) => r.name),
-      ...(discoveryFacts.current?.integrations.map((i) => i.with) ?? []),
-    ].filter((n) => {
-      const k = n.trim().toLowerCase();
-      if (!k || seen.has(k)) return false;
-      seen.add(k);
-      return true;
-    });
-    return names.length
-      ? names.slice(0, 16).join(", ")
+    const take = (ns: string[]) =>
+      ns.filter((n) => {
+        const k = n.trim().toLowerCase();
+        if (!k || seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+    // Each source has its own quota. One concatenated list sliced to sixteen
+    // let a dense comparison namespace starve the integrations out entirely —
+    // on exactly the runs that harvested both. And the sources are LABELED,
+    // because a partner crossed as a rival buys a comparison page that does
+    // not exist.
+    const rivalNames = take(rivalLeads.map((r) => r.name)).slice(0, 10);
+    const partnerNames = take(
+      (discoveryFacts.current?.integrations ?? []).map((i) => i.with),
+    ).slice(0, 6);
+    const parts: string[] = [];
+    if (rivalNames.length)
+      parts.push(`rivals it published: ${rivalNames.join(", ")}`);
+    if (partnerNames.length)
+      parts.push(`integration partners from its docs: ${partnerNames.join(", ")}`);
+    return parts.length
+      ? parts.join(" · ")
       : "(none harvested — use names you know from this market)";
   })();
 
@@ -2090,8 +2121,51 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   const brandedBought = [...catalogs.flat(), ...company].filter(
     (q) => q.family === "branded",
   ).length;
+
+  /**
+   * WHAT "NAMING THE ANCHOR" MEANS FOR THIS RUN — decided once, used at every
+   * gate: the opening-hand filter, the rival-name deal below, and the widening
+   * loop's per-round check.
+   *
+   * The bare label is the ban that works for stripe and fails for customer.io:
+   * "customer" is a word that company's own market cannot ask a question
+   * without, and banning it killed the entire plain family for the core market
+   * — the query families.ts calls the single highest-yield one — after the
+   * catalog calls that wrote it were already paid for. The ban exists to stop
+   * SELF-RETURN, and "customer engagement platform" does not return
+   * customer.io; "customer.io" and "customerio" do. So when the label turns up
+   * inside the run's own stripped market terms, the label yields to the market
+   * and the ban tightens to the spellings that actually look the company up.
+   */
+  const anchorLabel = anchor.split(".")[0] ?? "";
+  const labelIsMarketWord = strips.some((s) =>
+    s.terms.some((t) =>
+      t.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).includes(anchorLabel),
+    ),
+  );
+  const anchorBanName = labelIsMarketWord ? anchor : anchorLabel;
+  const banCoinages = labelIsMarketWord
+    ? [
+        ...decomp.coinages,
+        anchor.replace(/\./g, " "),
+        anchor.split(".").join(""),
+      ]
+    : decomp.coinages;
+  if (labelIsMarketWord) {
+    think(
+      "plan",
+      `the anchor's label "${anchorLabel}" is a word its own market speaks — the ban tightens to ` +
+        `"${anchor}" and its joined spelling, so the plain family survives`,
+    );
+  }
+
   const rivals: SweptQuery[] = rivalHand(
-    rivalLeads.map((r) => r.name),
+    // Names the ban would kill are not dealt: each rival slot is capped by the
+    // branded hand, and a query generated only to be dropped at the filter
+    // below spends a slot a clean published name never gets.
+    rivalLeads
+      .map((r) => r.name)
+      .filter((n) => !banned(n, "rival", anchorBanName, banCoinages)),
     brandedBought,
   ).map((fq) => ({
     q: fq.q,
@@ -2148,6 +2222,37 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   // survived the drop.
   const opening =
     opts.queries !== undefined ? planned.slice(0, target) : [...planned];
+
+  // The anchor-naming drop, BEFORE the ceiling slice. It ran after, and each
+  // banned query ate a budget slot while a clean template query sat cut below
+  // the line — measured on the fixture: a 6-slot run fired 5, with an adjacent
+  // market's opener discarded unfired. A query that looks the anchor up is
+  // bought for nothing, so it must not be allowed to buy a slot either.
+  //
+  // `banned` (packages/core/src/families.ts) is the one implementation of this
+  // check — the widening loop below runs the identical predicate on
+  // reserve-released and freshly-invented queries, so a strip term or coinage
+  // dropped here cannot fire unfiltered later just because it arrived through
+  // a different code path. The rival hand was pre-filtered at the deal, so a
+  // name that dies here died before it could spend a rival slot.
+  {
+    const named = opening.filter((x) =>
+      banned(x.q, x.family, anchorBanName, banCoinages),
+    );
+    if (named.length) {
+      const drop = new Set(named.map((q) => q.q));
+      for (let i = opening.length - 1; i >= 0; i--)
+        if (drop.has(opening[i]!.q)) opening.splice(i, 1);
+      say(
+        "plan",
+        `catalog: ${opening.length} queries (dropped ${named.length} that named the anchor without being branded)`,
+      );
+      for (const q of named) think("plan", `dropped, names the anchor: ${q.q}`);
+    } else {
+      say("plan", `catalog: ${opening.length} queries, none name the anchor`);
+    }
+  }
+
   // The clock's ceiling, applied to the opening as well as to the widening loop
   // below — a hand dealt before the first search is still a hand this run has
   // to be able to rank. Sliced rather than sampled: `funded` is core markets
@@ -2231,38 +2336,9 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     );
   }
 
-  // `banned` (packages/core/src/families.ts) is the one implementation of this
-  // check — the widening loop below runs the identical predicate on
-  // reserve-released and freshly-invented queries, so a strip term or coinage
-  // dropped here cannot fire unfiltered later just because it arrived through
-  // a different code path.
-  const anchorName = anchor.split(".")[0] ?? "";
-  const named = queries.filter((x) =>
-    banned(x.q, x.family, anchorName, decomp.coinages),
-  );
-  // Dropped, not counted. This only ever tested the anchor's own name and its
-  // coinages, which is the one case the model cannot argue with, and it reported
-  // "0 accidentally name the company" on catalogs where a quarter of the queries
-  // named a third party. A query that looks the anchor up is bought for nothing,
-  // so it does not get bought.
-  //
-  // The rival hand is filtered here too, and this is where its names meet the
-  // coinages for the first time: they were read off url slugs before
-  // `understand` ran, so a lead that is really the anchor wearing another
-  // spelling survives extraction and dies here. Everything but `branded` is
-  // subject to it.
-  if (named.length) {
-    const drop = new Set(named.map((q) => q.q));
-    for (let i = queries.length - 1; i >= 0; i--)
-      if (drop.has(queries[i]!.q)) queries.splice(i, 1);
-    say(
-      "plan",
-      `catalog: ${queries.length} queries (dropped ${named.length} that named the anchor without being branded)`,
-    );
-    for (const q of named) think("plan", `dropped, names the anchor: ${q.q}`);
-  } else {
-    say("plan", `catalog: ${queries.length} queries, none name the anchor`);
-  }
+  // The anchor-naming drop moved ABOVE the ceiling slice — see the block on
+  // `opening`. Running here, each banned query had already eaten a budget slot
+  // a clean query below the cut never got.
 
   emitResult("plan", {
     kind: "planned",
@@ -2357,12 +2433,15 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     /**
      * THE PLATFORM, RENDERED WHERE THE QUERY IS BOUGHT.
      *
-     * Written onto the query object rather than into a local, so the record and
-     * the wire cannot disagree: `asked` holds these same objects, and
-     * `marketOf`/`familyOf`/`byQ` further down join a result row back to its
-     * query BY ITS TEXT. A local `site:`-prefixed string would search one thing
-     * and file the answer under another, and every host that arrived through a
-     * scoped query would lose its market.
+     * THE WRITTEN TEXT IS THE KEY; THE FIRED TEXT IS A FACT ABOUT THE WIRE.
+     * `asked` holds these same objects, and `marketOf`/`familyOf`/`byQ` join a
+     * result row back to its query BY `q` — so every hit below is recorded
+     * under `planned.q`, and the scoped string lives in `planned.fired`. The
+     * previous arrangement wrote the scoped text over `q` itself so record and
+     * wire could not disagree; what it bought was the widening dedupe going
+     * blind — `seen` is built from these objects, a re-proposed query no
+     * longer matched its own mutated record, and the same wire string was
+     * bought and billed twice.
      *
      * `site:` is also a strong medicine: on the generation before this one it
      * was on 31.9% of queries (426 distinct) and is on 2.1% now (1,490
@@ -2371,10 +2450,18 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
      * argument for putting the prefix back everywhere: it goes on where the
      * catalog agent asked for a forum, and nowhere else.
      */
+    let fired = planned.q;
     {
       const scope = scopeToPlatform(planned.q, planned.platform, anchor);
       if (scope.scoped) {
-        planned.q = scope.q;
+        // Onto `fired` and the record's `fired` field, never onto `q`.
+        // Mutating `q` made the record agree with the wire by making the
+        // dedupe and the joins disagree with the plan: the widening loop's
+        // `seen` set is built from these objects, so a re-proposed query no
+        // longer matched its own mutated record and the same wire string was
+        // bought and billed twice.
+        fired = scope.q;
+        planned.fired = scope.q;
         scopedQueries += 1;
         scopedBy[planned.platform] = (scopedBy[planned.platform] ?? 0) + 1;
       } else if (scope.anchorOwned) {
@@ -2383,7 +2470,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         tooLongToScope += 1;
       }
     }
-    const [r] = await search.search([planned.q]);
+    const [r] = await search.search([fired]);
     if (!r) return;
     {
       const batch = [planned];
@@ -2395,7 +2482,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         // locally for $0 and issues nothing, which would leave this counter
         // describing requests that were never made. `usd` was already honest
         // either way — this is the count catching up with it.
-        if (planned.q.trim()) serpCalls += PAGES;
+        if (fired.trim()) serpCalls += PAGES;
         bill("serp", "sweep", r.usd, r.ms, r.ok);
         // One span per SERP call, carrying the query text, the only place a
         // reader can see which question the run just paid for.
@@ -2414,7 +2501,10 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         for (const h of r.hits) {
           hits.push({
             ...h,
-            q: r.query,
+            // The WRITTEN text, not `r.query`: the wire answered the scoped
+            // string, but every join downstream keys on the plan's own text,
+            // and a hit filed under the scoped form would lose its market.
+            q: planned.q,
             intent: batch[j]!.intent,
             family: batch[j]!.family,
             product: batch[j]!.product,
@@ -2510,21 +2600,29 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
        * when a run is out of road — and O(1), which is why `hostsSeen` is a
        * running set rather than a fold.
        */
+      /**
+       * THE VERDICT BINDS EVERY WORKER. `outOfClock` is the out-of-time state,
+       * distinct from `sealed` on purpose: `sealed` means the PLANNER is done
+       * adding and the workers should drain what is queued — the normal end of
+       * a run — while this means buying anything more is wrong. The two were
+       * one flag, and the `!sealed` guard below meant the first worker to
+       * notice the clock returned and every other worker sailed past the check
+       * it had just disabled: a fixture run that started past its deadline
+       * still bought all 12 queued queries and judged none of them.
+       */
+      if (outOfClock) return;
       if (
         DEADLINE !== null &&
-        !sealed &&
         secondsLeft() < rankSeconds(hostsSeen.size) + TAIL_SECONDS
       ) {
+        outOfClock = true;
         sealed = true;
-        if (!outOfClock) {
-          outOfClock = true;
-          say(
-            "sweep",
-            `stopping the search: ${hostsSeen.size} hosts already need about ` +
-              `${Math.round(rankSeconds(hostsSeen.size) + TAIL_SECONDS)}s to judge and write, and ` +
-              `${leftS()}s are left — buying more would only lengthen a list nobody gets to`,
-          );
-        }
+        say(
+          "sweep",
+          `stopping the search: ${hostsSeen.size} hosts already need about ` +
+            `${Math.round(rankSeconds(hostsSeen.size) + TAIL_SECONDS)}s to judge and write, and ` +
+            `${leftS()}s are left — buying more would only lengthen a list nobody gets to`,
+        );
         return;
       }
       const planned = take();
@@ -2804,7 +2902,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       let unaffordable = 0;
       for (const q of proposed) {
         const k = q.q.trim().toLowerCase();
-        if (seen.has(k) || banned(q.q, q.family, anchorName, decomp.coinages)) {
+        if (seen.has(k) || banned(q.q, q.family, anchorBanName, banCoinages)) {
           refused += 1;
           continue;
         }

@@ -14,8 +14,8 @@ You are writing search queries that will find everyone competing with ONE produc
 
     names in hand       {{knownPlayers}}
 
-The last two lines are context for disambiguating a product name, not the subject. A query written
-about the company finds the company's market; you are after this product's.
+The `company sells` and `to` lines are context for disambiguating a product name, not the subject.
+A query written about the company finds the company's market; you are after this product's.
 
 The company also sells other things and other calls are covering those. Yours is this product and
 nothing else. A query that would find this product's rivals and the company's other rivals at the
@@ -72,8 +72,8 @@ of {{anchor}}. They may well have heard of somebody else, and type that.
 
 - Each query must ask a DIFFERENT question. Two rephrasings of one idea buy the same page twice.
 
-- Set `market` to exactly `{{market}}`, character for character. Every host your queries find hangs
-  on that market in the final graph, so any other string detaches everything you found.
+- Set `market` to exactly `{{market}}`. Code stamps this call's market onto every query it returns
+  regardless — the field keeps YOU oriented on whose rivals you are hunting, it is not a knob.
 
 ## First: strip the product
 
@@ -99,13 +99,15 @@ bought from your terms, so every query you write must earn its place by finding 
    slot; only you can put NAMES there, and the page that answers names the rest of the field. If
    {{anchor}} is one of the three you were about to cross, cross the other two.
 
-   `names in hand` above is measured ground: the company itself published those names, in its own
-   comparison urls and its own docs. A name from that line outranks a name you merely remember —
-   but only where it belongs to THIS product's market; a run holds names from every market at
-   once, and crossing a payments rival into a hosting query buys a page about neither. Code
-   already buys the mechanical `<name> alternatives` for each; your collision is worth writing
-   when it says something the template cannot — two of them crossed, or one crossed with a
-   category term.
+   When `names in hand` above holds names, the company itself published them — rivals off its own
+   comparison urls, partners out of its own docs — and such a name outranks a name you merely
+   remember. But only where it belongs to THIS product's market: the hand spans every market at
+   once, and crossing a payments rival into a hosting query buys a page about neither. The two
+   labels are different material. RIVALS are collision fuel; code buys the mechanical
+   `<name> alternatives` only for the most-published few, so a rival you cross is often the only
+   query that name will ever get. PARTNERS are not rivals — nobody writes `X vs` about a company
+   and its integration; a partner earns its query in the modifier slot, `<partner> <term>
+   integration`, or crossed with a rival of the integration itself.
 
 Apply the agent-demand lens from the doctrine: if this product's buyer can be an AI agent or the
 team building one, at least one of your queries comes from that world — and if you cannot name the
@@ -132,7 +134,10 @@ homepage, a roundup or a directory. The rest each narrow to one place a market a
 - `x` — the announcement, and the argument beneath it.
 
 Choose one when the answer lives in a conversation rather than on a page someone sold. Then write
-FEWER words than you would for `web`: the platform is already most of the constraint.
+FEWER words than you would for `web`: the platform is already most of the constraint, and the
+rendering has a hard edge — a platform query of six words or more fires UNSCOPED, because the
+`site:` itself spends one of the six terms a query gets. Five words is the ceiling that keeps the
+scope you asked for.
 
 Give every query a one-line `why`: what it is expected to surface that the others will not.
 

@@ -62,6 +62,29 @@ describe("banned", () => {
   it("bans a debranded query that contains a coinage, even with no anchor match", () => {
     expect(banned("how does broadcastify work", "debranded", "resend", ["broadcastify"])).toBe(true)
   })
+
+  it("enforces a coinage edged with punctuation — \\b could not", () => {
+    // A word boundary cannot assert between two non-word characters, so
+    // "C++", ".NET" and "Copilot+" were silently unenforceable. A measured
+    // corpus held 10 punctuation-edged coinages of 400 distinct.
+    expect(banned("using c++ sdk here", "debranded", "anchorco", ["C++"])).toBe(true)
+    expect(banned(".net runtime alternatives", "debranded", "anchorco", [".NET"])).toBe(true)
+    expect(banned("copilot+ pc alternatives", "debranded", "anchorco", ["Copilot+"])).toBe(true)
+  })
+
+  it("still refuses a name that only appears inside a longer word", () => {
+    expect(banned("preresending emails guide", "plain", "resend", [])).toBe(false)
+    expect(banned("cnet reviews", "debranded", "anchorco", [".NET"])).toBe(false)
+  })
+
+  it("matches a full domain passed as the ban name — the common-word-label escape hatch", () => {
+    // For customer.io the bare label "customer" is a market word; the caller
+    // tightens the ban to the full name, which must still catch the spellings
+    // that actually look the company up.
+    expect(banned("customer.io alternatives", "plain", "customer.io", [])).toBe(true)
+    expect(banned("customerio pricing", "plain", "customer.io", ["customerio"])).toBe(true)
+    expect(banned("customer engagement platform", "plain", "customer.io", [])).toBe(false)
+  })
 })
 
 describe("companyHand", () => {

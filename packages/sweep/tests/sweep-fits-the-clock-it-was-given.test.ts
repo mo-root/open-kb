@@ -191,29 +191,32 @@ describe("the CLI is not time-boxed, and nothing here changed that", () => {
 })
 
 describe("out of clock, the run ships what it has instead of being killed", () => {
-  it("stops the rank pool with a tail's worth of clock left and still writes a map", async () => {
+  it("buys nothing it cannot judge, and still writes an ending", async () => {
     // A deadline already in the past is the extreme of the case the backstop
-    // exists for: the engine cannot judge a single host inside the reserve it
-    // keeps for writing, so it judges none and writes the run down anyway.
-    // What is being proven is that the run RETURNS — a report, a bill, an
+    // exists for. This test used to assert hostsFound > 0 here — which was
+    // the bug wearing a green check: the out-of-clock verdict stopped only
+    // the worker that reached it, the rest drained the whole queue, and a run
+    // that had just said "buying more would only lengthen a list nobody gets
+    // to" bought all twelve queries and judged none of them. The verdict now
+    // binds every worker, so a run born out of clock spends nothing. What is
+    // still being proven is that the run RETURNS — a report, a bill, an
     // ending — because the alternative, which is what the measured Vercel run
-    // did, is to be stopped mid-phase with every host judged so far thrown away
-    // along with the money that bought them.
+    // did, is to be stopped mid-phase with everything thrown away.
     const h = await runFixture({ sweepOptions: { deadlineAt: Date.now() - 1_000 } })
 
+    expect(h.asked).toHaveLength(0)
     const budget = h.result.report.budget as {
       unjudged: number
       hostsFound: number
       hostsJudged: number
       clockSeconds: number
     }
-    expect(budget.hostsFound).toBeGreaterThan(0)
+    expect(budget.hostsFound).toBe(0)
     expect(budget.hostsJudged).toBe(0)
-    expect(budget.unjudged).toBe(budget.hostsFound)
     // The ending exists, which is the whole point.
     expect(h.ui("results", "complete")).toHaveLength(1)
     expect(h.result.report.seconds).toBeGreaterThanOrEqual(0)
-    expect(h.says.some((s) => /the clock ran out/.test(s))).toBe(true)
+    expect(h.says.some((s) => /stopping the search/.test(s))).toBe(true)
   }, 30_000)
 
   it("does not widen when what it has already found cannot be judged in the time left", async () => {
@@ -230,16 +233,19 @@ describe("out of clock, the run ships what it has instead of being killed", () =
   }, 30_000)
 
   it("keeps the tail it reserved, and the reserve is the measured one", async () => {
-    // The rank pool stops when the clock is down to `tailSeconds` — the link
-    // batches plus the write — rather than at zero. Pinned against the shared
-    // table so a re-measurement moves the engine and this test together, and a
-    // change to one alone is a red test rather than a run that overruns by
-    // exactly the amount nobody reserved.
+    // The tail — the link batches plus the write — is reserved BEFORE the
+    // first purchase, not discovered after the last: a run handed less clock
+    // than `tailSeconds` refuses to buy a single query, because anything it
+    // bought would be a row on a list the write phase never reaches. Pinned
+    // against the shared table so a re-measurement moves the engine and this
+    // test together, and a change to one alone is a red test rather than a
+    // run that overruns by exactly the amount nobody reserved.
     expect(MEASURED_PHASE_COSTS.tailSeconds).toBeGreaterThan(0)
     const h = await runFixture({
       sweepOptions: { deadlineAt: Date.now() + (MEASURED_PHASE_COSTS.tailSeconds - 1) * 1000 },
     })
-    expect((h.result.report.budget as { unjudged: number }).unjudged).toBeGreaterThan(0)
+    expect(h.asked).toHaveLength(0)
+    expect((h.result.report.budget as { hostsFound: number }).hostsFound).toBe(0)
   }, 30_000)
 })
 
