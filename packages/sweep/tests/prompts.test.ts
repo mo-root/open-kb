@@ -85,9 +85,17 @@ describe("the composed classify prompt", () => {
     // called 0/15 vendors a company, and 15/15 with those chars restored.
     // The 734 chars are ~165 input tokens, ~$0.06 on a 2,500-host run at
     // deepseek's $0.14/M — against ~$0.29 for putting the three doctrine
-    // files back. The ceiling still cannot hide one: the smallest doctrine
-    // file is 1,779 chars, so re-including any of them lands past 7,200.
-    expect(composed().length).toBeLessThan(6_500)
+    // files back.
+    //
+    // Raised 6,500 -> 7,500 for the provenance block and the stance ladder
+    // (2026-08-16, ~970 chars): the judge now sees the queries a host arrived
+    // by — family, market, platform — and is told to walk the committed
+    // relations before reaching for a refusal. On the run that argued for it,
+    // 234 of 765 judged hosts left the map as `none` while the judge was
+    // never told which market's door each walked in through. ~220 tokens,
+    // ~$0.013 per 740-host run. The ceiling still cannot hide a doctrine
+    // file: the smallest is 1,779 chars, so re-including one lands past 9,100.
+    expect(composed().length).toBeLessThan(7_500)
   })
 
   it("still carries the whole relation vocabulary, every word the schema will accept", () => {
@@ -163,7 +171,7 @@ describe("the composed classify prompt", () => {
     // render() throws on any mismatch between these and the call-site's vars,
     // so a drift here would fail at runtime, on a paid call. Fail here instead.
     const found = new Set([...composed().matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]!))
-    expect([...found].sort()).toEqual(["anchor", "buyer", "host", "intents", "page", "seenIn", "sells"])
+    expect([...found].sort()).toEqual(["anchor", "buyer", "foundBy", "host", "page", "seenIn", "sells"])
   })
 })
 
@@ -224,7 +232,7 @@ describe("makePrompt (the per-run compose memo)", () => {
       buyer: "a data engineer",
       host: "rival.test",
       seenIn: "2",
-      intents: "evaluation",
+      foundBy: '  "scraping api alternatives" (plain, market: scraping api)',
       page: "the page text",
     })
     expect(out).toContain("rival.test")

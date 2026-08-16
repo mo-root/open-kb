@@ -35,7 +35,8 @@ here. Say what it actually sells in `what`, where a quote has to back you.
   or the infrastructure the market sits on; if it changed its behaviour, the others would react.
 - **dependency** — what the anchor is built on; the anchor would stop working without it.
 - **integration** — what the anchor plugs into, or what plugs into it; they appear together in a
-  working setup without either being required.
+  working setup without either being required. Partnership evidence lives here: a partner page, an
+  integration marketplace listing, a "works with" section naming the other side.
 - **buyer** — buys this category; the demand side, not a vendor at all.
 - **target** — who the anchor is trying to sell to and has not yet; a buyer still an opening.
 - **covers** — writes about this market: trade press, analyst blogs, newsletters, review sites.
@@ -47,6 +48,13 @@ here. Say what it actually sells in `what`, where a quote has to back you.
   has the same consequence: the entity leaves the map entirely, so reach for the channel relations
   (covers, lists, discusses) before it. Say none when you would otherwise write a `why` that
   explains what market the host is in INSTEAD of this one — that sentence is the verdict.
+
+Walk the ladder before you settle for a refusal: competitor, then substitute, then the market's
+supply side — shaper, dependency, integration — then the channels. A company that would never make
+the anchor's shortlist usually still has a stake here: it sells INTO the same workflow, sits UNDER
+it, or partners with its players, and each of those is a committed word above. `unknown` is honest
+when the page refuses every rung; `none` removes the host from the map, so it is the last word,
+not the easy one.
 
 A page that RANKS, COMPARES or REVIEWS vendors is a directory or a publisher however much market
 vocabulary it contains — ranking for the market's vocabulary is not evidence of selling in the
@@ -84,6 +92,15 @@ channel relations the evidence is what the host gives the market: the vendors it
 coverage it publishes, the buyers who argue there. One sentence here too — the reader has the
 `what` one line up.
 
-{{host}} — seen in {{seenIn}} different queries, via {{intents}}. Its front page, condensed:
+{{host}} — how this run found it, {{seenIn}} queries in all:
+{{foundBy}}
+
+The queries are evidence with a direction: a `rival` query means it surfaced beside a competitor
+the anchor itself published, an "alternatives" query means a shortlist page put it there, a
+platform tag means buyers arguing rather than a vendor's own site. Weigh them WITH the page — but
+the page outranks the query when they disagree: the road explains how the host got here, only the
+page says what it is.
+
+Its front page, condensed:
 
 {{page}}

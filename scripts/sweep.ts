@@ -15,7 +15,7 @@
 import { openrouter } from "@openrouter/ai-sdk-provider"
 import { SpanStream, withSpendCap, type Span, type SpendTrip } from "../packages/core/src/index.js"
 import { priceForModel } from "../packages/providers/src/index.js"
-import { sweep, readUi } from "../packages/sweep/src/index.js"
+import { sweep, readUi, onMap } from "../packages/sweep/src/index.js"
 import { EXIT, fatal } from "./fatal.js"
 import {
   CLI_LIMIT_VARS,
@@ -231,11 +231,19 @@ if (out === null && capStop.trip) {
 }
 
 const { stats, entities } = out!
-const keep = entities.filter((e) => e.kind !== "noise")
+// The engine's own predicate, not a local guess: `relation: none` leaves the
+// map exactly as `kind: noise` does, and a summary filtering only noise said
+// "765 on the map" over a map that kept 531.
+const keep = entities.filter(onMap)
+const offMap = entities.length - keep.length
+const noise = entities.filter((e) => e.kind === "noise").length
 const count = (arr: string[]) => arr.reduce<Record<string, number>>((a, k) => ((a[k] = (a[k] ?? 0) + 1), a), {})
 
 console.log(`\n${"=".repeat(80)}`)
-console.log(`${keep.length} on the map (${entities.length - keep.length} judged noise) from ${stats.hosts} hosts`)
+console.log(
+  `${keep.length} on the map from ${stats.hosts} hosts ` +
+    `(${offMap} left it: ${noise} noise, ${offMap - noise} judged to be in a different market)`,
+)
 console.log(`kinds     `, count(keep.map((e) => e.kind)))
 console.log(`relations `, count(keep.map((e) => e.relation)))
 console.log(`\n${stats.queries} queries · ${stats.serpCalls} SERP calls · ${stats.results} results`)

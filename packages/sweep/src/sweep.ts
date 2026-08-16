@@ -3068,14 +3068,39 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   );
 
   // ── 4. judge every host from its own page ─────────────────────────────────
-  const hostList = [...byHost.entries()].map(([host, hs]) => ({
-    host,
-    seenIn: new Set(hs.map((h) => h.q)).size,
-    intents: [...new Set(hs.map((h) => h.intent))],
-    titles: [...new Set(hs.map((h) => h.title))].slice(0, 3),
-    desc: hs[0]!.description?.slice(0, 190) ?? "",
-    topHit: hs[0]?.url,
-  }));
+  /** Every query's own record, for the judge. The join existed at report time
+   *  — "attribute every entity to the markets whose queries surfaced it" — and
+   *  was withheld from the one model that could use it as evidence: a host
+   *  that arrived through "mailchimp alternatives" (rival family) and one that
+   *  arrived through a reddit thread are different claims about the same page. */
+  const qMeta = new Map(asked.map((q) => [q.q, q]));
+  const hostList = [...byHost.entries()].map(([host, hs]) => {
+    const qs = [...new Set(hs.map((h) => h.q))];
+    const foundBy =
+      qs
+        .slice(0, 3)
+        .map((q) => {
+          const m = qMeta.get(q);
+          const bits = [
+            m?.family,
+            m?.market ? `market: ${m.market}` : undefined,
+            m && m.platform !== "web" ? `on ${m.platform}` : undefined,
+          ]
+            .filter(Boolean)
+            .join(", ");
+          return `  "${q}"${bits ? ` (${bits})` : ""}`;
+        })
+        .join("\n") + (qs.length > 3 ? `\n  …and ${qs.length - 3} more` : "");
+    return {
+      host,
+      seenIn: qs.length,
+      foundBy,
+      intents: [...new Set(hs.map((h) => h.intent))],
+      titles: [...new Set(hs.map((h) => h.title))].slice(0, 3),
+      desc: hs[0]!.description?.slice(0, 190) ?? "",
+      topHit: hs[0]?.url,
+    };
+  });
 
   // Left null unless the caller supplies a real one. Calibration
   // (`scripts/calibrate-kernel.ts`) found no separation between vendor and
@@ -3205,7 +3230,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           buyer: decomp.buyer,
           host: h.host,
           seenIn: String(h.seenIn),
-          intents: h.intents.join(","),
+          foundBy: h.foundBy ?? "  (road not recorded)",
           page: pageText,
         }),
         { think: "none", maxOutputTokens: CLASSIFY_MAX_OUTPUT_TOKENS },

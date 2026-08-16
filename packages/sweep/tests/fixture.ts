@@ -237,8 +237,8 @@ function phaseOf(schema: unknown): CallPhase {
 
 /** `    the product   Log Search` — the catalog prompt's own layout. */
 const productOf = (prompt: string): string => /the product\s{2,}(.+)/.exec(prompt)?.[1]?.trim() ?? ""
-/** `grepstack.example — seen in 3 different queries` — the classify prompt's last line. */
-const hostOf = (prompt: string): string => /^(\S+) — seen in \d+ different quer/m.exec(prompt)?.[1] ?? ""
+/** `grepstack.example — how this run found it, 3 queries in all:` — the classify prompt's provenance header. */
+const hostOf = (prompt: string): string => /^(\S+) — how this run found it, \d+ quer/m.exec(prompt)?.[1] ?? ""
 
 export interface LinkPair {
   a: string

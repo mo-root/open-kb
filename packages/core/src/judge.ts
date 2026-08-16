@@ -58,6 +58,11 @@ export interface HostCandidate {
   /** The highest-ranked hit URL for this host, when the caller has one. An
    *  aggregator's ranked page is a better answer key than its front page. */
   topHit?: string
+  /** The road the host arrived by, pre-rendered by the caller: up to three of
+   *  the surfacing queries, each with its family, market and platform. The
+   *  judge weighs it beside the page — a host that walked in through this
+   *  market's queries usually has a stake in this market. */
+  foundBy?: string
 }
 
 export interface Judged {
