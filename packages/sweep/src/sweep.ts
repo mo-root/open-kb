@@ -1615,12 +1615,16 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   /** How phase one actually read the company, for the report. Null on the
    *  call path — the packet above IS that story. Filled in agent mode, where
    *  the reading was an investigation whose shape (turns, pages, and what the
-   *  docs said the products plug into) is a fact about this map. */
-  let discoveryFacts: {
-    steps: number;
-    pagesRead: number;
-    integrations: Array<{ with: string; does: string; foundAt: string }>;
-  } | null = null;
+   *  docs said the products plug into) is a fact about this map. A holder
+   *  rather than a bare `let`: the only writer is a closure, and the compiler
+   *  cannot see into it, so a `let` reads as narrowed to `null` forever. */
+  const discoveryFacts: {
+    current: {
+      steps: number;
+      pagesRead: number;
+      integrations: Array<{ with: string; does: string; foundAt: string }>;
+    } | null;
+  } = { current: null };
 
   const decomp: Decomposition = await (async () => {
     if (opts.discovery !== "agent") return understandByCall();
@@ -1662,7 +1666,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       Date.now() - dStarted,
       true,
     );
-    discoveryFacts = {
+    discoveryFacts.current = {
       steps: d.steps,
       pagesRead: d.pagesRead,
       integrations: d.integrations,
@@ -1761,6 +1765,35 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         ? `dealing every product an opening hand, then keeping the first ${QUERY_CEILING} — as many as this run's clock can finish`
         : `dealing every product an opening hand — no fixed count, the templates and the strip decide`,
   );
+  /**
+   * The names the run already holds, handed to the model that writes queries.
+   *
+   * The collision shape — "cross two or three players you already know" — was
+   * measured failing ~50× against hand-written queries: third-party proper
+   * nouns on 0.85% of model-written queries against 42.8% of hand-written
+   * ones. One cause is structural, and this is its fix: the prompt asked for
+   * names while the call carried none, so the model could only cross what it
+   * happened to remember. The sitemap's rival leads and the docs' integrations
+   * are exactly such names, published by the company itself — measured ground,
+   * not model memory. Capped, because sixteen names is a hand and forty is an
+   * inventory the model will dutifully work through instead of writing queries.
+   */
+  const knownPlayers = (() => {
+    const seen = new Set<string>();
+    const names = [
+      ...rivalLeads.map((r) => r.name),
+      ...(discoveryFacts.current?.integrations.map((i) => i.with) ?? []),
+    ].filter((n) => {
+      const k = n.trim().toLowerCase();
+      if (!k || seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+    return names.length
+      ? names.slice(0, 16).join(", ")
+      : "(none harvested — use names you know from this market)";
+  })();
+
   /**
    * One call per PRODUCT, not one per lens.
    *
@@ -1973,6 +2006,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
               market.covers.filter((c) => c !== product).join(", ") ||
               "(nothing else in this market)",
             coinages: decomp.coinages.join(", "),
+            knownPlayers,
           }),
           { think: "low", maxOutputTokens: 180 * debrandedAsk + 6_000 },
         ).then((out) => {
@@ -3760,7 +3794,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
      *  the docs stated. Null on the default path, which reads nothing an agent
      *  chose. Integrations are the company's claims, not judged entities —
      *  the same standing as `rivals.leads` below. */
-    discovery: discoveryFacts,
+    discovery: discoveryFacts.current,
     // Everything actually fired, opening hand plus every widening round —
     // matches the sum of `families` below. `stats.queries` (unchanged,
     // read by the run registry and the older surfaces) stays the opening

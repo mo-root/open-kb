@@ -110,8 +110,11 @@ describe("query-families doctrine", () => {
     expect(p.body).toContain("plain")
     expect(p.body).toContain("debranded")
     expect(p.body).toContain("branded")
-    // the catalog call's render keys, unchanged — sweep.ts passes exactly these
-    for (const k of ["anchor", "target", "product", "productDoes", "market", "centrality", "sells", "buyer", "siblings", "coinages"]) {
+    // the catalog call's render keys — sweep.ts passes exactly these.
+    // `knownPlayers` joined 2026-08-16: the collision shape asked the model to
+    // cross names it knows while the call carried none of the names the run
+    // had harvested.
+    for (const k of ["anchor", "target", "product", "productDoes", "market", "centrality", "sells", "buyer", "siblings", "coinages", "knownPlayers"]) {
       expect(p.body).toContain(`{{${k}}}`)
     }
   })

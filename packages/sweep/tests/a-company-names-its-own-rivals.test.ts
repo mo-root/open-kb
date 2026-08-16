@@ -105,6 +105,26 @@ describe("the comparison urls a company publishes about itself", () => {
     expect(rivalsOf(h.result.report).reachedMap).toBe(3)
   })
 
+  it("hands the harvested names to the model that writes queries", async () => {
+    // The collision shape asks the model to cross players it knows. Measured
+    // gap: hand-written queries name a third party 42.8% of the time, model
+    // queries 0.85% — and one structural cause was that the catalog call
+    // carried no names at all. Now it carries the run's own harvest.
+    const h = await runFixture({ fetchTable: withSitemap })
+    const catalog = h.calls.find((c) => c.phase === "catalog")
+    expect(catalog, "a catalog call").toBeDefined()
+    expect(catalog!.prompt).toContain("names in hand")
+    for (const name of ["grepstack", "tailwatch", "loglens", "quicklogs"]) {
+      expect(catalog!.prompt).toContain(name)
+    }
+  })
+
+  it("says so plainly when there are no names to hand over", async () => {
+    const h = await runFixture()
+    const catalog = h.calls.find((c) => c.phase === "catalog")
+    expect(catalog!.prompt).toContain("(none harvested")
+  })
+
   it("costs nothing and asks nothing when the company publishes no comparison pages", async () => {
     const h = await runFixture()
     const rivals = rivalsOf(h.result.report)

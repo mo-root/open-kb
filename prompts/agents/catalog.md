@@ -12,6 +12,8 @@ You are writing search queries that will find everyone competing with ONE produc
     the company sells   {{sells}}
     to                  {{buyer}}
 
+    names in hand       {{knownPlayers}}
+
 The last two lines are context for disambiguating a product name, not the subject. A query written
 about the company finds the company's market; you are after this product's.
 
@@ -96,6 +98,14 @@ bought from your terms, so every query you write must earn its place by finding 
    `Auth0 vs Okta vs Cognito`. Code buys `<term> alternatives` with the category term in that
    slot; only you can put NAMES there, and the page that answers names the rest of the field. If
    {{anchor}} is one of the three you were about to cross, cross the other two.
+
+   `names in hand` above is measured ground: the company itself published those names, in its own
+   comparison urls and its own docs. A name from that line outranks a name you merely remember —
+   but only where it belongs to THIS product's market; a run holds names from every market at
+   once, and crossing a payments rival into a hosting query buys a page about neither. Code
+   already buys the mechanical `<name> alternatives` for each; your collision is worth writing
+   when it says something the template cannot — two of them crossed, or one crossed with a
+   category term.
 
 Apply the agent-demand lens from the doctrine: if this product's buyer can be an AI agent or the
 team building one, at least one of your queries comes from that world — and if you cannot name the
