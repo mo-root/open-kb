@@ -2144,13 +2144,41 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     ),
   );
   const anchorBanName = labelIsMarketWord ? anchor : anchorLabel;
+  /**
+   * A coinage that IS one of the run's own market terms is not a coinage.
+   *
+   * The first live agent run listed "Email API" among resend's coinages — a
+   * product name on that site, and also the exact term the strip returns for
+   * its core market. Banning it kills the `email api` plain family: the same
+   * self-inflicted wound as the customer.io label, arriving through the other
+   * door. The model was told a coinage is a word no stranger would type;
+   * this gate is for the times it lists one anyway. Exact match against the
+   * stripped terms — a coinage merely CONTAINING a market word ("React
+   * Email") is still a brand name and still banned.
+   */
+  const termSet = new Set(
+    strips.flatMap((s) => s.terms.map((t) => t.trim().toLowerCase())),
+  );
+  const marketWordCoinages = decomp.coinages.filter((c) =>
+    termSet.has(c.trim().toLowerCase()),
+  );
+  const keptCoinages = decomp.coinages.filter(
+    (c) => !termSet.has(c.trim().toLowerCase()),
+  );
+  if (marketWordCoinages.length) {
+    think(
+      "plan",
+      `${marketWordCoinages.length} coinages are the market's own terms and leave the ban — ` +
+        marketWordCoinages.join(", "),
+    );
+  }
   const banCoinages = labelIsMarketWord
     ? [
-        ...decomp.coinages,
+        ...keptCoinages,
         anchor.replace(/\./g, " "),
         anchor.split(".").join(""),
       ]
-    : decomp.coinages;
+    : keptCoinages;
   if (labelIsMarketWord) {
     think(
       "plan",

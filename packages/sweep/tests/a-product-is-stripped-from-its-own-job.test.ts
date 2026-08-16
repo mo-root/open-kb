@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { runFixture, ANCHOR, COINAGE, type Harness } from "./fixture.js"
+import { runFixture, defaultScript, ANCHOR, COINAGE, type Harness } from "./fixture.js"
 
 /**
  * THE ONE SENTENCE THE STRIP NEEDS, COMPUTED AND THROWN AWAY.
@@ -127,4 +127,29 @@ describe("a capability funded under its own name", () => {
     // its own line, because nothing claimed it.
     expect(jobOf(h, "Log Search Cloud")).toBe("searches application logs")
   }, 30_000)
+})
+
+describe("a coinage that is the market's own term leaves the ban", () => {
+  /**
+   * The first live agent run listed "Email API" among resend's coinages — a
+   * product name on that site, and the exact term the strip returns for its
+   * core market. Banning it kills the plain family for that market.
+   */
+  it("keeps the plain family alive when a coinage collides with a strip term", async () => {
+    const h = await runFixture({
+      script: {
+        understand: () => ({
+          ...(defaultScript().understand("") as Record<string, unknown>),
+          // The model lists the core market's own term as a coinage.
+          coinages: ["Lumen", "log search"],
+        }),
+      },
+    })
+    // "log search" (the bare term) and "log search alternatives" are the
+    // plain family's openers; they must still fire.
+    expect(h.asked).toContain("log search")
+    expect(h.asked).toContain("log search alternatives")
+    // The real coinage still bans: no fired query names Lumen.
+    expect(h.asked.every((q) => !/lumen/i.test(q))).toBe(true)
+  })
 })
