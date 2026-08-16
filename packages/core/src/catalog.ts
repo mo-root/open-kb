@@ -226,7 +226,7 @@ export interface RivalLead {
  * products. Being dropped was also the end of them: the urls went in the bin
  * because nothing else in the run ever read them.
  */
-const COMPARISON = /^\/(compare|comparisons?|versus|vs|alternatives?|alternative-to)(\/|$)/i
+const COMPARISON = /^\/(compare|comparisons?|versus|vs|alternatives?|alternative-to|migrate(?:-from)?|switch(?:ing)?-from)(\/|$)/i
 
 /**
  * Namespaces whose own name IS the comparison, so one segment under them is a
@@ -238,8 +238,14 @@ const COMPARISON = /^\/(compare|comparisons?|versus|vs|alternatives?|alternative
  * `/compare/tco`, `/compare/time-to-value`, `/compare/sitespeed` — are pages
  * about the comparison rather than about a company. Reading a bare
  * `/compare/<slug>` as a name buys those four and nothing else.
+ *
+ * `migrate` IS here, because its slug is nothing but the rival: an email
+ * company's sitemap (fetched 2026-08-16) holds `/migrate/mailchimp`,
+ * `/migrate/mailgun`, `/migrate/postmark`, `/migrate/sendgrid`,
+ * `/migrate/customer-io` — five rivals, no framing pages. A company writes a
+ * migration guide about exactly one thing: whoever its buyers are leaving.
  */
-const NAMES_ONE_RIVAL = /^(versus|vs|alternatives?|alternative-to)$/i
+const NAMES_ONE_RIVAL = /^(versus|vs|alternatives?|alternative-to|migrate(?:-from)?|switch(?:ing)?-from)$/i
 
 /** `a-vs-b`, `a_versus_b`. The separator every comparison slug measured used. */
 const VS = /[-_](?:vs|versus)[-_]/i
@@ -322,15 +328,31 @@ export function rivalsFromComparisonUrls(
   const found = new Map<string, RivalLead>()
   for (const url of urls) {
     const path = pathOf(url)
-    if (!path || !COMPARISON.test(path)) continue
+    if (!path) continue
     const segs = path.split("/").filter(Boolean)
-    const ns = segs[0]!.toLowerCase()
     const slug = segs[1] ?? ""
     if (!slug) continue
-    const parts = slug.split(VS)
-    // `a-vs-b-vs-c` is three rivals on one page, which is the roundup shape and
-    // the densest url in the whole namespace.
-    const sides = parts.length > 1 ? parts : NAMES_ONE_RIVAL.test(ns) ? [slug] : []
+
+    let sides: string[] = []
+    if (COMPARISON.test(path)) {
+      const ns = segs[0]!.toLowerCase()
+      const parts = slug.split(VS)
+      // `a-vs-b-vs-c` is three rivals on one page, which is the roundup shape
+      // and the densest url in the whole namespace.
+      sides = parts.length > 1 ? parts : NAMES_ONE_RIVAL.test(ns) ? [slug] : []
+    } else if (segs.length === 2 && !CONTENT.test(path)) {
+      // The comparison that lives in the SLUG rather than the namespace.
+      // MEASURED on one proxy vendor's sitemap (6,845 urls, fetched
+      // 2026-08-16): 135 comparison-shaped urls, zero of them under a
+      // comparison namespace — the whole strategy is `/solutions/<rival>-
+      // alternative`, over a hundred pages, and the namespace gate alone read
+      // none of it. Depth two only: the same sitemap's `/faqs/json/json-vs-xml`
+      // shapes sit at depth three and name formats, not vendors. CONTENT is
+      // excluded because a blog's `-vs-` slug is an essay about a comparison,
+      // not the anchor naming whom it competes with.
+      if (/-alternatives?$/i.test(slug) || VS.test(slug)) sides = slug.split(VS)
+    }
+
     for (const side of sides) {
       const name = rivalName(side, mine)
       if (!name) continue

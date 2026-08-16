@@ -92,6 +92,59 @@ describe("rivalsFromComparisonUrls", () => {
     expect(leads.map((l) => l.name).sort()).toEqual(["webflow", "wix"])
   })
 
+  it("reads `/migrate/<rival>` — a migration guide is about whoever the buyer is leaving", () => {
+    // The real shape, off resend.com/migrate/sitemap.xml (fetched 2026-08-16):
+    // five slugs, every one a rival, no framing pages beside them.
+    const leads = rivalsFromComparisonUrls(
+      [
+        u("resend.com", "/migrate/customer-io"),
+        u("resend.com", "/migrate/mailchimp"),
+        u("resend.com", "/migrate/mailgun"),
+        u("resend.com", "/migrate/postmark"),
+        u("resend.com", "/migrate/sendgrid"),
+      ],
+      "resend.com",
+    )
+    expect(leads.map((l) => l.name).sort()).toEqual([
+      "customer io",
+      "mailchimp",
+      "mailgun",
+      "postmark",
+      "sendgrid",
+    ])
+  })
+
+  it("reads the comparison that lives in the slug, not the namespace", () => {
+    // The other real shape, off brightdata.com (6,845 urls, fetched
+    // 2026-08-16): 135 comparison-shaped urls and not one under a comparison
+    // namespace — `/solutions/<rival>-alternative`, over a hundred times.
+    const leads = rivalsFromComparisonUrls(
+      [
+        u("brightdata.com", "/solutions/zyte-alternative"),
+        u("brightdata.com", "/solutions/scrapy-alternative"),
+        u("brightdata.com", "/solutions/parsehub-alternative"),
+      ],
+      "brightdata.com",
+    )
+    expect(leads.map((l) => l.name).sort()).toEqual(["parsehub", "scrapy", "zyte"])
+  })
+
+  it("refuses the slug shape at depth three and in content namespaces", () => {
+    const leads = rivalsFromComparisonUrls(
+      [
+        // Depth three: formats arguing, not vendors. Real url, same sitemap.
+        u("brightdata.com", "/faqs/json/json-vs-xml"),
+        // A blog's `-vs-` slug is an essay about a comparison, not the anchor
+        // naming whom it competes with.
+        u("brightdata.com", "/blog/playwright-vs-puppeteer"),
+        // A bare offering page wearing no comparison shape at all.
+        u("brightdata.com", "/solutions/ecommerce"),
+      ],
+      "brightdata.com",
+    )
+    expect(leads).toEqual([])
+  })
+
   it("counts how often a name was published and puts the most-named first", () => {
     const leads = rivalsFromComparisonUrls(
       [
