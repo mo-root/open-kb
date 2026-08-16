@@ -1612,6 +1612,16 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       { think: "medium", maxOutputTokens: 8_000 },
     );
 
+  /** How phase one actually read the company, for the report. Null on the
+   *  call path — the packet above IS that story. Filled in agent mode, where
+   *  the reading was an investigation whose shape (turns, pages, and what the
+   *  docs said the products plug into) is a fact about this map. */
+  let discoveryFacts: {
+    steps: number;
+    pagesRead: number;
+    integrations: Array<{ with: string; does: string; foundAt: string }>;
+  } | null = null;
+
   const decomp: Decomposition = await (async () => {
     if (opts.discovery !== "agent") return understandByCall();
 
@@ -1652,10 +1662,20 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       Date.now() - dStarted,
       true,
     );
+    discoveryFacts = {
+      steps: d.steps,
+      pagesRead: d.pagesRead,
+      integrations: d.integrations,
+    };
     say(
       "understand",
-      `the agent read ${d.pagesRead} pages in ${d.steps} turns and submitted ${d.products.length} products`,
+      `the agent read ${d.pagesRead} pages in ${d.steps} turns and submitted ${d.products.length} products` +
+        (d.integrations.length
+          ? ` and ${d.integrations.length} integrations from the docs`
+          : ""),
     );
+    for (const i of d.integrations)
+      think("understand", `integration — ${i.with}: ${i.does} (${i.foundAt})`);
 
     // An investigation that found nothing is not a reading of the company; it
     // is a failed one. The packet for the single call is already in hand and
@@ -3736,6 +3756,11 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   const report: Record<string, unknown> = {
     domain: anchor,
     sells: decomp.sells,
+    /** Agent-mode phase one's own account: turns, pages, and the integrations
+     *  the docs stated. Null on the default path, which reads nothing an agent
+     *  chose. Integrations are the company's claims, not judged entities —
+     *  the same standing as `rivals.leads` below. */
+    discovery: discoveryFacts,
     // Everything actually fired, opening hand plus every widening round —
     // matches the sum of `families` below. `stats.queries` (unchanged,
     // read by the run registry and the older surfaces) stays the opening

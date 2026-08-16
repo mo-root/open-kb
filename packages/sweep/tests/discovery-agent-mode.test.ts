@@ -65,6 +65,68 @@ describe("discovery: agent", () => {
     const h = await runFixture({})
     expect(h.calls.filter((c) => c.phase === "discovery")).toHaveLength(0)
     expect(h.result.decomposition.products.length).toBeGreaterThan(0)
-    void ANCHOR
+  })
+
+  it("reads the docs and carries what they say the products plug into", async () => {
+    const h = await runFixture({
+      sweepOptions: { discovery: "agent" },
+      fetchTable: {
+        [`https://docs.${ANCHOR}/`]: {
+          httpStatus: 200,
+          contentType: "text/html",
+          body:
+            `<html><head><title>Docs</title></head><body><h1>Pellucid Docs</h1>` +
+            `<a href="/integrations/pagerduty">Send alerts to PagerDuty</a>` +
+            `<p>Log Search Cloud ships alerts straight to PagerDuty escalation policies. This paragraph pads the page past the two hundred bytes a real docs index always clears.</p></body></html>`,
+        },
+      },
+      script: {
+        discovery: (turn) =>
+          turn === 0
+            ? { tools: [{ toolName: "findDocs", input: {} }] }
+            : turn === 1
+              ? {
+                  tools: [
+                    {
+                      toolName: "submitProduct",
+                      input: { name: "Log Search Cloud", does: "searches application logs", foundAt: `https://${ANCHOR}/products/log-search` },
+                    },
+                    {
+                      toolName: "submitIntegration",
+                      input: { with: "PagerDuty", does: "ships alerts to escalation policies", foundAt: `https://docs.${ANCHOR}/` },
+                    },
+                  ],
+                }
+              : turn === 2
+                ? {
+                    tools: [
+                      {
+                        toolName: "finish",
+                        input: { sells: "hosted log search", buyer: "a platform team mid-incident", coinages: [COINAGE] },
+                      },
+                    ],
+                  }
+                : { text: "done" },
+      },
+    })
+
+    // findDocs answered with the docs index the fetch table serves...
+    const docsTurn = h.calls.filter((c) => c.phase === "discovery")[1]
+    expect(docsTurn, "the turn after findDocs").toBeDefined()
+    expect(docsTurn!.prompt).toContain("integrations/pagerduty")
+
+    // ...and the integration the agent submitted reaches the run's report,
+    // as the company's claim, not as a judged entity.
+    const disc = h.result.report.discovery as {
+      integrations: Array<{ with: string; foundAt: string }>
+    }
+    expect(disc.integrations.map((i) => i.with)).toEqual(["PagerDuty"])
+    expect(disc.integrations[0]!.foundAt).toBe(`https://docs.${ANCHOR}/`)
+    expect(h.result.entities.map((e) => e.name)).not.toContain("PagerDuty")
+  })
+
+  it("reports discovery: null on the default path — nothing was investigated", async () => {
+    const h = await runFixture({})
+    expect(h.result.report.discovery).toBeNull()
   })
 })

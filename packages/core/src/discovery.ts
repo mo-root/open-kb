@@ -35,10 +35,30 @@ export interface DiscoveredProduct {
   foundAt: string
 }
 
+/**
+ * One thing the company's own pages say its products integrate with.
+ *
+ * The docs are where this lives: a marketing page says what a product is, the
+ * documentation says what it plugs into, and the second is what an ecosystem
+ * map is made of. Like a RivalLead, this is the COMPANY'S claim read off its
+ * own site — not a judged entity, and nothing may put it on a map without
+ * resolving and judging it like any other host.
+ */
+export interface DiscoveredIntegration {
+  /** The other side's name, exactly as the company writes it. */
+  with: string
+  /** What the integration does, one line, the company's claim. */
+  does: string
+  /** The url of the page that states it. */
+  foundAt: string
+}
+
 export interface DiscoveryResult {
   sells: string
   buyer: string
   products: DiscoveredProduct[]
+  /** What the company says its products plug into, read from its docs. */
+  integrations: DiscoveredIntegration[]
   /** Brand words that must never appear in a de-branded query. */
   coinages: string[]
   /** The agent's own account of how it read the company. */
@@ -97,6 +117,7 @@ export interface DiscoverOptions {
 export async function discover(opts: DiscoverOptions): Promise<DiscoveryResult> {
   const { anchor, model, fetch: fetcher } = opts
   const products: DiscoveredProduct[] = []
+  const integrations: DiscoveredIntegration[] = []
   const readUrls = new Set<string>()
   let sells = ""
   let buyer = ""
@@ -108,6 +129,26 @@ export async function discover(opts: DiscoverOptions): Promise<DiscoveryResult> 
   const raw = async (url: string): Promise<string> => {
     const r = await fetcher.get(url, "direct", { signal: opts.signal })
     return r.httpStatus >= 200 && r.httpStatus < 300 ? r.body : ""
+  }
+
+  /**
+   * The links a docs index carries, same host only, for the agent to choose
+   * from. Not `candidatesFromLinks`: that filters to the six OFFERING path
+   * prefixes, which is right for a marketing site and wrong for docs, where
+   * the pages worth reading live under paths no whitelist predicts.
+   */
+  const docLinks = (html: string, base: string): string[] => {
+    const out = new Set<string>()
+    for (const m of html.matchAll(/href=["']([^"'#]+)["']/g)) {
+      try {
+        const u = new URL(m[1]!, base)
+        if (u.host === new URL(base).host && u.pathname.length > 1) out.add(u.origin + u.pathname)
+      } catch {
+        // not a url
+      }
+      if (out.size >= 40) break
+    }
+    return [...out]
   }
 
   const agent = new ToolLoopAgent({
@@ -154,6 +195,65 @@ export async function discover(opts: DiscoverOptions): Promise<DiscoveryResult> 
             description: facts?.description ?? "",
             text,
           }
+        },
+      }),
+
+      findDocs: tool({
+        description:
+          "Probe the company's documentation surfaces — llms.txt at the root and on a docs " +
+          "subdomain, /docs, /developers, /api — and report which ones answer, each with the links " +
+          "its index carries. Free. The docs are where a company states what its products actually " +
+          "do and what they integrate with; the marketing site says what it wants to sell.",
+        inputSchema: z.object({}),
+        execute: async () => {
+          const host = origin.slice("https://".length)
+          const probes = [
+            `${origin}/llms.txt`,
+            `https://docs.${host}/llms.txt`,
+            `https://docs.${host}/`,
+            `${origin}/docs`,
+            `${origin}/developers`,
+            `${origin}/api`,
+          ]
+          const found = await Promise.all(
+            probes.map(async (url) => {
+              const body = await raw(url)
+              if (!body || body.length < 200) return null
+              readUrls.add(url)
+              // llms.txt IS an index, written for exactly this reader — hand
+              // its text over rather than a link list scraped from markdown.
+              if (/\.txt$/.test(new URL(url).pathname)) {
+                return { url, kind: "llms-txt" as const, text: sniff({ url, httpStatus: 200, body }).text.slice(0, 4_000) }
+              }
+              const facts = readPageFacts(url, body)
+              return { url, kind: "docs-index" as const, heading: facts?.heading ?? "", links: docLinks(body, url) }
+            }),
+          )
+          const surfaces = found.filter((f) => f !== null)
+          return surfaces.length
+            ? { ok: true, surfaces }
+            : { ok: false, reason: "no documentation surface answered — work from the marketing pages" }
+        },
+      }),
+
+      submitIntegration: tool({
+        description:
+          "Record one thing the company's own pages say its products integrate with — another " +
+          "company, tool or platform, named by the company itself, usually in its docs. Not a " +
+          "rival, not a customer story, not a language the SDK ships in. Cite the page that " +
+          "states it.",
+        inputSchema: z.object({
+          with: z.string().describe("the other side's name, exactly as the company writes it"),
+          does: z.string().describe("what the integration does, one line, the company's claim"),
+          foundAt: z.string().describe("the url of the page that states it"),
+        }),
+        execute: async ({ with: withName, does, foundAt }) => {
+          const key = withName.trim().toLowerCase()
+          if (integrations.some((i) => i.with.trim().toLowerCase() === key)) {
+            return { ok: false, reason: `already submitted: ${withName}` }
+          }
+          integrations.push({ with: withName.trim(), does: does.trim(), foundAt })
+          return { ok: true, total: integrations.length }
         },
       }),
 
@@ -255,6 +355,7 @@ export async function discover(opts: DiscoverOptions): Promise<DiscoveryResult> 
     sells: sells || `(the agent did not summarise; ${products.length} products found)`,
     buyer,
     products,
+    integrations,
     coinages,
     summary: result.text,
     usd,

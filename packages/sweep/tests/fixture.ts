@@ -558,7 +558,10 @@ export async function runFixture(opts: FixtureOptions = {}): Promise<Harness> {
       const rf = responseFormat as { type?: string } | undefined
       if (!rf || rf.type !== "json") {
         const turn = prompt.filter((m) => m.role === "assistant").length
-        calls.push({ phase: "discovery", prompt: text, subject: String(turn) })
+        // The whole transcript, not just its text parts: a discovery turn's
+        // prompt IS its tool results, and a test asserting the agent saw what
+        // a tool returned has nowhere else to look for it.
+        calls.push({ phase: "discovery", prompt: JSON.stringify(prompt), subject: String(turn) })
         const step = script.discovery(turn, text)
         if ("text" in step) {
           return {

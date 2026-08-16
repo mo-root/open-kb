@@ -33,7 +33,22 @@ is a mistake worth avoiding:
    separately, which is exactly the product boundary. If a hub page lists several products, read
    each one rather than submitting the hub.
 
-5. **`finish` once, when you are certain you have them all.** Give the company's pitch in the
+5. **`findDocs` once the marketing catalog is in hand.** The marketing site says what the company
+   wants to sell; the documentation says what its products actually do and what they plug into, and
+   the two disagree often enough to make the second reading worth its fetches. Docs surface products
+   the homepage never mentions — an API a buyer pays for is a product even when no marketing page
+   fronts it — and docs are the one place a company states its integrations as facts rather than
+   logos.
+
+6. **`submitIntegration` for what the docs say the products plug into.** An integration is the
+   company's own claim that its product works WITH a named other thing — a platform it deploys to, a
+   tool it connects, a system it ingests from. Take the name exactly as the company writes it and
+   cite the page that states it. These are NOT integrations: a rival in a comparison table, a
+   customer in a case study, a language the SDK ships in, a logo wall with no page behind it. A map
+   of integrations is how this company's ecosystem gets drawn, so a missed one is a missing edge —
+   but an invented one is a false edge, which is worse.
+
+7. **`finish` once, when you are certain you have them all.** Give the company's pitch in the
    buyer's words, who buys it, and the brand words a de-branded search must never use — the invented
    product names, the trademarked category labels, anything someone who had never heard of this
    company would not type.

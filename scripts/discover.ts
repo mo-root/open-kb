@@ -43,6 +43,14 @@ for (const p of out.products) {
   console.log(`     ${p.does}`)
   console.log(`     ${p.foundAt}`)
 }
+if (out.integrations.length) {
+  console.log(`\n${out.integrations.length} integrations, as the company's own docs state them:\n`)
+  for (const i of out.integrations) {
+    console.log(`  ${i.with}`)
+    console.log(`     ${i.does}`)
+    console.log(`     ${i.foundAt}`)
+  }
+}
 if (out.coinages.length) console.log(`\ncoinages (never in a de-branded query): ${out.coinages.join(", ")}`)
 console.log(`\n$${out.usd.toFixed(4)} · ${((Date.now() - started) / 1000).toFixed(0)}s`)
 
