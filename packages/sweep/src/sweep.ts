@@ -633,6 +633,10 @@ export type SweptQuery = PlannedQuery & {
 export type Entity = z.infer<typeof Entity> & {
   foundBy?: string[];
   families?: QueryFamily[];
+  /** The surfacing queries themselves, most-seen first, at most three — the
+   *  layer-zero connection. `foundBy` names the markets and `families` the
+   *  door-shapes; this is what was actually typed. */
+  roads?: string[];
 } & {
   because?: string;
   settledBy?: "predicate" | "model";
@@ -3316,6 +3320,20 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         e.families = [...fams.entries()]
           .sort((a, b) => b[1] - a[1])
           .map(([f]) => f);
+      // The roads themselves — the actual query texts that surfaced this
+      // host, most-seen first, capped like the judge's own view of them.
+      // `foundBy` says which MARKETS this entity hangs on and `families`
+      // which door-shapes found it; neither answers the reader's first
+      // question, "what did you type to get this?", except by digging
+      // through the trace. The basic connection of this graph is the query,
+      // so the stored entity carries it.
+      const qCounts = new Map<string, number>();
+      for (const h of rows) qCounts.set(h.q, (qCounts.get(h.q) ?? 0) + 1);
+      if (qCounts.size)
+        e.roads = [...qCounts.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 3)
+          .map(([q]) => q);
     }
   }
 
