@@ -89,6 +89,9 @@ const out = await withSpendCap(
     // what a cloner judges the tool by. OPENKB_MIN_WAVES=0 restores the
     // model's own judgement.
     minWaves: Number(process.env.OPENKB_MIN_WAVES ?? 3) || undefined,
+    // The estimation stop: ~900 distinct hosts lands near ~700 kept nodes,
+    // which is already a big map. OPENKB_MAX_HOSTS resizes it.
+    maxHosts: Number(process.env.OPENKB_MAX_HOSTS ?? 0) || undefined,
     // Search-wave width. The provider adapter obeys retry-afters, so pushing
     // this is observable-safe: too wide answers as 429s and pacing, never loss.
     concurrency: Number(process.env.OPENKB_SEARCH_CONCURRENCY ?? 0) || undefined,

@@ -185,31 +185,48 @@ export async function discover(opts: DiscoverOptions): Promise<DiscoveryResult> 
 
       readPage: tool({
         description:
-          "Fetch one of the company's pages and read what it says about itself: its title, heading " +
-          "and description, plus the first of its text. Use this to decide what a page sells. Free " +
-          "by default. `unlock: true` retries through the unlocker — a real browser that clears bot " +
-          "walls — at about $0.008 and 15 seconds per page: escalate only when a direct read " +
-          "returned nothing AND the page matters to the catalog, never as a routine.",
+          "Fetch up to EIGHT of the company's pages in one call and read what each says about " +
+          "itself: title, heading, description, and the first of its text. The pages fetch " +
+          "concurrently, so a batch of eight costs the wall-clock of one — batch every read you " +
+          "can name in advance rather than reading one page per turn. Free by default. " +
+          "`unlock: true` retries EVERY page in the batch through the unlocker — a real browser " +
+          "that clears bot walls — at about $0.008 and 15 seconds per page: escalate only pages " +
+          "that refused a direct read AND matter to the catalog, in their own small batch, never " +
+          "as a routine.",
         inputSchema: z.object({
-          url: z.string(),
+          urls: z.array(z.string()).min(1).max(8).describe("one to eight page urls, fetched concurrently"),
           unlock: z
             .boolean()
             .optional()
-            .describe("retry through the unlocker; costs money, so only after a direct read failed"),
+            .describe("retry through the unlocker; costs money per page, so only after a direct read failed"),
         }),
-        execute: async ({ url, unlock }) => {
-          const body = await raw(url, unlock ? "unlocked" : "direct")
-          readUrls.add(url)
-          if (!body) return { ok: false, reason: unlock ? "even the unlocker got nothing usable" : "the page returned nothing (blocked or empty) — worth one unlock:true retry if this page matters" }
-          const facts = readPageFacts(url, body)
-          const text = sniff({ url, httpStatus: 200, body }).text.slice(0, 4_000)
-          return {
-            ok: true,
-            title: facts?.title ?? "",
-            heading: facts?.heading ?? "",
-            description: facts?.description ?? "",
-            text,
-          }
+        execute: async ({ urls, unlock }) => {
+          const pages = await Promise.all(
+            urls.slice(0, 8).map(async (url) => {
+              const body = await raw(url, unlock ? "unlocked" : "direct")
+              readUrls.add(url)
+              if (!body) {
+                return {
+                  url,
+                  ok: false as const,
+                  reason: unlock
+                    ? "even the unlocker got nothing usable"
+                    : "returned nothing (blocked or empty) — worth one unlock:true retry if this page matters",
+                }
+              }
+              const facts = readPageFacts(url, body)
+              const text = sniff({ url, httpStatus: 200, body }).text.slice(0, 4_000)
+              return {
+                url,
+                ok: true as const,
+                title: facts?.title ?? "",
+                heading: facts?.heading ?? "",
+                description: facts?.description ?? "",
+                text,
+              }
+            }),
+          )
+          return { pages }
         },
       }),
 

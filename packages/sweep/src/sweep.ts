@@ -841,6 +841,17 @@ export interface SweepOptions {
    */
   platformScope?: number;
   /**
+   * Roughly how many distinct hosts this run should stop buying at — an
+   * ESTIMATION STOP, not a cap on the map: every host already seen is still
+   * judged, so the final count lands somewhat above it. The owner's sizing:
+   * ~700 kept nodes is already a big map, and kept runs ~78% of hosts, so the
+   * default of 900 hosts lands near it. Without this the only stops were the
+   * model's judgement, the wave ceiling and the clock — a run on a crowded
+   * market bought 1,309 hosts and every one of them cost rank time and rank
+   * money after the map was already large enough to read.
+   */
+  maxHosts?: number;
+  /**
    * How phase one reads the company: `"call"` (default) hands a model one
    * pre-fetched packet and takes its single answer; `"agent"` runs the
    * discovery agent from @open-kb/core, which pulls the corpus itself —
@@ -1032,6 +1043,8 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   const PRODUCT_PAGES = Math.max(0, Math.floor(opts.productPages ?? 25));
   /** See SweepOptions.platformScope. */
   const PLATFORM_SCOPE = Math.max(0, Math.floor(opts.platformScope ?? 0));
+  /** See SweepOptions.maxHosts. */
+  const HOST_CEILING = Math.max(50, Math.floor(opts.maxHosts ?? 900));
   /** The rank pool's actual width, read once and used both to run the pool
    *  and to price it — the clock's coefficient was measured at width 8, and a
    *  deployment ranking at 24 was reserving 3x the rank it needed. */
@@ -2709,6 +2722,20 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
        * still bought all 12 queued queries and judged none of them.
        */
       if (outOfClock) return;
+      // The estimation stop: enough market is in hand, so the next query buys
+      // corroboration for a map already past its reading size. Binds every
+      // worker exactly like the clock verdict, for the same reason.
+      if (hostsSeen.size >= HOST_CEILING) {
+        if (!sealed) {
+          sealed = true;
+          say(
+            "sweep",
+            `stopping the search: ${hostsSeen.size} distinct hosts is past this run's sizing of ~${HOST_CEILING} — ` +
+              `the rest of the clock belongs to judging them`,
+          );
+        }
+        return;
+      }
       if (
         DEADLINE !== null &&
         secondsLeft() < rankSeconds(hostsSeen.size, undefined, RANK_CONC) + TAIL_SECONDS
@@ -2775,6 +2802,14 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
        * predicted. Asking `can I still judge what I have?` reads the hosts that
        * actually landed instead of the ones a median said would.
        */
+      if (distinctHosts().size >= HOST_CEILING) {
+        say(
+          "plan",
+          `not widening: ${distinctHosts().size} distinct hosts is already past this run's sizing of ~${HOST_CEILING}`,
+        );
+        sealed = true;
+        return;
+      }
       if (QUERY_CEILING !== null && asked.length >= QUERY_CEILING) {
         say(
           "plan",

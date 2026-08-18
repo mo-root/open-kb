@@ -26,10 +26,13 @@ is a mistake worth avoiding:
 2. **`mapProductPages` when llms.txt is missing or thin.** It is free and it lists the company's
    own product-page urls from its sitemap and nav. This is your map of the territory.
 
-3. **Read the pages that look like products.** `readPage` gives you what a page calls itself — its
-   heading, its description, its own words. A url says what exists; only the page says what it is.
-   `/platform/ai` may be titled "Assistant"; a slug reading `scraping-browser` may front a product
-   the page calls "Browser API". Take the page's name, not the slug's.
+3. **Read the pages that look like products, in batches.** `readPage` takes up to eight urls at
+   once and fetches them concurrently — a batch of eight costs the wall-clock of one, so name every
+   page you already know you want and read them together; one page per turn is the slow way. It
+   gives you what each page calls itself — its heading, its description, its own words. A url says
+   what exists; only the page says what it is. `/platform/ai` may be titled "Assistant"; a slug
+   reading `scraping-browser` may front a product the page calls "Browser API". Take the page's
+   name, not the slug's.
 
 4. **Submit each product as you confirm it.** There is no limit. A company with twenty products
    should produce twenty submissions. A missed product is an entire market this map will never see,
