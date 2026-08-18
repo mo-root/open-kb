@@ -76,6 +76,9 @@ interface Opts {
   unlockedTimeoutMs?: number
   /** Pause before the single retry of a retryable failure. */
   retryMs?: number
+  /** How long a quiet stretch has to be before the throttle penalty halves.
+   *  Injectable so a test can prove the recovery without waiting for it. */
+  recoverMs?: number
   /**
    * How the DIRECT branch turns a name into addresses before it connects.
    *
@@ -152,6 +155,9 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
    */
   let minGapMs = 0
   let nextSlotAt = 0
+  /** When the provider last said it was throttling us. The pace recovers from
+   *  this, so a throttle that has lifted stops being paid for. */
+  let lastThrottleAt = 0
   const pace = async () => {
     if (minGapMs <= 0) return
     const now = Date.now()
@@ -165,6 +171,36 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
     // discover it was measured differently at the other end.
     const gap = perMin ? Math.ceil(60_000 / (perMin * 0.9)) : 6_000
     if (gap > minGapMs) minGapMs = gap
+    lastThrottleAt = Date.now()
+  }
+  /**
+   * THE PENALTY HAS TO EXPIRE, OR ONE MESSAGE COSTS THE WHOLE RUN.
+   *
+   * `minGapMs` only ever rose. A provider that throttles once — and it
+   * throttles for LOW SUCCESS RATE, which a bad five minutes is enough to
+   * trigger — put every remaining request of the run into a serialized queue
+   * spaced 6.7 seconds apart, forever. MEASURED on a brightdata map: 706
+   * requests took 37 minutes at an effective concurrency of 1.5 while the pool
+   * was configured for 32, and the rank phase that followed judged 1,309 hosts
+   * in 6. The throttle was real; holding it for another half hour was not.
+   *
+   * Halve the gap for every quiet interval — the provider's own recovery
+   * shape, since the limit lifts when the success rate does — and drop it
+   * entirely once it is shorter than a round trip, where pacing no longer
+   * means anything. Called on every SUCCESSFUL response, which is precisely
+   * the evidence that the throttle has lifted.
+   */
+  const RECOVER_AFTER_MS = Math.max(1, Math.floor(opts.recoverMs ?? 45_000))
+  const recoverPace = () => {
+    if (minGapMs <= 0) return
+    const quietFor = Date.now() - lastThrottleAt
+    if (quietFor < RECOVER_AFTER_MS) return
+    // One halving per quiet interval elapsed, so a long clean stretch recovers
+    // in one step rather than needing one success per halving.
+    const halvings = Math.floor(quietFor / RECOVER_AFTER_MS)
+    const relaxed = Math.floor(minGapMs / 2 ** halvings)
+    minGapMs = relaxed < 250 ? 0 : relaxed
+    lastThrottleAt = Date.now()
   }
 
   const zones = creds.serpZone
@@ -290,6 +326,8 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
                   requests: 1,
                 }
               }
+              // A page that answered is the evidence a throttle has lifted.
+              recoverPace()
               const hits = (parsed.organic ?? [])
                 .filter((h) => typeof h.link === "string")
                 // `global_rank` is the engine's own position across pages, which

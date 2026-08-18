@@ -804,6 +804,52 @@ describe("brightDataSearch obeys a stated rate limit", () => {
     expect(Date.now() - t0).toBeLessThan(300)
   })
 
+  /**
+   * THE PENALTY EXPIRES. `minGapMs` only ever rose, so one throttle — and the
+   * provider throttles for LOW SUCCESS RATE, which a bad five minutes
+   * triggers — serialized every remaining request of the run at 6.7s apart,
+   * forever. MEASURED on a brightdata map: 706 requests took 37 minutes at an
+   * effective concurrency of 1.5 against a pool configured for 32.
+   */
+  it("recovers the pace once the provider stops complaining", async () => {
+    let n = 0
+    const fetchImpl = vi.fn(async (..._: FetchArgs) => {
+      n += 1
+      return n === 1
+        ? new Response("", {
+            status: 200,
+            headers: { "x-brd-error": "auto-throttled, decrease your request rate to 120/min" },
+          })
+        : new Response(JSON.stringify({ organic: [{ link: "https://a.com", title: "A", description: "" }] }), { status: 200 })
+    })
+    // 120/min at 90% is a 556ms gap, and the recovery window is shortened from
+    // 45s to 2s so the test proves the behaviour rather than waiting it out.
+    // The window must stay well ABOVE the gap, as it is in production (45s
+    // against a 16s retry wait), or the retry's own pause spends it.
+    const s = brightDataSearch(creds, {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      pages: 1,
+      retryMs: 0,
+      recoverMs: 2_000,
+    })
+
+    // The throttle lands, and the gap is real: two queries cannot both go now.
+    await s.search(["a"])
+    const pacedStart = Date.now()
+    await s.search(["b", "c"])
+    expect(Date.now() - pacedStart).toBeGreaterThan(200)
+
+    // Successes keep arriving and the window elapses, so the penalty decays to
+    // nothing and a wave goes concurrently again.
+    await new Promise((r) => setTimeout(r, 2_100))
+    await s.search(["d"])
+    await new Promise((r) => setTimeout(r, 2_100))
+    await s.search(["e"])
+    const freeStart = Date.now()
+    await s.search(["f", "g", "h", "i"])
+    expect(Date.now() - freeStart).toBeLessThan(200)
+  }, 15_000)
+
   it("reports the throttle text rather than a generic failure", async () => {
     const fetchImpl = vi.fn(
       async () =>

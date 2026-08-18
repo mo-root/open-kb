@@ -984,7 +984,7 @@ describe.skipIf(runsDir === null)("segments of the real brightdata run", () => {
  */
 describe("queries bought is what was fired, not what was opened", () => {
   const withReport = (statsQueries: number, reportQueries?: number): CompletedRun => {
-    const r = run([entity("rival.com")])
+    const r = run([entity("rival.com", "competitor")])
     const res = r.result as unknown as { stats: { queries: number }; report: Record<string, unknown> }
     res.stats.queries = statsQueries
     if (reportQueries !== undefined) res.report.queries = reportQueries
@@ -992,12 +992,10 @@ describe("queries bought is what was fired, not what was opened", () => {
   }
 
   it("prefers the fired count over the opening hand", () => {
-    const view = viewOf(withReport(86, 190))
-    expect(view.manifest.queries).toBe(190)
+    expect(viewOf(withReport(86, 190)).manifest?.queries).toBe(190)
   })
 
   it("falls back to the opening for a map stored before the field existed", () => {
-    const view = viewOf(withReport(86))
-    expect(view.manifest.queries).toBe(86)
+    expect(viewOf(withReport(86)).manifest?.queries).toBe(86)
   })
 })
