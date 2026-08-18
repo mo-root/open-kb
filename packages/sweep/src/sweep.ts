@@ -3209,6 +3209,14 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     fetcher,
     anchor,
     aggregatorThreshold: KERNEL_THRESHOLD,
+    // A blocked front page on a host three distinct queries surfaced earns
+    // one unlocked retry (~$0.008) before settling as unreadable — measured
+    // at ~$0.11 a run against 17% of the map shipping as blank nodes.
+    // OPENKB_RANK_UNLOCK=0 turns it off.
+    unlockSeenIn: Math.max(
+      0,
+      Math.floor(Number(process.env.OPENKB_RANK_UNLOCK ?? 3) || 0),
+    ),
     // The rank pool is the run's longest phase: free direct fetches plus one
     // short model call per residue host. 8 was the kernel's launch width;
     // OPENKB_RANK_CONCURRENCY raises it when the model provider's rate allows

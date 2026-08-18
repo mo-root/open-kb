@@ -711,3 +711,117 @@ describe("judgeHosts span-bound descriptions", () => {
     }
   })
 })
+
+describe("judgeHosts blocked-page recovery", () => {
+  const rich = (host: string) => ({
+    host,
+    seenIn: 3,
+    intents: ["evaluation"],
+    titles: ["Acme log search — hosted full-text search", "Acme pricing and plans for platform teams"],
+    desc: "Acme sells hosted log search with a year of retention to platform teams that outgrew grep.",
+    topHit: `https://${host}/`,
+  })
+
+  it("escalates a corroborated 403 through the unlocker and judges the unlocked page", async () => {
+    const calls: string[] = []
+    const out = await judgeHosts([rich("walled.com")], {
+      fetcher: {
+        async get(url, mode) {
+          calls.push(mode)
+          return mode === "unlocked"
+            ? { url, httpStatus: 200, body: vendorHtml, ms: 14_000, usd: 0.008 }
+            : { url, httpStatus: 403, body: "", ms: 100, usd: 0 }
+        },
+      },
+      classify: async () => ({
+        name: "Walled", kind: "company", what: "a vendor selling hosted log search",
+        relation: "competitor", why: "same job", spans: ["hosted log search"],
+      }),
+      anchor: "anchor.com",
+      aggregatorThreshold: null,
+      unlockSeenIn: 3,
+    })
+    expect(calls).toEqual(["direct", "unlocked"])
+    expect(out.stats.unlocked).toBe(1)
+    const e = out.entities[0]!
+    expect(e.kind).toBe("company")
+    expect(e.because).toBeUndefined()
+  })
+
+  it("spends nothing on a host below the corroboration bar", async () => {
+    const calls: string[] = []
+    const out = await judgeHosts([{ ...rich("walled.com"), seenIn: 1 }], {
+      fetcher: {
+        async get(url, mode) {
+          calls.push(mode)
+          return { url, httpStatus: 403, body: "", ms: 100, usd: 0 }
+        },
+      },
+      classify: async () => { throw new Error("unreachable for a blank") },
+      anchor: "anchor.com",
+      aggregatorThreshold: null,
+      unlockSeenIn: 3,
+    })
+    expect(calls).toEqual(["direct"])
+    expect(out.stats.unlocked).toBe(0)
+    // Still judged — from the SERP text the run already paid for.
+    expect(out.stats.serpJudged + out.stats.settledFree).toBeGreaterThan(0)
+  })
+
+  it("judges an unreadable host from its SERP presence, wearing the caveat", async () => {
+    const out = await judgeHosts([{ ...rich("dark.com"), seenIn: 1 }], {
+      fetcher: fakeFetcher({}),
+      classify: async (_h, text) => ({
+        name: "Dark", kind: "company",
+        what: "a vendor selling hosted log search to platform teams",
+        relation: "competitor", why: "same capability to the same buyer",
+        spans: ["hosted log search", "not on the serp text at all"],
+      }),
+      anchor: "anchor.com",
+      aggregatorThreshold: null,
+    })
+    const e = out.entities[0]!
+    expect(out.stats.serpJudged).toBe(1)
+    expect(e.kind).toBe("company")
+    expect(e.because).toContain("judged from the search results that surfaced it")
+    expect(e.unreadableReason).toBeDefined()
+    // Spans still verified — against the SERP text, same containment check.
+    expect(e.descSpans).toEqual({ verified: 1, claimed: 2 })
+    expect(e.spans).toEqual(["hosted log search"])
+  })
+
+  it("leaves the honest blank when even the SERP said nearly nothing", async () => {
+    const out = await judgeHosts(
+      [{ host: "ghost.com", seenIn: 1, intents: [], titles: ["Ghost"], desc: "", topHit: "https://ghost.com/" }],
+      {
+        fetcher: fakeFetcher({}),
+        classify: async () => { throw new Error("unreachable — the text is too thin to judge") },
+        anchor: "anchor.com",
+        aggregatorThreshold: null,
+      },
+    )
+    const e = out.entities[0]!
+    expect(e.kind).toBe("unknown")
+    expect(e.because).toContain("could not be read")
+  })
+
+  it("withdraws a name whose home is a different registrable domain", async () => {
+    const resellerHtml = `<html><body><h1>SendGrid Japan</h1><p>Email delivery for the Japanese market, operated by KKE. SendGrid features and pricing in Japanese, with local support and billing for teams here.</p></body></html>`
+    const out = await judgeHosts([{ ...rich("sendgrid.kke.co.jp"), seenIn: 2 }], {
+      fetcher: fakeFetcher({ "https://sendgrid.kke.co.jp/": resellerHtml }),
+      classify: async () => ({
+        name: "SendGrid", kind: "company", what: "a transactional email API",
+        relation: "competitor", why: "same job", spans: ["Email delivery"],
+      }),
+      anchor: "anchor.com",
+      aggregatorThreshold: null,
+    })
+    const e = out.entities[0]!
+    expect(e.kind).toBe("unknown")
+    expect(e.because).toContain("whose home is not kke.co.jp")
+    expect(e.name).toBe("sendgrid.kke.co.jp")
+    // The page was thin, so this went down the SERP-judged road — which is
+    // the point: a wrong door is withdrawn on BOTH judging paths.
+    expect(e.unreadableReason).toBeDefined()
+  })
+})

@@ -112,6 +112,10 @@ export interface KernelStats {
   aggregators: number
   modelJudged: number
   settledFree: number
+  /** Unlocker escalations spent on blocked-but-corroborated front pages. */
+  unlocked: number
+  /** Hosts judged from their SERP presence because no page could be read. */
+  serpJudged: number
   /** Running mean of descGrounded across model-judged entities, 2 decimals.
    *  Null until the first model judgement lands — a run that judged nothing
    *  has no groundedness to report, and 0 would read as "everything invented". */
@@ -123,6 +127,15 @@ export interface JudgeDeps {
   classify: (h: HostCandidate, pageText: string) => Promise<{ name: string; kind: string; what: string; relation: string; why: string; spans: string[] }>
   anchor: string
   aggregatorThreshold: number | null
+  /**
+   * The corroboration bar for spending an unlocker call on a blocked front
+   * page: a host seen in at least this many distinct queries earns one
+   * unlocked retry (~$0.008, ~15s) before it is settled as unreadable.
+   * Measured: 17% of one fresh map's rows were blank nodes, 14 of them
+   * corroborated at this bar — $0.11 to judge a seventh of the map. Unset or
+   * 0 disables, which keeps every existing caller byte-identical.
+   */
+  unlockSeenIn?: number
   concurrency?: number
   signal?: AbortSignal
   /**
@@ -153,7 +166,7 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
   const threshold = deps.aggregatorThreshold
   const entities: Judged[] = []
   const probePages: Array<{ url: string; html: string }> = []
-  const stats: KernelStats = { fetched: 0, unreadable: 0, unreadableByReason: {}, aggregators: 0, modelJudged: 0, settledFree: 0, groundingMean: null }
+  const stats: KernelStats = { fetched: 0, unreadable: 0, unreadableByReason: {}, aggregators: 0, modelJudged: 0, settledFree: 0, unlocked: 0, serpJudged: 0, groundingMean: null }
   const countDeadEnd = (reason: UnreadableReason) => {
     stats.unreadable += 1
     stats.unreadableByReason[reason] = (stats.unreadableByReason[reason] ?? 0) + 1
@@ -178,6 +191,26 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
   const emit = (e: Judged) => {
     entities.push(e)
     deps.onJudged?.(e)
+  }
+
+  /**
+   * True when a judged name's home is a different registrable domain — the
+   * brand spelled in a subdomain of someone else's site ("SendGrid" on
+   * sendgrid.kke.co.jp). Binding it would drag every mention of the brand
+   * onto a reseller's door while the brand's own domain never enters the
+   * map. Shared by the page path and the SERP-text path: a wrong door is a
+   * wrong door whichever text the model read.
+   */
+  const wrongDoor = (name: string, host: string): boolean => {
+    const nameKey = identityKey(name)
+    const regLabel = identityKey(registrableHost(host).split(".")[0] ?? "")
+    const hostKey = identityKey(host)
+    return (
+      nameKey.length >= 3 &&
+      !regLabel.includes(nameKey) &&
+      !nameKey.includes(regLabel) &&
+      hostKey.includes(nameKey)
+    )
   }
 
   const judgeOne = async (h: HostCandidate): Promise<void> => {
@@ -210,7 +243,8 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
       return
     }
     stats.fetched += 1
-    const s = sniff(raw)
+    // `let`: the unlocker escalation below may replace the read.
+    let s = sniff(raw)
     deps.onFetch?.(url, s.status === "found", raw.ms)
 
     // An answer key is worth keeping whatever the verdict on the host is —
@@ -223,8 +257,70 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
       probePages.push({ url, html: raw.body })
     }
 
+    // A blocked page on a corroborated host earns one unlocked retry before
+    // anything is settled: the block is the site's judgement of the fetcher,
+    // not a fact about the company, and the bar keeps the spend proportional
+    // — a host three queries surfaced is worth $0.008, a drive-by is not.
+    if (
+      s.status !== "found" &&
+      (deps.unlockSeenIn ?? 0) > 0 &&
+      h.seenIn >= (deps.unlockSeenIn ?? 0) &&
+      (s.reason === "thin-render" || /^http-4/.test(s.reason))
+    ) {
+      try {
+        const retried = await deps.fetcher.get(url, "unlocked", { signal: deps.signal })
+        stats.unlocked += 1
+        const s2 = sniff(retried)
+        deps.onFetch?.(url, s2.status === "found", retried.ms)
+        if (s2.status === "found") {
+          raw = retried
+          s = s2
+        }
+      } catch {
+        // The escalation failing settles nothing by itself; the branches
+        // below still hold the SERP text and the honest blank.
+      }
+    }
+
     if (s.status !== "found") {
       countDeadEnd(s.reason)
+      // The run already paid for text about this host: the titles and
+      // descriptions of the results that surfaced it. A blank card says
+      // "unreadable"; a card judged from its SERP presence says what the
+      // market says the host is, wearing the caveat. 61 of one fresh map's
+      // 63 blanks carried enough of this text to judge.
+      const serpText = [...h.titles, h.desc].filter(Boolean).join(" · ")
+      if (serpText.length >= 80) {
+        stats.serpJudged += 1
+        try {
+          const out = await deps.classify(h, serpText)
+          if (wrongDoor(out.name ?? "", h.host)) {
+            emit({
+              name: h.host, domain: h.host, kind: "unknown", what: "",
+              relation: "unknown", why: "",
+              because: `the page answered as "${out.name}", a brand whose home is not ${registrableHost(h.host)} — the name is withdrawn rather than bound to the wrong door`,
+              unreadableReason: s.reason,
+              settledBy: "model",
+            })
+            return
+          }
+          const verified = out.spans.filter((sp) => checkQuote(serpText, sp) === "ok")
+          emit({
+            name: out.name || h.host, domain: h.host,
+            kind: out.kind, what: out.what,
+            relation: out.relation, why: out.why,
+            because: `its front page could not be read this run (${s.status}); judged from the search results that surfaced it`,
+            unreadableReason: s.reason,
+            settledBy: "model",
+            ...(verified.length ? { spans: verified } : {}),
+            descSpans: { verified: verified.length, claimed: out.spans.length },
+          })
+          return
+        } catch {
+          // A failed call falls through to the blank the host would have
+          // gotten anyway.
+        }
+      }
       stats.settledFree += 1
       emit({
         name: h.host, domain: h.host, kind: "unknown", what: "",
@@ -334,6 +430,24 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
         settledBy: "model",
       })
       return
+    }
+
+    // THE NAME'S HOME IS ELSEWHERE. "SendGrid" judged onto
+    // sendgrid.kke.co.jp — the brand spelled in a subdomain of someone
+    // else's registrable domain — drags every mention of the brand onto a
+    // reseller's door, and the brand's own domain never enters the map. The
+    // name is withdrawn the same way the anchor-identity branch above
+    // withdraws one: the model was describing a company this host is not.
+    {
+      if (wrongDoor(out.name ?? "", h.host)) {
+        emit({
+          name: h.host, domain: h.host, kind: "unknown", what: "",
+          relation: "unknown", why: "",
+          because: `the page answered as "${out.name}", a brand whose home is not ${registrableHost(h.host)} — the name is withdrawn rather than bound to the wrong door`,
+          settledBy: "model",
+        })
+        return
+      }
     }
 
     const grounding = descriptionGrounding(out.what, pageText)
