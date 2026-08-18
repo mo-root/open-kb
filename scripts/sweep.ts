@@ -83,6 +83,9 @@ const out = await withSpendCap(
     domain: anchor,
     queries: TARGET,
     pages: Number(process.env.OPENKB_PAGES ?? 4),
+    // The gallery's width floor: rounds before the model's "enough" is
+    // accepted. Unset keeps the model's own judgement — see SweepOptions.
+    minWaves: Number(process.env.OPENKB_MIN_WAVES ?? 0) || undefined,
     // Search-wave width. The provider adapter obeys retry-afters, so pushing
     // this is observable-safe: too wide answers as 429s and pacing, never loss.
     concurrency: Number(process.env.OPENKB_SEARCH_CONCURRENCY ?? 0) || undefined,

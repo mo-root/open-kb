@@ -126,8 +126,14 @@ export async function discover(opts: DiscoverOptions): Promise<DiscoveryResult> 
 
   const origin = `https://${anchor.replace(/^https?:\/\//, "").replace(/\/.*$/, "")}`
 
-  const raw = async (url: string): Promise<string> => {
-    const r = await fetcher.get(url, "direct", { signal: opts.signal })
+  /** Paid fetches, accounted: the unlocker charges per call, and a result
+   *  whose usd only counts model tokens would under-report an investigation
+   *  that escalated. */
+  let fetchUsd = 0
+
+  const raw = async (url: string, mode: "direct" | "unlocked" = "direct"): Promise<string> => {
+    const r = await fetcher.get(url, mode, { signal: opts.signal })
+    fetchUsd += r.usd
     return r.httpStatus >= 200 && r.httpStatus < 300 ? r.body : ""
   }
 
@@ -166,7 +172,7 @@ export async function discover(opts: DiscoverOptions): Promise<DiscoveryResult> 
           // An index's children, all of them — following only the first let
           // alphabetical order pick what the agent saw. See sitemapChildren.
           if (xml && isSitemapIndex(xml)) {
-            const bodies = await Promise.all(sitemapChildren(xml).map(raw))
+            const bodies = await Promise.all(sitemapChildren(xml).map((u) => raw(u)))
             xml = bodies.filter(Boolean).join("\n")
           }
           let cands = xml ? candidatesFromSitemap(xml, 60) : []
@@ -180,12 +186,21 @@ export async function discover(opts: DiscoverOptions): Promise<DiscoveryResult> 
       readPage: tool({
         description:
           "Fetch one of the company's pages and read what it says about itself: its title, heading " +
-          "and description, plus the first of its text. Use this to decide what a page sells. Free.",
-        inputSchema: z.object({ url: z.string() }),
-        execute: async ({ url }) => {
-          const body = await raw(url)
+          "and description, plus the first of its text. Use this to decide what a page sells. Free " +
+          "by default. `unlock: true` retries through the unlocker — a real browser that clears bot " +
+          "walls — at about $0.008 and 15 seconds per page: escalate only when a direct read " +
+          "returned nothing AND the page matters to the catalog, never as a routine.",
+        inputSchema: z.object({
+          url: z.string(),
+          unlock: z
+            .boolean()
+            .optional()
+            .describe("retry through the unlocker; costs money, so only after a direct read failed"),
+        }),
+        execute: async ({ url, unlock }) => {
+          const body = await raw(url, unlock ? "unlocked" : "direct")
           readUrls.add(url)
-          if (!body) return { ok: false, reason: "the page returned nothing (blocked or empty)" }
+          if (!body) return { ok: false, reason: unlock ? "even the unlocker got nothing usable" : "the page returned nothing (blocked or empty) — worth one unlock:true retry if this page matters" }
           const facts = readPageFacts(url, body)
           const text = sniff({ url, httpStatus: 200, body }).text.slice(0, 4_000)
           return {
@@ -365,7 +380,7 @@ export async function discover(opts: DiscoverOptions): Promise<DiscoveryResult> 
     integrations,
     coinages,
     summary: result.text,
-    usd,
+    usd: usd + fetchUsd,
     steps: steps.length,
     pagesRead: readUrls.size,
     _steps: steps,

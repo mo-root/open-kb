@@ -792,6 +792,12 @@ export interface SweepOptions {
   /** Ceiling on how many times the run may look at its own map and ask for more
    *  queries. It usually stops before this because the model says it has enough. */
   maxWaves?: number;
+  /** A floor under the model's "enough": rounds before that verdict is
+   *  accepted. Measured need: two runs of one anchor, identical code, went 87
+   *  and 36 queries because the assess model's mood set the width. A gallery
+   *  of maps must be comparable, so a floor makes width a setting rather than
+   *  a temperament. Clock and spend caps still end a run regardless. */
+  minWaves?: number;
   /** A wave adding fewer new hosts than this ends the run, more queries would be
    *  buying corroboration rather than coverage. */
   minNewHosts?: number;
@@ -984,6 +990,8 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   /** How many times the run may look at what it has and ask for more. A ceiling,
    *  not a target, most runs stop earlier because the model says enough. */
   const MAX_WAVES = Math.max(1, Math.floor(opts.maxWaves ?? 4));
+  /** See SweepOptions.minWaves — 0 keeps the model's own judgement. */
+  const MIN_WAVES = Math.max(0, Math.floor(opts.minWaves ?? 0));
   /** A wave adding fewer new hosts than this is reaching ground already covered.
    *  The harness's backstop for a model that keeps asking while learning nothing. */
   const MIN_NEW_HOSTS = Math.max(1, Math.floor(opts.minNewHosts ?? 8));
@@ -2858,10 +2866,19 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       // template covers the gap, so a widening round can legitimately carry
       // zero fresh queries and a non-empty draw. Only seal here when there is
       // neither.
-      if (
+      const saidEnough =
         verdict.enough ||
-        (verdict.queries.length === 0 && !verdict.draw?.length)
-      ) {
+        (verdict.queries.length === 0 && !verdict.draw?.length);
+      // The floor outranks the mood, never the money: an "enough" before
+      // MIN_WAVES rounds is noted and overridden, and the round proceeds on
+      // whatever the model DID propose — or, when it proposed nothing, on
+      // reserve alone via the draw-everything fallback below.
+      if (saidEnough && rounds + 1 < MIN_WAVES) {
+        say(
+          "plan",
+          `the model said enough after ${rounds + 1} round${rounds === 0 ? "" : "s"} — this run's floor is ${MIN_WAVES}, widening anyway`,
+        );
+      } else if (saidEnough) {
         say(
           "plan",
           `enough — ${before} hosts${verdict.missing ? ` (noted gap: ${verdict.missing})` : ""}`,
@@ -2870,10 +2887,22 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         return;
       }
 
+      // The floor's fallback: an overridden "enough" may arrive with nothing
+      // proposed, and a widening round with no queries would stop the run at
+      // the very gate the floor exists to hold open. Reserve is the honest
+      // source — templates already judged worth their family — so draw two
+      // per product that still holds any.
+      const draws =
+        saidEnough && !(verdict.draw?.length || verdict.queries.length)
+          ? [...reserve.entries()]
+              .filter(([, held]) => held.length > 0)
+              .map(([product]) => ({ product, n: 2 }))
+          : (verdict.draw ?? []);
+
       // Reserve first: a held template is a query already judged worth its
       // family, so it outranks a freshly invented one.
       const released: SweptQuery[] = [];
-      for (const d of verdict.draw ?? []) {
+      for (const d of draws) {
         const held = reserve.get(d.product);
         if (!held?.length) continue;
         for (const fq of held.splice(0, Math.max(1, Math.floor(d.n)))) {
