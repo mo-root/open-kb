@@ -536,7 +536,18 @@ export function manifestOf(run: CompletedRun): KbManifest {
     unjudged: budgetNum("unjudged"),
     builtAt: new Date(run.endedAt ?? run.startedAt).toISOString(),
     notes: kept.length + 1,
-    queries: r.stats.queries,
+    /**
+     * EVERY query the run fired, not the opening hand it started from.
+     *
+     * `stats.queries` is the opening count and the widening loop adds to it —
+     * on one measured map the opening was 86 and the run bought 190, so the
+     * overview told a reader "86 queries bought" beside 570 SERP calls it had
+     * paid for. `report.queries` is the fired count (the engine's own comment:
+     * "Everything actually fired, opening hand plus every widening round");
+     * the stat falls back to the opening only for a stored map written before
+     * that field existed.
+     */
+    queries: typeof r.report?.queries === "number" ? r.report.queries : r.stats.queries,
     // v1's "violations" was a failed quality check per note. This engine runs
     // no such check, and reporting 0 would claim one passed. The KB surfaces
     // read `violations` through `manifestNum`, which returns undefined for an

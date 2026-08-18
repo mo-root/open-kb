@@ -975,3 +975,29 @@ describe.skipIf(runsDir === null)("segments of the real brightdata run", () => {
     expect(oxylabs.filter((e) => e.confidence === "inferred")).toHaveLength(oxylabs.length - 1)
   })
 })
+
+/**
+ * The overview's headline count. `stats.queries` is the OPENING hand and the
+ * widening loop adds to it: on a measured brightdata map the opening was 86
+ * and the run fired 190, so the page said "86 queries bought" beside 570 SERP
+ * calls the same run had paid for.
+ */
+describe("queries bought is what was fired, not what was opened", () => {
+  const withReport = (statsQueries: number, reportQueries?: number): CompletedRun => {
+    const r = run([entity("rival.com")])
+    const res = r.result as unknown as { stats: { queries: number }; report: Record<string, unknown> }
+    res.stats.queries = statsQueries
+    if (reportQueries !== undefined) res.report.queries = reportQueries
+    return r
+  }
+
+  it("prefers the fired count over the opening hand", () => {
+    const view = viewOf(withReport(86, 190))
+    expect(view.manifest.queries).toBe(190)
+  })
+
+  it("falls back to the opening for a map stored before the field existed", () => {
+    const view = viewOf(withReport(86))
+    expect(view.manifest.queries).toBe(86)
+  })
+})
