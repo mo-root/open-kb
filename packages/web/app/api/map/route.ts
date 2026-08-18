@@ -142,7 +142,11 @@ const CLOCK_S = maxDuration - DEADLINE_MARGIN_S
  * the limit raises the map: 800 buys 70 queries, 1800 buys 175. A hardcoded 18
  * would have quietly capped a Pro deployment at the Hobby map.
  */
-const QUERY_BUDGET = queriesThatFit(CLOCK_S)
+// The width the deployment actually ranks at, so the budget prices rank at
+// the pool it will really run — the coefficient was measured at width 8, and
+// a deployment ranking at 24 sized its maps at ~40% of what fit its clock.
+const RANK_WIDTH = Math.max(1, Math.floor(Number(process.env.OPENKB_RANK_CONCURRENCY ?? 8) || 8))
+const QUERY_BUDGET = queriesThatFit(CLOCK_S, undefined, RANK_WIDTH)
 
 interface Body {
   domain?: string
@@ -401,7 +405,7 @@ export const POST = guarded(async (req: Request) => {
     headers: req.headers,
     budgetQueries: QUERY_BUDGET,
     runWindowMs: maxDuration * 1000,
-    aboutSeconds: runSeconds(QUERY_BUDGET),
+    aboutSeconds: runSeconds(QUERY_BUDGET, undefined, RANK_WIDTH),
   })
   if (!spend.ok) {
     console.error(`[map] refused: ${spend.log}`)
@@ -585,7 +589,7 @@ export const POST = guarded(async (req: Request) => {
       hostSeconds: maxDuration,
       // What the same arithmetic says this run should take. A reader comparing
       // it against `clockSeconds` can see the margin the budget was chosen for.
-      estimatedSeconds: Math.round(runSeconds(QUERY_BUDGET)),
+      estimatedSeconds: Math.round(runSeconds(QUERY_BUDGET, undefined, RANK_WIDTH)),
     },
   })
 })

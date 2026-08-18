@@ -1022,6 +1022,13 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   const PRODUCT_PAGES = Math.max(0, Math.floor(opts.productPages ?? 25));
   /** See SweepOptions.platformScope. */
   const PLATFORM_SCOPE = Math.max(0, Math.floor(opts.platformScope ?? 0));
+  /** The rank pool's actual width, read once and used both to run the pool
+   *  and to price it — the clock's coefficient was measured at width 8, and a
+   *  deployment ranking at 24 was reserving 3x the rank it needed. */
+  const RANK_CONC = Math.max(
+    1,
+    Math.floor(Number(process.env.OPENKB_RANK_CONCURRENCY ?? 8) || 8),
+  );
   /** The whole run's query ceiling, or null for "as many as the map wants" —
    *  which is every CLI run. See `SweepOptions.maxQueries`. */
   const QUERY_CEILING =
@@ -2677,14 +2684,14 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       if (outOfClock) return;
       if (
         DEADLINE !== null &&
-        secondsLeft() < rankSeconds(hostsSeen.size) + TAIL_SECONDS
+        secondsLeft() < rankSeconds(hostsSeen.size, undefined, RANK_CONC) + TAIL_SECONDS
       ) {
         outOfClock = true;
         sealed = true;
         say(
           "sweep",
           `stopping the search: ${hostsSeen.size} hosts already need about ` +
-            `${Math.round(rankSeconds(hostsSeen.size) + TAIL_SECONDS)}s to judge and write, and ` +
+            `${Math.round(rankSeconds(hostsSeen.size, undefined, RANK_CONC) + TAIL_SECONDS)}s to judge and write, and ` +
             `${leftS()}s are left — buying more would only lengthen a list nobody gets to`,
         );
         return;
@@ -2751,7 +2758,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         return;
       }
       if (DEADLINE !== null) {
-        const need = rankSeconds(before) + TAIL_SECONDS;
+        const need = rankSeconds(before, undefined, RANK_CONC) + TAIL_SECONDS;
         const left = secondsLeft();
         if (left < need) {
           say(
@@ -3173,7 +3180,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         : `, aggregator threshold ${KERNEL_THRESHOLD}`),
   );
   if (DEADLINE !== null) {
-    const need = rankSeconds(hostList.length) + TAIL_SECONDS;
+    const need = rankSeconds(hostList.length, undefined, RANK_CONC) + TAIL_SECONDS;
     say(
       "rank",
       `about ${Math.round(need)}s of judging and writing left to do, ${leftS()}s of clock` +
@@ -3222,10 +3229,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     // OPENKB_RANK_CONCURRENCY raises it when the model provider's rate allows
     // — doubling the pool roughly halves the phase, and a provider that
     // objects answers with 429s the caller will see, not silent loss.
-    concurrency: Math.max(
-      1,
-      Math.floor(Number(process.env.OPENKB_RANK_CONCURRENCY ?? 8) || 8),
-    ),
+    concurrency: RANK_CONC,
     signal,
     /**
      * THE BACKSTOP, and the last place a run can still choose to be smaller.

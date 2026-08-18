@@ -100,6 +100,16 @@ export interface PhaseCosts {
    */
   rankSecondsPerHost: number
   /**
+   * The pool width `rankSecondsPerHost` was measured AT. The coefficient is a
+   * wall-clock number, so it silently carries the width of the deployment it
+   * was measured on — 8 — and a run ranking at a different width must rescale
+   * or misprice the whole phase. Measured on two fresh runs at width 24:
+   * pool-ms / width / hosts landed on 0.63 x 8 / 24 = 0.21 s/host exactly,
+   * while the unscaled table told the same runs to reserve 3x the rank they
+   * needed and told the hosted route to size maps at ~40% of what fit.
+   */
+  rankPoolWidth: number
+  /**
    * Everything after the last host is judged: the free naming pass, the paid
    * link batches (~19s, all in flight together), the report, the final frame,
    * and the caller's own durable write.
@@ -113,27 +123,40 @@ export const MEASURED_PHASE_COSTS: PhaseCosts = {
   sweepSecondsPerQuery: 1.4,
   hostsPerQuery: 13,
   rankSecondsPerHost: 0.63,
+  rankPoolWidth: 8,
   tailSeconds: 30,
 }
 
 /** Wall seconds to judge `hosts` at the rank pool's width. The engine's own
  *  mid-run question: can what I have already found still be turned into a map
  *  before the host stops me? */
-export function rankSeconds(hosts: number, costs: PhaseCosts = MEASURED_PHASE_COSTS): number {
-  return Math.max(0, hosts) * costs.rankSecondsPerHost
+export function rankSeconds(
+  hosts: number,
+  costs: PhaseCosts = MEASURED_PHASE_COSTS,
+  poolWidth: number = costs.rankPoolWidth,
+): number {
+  const width = Math.max(1, poolWidth)
+  return (Math.max(0, hosts) * costs.rankSecondsPerHost * costs.rankPoolWidth) / width
 }
 
 /** Wall seconds one more query costs end to end — its own search, plus the
  *  hosts it drags into rank. 1.4 + 13 × 0.63 = 9.6s, of which 85% is rank. */
-export function secondsPerQuery(costs: PhaseCosts = MEASURED_PHASE_COSTS): number {
-  return costs.sweepSecondsPerQuery + costs.hostsPerQuery * costs.rankSecondsPerHost
+export function secondsPerQuery(
+  costs: PhaseCosts = MEASURED_PHASE_COSTS,
+  poolWidth: number = costs.rankPoolWidth,
+): number {
+  return costs.sweepSecondsPerQuery + rankSeconds(costs.hostsPerQuery, costs, poolWidth)
 }
 
 /** Wall seconds a run of `queries` queries takes, fixed phases and tail
  *  included. The inverse of `queriesThatFit`, and the function that says a
  *  132-query run needed about 23 minutes of the 4.5 it was given. */
-export function runSeconds(queries: number, costs: PhaseCosts = MEASURED_PHASE_COSTS): number {
-  return costs.fixedSeconds + Math.max(0, queries) * secondsPerQuery(costs) + costs.tailSeconds
+export function runSeconds(
+  queries: number,
+  costs: PhaseCosts = MEASURED_PHASE_COSTS,
+  poolWidth: number = costs.rankPoolWidth,
+): number {
+  return costs.fixedSeconds + Math.max(0, queries) * secondsPerQuery(costs, poolWidth) + costs.tailSeconds
 }
 
 /**
@@ -150,7 +173,11 @@ export function runSeconds(queries: number, costs: PhaseCosts = MEASURED_PHASE_C
  * slower than their median, so the last query that "just fits" is the one that
  * does not.
  */
-export function queriesThatFit(seconds: number, costs: PhaseCosts = MEASURED_PHASE_COSTS): number {
+export function queriesThatFit(
+  seconds: number,
+  costs: PhaseCosts = MEASURED_PHASE_COSTS,
+  poolWidth: number = costs.rankPoolWidth,
+): number {
   const variable = seconds - costs.fixedSeconds - costs.tailSeconds
-  return Math.max(1, Math.floor(variable / secondsPerQuery(costs)))
+  return Math.max(1, Math.floor(variable / secondsPerQuery(costs, poolWidth)))
 }

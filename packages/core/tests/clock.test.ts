@@ -32,6 +32,7 @@ const ROUND: PhaseCosts = {
   sweepSecondsPerQuery: 1,
   hostsPerQuery: 10,
   rankSecondsPerHost: 1,
+  rankPoolWidth: 1,
   tailSeconds: 100,
 }
 
@@ -101,5 +102,28 @@ describe("what a run costs in wall time", () => {
     const needed = runSeconds(132)
     expect(needed).toBeGreaterThan(20 * 60)
     expect(needed / 270).toBeGreaterThan(4)
+  })
+})
+
+describe("the pool width the coefficient was measured at", () => {
+  it("rescales rank when the deployment runs a different width", () => {
+    // The coefficient is a wall-clock number and silently carries the width
+    // it was measured on. Measured on two fresh runs at width 24: pool-ms /
+    // width / hosts landed on 0.63 x 8 / 24 = 0.21 s/host exactly, while the
+    // unscaled table reserved 3x the rank the runs needed.
+    expect(rankSeconds(250, ROUND, 1)).toBe(250)
+    expect(rankSeconds(250, ROUND, 5)).toBe(50)
+    // The measured table's own width is the default: same answer both ways.
+    expect(rankSeconds(100)).toBe(rankSeconds(100, MEASURED_PHASE_COSTS, MEASURED_PHASE_COSTS.rankPoolWidth))
+  })
+
+  it("a wider pool fits more queries into the same clock", () => {
+    const narrow = queriesThatFit(300, MEASURED_PHASE_COSTS, 8)
+    const wide = queriesThatFit(300, MEASURED_PHASE_COSTS, 24)
+    expect(wide).toBeGreaterThan(narrow * 2)
+  })
+
+  it("a zero or negative width prices as width one rather than dividing by it", () => {
+    expect(rankSeconds(100, ROUND, 0)).toBe(rankSeconds(100, ROUND, 1))
   })
 })
