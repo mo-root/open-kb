@@ -292,6 +292,14 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
               const hits = (parsed.organic ?? [])
                 .filter((h) => typeof h.link === "string")
                 .map((h) => ({ url: h.link!, title: h.title ?? "", description: h.description ?? "" }))
+              // A page whose every link is a relative /goto?url= redirect is
+              // the SERP declining to say where its results point. It parsed,
+              // so it was marked ok and every row was silently dropped
+              // downstream. 'try again' matches RETRYABLE above, so the
+              // existing retry re-buys the page on the other zone for free.
+              if (hits.length && hits.every((h) => h.url.startsWith("/"))) {
+                return { query, hits: [], ok: false, error: "serp returned redirect-encoded links — try again", usd: price, ms }
+              }
               return { query, hits, ok: true, usd: price, ms }
             } catch (e) {
               const timedOut = (e as Error).name === "TimeoutError" || (e as Error).name === "AbortError"

@@ -820,6 +820,17 @@ export interface SweepOptions {
   /** How many of the company's own product pages to read. 0 uses the index only. */
   productPages?: number;
   /**
+   * How many queries may actually carry their `site:` onto the wire. 0 — the
+   * default — renders none. MEASURED on the two fresh runs: 12 of 87 and 6 of
+   * 36 queries fired scoped and bought 3 and 0 new hosts against 10.6 and
+   * 16.6 per unscoped debranded query — a site:-scoped query lands every hit
+   * on the one platform host by construction, so it cannot widen a map. The
+   * catalog agent still chooses platforms and `report.platform` still says
+   * what it asked for; what changes is that the prefix stays off the wire and
+   * the same words go out as an ordinary web search.
+   */
+  platformScope?: number;
+  /**
    * How phase one reads the company: `"call"` (default) hands a model one
    * pre-fetched packet and takes its single answer; `"agent"` runs the
    * discovery agent from @open-kb/core, which pulls the corpus itself —
@@ -989,7 +1000,11 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   const PAGES = Math.max(1, Math.floor(opts.pages ?? 3));
   /** How many times the run may look at what it has and ask for more. A ceiling,
    *  not a target, most runs stop earlier because the model says enough. */
-  const MAX_WAVES = Math.max(1, Math.floor(opts.maxWaves ?? 4));
+  // 8, raised from 4: on the measured run the wave ceiling was the binding
+  // stop while the yield floor it defers to was 15x clear — MIN_NEW_HOSTS is
+  // the stop that was written to do this job, so the ceiling backs off to
+  // backstop distance and lets it.
+  const MAX_WAVES = Math.max(1, Math.floor(opts.maxWaves ?? 8));
   /** See SweepOptions.minWaves — 0 keeps the model's own judgement. */
   const MIN_WAVES = Math.max(0, Math.floor(opts.minWaves ?? 0));
   /** A wave adding fewer new hosts than this is reaching ground already covered.
@@ -999,11 +1014,14 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    *  stage's cost, and is applied to what is left AFTER the free naming pass
    *  has answered what it can — a cap on paid questions, not on the pairs the
    *  selector found. */
-  const MAX_PAIRS = Math.max(0, Math.floor(opts.maxPairs ?? 600));
+  const MAX_PAIRS =
+    opts.maxPairs !== undefined ? Math.max(0, Math.floor(opts.maxPairs)) : null;
   /** Most queries any single product may take. */
   const PER_PRODUCT = Math.max(1, Math.floor(opts.perProduct ?? 5));
   /** How many of the company's own product pages to read. */
   const PRODUCT_PAGES = Math.max(0, Math.floor(opts.productPages ?? 25));
+  /** See SweepOptions.platformScope. */
+  const PLATFORM_SCOPE = Math.max(0, Math.floor(opts.platformScope ?? 0));
   /** The whole run's query ceiling, or null for "as many as the map wants" —
    *  which is every CLI run. See `SweepOptions.maxQueries`. */
   const QUERY_CEILING =
@@ -2434,6 +2452,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   /** What the platform field actually bought, counted at the wire rather than
    *  inferred from the query text afterwards. See `scopeToPlatform`. */
   let scopedQueries = 0;
+  let scopeWithheld = 0;
   let tooLongToScope = 0;
   /** Queries whose platform was the anchor's own site, fired unscoped. Counted
    *  apart from `tooLong` because it is a fact about WHO this run is mapping,
@@ -2493,7 +2512,12 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     let fired = planned.q;
     {
       const scope = scopeToPlatform(planned.q, planned.platform, anchor);
-      if (scope.scoped) {
+      if (scope.scoped && scopedQueries >= PLATFORM_SCOPE) {
+        // The catalog asked for a platform and the run's allowance is spent
+        // (or zero, the default): the words fire unscoped instead. Counted
+        // apart from `scoped`, so the report still shows what was asked for.
+        scopeWithheld += 1;
+      } else if (scope.scoped) {
         // Onto `fired` and the record's `fired` field, never onto `q`.
         // Mutating `q` made the record agree with the wire by making the
         // dedupe and the joins disagree with the plan: the widening loop's
@@ -3769,7 +3793,18 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    * map missing edges because the market was busy looked identical to a map
    * missing them because the market was quiet.
    */
-  const unresolved = unanswered.slice(0, MAX_PAIRS);
+  // Scaled to the market when the caller set no bound: 600 flat threw away
+  // 60% of the open pairs on a phase whose cost measured 1.5% of the run.
+  const PAIR_CAP = MAX_PAIRS ?? Math.max(600, keep.length * 4);
+  const unresolved = unanswered.slice(0, PAIR_CAP);
+  /** For `report.linking` below — the report literal is declared after this
+   *  phase, and the cut used to be visible only inside `report.budget`, which
+   *  is null on every run without a deadline, i.e. every run a cloner does. */
+  const linkingStats = {
+    openPairs: unanswered.length,
+    asked: unresolved.length,
+    truncated: unanswered.length - unresolved.length,
+  };
   const truncatedPairs = unanswered.length - unresolved.length;
   if (resolved.size) {
     say(
@@ -3780,7 +3815,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   if (truncatedPairs) {
     say(
       "link",
-      `${unanswered.length} pairs are still open and this run may ask about ${MAX_PAIRS} — ` +
+      `${unanswered.length} pairs are still open and this run may ask about ${PAIR_CAP} — ` +
         `asking the ${unresolved.length} strongest, leaving ${truncatedPairs} unasked`,
     );
   }
@@ -3988,6 +4023,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   const report: Record<string, unknown> = {
     domain: anchor,
     sells: decomp.sells,
+    linking: linkingStats,
     /** Agent-mode phase one's own account: turns, pages, and the integrations
      *  the docs stated. Null on the default path, which reads nothing an agent
      *  chose. Integrations are the company's claims, not judged entities —
@@ -4049,6 +4085,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
      *  See `scopeToPlatform`. */
     platform: {
       scoped: scopedQueries,
+      withheld: scopeWithheld,
       tooLong: tooLongToScope,
       anchorOwned: anchorOwnedScope,
       byPlatform: scopedBy,
