@@ -311,6 +311,13 @@ export interface NoteRef {
    *  a debranded search and a branded one both turning up the same domain is
    *  itself a fact worth showing, not a collision to resolve. */
   families?: string[]
+  /** The queries that surfaced this host, most-seen first, at most the three
+   *  the sweep stored. `foundBy` names the markets and `families` the
+   *  door-shapes; this is the text somebody typed, which is the one answer to
+   *  "why is this on the map" that asks a reader to trust nothing. Undefined
+   *  on the anchor (read from its own pages, never searched for) and on a run
+   *  recorded before the sweep stored them. */
+  roads?: string[]
   /** The node id, shaped like a v1 note path, "players/postmarkapp.com.md".
    *  Keeping the path shape is what lets `nodeTypeOf`, `groupLabel`,
    *  `glyphForNotePath` and the canvas's domain reconstruction all carry over
@@ -393,6 +400,29 @@ export interface KbView {
    *  trail behind the plain-family templates and the widening loop's reserve
    *  draws. Empty on a run recorded before this was tracked. */
   strips: { product: string; terms: string[]; generic: boolean; foundAt: string }[]
+  /**
+   * Who the anchor says it works with, read off its own pages
+   * (`report.discovery.integrations`).
+   *
+   * The same triple as `catalog` — a name, a line about what it does, and the
+   * page that said so — and the same standing: not this map's judgement about
+   * a third party but the company's own claim about itself, which is the one
+   * part of a run nothing had to infer. Empty on a run recorded before the
+   * understand stage kept them, and the section then does not render.
+   */
+  integrations: { with: string; does: string; foundAt?: string }[]
+  /** The rivals the anchor names on its OWN comparison pages
+   *  (`report.rivals.leads`): the free channel the sweep reads before it buys
+   *  a single search, each lead carrying the url that named it. Empty on a
+   *  company that publishes no comparison pages, which is a real answer and
+   *  not a gap. */
+  rivalLeads: { name: string; foundAt?: string }[]
+  /** How many of those names a kept entity on this map matches
+   *  (`report.rivals.reachedMap`). A name-match by any route, never proof that
+   *  the comparison pages put the row there — the run's own honesty check on
+   *  the names it was handed for free. Undefined when the run never measured
+   *  it. */
+  rivalsOnMap?: number
   /** The instrument reading a swarm run serialized at its ending. Undefined
    *  on sweep runs and on swarm runs recorded before T6 wrote it — absence
    *  means "never measured", and the Coverage card simply does not appear. */
@@ -424,6 +454,22 @@ export interface NoteView {
    *  the anchor (read from its own pages, not searched for) and on a run
    *  recorded before families existed. */
   families?: string[]
+  /** The queries that surfaced this entity — see the matching field on
+   *  `NoteRef`. The panel's answer to "what did you type to find this?", which
+   *  before this rode only in the run's trace. */
+  roads?: string[]
+  /** The verbatim quotes the kernel checked, in code, as literal substrings of
+   *  the page the model read (`spans` on the run's entity row) — the receipts
+   *  behind `what`, and behind the `descGrounded` number the panel already
+   *  prints.
+   *
+   *  They ride the whole entity and not the list ref on purpose: the panel is
+   *  the only surface that shows them, and putting a paragraph per row on
+   *  `NoteRef` would send it to every list on this map to be rendered by none
+   *  of them. Absent on the ~14% of rows the kernel verified no quote for —
+   *  mostly hosts whose front page it could not read at all — and on runs
+   *  recorded before the kernel kept them. */
+  spans?: string[]
   /** the kernel's refusal, when this claim was downgraded — rendered so a
    *  reader sees why the map does not trust it. */
   because?: string

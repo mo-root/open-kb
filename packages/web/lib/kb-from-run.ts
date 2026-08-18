@@ -193,6 +193,89 @@ const strings = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []
 
 /**
+ * A list of verbatim strings a run stored on an entity: its `roads` (the
+ * queries that surfaced it) or its `spans` (the quotes the kernel checked).
+ *
+ * The engine declares both fields and they are validated anyway, the view
+ * `descGroundedOf` next door takes of a number it is also promised: a stored
+ * run is JSON somebody else wrote. Nothing here is rewritten, either. A span
+ * is a literal substring of the page the model read, so
+ * trimming it would break the one property that makes it a receipt; the trim
+ * here only decides whether an entry is blank. Empty or absent reads as
+ * undefined, so a run recorded before the field existed carries no field
+ * rather than an empty box for a surface to render.
+ */
+function textsOf(v: unknown): string[] | undefined {
+  const out = strings(v).filter((s) => s.trim())
+  return out.length ? out : undefined
+}
+
+/**
+ * report.discovery.integrations, the anchor's own account of what it plugs
+ * into — same triple as the catalog, and read with the same suspicion as
+ * `alsoOf`: an entry needs a name and a line, and its `foundAt` rides only
+ * when the run wrote one. A run with nothing here (recorded before the
+ * understand stage kept them, or a company whose docs name no partners) yields
+ * an empty list, which the tab renders as nothing at all.
+ */
+function integrationsOf(report: Record<string, unknown>): KbView["integrations"] {
+  const d = report.discovery
+  const raw = d && typeof d === "object" ? (d as Record<string, unknown>).integrations : undefined
+  if (!Array.isArray(raw)) return []
+  return raw.flatMap((i): KbView["integrations"] => {
+    if (!i || typeof i !== "object") return []
+    const r = i as Record<string, unknown>
+    if (typeof r.with !== "string" || !r.with.trim()) return []
+    if (typeof r.does !== "string" || !r.does.trim()) return []
+    return [
+      {
+        with: r.with,
+        does: r.does,
+        ...(typeof r.foundAt === "string" && r.foundAt.trim() ? { foundAt: r.foundAt } : {}),
+      },
+    ]
+  })
+}
+
+/**
+ * report.rivals, read as the two things a reader can check: the names the
+ * anchor published about itself, and how many of them this map holds.
+ *
+ * `found` is not carried — it is `leads.length` in the engine and the tab
+ * states the count of the list it is actually showing, so the two cannot
+ * disagree in front of a reader. `reachedMap` is, because nothing else on this
+ * page can derive it: it is a name-match the run performed against its own
+ * kept rows.
+ */
+function rivalsOf(report: Record<string, unknown>): {
+  leads: KbView["rivalLeads"]
+  reachedMap?: number
+} {
+  const v = report.rivals
+  if (!v || typeof v !== "object") return { leads: [] }
+  const r = v as Record<string, unknown>
+  const leads = Array.isArray(r.leads)
+    ? r.leads.flatMap((l): KbView["rivalLeads"] => {
+        if (!l || typeof l !== "object") return []
+        const x = l as Record<string, unknown>
+        if (typeof x.name !== "string" || !x.name.trim()) return []
+        return [
+          {
+            name: x.name,
+            ...(typeof x.foundAt === "string" && x.foundAt.trim() ? { foundAt: x.foundAt } : {}),
+          },
+        ]
+      })
+    : []
+  return {
+    leads,
+    ...(typeof r.reachedMap === "number" && Number.isFinite(r.reachedMap)
+      ? { reachedMap: r.reachedMap }
+      : {}),
+  }
+}
+
+/**
  * report.scorecard, read as the view's `KbScorecard` — or undefined when the
  * run never wrote one (every sweep run, and swarm runs before T6) or wrote
  * something that is not a scorecard. All four fractions must parse: a Coverage
@@ -512,6 +595,7 @@ export function viewOf(run: CompletedRun): KbView {
   const counts = emptyCounts()
   counts.core = 1
   for (const p of kept) counts[p.type] += 1
+  const rivals = rivalsOf((run.result.report ?? {}) as Record<string, unknown>)
 
   const notes: NoteRef[] = [
     anchorRef(run.result),
@@ -528,6 +612,7 @@ export function viewOf(run: CompletedRun): KbView {
         why: p.entity.why,
         foundBy: p.entity.foundBy,
         families: p.entity.families,
+        roads: textsOf(p.entity.roads),
         tier: tierOf(p.entity),
         descGrounded: descGroundedOf(p.entity),
         also: alsoOf(p.entity),
@@ -559,6 +644,12 @@ export function viewOf(run: CompletedRun): KbView {
       (run.result.report?.strips as
         | { product: string; terms: string[]; generic: boolean; foundAt: string }[]
         | undefined) ?? [],
+    // What the anchor itself published: who it plugs into, and who it names as
+    // competition. Every run has written both since the understand stage
+    // learned to keep them, and no surface had read either.
+    integrations: integrationsOf((run.result.report ?? {}) as Record<string, unknown>),
+    rivalLeads: rivals.leads,
+    rivalsOnMap: rivals.reachedMap,
     scorecard: scorecardOf((run.result.report ?? {}) as Record<string, unknown>),
     segments: segmentsOf(run.result, kept),
   }
@@ -598,6 +689,11 @@ export function noteOf(run: CompletedRun, path: string): NoteView | null {
     relation: hit.entity.relation,
     domain: hit.entity.domain,
     families: hit.entity.families,
+    roads: textsOf(hit.entity.roads),
+    // The quotes the kernel checked word for word against the page it read.
+    // The panel prints `descGrounded` beside them, and a number about evidence
+    // is worth much less than the evidence.
+    spans: textsOf(hit.entity.spans),
     because: (hit.entity as { because?: string }).because,
     tier: tierOf(hit.entity),
     descGrounded: descGroundedOf(hit.entity),

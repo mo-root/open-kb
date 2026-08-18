@@ -384,6 +384,218 @@ describe("evidence tier and grounding", () => {
 })
 
 /**
+ * The two receipts an entity has always carried and nothing ever read: `roads`,
+ * the literal queries that returned this host, and `spans`, the quotes the
+ * kernel checked in code as substrings of the page the model read.
+ *
+ * Both are optional in the strong sense. Every map in the committed gallery
+ * predates `roads`, and a host whose front page could not be read carries no
+ * spans on any run — so the reader has to degrade to nothing, the way
+ * `families` does, rather than to an empty box a surface would draw a heading
+ * over.
+ */
+describe("roads and spans, an entity's own receipts", () => {
+  const roads = ["transactional email api for developers", "postmark alternative"]
+
+  it("carries the surfacing queries onto NoteRef and NoteView", () => {
+    const r = fixtureRun({ entities: [{ ...entity("a.com", "competitor"), roads }] })
+    expect(viewOf(r).notes.find((n) => n.path.includes("a.com"))?.roads).toEqual(roads)
+    expect(noteOf(r, "players/a.com.md")?.roads).toEqual(roads)
+  })
+
+  it("leaves roads absent on a run recorded before the sweep stored them", () => {
+    const r = fixtureRun({ entities: [entity("a.com", "competitor")] })
+    expect(viewOf(r).notes.find((n) => n.path.includes("a.com"))?.roads).toBeUndefined()
+    expect(noteOf(r, "players/a.com.md")?.roads).toBeUndefined()
+  })
+
+  it("reads an empty or malformed roads list as no roads at all", () => {
+    const r = fixtureRun({
+      entities: [
+        { ...entity("a.com", "competitor"), roads: [] },
+        { ...entity("b.com", "competitor"), roads: "one query, unlisted" },
+        { ...entity("c.com", "competitor"), roads: ["   ", 7, "kept"] },
+      ],
+    })
+    const byPath = new Map(viewOf(r).notes.map((n) => [n.path, n]))
+    expect(byPath.get("players/a.com.md")?.roads).toBeUndefined()
+    expect(byPath.get("players/b.com.md")?.roads).toBeUndefined()
+    expect(byPath.get("players/c.com.md")?.roads).toEqual(["kept"])
+  })
+
+  it("carries the verified quotes onto the whole entity", () => {
+    const spans = ["Send transactional emails", "Deliverability you can measure"]
+    const r = fixtureRun({ entities: [{ ...entity("a.com", "competitor"), spans }] })
+    expect(noteOf(r, "players/a.com.md")?.spans).toEqual(spans)
+  })
+
+  /** The panel is the only surface that renders them, and a `NoteRef` rides in
+   *  every list on this map. Sending three sentences per row to lists that draw
+   *  none of them is the shape of the defect this change is fixing, one field
+   *  over. */
+  it("keeps spans off the list ref", () => {
+    const r = fixtureRun({ entities: [{ ...entity("a.com", "competitor"), spans: ["a quote"] }] })
+    const ref = viewOf(r).notes.find((n) => n.path.includes("a.com"))
+    expect((ref as { spans?: unknown }).spans).toBeUndefined()
+  })
+
+  /** A span is a literal substring of the page the kernel read. Trimming it
+   *  here would quietly break the one property that makes it a receipt, so the
+   *  blank test decides whether an entry survives and never what it says. */
+  it("hands a span on verbatim, edges and all", () => {
+    const r = fixtureRun({
+      entities: [{ ...entity("a.com", "competitor"), spans: ["  padded on both sides  ", "  "] }],
+    })
+    expect(noteOf(r, "players/a.com.md")?.spans).toEqual(["  padded on both sides  "])
+  })
+
+  it("leaves spans absent on a row whose page was never read", () => {
+    const r = fixtureRun({ entities: [entity("a.com", "competitor")] })
+    expect(noteOf(r, "players/a.com.md")?.spans).toBeUndefined()
+  })
+})
+
+/**
+ * What the anchor published about ITSELF, which is the one part of a map
+ * nothing had to judge: the integrations its own docs claim, and the rivals it
+ * names on its own comparison pages. Every run since the understand stage
+ * learned to keep them has written both, and until now no surface read either.
+ *
+ * `found` is deliberately not carried across — it is `leads.length` in the
+ * engine, and a tab that prints a count beside the list it is showing should
+ * derive the count from that list. `reachedMap` is carried, because nothing on
+ * the page can recompute it: it is a name-match the run performed against its
+ * own kept rows.
+ */
+describe("the anchor's own account of itself", () => {
+  const report = {
+    discovery: {
+      integrations: [
+        {
+          with: "Supabase",
+          does: "Send transactional emails from Supabase projects.",
+          foundAt: "https://resend.com/features/smtp-service",
+        },
+        { with: "Zapier", does: "Automate emails using Zapier." },
+      ],
+    },
+    rivals: {
+      found: 2,
+      cap: 6,
+      queries: 6,
+      reachedMap: 1,
+      leads: [
+        { name: "postmark", seen: 1, foundAt: "https://resend.com/migrate/postmark" },
+        { name: "mailgun", seen: 2, foundAt: "https://resend.com/migrate/mailgun" },
+      ],
+    },
+  }
+
+  it("reads the integrations the understand stage kept, with the page that claimed each", () => {
+    expect(viewOf(fixtureRun({ report })).integrations).toEqual([
+      {
+        with: "Supabase",
+        does: "Send transactional emails from Supabase projects.",
+        foundAt: "https://resend.com/features/smtp-service",
+      },
+      { with: "Zapier", does: "Automate emails using Zapier." },
+    ])
+  })
+
+  it("reads the rival leads and the run's own count of how many reached the map", () => {
+    const v = viewOf(fixtureRun({ report }))
+    expect(v.rivalLeads).toEqual([
+      { name: "postmark", foundAt: "https://resend.com/migrate/postmark" },
+      { name: "mailgun", foundAt: "https://resend.com/migrate/mailgun" },
+    ])
+    expect(v.rivalsOnMap).toBe(1)
+  })
+
+  it("is empty, not absent, on a map recorded before either existed", () => {
+    const v = viewOf(fixtureRun({ report: {} }))
+    expect(v.integrations).toEqual([])
+    expect(v.rivalLeads).toEqual([])
+    expect(v.rivalsOnMap).toBeUndefined()
+  })
+
+  it("drops rows that are missing the two things a card is made of", () => {
+    const v = viewOf(
+      fixtureRun({
+        report: {
+          discovery: {
+            integrations: [
+              { with: "Named but silent" },
+              { does: "described but unnamed", foundAt: "https://x.test/" },
+              { with: "  ", does: "blank name" },
+              "not an object",
+              { with: "Zapier", does: "Automate emails.", foundAt: 7 },
+            ],
+          },
+          rivals: { leads: [{ seen: 1 }, "postmark", { name: "mailgun" }], reachedMap: "one" },
+        },
+      }),
+    )
+    expect(v.integrations).toEqual([{ with: "Zapier", does: "Automate emails." }])
+    expect(v.rivalLeads).toEqual([{ name: "mailgun" }])
+    expect(v.rivalsOnMap).toBeUndefined()
+  })
+
+  it("survives a report whose discovery and rivals are not objects at all", () => {
+    const v = viewOf(fixtureRun({ report: { discovery: "steps", rivals: [1, 2] } }))
+    expect(v.integrations).toEqual([])
+    expect(v.rivalLeads).toEqual([])
+  })
+})
+
+/**
+ * The committed gallery maps, read exactly as they ship — the same argument
+ * lib/demo-maps.test.ts makes for using the real files: a fixture proves the
+ * reader works on a shape someone invented for the test, and what needs proving
+ * is that six maps already on disk still render.
+ *
+ * The clerk map is the specimen because it sits on both sides of this change:
+ * 378 of its 449 entities carry the kernel's verified quotes, and none of them
+ * carries a road, because it was recorded before the sweep stored those. So one
+ * file pins the receipt AND the graceful absence, on real data.
+ */
+describe("the receipts inside a committed gallery map", () => {
+  const clerk = (): CompletedRun => ({
+    id: "33333333-3333-4333-8333-333333333333",
+    domain: "clerk.com",
+    queries: 0,
+    startedAt: 0,
+    endedAt: 1,
+    status: "complete",
+    result: JSON.parse(
+      readFileSync(
+        join(dirname(fileURLToPath(import.meta.url)), "../../..", "demo", "maps", "sweep-clerk-com-202608062258.json"),
+        "utf8",
+      ),
+    ),
+  })
+
+  it("hands the panel the quotes the kernel checked word for word", () => {
+    const note = noteOf(clerk(), "products/auth0.com.md")
+    expect(note?.spans).toEqual([
+      "Auth0 is an easy to implement, adaptable authentication and authorization platform",
+      "Integrate Auth0 in any application in just 5 minutes",
+      "B2B SaaS Applications",
+    ])
+    // The number the panel already printed, now standing beside the evidence
+    // it was measured from rather than in place of it.
+    expect(note?.descGrounded).toBe(0.5)
+  })
+
+  it("says nothing about roads or first-party claims on a map recorded before them", () => {
+    const v = viewOf(clerk())
+    expect(v.notes.some((n) => n.roads !== undefined)).toBe(false)
+    expect(v.integrations).toEqual([])
+    expect(v.rivalLeads).toEqual([])
+    expect(v.rivalsOnMap).toBeUndefined()
+  })
+})
+
+/**
  * Segments: provenance rendered as segmentation, nothing inferred. Every kept
  * entity carries `foundBy` — which market's queries surfaced it — so the map's
  * segments already exist in the data; this derivation only counts them. An

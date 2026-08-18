@@ -243,6 +243,34 @@ export function NoteView({
             {note.because}
           </div>
         )}
+        {/* The roads: the queries that actually returned this host, most-seen
+            first, at most the three the run stored.
+
+            Every other line in this header asks the reader to trust a judgement
+            — the classifier's sentence, its relation, its grounding score. This
+            one asks them to trust nothing: it is the text that was typed into a
+            search box, and the host came back. It sits above `sources` because
+            the two together are the whole provenance of a row — what was asked,
+            and what answered.
+
+            Absent on the anchor, which was read from its own pages rather than
+            searched for, and on any run recorded before the sweep stored them;
+            both simply render nothing, the way `families` does. */}
+        {(note.roads?.length ?? 0) > 0 && (
+          <div className="mt-3">
+            <div className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">
+              found by
+            </div>
+            <ul
+              title="The searches that returned this host, most-seen first. Recorded by the run, not reconstructed here."
+              className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-[11px] text-slate-500"
+            >
+              {note.roads!.map((q) => (
+                <li key={q}>&ldquo;{q}&rdquo;</li>
+              ))}
+            </ul>
+          </div>
+        )}
         {sources.length > 0 && (
           <div className="mt-3">
             <div className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">
@@ -277,6 +305,33 @@ export function NoteView({
       <div className="note-prose">
         <p>{note.what}</p>
       </div>
+
+      {/* The receipts behind the line above.
+          `spans` are the quotes the model claimed its description back, kept
+          only where the kernel found them as literal substrings of the page it
+          read — the check runs in code, which is what lets the heading say
+          "word for word". The header already prints `desc grounded 0.72`; a
+          number about evidence is worth much less than the evidence, and the
+          quotes were sitting in every stored map with no reader.
+
+          A slate quote rail rather than the amber box `because` uses: amber
+          means "this claim was downgraded" everywhere else in this app, and
+          these are the opposite of a downgrade. The engine caps the set at 360
+          characters in total, so there is nothing to truncate here. */}
+      {(note.spans?.length ?? 0) > 0 && (
+        <section className="mt-4">
+          <div className="mb-1.5 text-[11px] uppercase tracking-wide text-slate-500">
+            quoted from its page, checked word for word
+          </div>
+          <ul className="space-y-1.5 border-l border-slate-800 pl-3">
+            {note.spans!.map((s, i) => (
+              <li key={i} className="text-[13px] leading-snug text-slate-400">
+                &ldquo;{s}&rdquo;
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* The accounts a swarm merge folded into this node and kept (`also` on
           the run's entity row). Two writers colliding on one host is usually

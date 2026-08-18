@@ -117,6 +117,9 @@ export function ProductsTab({
   markets = [],
   readPages = [],
   strips = [],
+  integrations = [],
+  rivalLeads = [],
+  rivalsOnMap,
   brand,
   openNote,
 }: {
@@ -130,6 +133,14 @@ export function ProductsTab({
    *  buyer would actually type, closest-first — the audit trail behind the
    *  plain-family templates and the widening loop's reserve draws. */
   strips?: { product: string; terms: string[]; generic: boolean; foundAt: string }[]
+  /** Who the anchor says it works with, off its own docs — the catalog's
+   *  triple under a different name, and belonging beside it for the same
+   *  reason: everything else on this tab is somebody else's product, judged. */
+  integrations?: { with: string; does: string; foundAt?: string }[]
+  /** The rivals the anchor names on its own comparison pages, each with the
+   *  url that named it, and how many of those names this map holds. */
+  rivalLeads?: { name: string; foundAt?: string }[]
+  rivalsOnMap?: number
   /** The company's own name for itself (`decomposition.brand`). Falls back
    *  to "this company" when a run predates that field. */
   brand?: string
@@ -277,6 +288,95 @@ export function ProductsTab({
                 </ul>
               </div>
             )}
+          </div>
+        )}
+
+        {/* WHAT THE COMPANY SAID ABOUT ITSELF, which is the one part of this map
+            nothing inferred.
+
+            The understand stage reads the anchor's own docs and feature pages
+            before a single search is bought, and it keeps two things a reader
+            can check directly: who the company says it plugs into, and who it
+            names as competition on its own comparison pages. Both have been
+            written by every run since the stage learned to keep them, and no
+            surface read either one.
+
+            They sit under the catalog rather than beside the ecosystem below,
+            because the dividing line on this tab is not subject matter — it is
+            who is speaking. Above: the company, quoted, with the page it said
+            it on. Below: the classifier, judging strangers. */}
+        {integrations.length > 0 && (
+          <div className="mb-8 mt-10 border-t border-slate-800 pt-6">
+            <SectionHead
+              title="Integrations, from the company's own docs"
+              count={integrations.length}
+            />
+            <p className="mb-3 mt-2 max-w-[70ch] text-[13px] text-slate-500">
+              Who {brand ?? "this company"} says it works with, read off its own pages. Claims,
+              not findings — each carries the page it was claimed on.
+            </p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {integrations.map((i, idx) => (
+                <div
+                  key={`${i.with}-${idx}`}
+                  className="rounded-lg border border-sky-800/50 bg-sky-950/20 p-4"
+                >
+                  <div className="min-w-0 text-sm font-medium text-slate-100">{i.with}</div>
+                  <p className="mt-1 text-[13px] leading-snug text-slate-400">{i.does}</p>
+                  {i.foundAt && (
+                    <a
+                      href={i.foundAt}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-2 inline-block max-w-full truncate font-mono text-[10px] text-sky-400 hover:text-sky-300"
+                      title={i.foundAt}
+                    >
+                      {(() => { try { return new URL(i.foundAt).pathname } catch { return i.foundAt } })()}
+                    </a>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {rivalLeads.length > 0 && (
+          <div className="mb-8">
+            {/* The count stated is the length of the list printed directly
+                below it, so the sentence and the evidence cannot drift. The
+                second number is the run's own honesty check, and it is a
+                name-match against the kept rows — worth showing precisely
+                because a low one is the interesting case: the company naming
+                rivals the sweep did not find. */}
+            <p className="mb-2 font-mono text-[11px] uppercase tracking-[0.14em] text-slate-500">
+              names {rivalLeads.length} rival{rivalLeads.length === 1 ? "" : "s"} on its own
+              comparison pages
+              {typeof rivalsOnMap === "number" && (
+                <span title="How many of those names match an entity this map kept — by any route, not proof the comparison pages put it there.">
+                  {" — "}
+                  <span className="tnum">{rivalsOnMap}</span> of them match a row on this map
+                </span>
+              )}
+            </p>
+            <ul className="flex flex-wrap gap-x-3 gap-y-1 text-[13px]">
+              {rivalLeads.map((r, idx) => (
+                <li key={`${r.name}-${idx}`}>
+                  {r.foundAt ? (
+                    <a
+                      href={r.foundAt}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-sky-400 hover:text-sky-300"
+                      title={r.foundAt}
+                    >
+                      {r.name}
+                    </a>
+                  ) : (
+                    <span className="text-slate-300">{r.name}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 
@@ -443,7 +543,13 @@ export function ProductsTab({
  * anchor, so the drawer finally has its content. A native <details> keeps it
  * collapsed by default: the reasoning is available, not imposed. */
 function WhyFound({ p }: { p: NoteRef }) {
-  if (!p.why) return null;
+  // A row with no `why` still opens the drawer once it carries `roads`. The
+  // classifier's sentence is the part of this that can be missing — it is empty
+  // on every host whose front page the run could not read — and the searches
+  // that returned the host are exactly what a reader is left with when the
+  // judgement is not there. Both absent is still nothing to say.
+  const roads = p.roads ?? [];
+  if (!p.why && roads.length === 0) return null;
   return (
     <details className="group mt-2.5">
       <summary className="cursor-pointer list-none font-mono text-[10px] uppercase tracking-wider text-slate-500 transition-colors hover:text-[var(--accent)]">
@@ -453,7 +559,22 @@ function WhyFound({ p }: { p: NoteRef }) {
         why this one
       </summary>
       <div className="mt-2 space-y-2 border-l border-slate-800 pl-3">
-        <p className="text-xs leading-relaxed text-slate-400">{p.why}</p>
+        {p.why && <p className="text-xs leading-relaxed text-slate-400">{p.why}</p>}
+        {/* The literal searches that returned this host, most-seen first. The
+            line above is a judgement about the row; this one is the retrieval
+            that produced it, and it is the one line in this drawer
+            that asks nobody to be taken at their word. */}
+        {roads.length > 0 && (
+          <div className="font-mono text-[10px] text-slate-500">
+            searched{" "}
+            {roads.map((q, i) => (
+              <span key={q}>
+                {i > 0 ? " · " : ""}
+                &ldquo;<span className="text-slate-400">{q}</span>&rdquo;
+              </span>
+            ))}
+          </div>
+        )}
         {p.relation !== "none" && (
           <div className="font-mono text-[10px] text-slate-500">
             placed as <span className="text-slate-300">{p.relation}</span>

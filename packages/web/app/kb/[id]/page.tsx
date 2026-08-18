@@ -235,6 +235,9 @@ export default async function KbPage({
       markets={view.markets}
       readPages={view.readPages}
       strips={view.strips}
+      integrations={view.integrations}
+      rivalLeads={view.rivalLeads}
+      rivalsOnMap={view.rivalsOnMap}
       initialNote={typeof note === "string" ? note : undefined}
     />
   );

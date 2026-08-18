@@ -50,6 +50,9 @@ export function KbBrowser({
   markets,
   readPages,
   strips,
+  integrations,
+  rivalLeads,
+  rivalsOnMap,
   initialNote,
 }: {
   /** The anchor's own products, and the markets they group into. */
@@ -57,6 +60,12 @@ export function KbBrowser({
   markets?: { name: string; does: string; centrality?: string; covers: string[] }[]
   /** The strip artifact: per product, the terms it was stripped to. */
   strips?: { product: string; terms: string[]; generic: boolean; foundAt: string }[]
+  /** What the anchor published about itself: who it says it plugs into, and
+   *  the rivals it names on its own comparison pages (with how many of those
+   *  names this map holds). Both ride straight through to ProductsTab. */
+  integrations?: { with: string; does: string; foundAt?: string }[]
+  rivalLeads?: { name: string; foundAt?: string }[]
+  rivalsOnMap?: number
   slug: string;
   manifest: KbManifest | null;
   /** The company's own name for itself (`decomposition.brand`), for
@@ -294,6 +303,9 @@ export function KbBrowser({
             markets={markets}
             readPages={readPages}
             strips={strips}
+            integrations={integrations}
+            rivalLeads={rivalLeads}
+            rivalsOnMap={rivalsOnMap}
             brand={companyBrand}
             openNote={openNote}
           />
