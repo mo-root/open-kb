@@ -66,11 +66,13 @@ const greedySerp = () => {
   return { ...SERP, ...extra }
 }
 
-/** The fixture's opening: 14 written, 2 dropped for naming the anchor or a
- *  coinage, 12 bought. Stated once, because half the arithmetic below is
- *  against it. */
-const OPENING_WRITTEN = 14
-const OPENING_BOUGHT = 12
+/** The fixture's opening: 16 written, 2 dropped for naming the anchor or a
+ *  coinage, 14 bought. Two more than the original hand since the core
+ *  product's second strip term opens with it — the cursor.com lesson, argued
+ *  at openingHand. Stated once, because half the arithmetic below is against
+ *  it. */
+const OPENING_WRITTEN = 16
+const OPENING_BOUGHT = 14
 
 describe("the opening hand is cut to what the clock can pay for", () => {
   it("takes the first N of the hand, core markets first, and buys nothing else", async () => {
@@ -80,11 +82,13 @@ describe("the opening hand is cut to what the clock can pay for", () => {
     // core-market-first, because that is the order `funded` deals in. A budget
     // that sampled, or that took the tail, would spend a small run on the
     // company's side lines.
+    // The core product's second door (`log management`) opens with the hand
+    // now, so it outranks the branded and debranded queries in the cut.
     expect(h.asked).toEqual([
       "log search",
       "log search alternatives",
-      "Log Search Cloud alternatives",
-      "how do i find one request across a hundred containers",
+      "log management",
+      "log management alternatives",
     ])
     expect(h.result.report.opening).toBe(4)
     expect(h.result.report.queries).toBe(4)

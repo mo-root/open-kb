@@ -22,7 +22,10 @@ import { ANCHOR_NAME, COINAGE, runFixture, type Harness } from "./fixture.js"
 describe("the opening catalog", () => {
   let h: Harness
   const LOG_TERMS = ["log search", "log management"]
-  const logHand = openingHand("Log Search Cloud", LOG_TERMS, { branded: true })
+  // `core: true` — log search is the fixture's core market, and a core
+  // product's second strip term opens with the hand (the cursor.com lesson:
+  // "AI code editor" sat in reserve and windsurf never surfaced).
+  const logHand = openingHand("Log Search Cloud", LOG_TERMS, { branded: true, core: true })
   const upHand = openingHand("Uptime Alerts", ["uptime monitoring"], { branded: false })
   const co = companyHand("Pellucid")
 
@@ -70,9 +73,9 @@ describe("the opening catalog", () => {
     // is what survived. Collapsing the two is how a catalog reports "0 named
     // the company" on a run where two did.
     const [plan] = h.ui("results", "planned")
-    expect(plan!.written).toBe(14)
-    expect((plan!.queries as unknown[]).length).toBe(12)
-    expect(h.result.stats.queries).toBe(12)
+    expect(plan!.written).toBe(16)
+    expect((plan!.queries as unknown[]).length).toBe(14)
+    expect(h.result.stats.queries).toBe(14)
   })
 
   it("still buys the branded family, whose whole point is naming the anchor", () => {
@@ -82,7 +85,7 @@ describe("the opening catalog", () => {
     // count that fell to zero.
     for (const f of co) expect(h.asked).toContain(f.q)
     expect(h.asked).toContain("Log Search Cloud alternatives")
-    expect(h.result.report.families).toEqual({ plain: 4, branded: 4, debranded: 4 })
+    expect(h.result.report.families).toEqual({ plain: 6, branded: 4, debranded: 4 })
   })
 
   it("records the strip each product was reduced to, with the page that established it", () => {

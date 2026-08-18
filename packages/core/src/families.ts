@@ -35,9 +35,9 @@ export interface FamilyQuery {
 export function openingHand(
   product: string,
   terms: string[],
-  opts?: { branded?: boolean },
+  opts?: { branded?: boolean; core?: boolean },
 ): { open: FamilyQuery[]; reserve: FamilyQuery[] } {
-  const [t0, ...rest] = terms.map((t) => t.trim()).filter(Boolean)
+  const [t0, t1, ...rest] = terms.map((t) => t.trim()).filter(Boolean)
   const p = product.trim()
 
   const open: FamilyQuery[] = []
@@ -54,6 +54,21 @@ export function openingHand(
       plain(p, `top ${t0} companies`, t0, "the vendor field by name"),
       plain(p, `open source ${t0}`, t0, "the DIY route and who outgrows it"),
     )
+    // A CORE product's second door opens with the hand instead of waiting in
+    // reserve. MEASURED: cursor.com stripped to [AI coding agent | AI code
+    // editor | AI pair programmer], the second term sat in reserve, no
+    // widening round drew it, and the map of the company that makes an AI
+    // code editor never fired "ai code editor" — windsurf, its head-on rival,
+    // ranked for exactly that term and never surfaced. Two queries per core
+    // product is the price; a core market's missing front door was the cost.
+    if (t1 && opts?.core) {
+      open.push(
+        plain(p, t1, t1, "the second strip term — the core market's other front door"),
+        plain(p, `${t1} alternatives`, t1, "the comparison field behind that door"),
+      )
+    } else if (t1) {
+      reserve.push(plain(p, t1, t1, "the next strip term — a different door into the same market"))
+    }
     for (const t of rest) reserve.push(plain(p, t, t, "the next strip term — a different door into the same market"))
   }
 

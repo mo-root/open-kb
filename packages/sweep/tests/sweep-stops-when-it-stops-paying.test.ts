@@ -62,9 +62,9 @@ describe("rule 1 — the model says the map is done", () => {
     // `report.queries` is everything fired and `report.opening` is the first
     // wave. Equal means nothing was added; on a live run they were measured 63
     // apart, which is the whole reason both numbers exist.
-    expect(h.result.report.queries).toBe(12)
-    expect(h.result.report.opening).toBe(12)
-    expect(h.asked).toHaveLength(12)
+    expect(h.result.report.queries).toBe(14)
+    expect(h.result.report.opening).toBe(14)
+    expect(h.asked).toHaveLength(14)
   }, 30_000)
 })
 
@@ -74,7 +74,7 @@ describe("rule 2 — the model wants more and proposes nothing", () => {
       script: { assess: () => ({ enough: false, missing: "the substitutes are thin", draw: [], queries: [] }) },
     })
     expect(assessCalls(h)).toBe(1)
-    expect(h.asked).toHaveLength(12)
+    expect(h.asked).toHaveLength(14)
     expect(h.result.report.queries).toBe(h.result.report.opening)
 
     // WHY THIS TEST WATCHES THE NARRATION. Rule 3 would also stop this run —
@@ -115,7 +115,7 @@ describe("rule 3 — everything proposed had already been asked, or named the an
       },
     })
     expect(assessCalls(h)).toBe(1)
-    expect(h.asked).toHaveLength(12)
+    expect(h.asked).toHaveLength(14)
     expect(h.asked).not.toContain("Lumen retention tuning")
     expect(h.asked.filter((q) => q === "log search")).toHaveLength(1)
     // The other half of the sentence pair above: this run is the one that
@@ -157,9 +157,9 @@ describe("rule 4 — the round that landed added almost nothing", () => {
     expect(assessCalls(h)).toBe(2)
     expect(h.asked).toContain(widening(2).q)
     expect(h.asked).not.toContain(widening(3).q)
-    expect(h.asked).toHaveLength(14)
-    expect(h.result.report.opening).toBe(12)
-    expect(h.result.report.queries).toBe(14)
+    expect(h.asked).toHaveLength(16)
+    expect(h.result.report.opening).toBe(14)
+    expect(h.result.report.queries).toBe(16)
   }, 30_000)
 
   it("keeps going while the yield clears the floor, and the ceiling is what finally stops it", async () => {
@@ -176,7 +176,7 @@ describe("rule 4 — the round that landed added almost nothing", () => {
       sweepOptions: { minNewHosts: 8, maxWaves: rounds, concurrency: 20 },
     })
     expect(assessCalls(h)).toBe(rounds)
-    expect(h.asked).toHaveLength(12 + rounds)
+    expect(h.asked).toHaveLength(14 + rounds)
     expect(h.asked).toContain(widening(rounds).q)
     // The round the ceiling refused. Its row exists in the table, so the only
     // reason it is absent is that the loop stopped.
@@ -202,7 +202,7 @@ describe("the reserve is what a widening round reaches for first", () => {
     // The two templates `openingHand` held back for this product, in the order
     // it held them, ahead of the invented one. A round that ignored the reserve
     // and re-invented instead would produce neither of these strings.
-    expect(h.asked.slice(12)).toEqual([
+    expect(h.asked.slice(14)).toEqual([
       "best log search",
       "log search vs",
       "audit trail for who read which log line",
@@ -211,7 +211,7 @@ describe("the reserve is what a widening round reaches for first", () => {
     // free-form invention is debranded. Get this wrong and the family ledger —
     // the table the next widening round reads to decide what is paying —
     // describes a run that did not happen.
-    expect(h.result.report.families).toEqual({ plain: 6, branded: 4, debranded: 5 })
+    expect(h.result.report.families).toEqual({ plain: 8, branded: 4, debranded: 5 })
   }, 30_000)
 })
 

@@ -2111,7 +2111,12 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
             generic: out.generic,
             foundAt: productNamed(product)?.foundAt ?? "",
           });
-          const hand = openingHand(product, terms, { branded: !out.generic });
+          const hand = openingHand(product, terms, {
+            branded: !out.generic,
+            // A core market's second strip term opens with the hand — the
+            // cursor.com lesson, argued at openingHand itself.
+            core: market.centrality === "core",
+          });
           reserve.set(product, hand.reserve);
           const asFired = (fq: FamilyQuery): SweptQuery => ({
             q: fq.q,
