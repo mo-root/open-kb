@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { runFixture, ANCHOR, COINAGE } from "./fixture.js"
+import { runFixture, ANCHOR, COINAGE, HOSTS } from "./fixture.js"
 
 /**
  * Phase one as an agent: `discovery: "agent"` hands the reading of the company
@@ -123,6 +123,66 @@ describe("discovery: agent", () => {
     expect(disc.integrations.map((i) => i.with)).toEqual(["PagerDuty"])
     expect(disc.integrations[0]!.foundAt).toBe(`https://docs.${ANCHOR}/`)
     expect(h.result.entities.map((e) => e.name)).not.toContain("PagerDuty")
+  })
+
+  it("draws a declared integration as an edge when its name is on the map", async () => {
+    // The docs said the product plugs into Grepstack; the sweep found
+    // grepstack.example and kept it. Those two facts become one edge,
+    // anchor -> entity, citing the docs page — inferred, because what the run
+    // holds is the agent's account of the page, not the page's bytes.
+    const h = await runFixture({
+      sweepOptions: { discovery: "agent" },
+      script: {
+        discovery: (turn) =>
+          turn === 0
+            ? {
+                tools: [
+                  {
+                    toolName: "submitProduct",
+                    input: { name: "Log Search Cloud", does: "searches application logs", foundAt: `https://${ANCHOR}/products/log-search` },
+                  },
+                  {
+                    toolName: "submitIntegration",
+                    input: { with: "Grepstack", does: "forwards alerts into Grepstack dashboards", foundAt: `https://${ANCHOR}/docs/integrations` },
+                  },
+                ],
+              }
+            : turn === 1
+              ? { tools: [{ toolName: "finish", input: { sells: "hosted log search", buyer: "a platform team", coinages: [COINAGE] } }] }
+              : { text: "done" },
+      },
+    })
+    const e = (h.result.edges ?? []).find(
+      (x) => x.from === ANCHOR && x.to === HOSTS.grepstack && x.relation === "integration",
+    )
+    expect(e, "the docs-cited integration edge").toBeDefined()
+    expect(e!.confidence).toBe("inferred")
+    expect(e!.why).toContain("docs/integrations")
+    const stats = (h.result.report.linking as { integrations: { declared: number; matched: number } }).integrations
+    expect(stats).toEqual({ declared: 1, matched: 1 })
+  })
+
+  it("leaves an unmatched integration name as a lead, never a node", async () => {
+    const h = await runFixture({
+      sweepOptions: { discovery: "agent" },
+      script: {
+        discovery: (turn) =>
+          turn === 0
+            ? {
+                tools: [
+                  { toolName: "submitProduct", input: { name: "Log Search Cloud", does: "searches logs", foundAt: `https://${ANCHOR}/products/log-search` } },
+                  { toolName: "submitIntegration", input: { with: "PagerDuty", does: "pages on-call", foundAt: `https://${ANCHOR}/docs` } },
+                ],
+              }
+            : turn === 1
+              ? { tools: [{ toolName: "finish", input: { sells: "hosted log search", buyer: "a team", coinages: [COINAGE] } }] }
+              : { text: "done" },
+      },
+    })
+    // PagerDuty never surfaced in any search, so it is not on the map and no
+    // edge invents it.
+    expect(h.result.entities.some((e) => /pagerduty/i.test(e.name))).toBe(false)
+    expect((h.result.edges ?? []).some((e) => /pagerduty/i.test(e.to))).toBe(false)
   })
 
   it("reports discovery: null on the default path — nothing was investigated", async () => {

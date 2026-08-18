@@ -4135,6 +4135,74 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     (linkingStats as Record<string, unknown>).orphans = stats;
   }
 
+  /**
+   * INTEGRATION EDGES FROM THE ANCHOR'S OWN DOCS. Agent-mode discovery reads
+   * the documentation and submits what the company says its products plug
+   * into — 31 cited names on one measured run — and until now they reached
+   * the report and never the graph: the partnership layer the map's owner
+   * asked for, sitting in a side pocket.
+   *
+   * A declared integration whose name matches a KEPT entity becomes one edge,
+   * anchor → entity, citing the docs page that stated it. `inferred`, not
+   * `measured`: measured means this run holds the naming page's bytes and a
+   * verified quote, and what it holds here is the agent's one-line account of
+   * a page it read. A name matching nothing stays a lead — it already rides
+   * `names in hand` into the catalog, and pasting an unresolved name onto the
+   * map would break the rule every lead obeys: resolved and judged, or not
+   * on the map at all.
+   */
+  {
+    const declared = discoveryFacts.current?.integrations ?? [];
+    if (declared.length && !signal?.aborted) {
+      const idKey = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, "");
+      const anchorDom = anchor.toLowerCase();
+      /** Name-first, domain-label second, first writer wins — a name match is
+       *  the company's own spelling and outranks a label coincidence. */
+      const byKey = new Map<string, Entity>();
+      for (const e of keep) {
+        const label = idKey(e.domain.split(".")[0] ?? "");
+        if (label && !byKey.has(label)) byKey.set(label, e);
+      }
+      for (const e of keep) {
+        const nk = idKey(e.name);
+        if (nk) byKey.set(nk, e);
+      }
+      const already = new Set(
+        edges
+          .filter((e) => e.relation === "integration")
+          .map((e) => `${e.from}→${e.to}`),
+      );
+      let matched = 0;
+      for (const d of declared) {
+        const hit = byKey.get(idKey(d.with));
+        if (!hit) continue;
+        const to = hit.domain.toLowerCase().replace(/^www\./, "");
+        if (to === anchorDom) continue;
+        const key = `${anchorDom}→${to}`;
+        if (already.has(key)) continue;
+        already.add(key);
+        matched += 1;
+        edges.push({
+          from: anchorDom,
+          to,
+          relation: "integration",
+          why: `the anchor's own docs (${d.foundAt}) state: ${d.does}`,
+          confidence: "inferred",
+        });
+      }
+      if (matched) {
+        say(
+          "link",
+          `${matched} of the ${declared.length} integrations the docs declare match entities on the map — drawn as edges, cited to the page that stated each`,
+        );
+      }
+      (linkingStats as Record<string, unknown>).integrations = {
+        declared: declared.length,
+        matched,
+      };
+    }
+  }
+
   // Summed from what was actually billed, not re-derived from the counters: a
   // SERP call that never reached Bright Data carries usd 0 and re-deriving from
   // `serpCalls * price` would charge the run for it.
