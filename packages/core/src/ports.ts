@@ -13,6 +13,22 @@ export interface SearchResult {
   error?: string
   usd: number
   ms: number
+  /**
+   * Billable requests this query actually cost, and how many of those were
+   * retries of a refused one.
+   *
+   * A query is `pages` requests when nothing goes wrong, and a refusal bills
+   * exactly like an answer — so a run whose pages are being throttled pays for
+   * the throttling. MEASURED on one map: 192 queries at 5 pages should have
+   * been 960 requests and were 1,230, a 28% retry overhead that appeared
+   * nowhere except as a larger total. Optional so a port that cannot count
+   * them stays a valid port; the sweep reports what it is given.
+   */
+  requests?: number
+  retries?: number
+  /** Refusals whose reason names a block or a throttle, as the provider
+   *  worded it, so a run can say WHY it paid twice. */
+  blocked?: string[]
 }
 
 /**

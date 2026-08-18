@@ -2458,6 +2458,11 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
 
   /** What the platform field actually bought, counted at the wire rather than
    *  inferred from the query text afterwards. See `scopeToPlatform`. */
+  /** Billable SERP requests, retries among them, and the provider's own words
+   *  for why a page had to be re-bought. */
+  let serpRequests = 0;
+  let serpRetries = 0;
+  const serpBlocks: Record<string, number> = {};
   let scopedQueries = 0;
   let scopeWithheld = 0;
   let tooLongToScope = 0;
@@ -2543,6 +2548,15 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     }
     const [r] = await search.search([fired]);
     if (!r) return;
+    // What the wire actually cost, beside what was asked for. A refusal bills
+    // like an answer, so a throttled run pays for the throttling: measured at
+    // 28% on one map, visible nowhere but in the total.
+    serpRequests += r.requests ?? 0;
+    serpRetries += r.retries ?? 0;
+    for (const b of r.blocked ?? []) {
+      const key = b.replace(/\d{3,}/g, "N").slice(0, 60);
+      serpBlocks[key] = (serpBlocks[key] ?? 0) + 1;
+    }
     {
       const batch = [planned];
       const j = 0;
@@ -4036,6 +4050,20 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     domain: anchor,
     sells: decomp.sells,
     linking: linkingStats,
+    /**
+     * What the search actually cost at the wire, against what was asked for.
+     * `queries` above counts questions; this counts requests, and the two
+     * diverge by exactly the retries a blocked or throttled provider forced.
+     * Measured on the run that argued for this: 192 queries at 5 pages = 960
+     * requests asked for, 1,230 paid, 28% overhead invisible in every number
+     * the report carried.
+     */
+    serp: {
+      requests: serpRequests,
+      retries: serpRetries,
+      pagesPerQuery: PAGES,
+      blocked: serpBlocks,
+    },
     /** Agent-mode phase one's own account: turns, pages, and the integrations
      *  the docs stated. Null on the default path, which reads nothing an agent
      *  chose. Integrations are the company's claims, not judged entities —

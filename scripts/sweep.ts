@@ -256,6 +256,53 @@ console.log(`\n${stats.queries} queries · ${stats.serpCalls} SERP calls · ${st
 console.log(`tokens ${stats.tokIn.toLocaleString()} in / ${stats.tokOut.toLocaleString()} out`)
 console.log(`$${stats.usd.toFixed(4)} · ${stats.seconds.toFixed(0)}s`)
 
+/**
+ * WHERE THE MONEY WENT, and what it was refused by on the way.
+ *
+ * The headline above is one number; this is the sentence a person needs to
+ * decide what to change. On the run that argued for it, SERP was 82% of the
+ * bill and the model 18% — so the cost lever is pages and queries, not the
+ * model — and 28% of the SERP requests were retries of a refused page, a fact
+ * that appeared in no number the run printed.
+ */
+{
+  const report = out!.report as Record<string, unknown>
+  const cost = report.cost as { usd: number; byKind: { label: string; calls: number; failures: number; usd: number; ms: number }[] }
+  const serp = report.serp as { requests: number; retries: number; pagesPerQuery: number; blocked: Record<string, number> } | undefined
+  const kernel = report.kernel as { fetched: number; unreadable: number; unreadableByReason: Record<string, number>; unlocked?: number; serpJudged?: number } | undefined
+  const pct = (n: number) => `${((100 * n) / (cost.usd || 1)).toFixed(1)}%`
+
+  console.log(`\nspend`)
+  for (const l of cost.byKind) {
+    console.log(
+      `  ${l.label.padEnd(9)} $${l.usd.toFixed(4).padStart(8)}  ${pct(l.usd).padStart(6)}  ` +
+        `${String(l.calls).padStart(5)} calls${l.failures ? `, ${l.failures} failed` : ""}`,
+    )
+  }
+
+  if (serp) {
+    const asked = stats.queries * serp.pagesPerQuery
+    console.log(
+      `\nsearch  ${serp.requests} billable requests for ${stats.queries} queries × ${serp.pagesPerQuery} pages` +
+        ` (${asked} asked for)` +
+        (serp.retries ? ` — ${serp.retries} retries, ${((100 * serp.retries) / (serp.requests || 1)).toFixed(0)}% overhead` : ""),
+    )
+    const blocks = Object.entries(serp.blocked).sort((a, b) => b[1] - a[1]).slice(0, 6)
+    for (const [reason, n] of blocks) console.log(`  ${String(n).padStart(4)} × ${reason}`)
+  }
+
+  if (kernel) {
+    console.log(
+      `\nfetch   ${kernel.fetched} hosts read, ${kernel.unreadable} unreadable (${((100 * kernel.unreadable) / (kernel.fetched || 1)).toFixed(1)}%)` +
+        (kernel.unlocked ? `, ${kernel.unlocked} escalated to the unlocker` : "") +
+        (kernel.serpJudged ? `, ${kernel.serpJudged} judged from their search results instead` : ""),
+    )
+    for (const [reason, n] of Object.entries(kernel.unreadableByReason).sort((a, b) => b[1] - a[1]).slice(0, 8)) {
+      console.log(`  ${String(n).padStart(4)} × ${reason}`)
+    }
+  }
+}
+
 const path = `runs/sweep-${anchor.replace(/\W+/g, "-")}-${stamp}.json`
 writeFileSync(path, JSON.stringify({ ...out, searched }, null, 2))
 console.log(`\nwrote ${path} (${searched.length} queries logged)`)

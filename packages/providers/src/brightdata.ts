@@ -272,7 +272,7 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
               if (brdError && THROTTLED.test(brdError)) noteThrottle(brdError)
 
               if (!res.ok) {
-                return { query, hits: [], ok: false, error: reason ?? `serp http ${res.status}`, usd: price, ms }
+                return { query, hits: [], ok: false, error: reason ?? `serp http ${res.status}`, usd: price, ms, requests: 1 }
               }
               const text = await res.text()
               let parsed: { organic?: Array<{ link?: string; title?: string; description?: string }> }
@@ -287,6 +287,7 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
                     reason ?? (text.length === 0 ? "serp returned an empty body" : "serp returned unparseable body"),
                   usd: price,
                   ms,
+                  requests: 1,
                 }
               }
               const hits = (parsed.organic ?? [])
@@ -298,9 +299,9 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
               // downstream. 'try again' matches RETRYABLE above, so the
               // existing retry re-buys the page on the other zone for free.
               if (hits.length && hits.every((h) => h.url.startsWith("/"))) {
-                return { query, hits: [], ok: false, error: "serp returned redirect-encoded links — try again", usd: price, ms }
+                return { query, hits: [], ok: false, error: "serp returned redirect-encoded links — try again", usd: price, ms, requests: 1 }
               }
-              return { query, hits, ok: true, usd: price, ms }
+              return { query, hits, ok: true, usd: price, ms, requests: 1 }
             } catch (e) {
               const timedOut = (e as Error).name === "TimeoutError" || (e as Error).name === "AbortError"
               return {
@@ -311,6 +312,7 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
                 // Nothing came back, so Bright Data has nothing to bill.
                 usd: 0,
                 ms: Date.now() - started,
+                requests: 0,
               }
             }
           }
@@ -325,9 +327,18 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
             await new Promise((r) => setTimeout(r, wait))
             // A different zone on the retry where one exists: if the first is
             // throttling, waiting is only half the answer.
+            const first = out
             const second = await once(nextZone())
-            // Bill both: each was a request the provider serviced.
-            out = second.ok ? { ...second, usd: second.usd + out.usd } : { ...second, usd: second.usd + out.usd }
+            // Bill both: each was a request the provider serviced. The refusal
+            // that caused the retry is kept as a counted, named fact — a run
+            // that pays 28% extra to be let in should be able to say so.
+            out = {
+              ...second,
+              usd: second.usd + first.usd,
+              requests: (second.requests ?? 0) + (first.requests ?? 0),
+              retries: (second.requests ?? 0),
+              blocked: [...(first.error ? [first.error] : []), ...(second.ok ? [] : second.error ? [second.error] : [])],
+            }
           }
           return out
         }),
@@ -379,6 +390,12 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
           error: failures.length ? `${failures.length}/${mine.length} pages failed: ${failures[0]!.error}` : undefined,
           usd: mine.reduce((n, r) => n + r.usd, 0),
           ms: Math.max(...mine.map((r) => r.ms)),
+          // Summed over the pages, same partition as the usd above: what this
+          // query actually cost in requests, and how much of that was being
+          // let in on the second ask.
+          requests: mine.reduce((n, r) => n + (r.requests ?? 0), 0),
+          retries: mine.reduce((n, r) => n + (r.retries ?? 0), 0),
+          blocked: mine.flatMap((r) => r.blocked ?? []),
         }
       })
     },
