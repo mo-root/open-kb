@@ -214,3 +214,35 @@ describe("the reserve is what a widening round reaches for first", () => {
     expect(h.result.report.families).toEqual({ plain: 6, branded: 4, debranded: 5 })
   }, 30_000)
 })
+
+describe("the assess call is told how saturated the last round was", () => {
+  it("carries the ratio of already-seen rows into the prompt, and says so before round one", async () => {
+    // Two rounds forced: the first assess proposes a query, the second says
+    // enough. The second call's prompt must carry the first round's yield as
+    // a saturation sentence — the owner's ask: when most of what comes back
+    // is ground already held, the model should be told, not left to infer it
+    // from a host count.
+    const h = await runFixture({
+      script: {
+        assess: (round) =>
+          round === 1
+            ? { enough: false, missing: "widen once", draw: [], queries: [widening(round)] }
+            : { enough: true, missing: "", draw: [], queries: [] },
+      },
+      serp: {
+        ...SERP,
+        // The widening query lands rows, some already on the map and one not,
+        // so the saturation ratio has something real to say.
+        "widening question number 1": [
+          { url: "https://grepstack.example/", title: "Grepstack", description: "Hosted log search." },
+          { url: "https://freshhost.example/", title: "Fresh", description: "A host no earlier query saw." },
+        ],
+      },
+      sweepOptions: { minNewHosts: 1 },
+    })
+    const assesses = h.calls.filter((c) => c.phase === "assess")
+    expect(assesses.length).toBeGreaterThanOrEqual(2)
+    expect(assesses[0]!.prompt).toContain("(no widening round has fired yet)")
+    expect(assesses[1]!.prompt).toMatch(/\d+% of the last round's \d+ results were hosts already on the map/)
+  })
+})

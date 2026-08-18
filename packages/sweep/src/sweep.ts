@@ -2510,6 +2510,11 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    * source, so the two cannot come to disagree.
    */
   const hostsSeen = new Set<string>();
+  /** What the last widening round actually bought, for the next assess call:
+   *  rows returned, and how many were hosts the map had never seen. A model
+   *  told "the last round was 83% ground you already hold" can steer; one
+   *  told only the host total cannot. Zeroes before the first round. */
+  const lastRound = { fired: false, hits: 0, gained: 0 };
 
   /**
    * Fire a wave, keeping the pipe full.
@@ -2939,6 +2944,11 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           sample: [...distinctHosts()].slice(0, 60).join(", "),
           families: `${famTable.families}\n${famTable.products}`,
           reserve: reserveLines,
+          saturation: !lastRound.fired
+            ? "(no widening round has fired yet)"
+            : lastRound.hits === 0
+              ? "the last round's queries returned no results at all — a different shape, not more of that one"
+              : `${Math.round((100 * (lastRound.hits - lastRound.gained)) / lastRound.hits)}% of the last round's ${lastRound.hits} results were hosts already on the map (${lastRound.gained} new)`,
         }),
         // A judgement about whether to spend more money. Cheap, and rare.
         // 20,000 because 8,000 was not enough: medium effort against a prompt
@@ -3100,6 +3110,10 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       );
       asked.push(...widened);
       queue.push(...widened);
+      // The mark for this round's saturation: rows in hand before any of the
+      // round's own results land.
+      const hitsAtRoundStart = hits.length;
+
 
       // Yield floor, measured once the round's queries have actually landed.
       // A round that adds almost nothing means the queries are reaching ground
@@ -3107,6 +3121,14 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       const mine = queue.length;
       while (!sealed && taken < mine && !signal?.aborted) await idle(250);
       const gained = distinctHosts().size - before;
+      // The saturation the NEXT assess call reads: of everything this round's
+      // queries returned, what share was ground already covered. hits.length
+      // moves as results land, so the round's share is measured against the
+      // mark taken when the round was queued.
+      const roundHits = hits.length - hitsAtRoundStart;
+      lastRound.fired = true;
+      lastRound.hits = roundHits;
+      lastRound.gained = gained;
       say(
         "sweep",
         `round ${rounds} added ${gained} new hosts (${distinctHosts().size} total)`,

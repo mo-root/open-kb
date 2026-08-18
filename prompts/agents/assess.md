@@ -13,6 +13,8 @@ market that is not on that list detaches everything it finds, because the graph 
 the market whose query surfaced it.
 
 So far, after {{waves}}: **{{hosts}} distinct hosts** from {{asked}} queries.
+Saturation: {{saturation}} — past roughly 70%, more of the same shape buys corroboration, not
+coverage; steer the next round at ground the sample below does not already hold, or say enough.
 
 Angles already worked (intent · platform):
 {{angles}}
