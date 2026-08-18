@@ -180,6 +180,33 @@ describe("rivalsFromComparisonUrls", () => {
     expect(names([u("resend.com", "/migrate/sendgrid")], "resend.com")).toEqual(["sendgrid"])
   })
 
+  it("refuses an encyclopedia: a -vs- slug outside a comparison namespace needs the anchor on a side", () => {
+    // MEASURED on vercel.com: its /i/ namespace compares OTHER PEOPLE'S
+    // technologies — svelte-vs-react, a2a-vs-mcp, graphql-vs-grpc — forty
+    // leads of which one involved the company, and reading them as
+    // self-comparisons put "react" and "next js" on the rival list of the
+    // company that makes Next.js.
+    const leads = rivalsFromComparisonUrls(
+      [
+        u("vercel.com", "/i/svelte-vs-react"),
+        u("vercel.com", "/i/a2a-vs-mcp"),
+        u("vercel.com", "/i/graphql-vs-grpc"),
+        u("vercel.com", "/i/cursor-vs-claude-code"),
+      ],
+      "vercel.com",
+    )
+    expect(leads).toEqual([])
+  })
+
+  it("keeps the anchored -vs- slug in the same loose namespace", () => {
+    const leads = rivalsFromComparisonUrls(
+      [u("vercel.com", "/i/vercel-ai-gateway-vs-openrouter")],
+      "vercel.com",
+    )
+    // The anchor's own side is dropped by name, the other side stays.
+    expect(leads.map((l) => l.name)).toEqual(["openrouter"])
+  })
+
   it("counts how often a name was published and puts the most-named first", () => {
     const leads = rivalsFromComparisonUrls(
       [

@@ -361,7 +361,25 @@ export function rivalsFromComparisonUrls(
       // slug is a sentence, and a sentence is an article about a comparison
       // rather than the anchor naming whom it competes with.
       const slugWords = slug.split(/[^a-z0-9]+/i).filter(Boolean).length
-      if (slugWords <= 6 && (/-alternatives?$/i.test(slug) || VS.test(slug))) sides = slug.split(VS)
+      if (slugWords <= 6) {
+        if (/-alternatives?$/i.test(slug)) {
+          // `<rival>-alternative` is implicitly anchored: alternative TO US.
+          sides = slug.split(VS)
+        } else if (VS.test(slug)) {
+          // A symmetric `-vs-` outside a comparison namespace names rivals
+          // only when the anchor is one of the sides. MEASURED on vercel.com:
+          // its /i/ namespace is an encyclopedia — svelte-vs-react,
+          // a2a-vs-mcp, graphql-vs-grpc, 40 leads of which one involved the
+          // company — and reading it as self-comparison put "react" and
+          // "next js" on the rival list of the company that MAKES next.js. A
+          // company comparing itself puts itself in the slug.
+          const parts = slug.split(VS)
+          const anchorSide = parts.some((part) =>
+            part.toLowerCase().split(/[^a-z0-9]+/).some((w) => mine.has(w)),
+          )
+          if (anchorSide) sides = parts
+        }
+      }
     }
 
     for (const side of sides) {
