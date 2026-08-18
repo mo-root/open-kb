@@ -375,3 +375,55 @@ describe("a name the stored map never owned", () => {
     expect(files.find((f) => f.path === "entities/other-example.md")?.content ?? "").toContain("# X")
   })
 })
+
+/**
+ * The export's edge integrity, measured before it was fixed: 999 of a fresh
+ * vercel map's 3,465 edges (28.8%) had exactly one exported end and rendered
+ * NOWHERE — github.com's page simply never said it discusses runtime.news,
+ * because the induced-subgraph cut deleted every edge touching a gated
+ * entity. Borrowed from graphify's taxonomy: too weak to link is still too
+ * real to delete.
+ */
+describe("an edge to a gated entity is labeled, never deleted", () => {
+  const run = {
+    anchor: "anchor.example",
+    entities: [
+      { name: "Kept", domain: "kept.example", kind: "company", relation: "competitor", what: "A rival.", why: "Same shortlist." },
+      // Gated as commentary: covers leaves the export by policy.
+      { name: "Zine", domain: "zine.example", kind: "publisher", relation: "covers", what: "Writes about the market.", why: "Coverage." },
+      // Gated as noise: not a finding at all.
+      { name: "Trash", domain: "trash.example", kind: "noise", relation: "none", what: "", why: "" },
+    ],
+    edges: [
+      { from: "kept.example", to: "zine.example", relation: "covers", why: "the zine reviews it", confidence: "measured" },
+      { from: "kept.example", to: "trash.example", relation: "discusses", why: "a memory", confidence: "inferred" },
+    ],
+  }
+
+  it("renders the policy-gated end as plain text wearing its drop label", () => {
+    const files = exportKbFiles(run)
+    const page = files.find((f) => f.path === "entities/kept-example.md")?.content ?? ""
+    expect(page).toContain("**Edges:**")
+    expect(page).toContain("covers zine.example")
+    expect(page).toContain("publishing near the market")
+    // No wikilink to a page that does not exist.
+    expect(page).not.toContain("[[zine-example]]")
+  })
+
+  it("still deletes an edge whose end is tainted, not merely gated", () => {
+    const files = exportKbFiles(run)
+    const page = files.find((f) => f.path === "entities/kept-example.md")?.content ?? ""
+    expect(page).not.toContain("trash.example")
+  })
+
+  it("prints the roads on a page whose entity carries them", () => {
+    const files = exportKbFiles({
+      anchor: "anchor.example",
+      entities: [
+        { name: "Kept", domain: "kept.example", kind: "company", relation: "competitor", what: "A rival.", why: "Same shortlist.", roads: ["log search", "grep alternatives"] },
+      ],
+    })
+    const page = files.find((f) => f.path === "entities/kept-example.md")?.content ?? ""
+    expect(page).toContain("**Found by:** `log search` · `grep alternatives`")
+  })
+})

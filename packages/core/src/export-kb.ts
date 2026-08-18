@@ -28,6 +28,9 @@ export interface ExportEntity {
   spans?: string[]
   foundBy?: string[]
   also?: Array<{ name?: string; what: string }>
+  /** The surfacing queries, most-seen first — stored by the sweep since
+   *  2026-08-17; absent on older maps and the page simply omits the line. */
+  roads?: string[]
 }
 
 /**
@@ -378,11 +381,37 @@ export function exportKbFiles(run: ExportRunLike): ExportedFile[] {
   }
   const slugifyRef = (host: string) => host.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
   // An edge is a wikilink, and a wikilink to a gated entity is a dead link. The
-  // graph is therefore the induced subgraph on what survived — both ends or
-  // neither. (The old code kept every edge touching a kept node, which was only
-  // ever safe because nothing this run linked to a dropped one.)
+  // LINKED graph is therefore the induced subgraph on what survived — but the
+  // induced-subgraph cut, alone, silently deleted every edge with one dropped
+  // end: MEASURED on a fresh vercel export, 999 of 3,465 edges (28.8%) had
+  // exactly one surviving end and rendered nowhere — github.com's page simply
+  // never said it discusses runtime.news. Borrowed from graphify's taxonomy:
+  // an edge too weak to link is flagged, never deleted. One-sided edges render
+  // on the surviving page as plain text wearing the other end's drop label.
   const edges = repaired.edges.filter((ed) => bySlug.has(slugifyRef(ed.from)) && bySlug.has(slugifyRef(ed.to)))
+  const droppedEnd = new Map<string, DropReason>()
+  for (const e of repaired.entities) {
+    const why = exportDrop(e)
+    if (why) droppedEnd.set(slugifyRef(e.domain ?? ""), why)
+  }
+  /** Drop classes whose FINDING is invalid, not merely gated: a withdrawn
+   *  end wore an identity that was never its own, so every edge bought with
+   *  it is tainted; a personal end must not be named anywhere, which is the
+   *  whole point of that gate; a noise end is not a finding at all. The
+   *  policy gates — commentary, unrelated, silent, unexplained — keep the
+   *  half-edge: the surviving page really does relate to that host, and the
+   *  label says why there is no page for it here. */
+  const TAINTED: ReadonlySet<DropReason> = new Set(["withdrawn", "personal", "noise"] as DropReason[])
+  const halfEdges = repaired.edges.filter((ed) => {
+    const f = bySlug.has(slugifyRef(ed.from))
+    const t = bySlug.has(slugifyRef(ed.to))
+    if (f === t) return false
+    const gone = f ? slugifyRef(ed.to) : slugifyRef(ed.from)
+    const why = droppedEnd.get(gone)
+    return why !== undefined && !TAINTED.has(why)
+  })
   const edgesOf = (slug: string) => edges.filter((ed) => slugifyRef(ed.from) === slug || slugifyRef(ed.to) === slug)
+  const halfEdgesOf = (slug: string) => halfEdges.filter((ed) => slugifyRef(ed.from) === slug || slugifyRef(ed.to) === slug)
 
   // The tier vocabulary is the swarm's; a sweep run has no tiers to report.
   // Prose that explains how to read a field no shipped row carries is the most
@@ -413,6 +442,10 @@ export function exportKbFiles(run: ExportRunLike): ExportedFile[] {
       : `surfaced by this run's queries`
     const judged = e.tier ? ` → judged ${e.tier}` : ""
     lines.push(`**Route:** ${lane}${judged} → ${e.relation} to ${anchor}.\n`)
+    // The literal queries that surfaced this host — layer zero of the graph,
+    // and the one line that asks a reader to trust nothing: text was typed,
+    // this host came back. Absent on maps stored before the field existed.
+    if (e.roads?.length) lines.push(`**Found by:** ${e.roads.map((q) => `\`${q}\``).join(" · ")}\n`)
     if (e.why) lines.push(`**Why it's on the map:** ${e.why}\n`)
     if (e.because) lines.push(`**Downgraded:** ${e.because}\n`)
     if (e.spans?.length) {
@@ -423,12 +456,23 @@ export function exportKbFiles(run: ExportRunLike): ExportedFile[] {
       lines.push(`**Also recorded here:** ${e.also.map((a) => (a.name ? `${a.name} — ${a.what}` : a.what)).join("; ")}\n`)
     }
     const myEdges = edgesOf(slug)
-    if (myEdges.length) {
+    const myHalf = halfEdgesOf(slug)
+    if (myEdges.length || myHalf.length) {
       lines.push(`**Edges:**\n`)
       for (const ed of myEdges) {
         const other = slugifyRef(ed.from) === slug ? ed.to : ed.from
         const dashed = ed.confidence === "inferred" ? " *(inferred)*" : ""
         lines.push(`- ${ed.relation} [[${slugifyRef(other)}]]${dashed}`)
+      }
+      // The half-edges: the other end was gated out of this export, and the
+      // relation is still a recorded finding. Plain text, no wikilink — a
+      // link to a page that does not exist is exactly what the induced cut
+      // exists to prevent — wearing the label that says why the end is gone.
+      for (const ed of myHalf) {
+        const otherHost = slugifyRef(ed.from) === slug ? ed.to : ed.from
+        const why = droppedEnd.get(slugifyRef(otherHost))
+        const label = why ? DROP_LABEL[why] : "not exported"
+        lines.push(`- ${ed.relation} ${otherHost} *(not a page here: ${label})*`)
       }
       lines.push("")
     }
