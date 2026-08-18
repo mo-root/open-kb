@@ -145,6 +145,41 @@ describe("rivalsFromComparisonUrls", () => {
     expect(leads).toEqual([])
   })
 
+  it("refuses an essay title wearing a -vs- slug, however many it publishes", () => {
+    // MEASURED, and it was a regression: one auth vendor publishes comparison
+    // ESSAYS under /articles/, and reading their slugs produced seventeen
+    // leads of which three held a company name — "oidc", "scim", "build",
+    // "per mau p 2", "scale economics 3" — and the run spent real query
+    // budget on `oidc alternatives`. Two guards, both needed: an article
+    // namespace is content, and a comparison of names is short where an
+    // essay title is not.
+    const leads = rivalsFromComparisonUrls(
+      [
+        u("clerk.com", "/articles/oidc-vs-saml-for-enterprise-sso-a-2026-decision-guide"),
+        u("clerk.com", "/articles/the-real-cost-of-enterprise-sso-per-connection-vs-per-mau-p-2"),
+        u("clerk.com", "/articles/scim-vs-jit-provisioning-when-to-use-each"),
+        u("clerk.com", "/articles/clerk-vs-auth0-which-authentication-platform-fits-your-team"),
+        u("clerk.com", "/blog/multi-tenant-vs-single-tenant"),
+      ],
+      "clerk.com",
+    )
+    expect(leads).toEqual([])
+  })
+
+  it("keeps the short slug shapes that really do name companies", () => {
+    // The guard must not eat the shapes it was written around: a dedicated
+    // comparison namespace, a migration guide, and the slug-shape a proxy
+    // vendor publishes a hundred of.
+    const names = (urls: string[], anchor: string) =>
+      rivalsFromComparisonUrls(urls, anchor).map((l) => l.name).sort()
+    expect(names([u("www.shopify.com", "/compare/bigcommerce-vs-salesforce-vs-shopify")], "shopify.com")).toEqual([
+      "bigcommerce",
+      "salesforce",
+    ])
+    expect(names([u("brightdata.com", "/solutions/zyte-alternative")], "brightdata.com")).toEqual(["zyte"])
+    expect(names([u("resend.com", "/migrate/sendgrid")], "resend.com")).toEqual(["sendgrid"])
+  })
+
   it("counts how often a name was published and puts the most-named first", () => {
     const leads = rivalsFromComparisonUrls(
       [

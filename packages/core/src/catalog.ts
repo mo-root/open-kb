@@ -50,7 +50,7 @@ const OFFERING = /^\/(products?|platform|pricing|solutions?|services?|features?)
 const FIRST_TIER = /^\/(products?|platform|pricing|features?)(\/|$)/i
 
 /** Content namespaces that swamp a sitemap and never contain a product. */
-const CONTENT = /^\/(blog|news|resources?|guides?|templates?|customers?|case-studies?|events?|docs?|help|support|legal|about|careers?|press|community|universe|learn|academy|glossary|integrations?|lp|landing|compare|vs|alternatives?)(\/|$)/i
+const CONTENT = /^\/(blog|news|articles?|posts?|stories|resources?|guides?|templates?|customers?|case-studies?|events?|docs?|help|support|legal|about|careers?|press|community|universe|learn|academy|glossary|integrations?|lp|landing|compare|vs|alternatives?)(\/|$)/i
 
 /**
  * A product sits shallow; a variant of it sits one level deeper.
@@ -350,7 +350,18 @@ export function rivalsFromComparisonUrls(
       // shapes sit at depth three and name formats, not vendors. CONTENT is
       // excluded because a blog's `-vs-` slug is an essay about a comparison,
       // not the anchor naming whom it competes with.
-      if (/-alternatives?$/i.test(slug) || VS.test(slug)) sides = slug.split(VS)
+      // A COMPARISON OF NAMES IS SHORT; AN ESSAY TITLE IS NOT. Measured on one
+      // auth vendor's sitemap: `/articles/oidc-vs-saml-for-enterprise-sso-a-
+      // 2026-decision-guide` yielded "oidc", and `/articles/the-real-cost-of-
+      // enterprise-sso-per-connection-vs-per-mau-p-2` yielded "per mau p 2" —
+      // seventeen leads of which three held a real company name, and the run
+      // spent query budget on `oidc alternatives` and `scim alternatives`.
+      // Real comparison slugs run three to six words: `shopify-vs-woocommerce`
+      // is three, `bigcommerce-vs-salesforce-vs-shopify` five. Past that the
+      // slug is a sentence, and a sentence is an article about a comparison
+      // rather than the anchor naming whom it competes with.
+      const slugWords = slug.split(/[^a-z0-9]+/i).filter(Boolean).length
+      if (slugWords <= 6 && (/-alternatives?$/i.test(slug) || VS.test(slug))) sides = slug.split(VS)
     }
 
     for (const side of sides) {
