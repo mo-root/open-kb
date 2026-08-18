@@ -275,7 +275,7 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
                 return { query, hits: [], ok: false, error: reason ?? `serp http ${res.status}`, usd: price, ms, requests: 1 }
               }
               const text = await res.text()
-              let parsed: { organic?: Array<{ link?: string; title?: string; description?: string }> }
+              let parsed: { organic?: Array<{ link?: string; title?: string; description?: string; global_rank?: number }> }
               try {
                 parsed = JSON.parse(text)
               } catch {
@@ -292,7 +292,16 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
               }
               const hits = (parsed.organic ?? [])
                 .filter((h) => typeof h.link === "string")
-                .map((h) => ({ url: h.link!, title: h.title ?? "", description: h.description ?? "" }))
+                // `global_rank` is the engine's own position across pages, which
+                // is what makes page 4's rank 37 comparable with page 1's rank 3.
+                // Falling back to the within-page index plus this page's offset
+                // keeps the number meaningful when the provider omits it.
+                .map((h, i) => ({
+                  url: h.link!,
+                  title: h.title ?? "",
+                  description: h.description ?? "",
+                  rank: typeof h.global_rank === "number" ? h.global_rank : start + i + 1,
+                }))
               // A page whose every link is a relative /goto?url= redirect is
               // the SERP declining to say where its results point. It parsed,
               // so it was marked ok and every row was silently dropped

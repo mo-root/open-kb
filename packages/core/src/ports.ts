@@ -4,6 +4,16 @@ export interface SearchHit {
   url: string
   title: string
   description: string
+  /**
+   * Where the engine ranked this row, 1-based and global across pages.
+   *
+   * The one signal of PROMINENCE a search result carries, and it was parsed
+   * and dropped: a map built without it ranks a market's leader level with a
+   * reseller nobody has heard of, because every other field says only what a
+   * host IS. Optional — a port that cannot say leaves it unset and callers
+   * fall back to how many queries surfaced the host.
+   */
+  rank?: number
 }
 
 export interface SearchResult {

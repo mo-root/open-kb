@@ -637,6 +637,16 @@ export type Entity = z.infer<typeof Entity> & {
    *  layer-zero connection. `foundBy` names the markets and `families` the
    *  door-shapes; this is what was actually typed. */
   roads?: string[];
+  /**
+   * How prominent this host is IN THIS MARKET, from the search itself:
+   * `seenIn` is how many distinct queries returned it, `bestRank` the highest
+   * position any of them gave it. Neither is a judgement — both are counts of
+   * what the engine did — and together they are the difference between a map
+   * that lists a market and one that ranks it. Without them a leader and a
+   * reseller sit level, because every other field says only what a host IS.
+   */
+  seenIn?: number;
+  bestRank?: number;
 } & {
   because?: string;
   settledBy?: "predicate" | "model";
@@ -2454,6 +2464,8 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     intent: string;
     family: QueryFamily;
     product?: string;
+    /** Where the engine ranked this row, global across pages. */
+    rank?: number;
   }> = [];
 
   /** What the platform field actually bought, counted at the wire rather than
@@ -2590,6 +2602,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
             // string, but every join downstream keys on the plan's own text,
             // and a hit filed under the scoped form would lose its market.
             q: planned.q,
+            rank: h.rank,
             intent: batch[j]!.intent,
             family: batch[j]!.family,
             product: batch[j]!.product,
@@ -3413,6 +3426,11 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           .sort((a, b) => b[1] - a[1])
           .slice(0, 3)
           .map(([q]) => q);
+      if (rows.length) {
+        e.seenIn = qCounts.size;
+        const ranks = rows.map((h) => h.rank).filter((n): n is number => typeof n === "number");
+        if (ranks.length) e.bestRank = Math.min(...ranks);
+      }
     }
   }
 

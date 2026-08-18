@@ -40,3 +40,21 @@ describe("classify sees how the run found the host", () => {
     expect(busy.length).toBeGreaterThan(0)
   })
 })
+
+describe("prominence, from the search rather than from a judgement", () => {
+  it("stores how many queries found a host and the best rank any gave it", async () => {
+    const h = await runFixture()
+    const kept = h.result.entities.filter((e) => e.kind !== "noise" && e.relation !== "none")
+    expect(kept.length).toBeGreaterThan(0)
+    // Every kept row knows how prominent it was; neither number is a model's
+    // opinion — both are counts of what the search actually did.
+    for (const e of kept) {
+      if (e.domain === h.result.anchor) continue
+      expect(typeof e.seenIn, `${e.domain} seenIn`).toBe("number")
+    }
+    // The fixture's SERP table surfaces grepstack in more queries than the
+    // coupon site, so prominence orders them the way a reader would.
+    const bySeen = [...kept].sort((a, b) => (b.seenIn ?? 0) - (a.seenIn ?? 0))
+    expect(bySeen[0]!.seenIn).toBeGreaterThan(1)
+  })
+})
