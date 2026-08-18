@@ -281,10 +281,13 @@ console.log(`$${stats.usd.toFixed(4)} · ${stats.seconds.toFixed(0)}s`)
   }
 
   if (serp) {
-    const asked = stats.queries * serp.pagesPerQuery
+    // `stats.queries` is the OPENING hand; the widening loop fires more, and
+    // `serpCalls` is the only count that already includes them — pricing the
+    // ask off the opening said "258 asked for" on a run that asked for 570.
+    const asked = stats.serpCalls
     console.log(
-      `\nsearch  ${serp.requests} billable requests for ${stats.queries} queries × ${serp.pagesPerQuery} pages` +
-        ` (${asked} asked for)` +
+      `\nsearch  ${serp.requests} billable requests against ${asked} pages asked for` +
+        ` (${Math.round(asked / serp.pagesPerQuery)} queries × ${serp.pagesPerQuery})` +
         (serp.retries ? ` — ${serp.retries} retries, ${((100 * serp.retries) / (serp.requests || 1)).toFixed(0)}% overhead` : ""),
     )
     const blocks = Object.entries(serp.blocked).sort((a, b) => b[1] - a[1]).slice(0, 6)
