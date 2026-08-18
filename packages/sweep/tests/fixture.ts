@@ -217,7 +217,7 @@ export const SERP: Record<string, SearchHit[]> = {
  * UI rail: `plan` issues both the catalog and the assess calls, and `write`
  * issues none at all. These are model calls, not stages.
  */
-export type CallPhase = "understand" | "catalog" | "assess" | "classify" | "link" | "discovery"
+export type CallPhase = "understand" | "catalog" | "assess" | "classify" | "link" | "orphan" | "discovery"
 
 const PHASE_BY_KEY: Array<[CallPhase, string]> = [
   ["understand", "capabilities"],
@@ -225,6 +225,9 @@ const PHASE_BY_KEY: Array<[CallPhase, string]> = [
   ["assess", "enough"],
   ["classify", "spans"],
   ["link", "edges"],
+  // The orphan ask: entities with no edge, asked where they stand. Its
+  // schema's distinctive key is `stands`.
+  ["orphan", "stands"],
 ]
 
 function phaseOf(schema: unknown): CallPhase {
@@ -270,6 +273,10 @@ export interface Script {
    *  reached when the run sets `discovery: "agent"`; the default script mirrors
    *  what `understand` answers, so the two modes describe one company. */
   discovery?: (turn: number, prompt: string) => DiscoveryTurn
+  /** The orphan ask: entities with no edge, and where each stands. The
+   *  default answers "nobody" for all of them, so the map every existing test
+   *  pins keeps exactly the edges it had. */
+  orphan?: (prompt: string) => unknown
 }
 
 /** Every model call the run made, in order. */
@@ -382,6 +389,7 @@ export function defaultScript(): Required<Script> {
             ],
           },
     assess: () => ({ enough: true, missing: "", draw: [], queries: [] }),
+    orphan: () => ({ stands: [] }),
     discovery: (turn) =>
       turn === 0
         ? {
@@ -596,7 +604,9 @@ export async function runFixture(opts: FixtureOptions = {}): Promise<Harness> {
               ? script.assess(++rounds, text)
               : phase === "classify"
                 ? script.classify(subject, text)
-                : script.link(pairsOf(text), text)
+                : phase === "orphan"
+                  ? script.orphan(text)
+                  : script.link(pairsOf(text), text)
       return {
         content: [{ type: "text" as const, text: JSON.stringify(object) }],
         finishReason: { unified: "stop" as const, raw: undefined },

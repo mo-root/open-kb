@@ -4015,6 +4015,126 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     say("link", `${edges.length} edges between entities`);
   }
 
+  /**
+   * THE ORPHAN ASK. After every free edge and every co-occurrence pair, a
+   * third of the kept map still had no edge to anything — 36-38% measured on
+   * two brightdata runs — because the pair selector requires co-occurrence in
+   * two searches and most hosts are seen once. Those entities were judged,
+   * described, and left floating: a reader opening one saw a node connected
+   * to nothing, which reads as "the tool could not place this", when the
+   * truth was that nothing ever asked.
+   *
+   * So it is asked, once per orphan, batched: given the entity's own judged
+   * description and its market's most prominent members, where does it stand?
+   * "Nobody" is an accepted answer and costs the edge nothing. Everything
+   * returned ships as `inferred` — same standing as a pair edge, argued from
+   * judged descriptions rather than from a fetched page.
+   */
+  if (!opts.skipModelLinking && !signal?.aborted) {
+    const inEdge = new Set<string>();
+    for (const e of edges) {
+      inEdge.add(e.from);
+      inEdge.add(e.to);
+    }
+    const anchorDom = anchor.toLowerCase();
+    /** The kept map by domain — the pair pass builds its own inside its own
+     *  block, and an orphan edge must obey the same both-ends-on-the-map rule. */
+    const onMapByDomain = new Map(
+      keep.map((e) => [e.domain.toLowerCase().replace(/^www\./, ""), e]),
+    );
+    const orphans = keep.filter((e) => {
+      const d = e.domain.toLowerCase().replace(/^www\./, "");
+      return d !== anchorDom && !inEdge.has(d);
+    });
+    /** The candidates an orphan is asked about: its own markets' most
+     *  prominent members, prominence being the search's counts, not opinion. */
+    const prominent = (markets: string[] | undefined): Entity[] => {
+      const mine = new Set(markets ?? []);
+      const pool = keep.filter(
+        (e) =>
+          e.domain.toLowerCase() !== anchorDom &&
+          (mine.size === 0 || (e.foundBy ?? []).some((m) => mine.has(m))),
+      );
+      return pool
+        .sort((a, b) => (b.seenIn ?? 0) - (a.seenIn ?? 0))
+        .slice(0, 6);
+    };
+    const stats = { orphans: orphans.length, asked: 0, linked: 0 };
+    if (orphans.length) {
+      say(
+        "link",
+        `${orphans.length} entities have no edge to anything — asking each where it stands`,
+      );
+      const OrphanStand = z.object({
+        from: z.string().describe("the orphan's domain, exactly as given"),
+        to: z
+          .string()
+          .describe("one candidate's domain exactly as given, or empty for nobody"),
+        relation: z.enum(PEER_RELATIONS),
+        why: z
+          .string()
+          .describe("how they relate, one line, argued from the descriptions given"),
+      });
+      const BATCH_ORPHANS = 20;
+      const batches: Entity[][] = [];
+      for (let i = 0; i < orphans.length; i += BATCH_ORPHANS)
+        batches.push(orphans.slice(i, i + BATCH_ORPHANS));
+      await Promise.all(
+        batches.map((batch, n) =>
+          (async () => {
+            if (signal?.aborted) return;
+            const rows = batch
+              .map((o, i) => {
+                const cands = prominent(o.foundBy)
+                  .filter((c) => c.domain !== o.domain)
+                  .map((c) => `     - ${c.domain} — ${c.what || c.kind}`)
+                  .join("\n");
+                return `${i + 1}. ${o.domain} (${o.kind}) — ${o.what || "no description survived"}\n   candidates:\n${cands || "     (none prominent in its market — nobody is the likely answer)"}`;
+              })
+              .join("\n\n");
+            let out: { stands: z.infer<typeof OrphanStand>[] };
+            try {
+              out = await call(
+                "link",
+                `orphans ${n * BATCH_ORPHANS + 1}-${n * BATCH_ORPHANS + batch.length} of ${orphans.length}`,
+                z.object({ stands: z.array(OrphanStand) }),
+                prompt("orphan", { anchor, sells: decomp.sells, rows }),
+                { think: "none", maxOutputTokens: 120 * batch.length + 6_000 },
+              );
+            } catch (err) {
+              say(
+                "link",
+                `  orphan batch ${n + 1} produced nothing: ${err instanceof Error ? err.message : String(err)}`,
+              );
+              return;
+            }
+            stats.asked += batch.length;
+            for (const st of out.stands) {
+              const from = st.from.toLowerCase().replace(/^www\./, "");
+              const to = st.to.toLowerCase().replace(/^www\./, "");
+              if (!to || from === to) continue;
+              if (st.relation === "unknown") continue;
+              if (!onMapByDomain.has(from) || !onMapByDomain.has(to)) continue;
+              edges.push({
+                from,
+                to,
+                relation: st.relation,
+                why: st.why,
+                confidence: "inferred",
+              });
+              stats.linked += 1;
+            }
+          })(),
+        ),
+      );
+      say(
+        "link",
+        `${stats.linked} of ${stats.orphans} orphans found a footing; ${stats.orphans - stats.linked} honestly stand alone`,
+      );
+    }
+    (linkingStats as Record<string, unknown>).orphans = stats;
+  }
+
   // Summed from what was actually billed, not re-derived from the counters: a
   // SERP call that never reached Bright Data carries usd 0 and re-deriving from
   // `serpCalls * price` would charge the run for it.
