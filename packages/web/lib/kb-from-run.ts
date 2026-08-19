@@ -584,6 +584,16 @@ export function summaryOf(run: CompletedRun): KbSummary {
     // predicate that keeps these rows out of runs written from now on.
     companies: kept.filter((p) => COMPANY_TYPES.includes(p.type) && onMap(p.entity)).length,
     noise: noise.length,
+    // The card's numbers row, folded from the same placed rows as `companies`.
+    relations: (() => {
+      const of = (...rels: string[]) => kept.filter((p) => rels.includes(p.entity.relation)).length
+      return {
+        competitors: of("competitor"),
+        substitutes: of("substitute"),
+        partners: of("integration", "dependency"),
+        voices: of("covers", "lists", "discusses"),
+      }
+    })(),
     // The run's own count, not the canvas's — see `KbSummary.edges` for why the
     // two differ and why this one is the one a card reports. `edges` is
     // optional on `SweepResult`, and a run recorded before it existed measured

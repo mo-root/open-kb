@@ -200,10 +200,10 @@ export function DemoHome({
         <h1 className="font-display text-2xl font-semibold tracking-tight text-slate-100">
           Map a market
         </h1>
+        {/* One sentence. The thesis paragraph that stood here read as a wall
+            on a page whose cards already make the argument in numbers. */}
         <p className="mt-1 max-w-2xl text-sm text-slate-400">
-          One domain in, everyone else in its market out. The catalog is written
-          before any company name is known — so the queries cannot look this
-          company up, and what comes back is the market rather than its press.
+          One domain in, everyone else in its market out.
         </p>
 
         {notice && (

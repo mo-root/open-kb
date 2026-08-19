@@ -269,6 +269,14 @@ export interface KbSummary {
   /** Hosts the run paid for and the classifier threw away as `kind: "noise"`. */
   noise: number
   /**
+   * How the placed entities stand to the anchor, folded to the four numbers a
+   * card can carry: head-on rivals, the different-way substitutes, the
+   * partners (integration + dependency), and the voices around the market
+   * (press, directories, forums). Computed from the same placed rows as
+   * `companies`, so the numbers cannot disagree with the headline above them.
+   */
+  relations: { competitors: number; substitutes: number; partners: number; voices: number }
+  /**
    * Relations the run recorded BETWEEN two entities, MINUS the ones a withdrawn
    * name minted.
    *

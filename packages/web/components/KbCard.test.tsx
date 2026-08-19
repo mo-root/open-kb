@@ -31,6 +31,7 @@ import type { KbSummary } from "@/lib/viewTypes"
 
 const kb: KbSummary = {
   slug: "acme-com-202608070005",
+  relations: { competitors: 3, substitutes: 1, partners: 0, voices: 2 },
   manifest: { brand: "acme.com", builtAt: "2026-08-07T00:05:00.000Z", usd: 1.5, seconds: 120 },
   counts: { core: 1, product: 4, player: 9, community: 2 },
   notes: 16,

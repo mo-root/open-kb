@@ -204,6 +204,31 @@ export function KbCard({ kb, showcase = false }: { kb: KbSummary; showcase?: boo
         </span>
       </div>
 
+      {/* THE NUMBERS ROW — how the market breaks down, in the run's own
+          relation counts. No icons: four figures with quiet labels, sharing
+          the headline's tabular voice. Only the shapes this map actually has
+          render, so a market with no substitutes says nothing about them
+          instead of printing a zero. */}
+      {(() => {
+        const r = kb.relations
+        const rows = [
+          [r.competitors, "competitors"],
+          [r.substitutes, "substitutes"],
+          [r.partners, "integrations"],
+          [r.voices, "voices covering it"],
+        ].filter(([count]) => (count as number) > 0) as Array<[number, string]>
+        if (!rows.length) return null
+        return (
+          <div className="tnum mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-[11px] text-slate-400">
+            {rows.map(([count, label]) => (
+              <span key={label} className="whitespace-nowrap">
+                <span className="font-medium text-slate-200">{n(count)}</span> {label}
+              </span>
+            ))}
+          </div>
+        )
+      })()}
+
       {/* the markets this run found — showcase only, see the prop's note */}
       {shownMarkets.length > 0 && (
         <ul className="mt-2.5 flex flex-wrap items-center gap-1">

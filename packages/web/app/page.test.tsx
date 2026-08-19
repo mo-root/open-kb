@@ -332,14 +332,16 @@ describe("with OPENKB_DEMO on — the maps are the page", () => {
     expect(html).toContain("already spent")
   })
 
-  it("keeps the headline and the de-branding sentence, and drops the form", async () => {
-    // Item 2. The pitch is true on any deployment and stays; a dead input
-    // teaches a visitor nothing except that they are not welcome.
+  it("keeps the one-line pitch, and drops the form", async () => {
+    // Item 2. The pitch shrank to one sentence on the owner's call — the
+    // cards make the argument in numbers now — and a dead input teaches a
+    // visitor nothing except that they are not welcome.
     env({ OPENKB_DEMO: "1" })
     const html = await home()
 
     expect(html).toContain("Map a market")
-    expect(html).toContain("the queries cannot look this company up")
+    expect(html).toContain("One domain in, everyone else in its market out.")
+    expect(html).not.toContain("the queries cannot look this company up")
     expect(html).not.toContain("<input")
     expect(html).not.toContain("<button")
     expect(html).not.toContain("disabled")

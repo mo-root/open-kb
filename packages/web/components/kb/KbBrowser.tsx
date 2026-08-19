@@ -179,27 +179,13 @@ export function KbBrowser({
             ← all
           </Link>
           <h1 className="font-mono text-lg text-slate-100">{brand}</h1>
-          {/* PORT NOTE — v1 badged `violations` here: green "verified", titled
-              "Every claim is cited, every link resolves, nothing is unsourced —
-              the KB passed all integrity checks". This engine runs no such
-              check, so that badge would be an unearned pass on a test never
-              taken. The badge states the number that IS measured instead: how
-              many entities the classifier put on the map and would not place. */}
-          {unplaced > 0 ? (
-            <span
-              title="Entities the classifier saw and would not connect to the anchor. They are on the map, wired to nothing — named rather than hidden, because a map that reports none of these is usually a map that stopped looking."
-              className="tnum rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[11px] text-amber-300"
-            >
-              {unplaced} unplaced
-            </span>
-          ) : (
-            <span
-              title="Every entity on this map carries a relation to the anchor."
-              className="rounded border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[11px] text-emerald-300"
-            >
-              all placed
-            </span>
-          )}
+          {/* THE UNPLACED BADGE IS GONE FROM THE HEADER — owner's call, and
+              the gallery card made the same one first: an amber count of what
+              the engine could not connect was the loudest mark on every map's
+              title line. The number is not hidden — the overview's diagnostics
+              still state it, and the canvas legend counts it — it has simply
+              stopped being the first thing a visitor reads next to the
+              company's name. */}
           <a
             href={`/api/kb/${slug}/export`}
             download
