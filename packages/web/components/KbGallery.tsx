@@ -19,20 +19,17 @@ import type { KbSummary } from "@/lib/viewTypes";
    the reader's own eye.
 
    The sorts are named for what they surface, not for the field they read:
-   "Newest" / "Biggest map" / "Most unplaced". The last one is a lead, not a
-   complaint — a map with a lot of unplaced entities is usually the one with
-   something in it nobody has looked at yet. */
+   "Newest" / "Biggest map" / "Most linked". "Most unplaced" stood third and
+   was a lead for an operator, not a visitor — the owner's rule is that the
+   engine's leftovers stay off the marquee, so the third slot now surfaces
+   the maps whose graphs are densest instead. */
 
-type Sort = "recent" | "size" | "unplaced";
+type Sort = "recent" | "size" | "linked";
 
 const SORTS: { id: Sort; label: string; hint: string }[] = [
   { id: "recent", label: "Newest", hint: "Most recently finished run first" },
   { id: "size", label: "Biggest map", hint: "Most entities placed first" },
-  {
-    id: "unplaced",
-    label: "Most unplaced",
-    hint: "Maps carrying the most entities the classifier would not place — usually the ones with the most left to look at",
-  },
+  { id: "linked", label: "Most linked", hint: "Densest graphs first — the maps with the most recorded relations" },
 ];
 
 function domainOf(kb: KbSummary): string {
@@ -52,7 +49,7 @@ export function KbGallery({ kbs }: { kbs: KbSummary[] }) {
       : kbs.slice();
     rows.sort((a, b) => {
       if (sort === "size") return b.notes - a.notes;
-      if (sort === "unplaced") return b.unplaced - a.unplaced;
+      if (sort === "linked") return b.edges - a.edges;
       // A run with no recorded finish time sorts last rather than first: an
       // empty string would otherwise beat every real timestamp.
       return (builtAtOf(b.manifest) ?? "").localeCompare(builtAtOf(a.manifest) ?? "");

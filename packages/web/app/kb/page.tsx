@@ -64,14 +64,11 @@ export default async function KbIndex() {
         <KbGallery kbs={kbs} />
       )}
 
+      {/* One line. The paragraph that stood here explained CLI file shapes
+          to visitors who came to browse markets. */}
       <p className="mt-6 max-w-2xl text-xs leading-relaxed text-slate-500">
-        One knowledge base per completed run, read from the JSON each run wrote
-        under <span className="font-mono text-slate-400">runs/</span>. Sweeps run
-        from the command line (
-        <span className="font-mono text-slate-400">scripts/sweep.ts</span>) write
-        a different, envelope-less shape and are deliberately not listed — a
-        gallery that half-reads a file it does not understand is worse than one
-        that says it holds nothing.
+        One knowledge base per finished map, with every claim cited to the page
+        it came from.
       </p>
     </div>
   );

@@ -167,12 +167,31 @@ export function KbCard({ kb, showcase = false }: { kb: KbSummary; showcase?: boo
       style={{ "--rel": placedPct } as React.CSSProperties}
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="truncate font-display text-[15px] font-semibold text-slate-200 group-hover:text-sky-300">
-            {title}
-          </div>
-          <div className="mt-0.5 truncate font-mono text-xs text-slate-500">
-            {subtitle}
+        <div className="flex min-w-0 items-center gap-2.5">
+          {/* The company's own favicon, via DuckDuckGo's icon service — one
+              request, no key, and a neutral globe when a site has none. It is
+              the one ornament the owner asked for by name ("fetch some site
+              icons"), and it earns its place by being the site's own mark
+              rather than decoration this app invented. `loading="lazy"` keeps
+              six cards from racing the maps they front. */}
+          {/\./.test(title) && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={`https://icons.duckduckgo.com/ip3/${encodeURIComponent(title)}.ico`}
+              alt=""
+              width={22}
+              height={22}
+              loading="lazy"
+              className="h-[22px] w-[22px] shrink-0 rounded-md border border-slate-800 bg-slate-900/60 p-0.5"
+            />
+          )}
+          <div className="min-w-0">
+            <div className="truncate font-display text-[15px] font-semibold text-slate-200 group-hover:text-sky-300">
+              {title}
+            </div>
+            <div className="mt-0.5 truncate font-mono text-xs text-slate-500">
+              {subtitle}
+            </div>
           </div>
         </div>
         {/* NO BADGE HERE ANY MORE. This corner carried "N unplaced" in amber
