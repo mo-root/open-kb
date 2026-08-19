@@ -559,35 +559,36 @@ describe("the anchor's own account of itself", () => {
  * file pins the receipt AND the graceful absence, on real data.
  */
 describe("the receipts inside a committed gallery map", () => {
-  const clerk = (): CompletedRun => ({
+  const gallery = (file: string, sub = "maps"): CompletedRun => ({
     id: "33333333-3333-4333-8333-333333333333",
-    domain: "clerk.com",
+    domain: "supabase.com",
     queries: 0,
     startedAt: 0,
     endedAt: 1,
     status: "complete",
     result: JSON.parse(
-      readFileSync(
-        join(dirname(fileURLToPath(import.meta.url)), "../../..", "demo", "maps", "sweep-clerk-com-202608062258.json"),
-        "utf8",
-      ),
+      readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../..", "demo", sub, file), "utf8"),
     ),
   })
+  const supabase = () => gallery("sweep-supabase-com-20260818210215.json")
 
   it("hands the panel the quotes the kernel checked word for word", () => {
-    const note = noteOf(clerk(), "products/auth0.com.md")
+    const note = noteOf(supabase(), "players/appwrite.io.md")
     expect(note?.spans).toEqual([
-      "Auth0 is an easy to implement, adaptable authentication and authorization platform",
-      "Integrate Auth0 in any application in just 5 minutes",
-      "B2B SaaS Applications",
+      "Appwrite is an open-source platform for building and scaling applications faster, offering Auth, Databases, Storage, Functions, Messaging, Realtime, and web hosting - all in one place.",
     ])
     // The number the panel already printed, now standing beside the evidence
     // it was measured from rather than in place of it.
-    expect(note?.descGrounded).toBe(0.5)
+    expect(note?.descGrounded).toBe(0.61)
+    // And the map is new enough to know how the host was found.
+    expect(note?.roads).toContain("auth alternatives")
   })
 
   it("says nothing about roads or first-party claims on a map recorded before them", () => {
-    const v = viewOf(clerk())
+    // The archived pre-agent gallery is exactly such a map, and keeping this
+    // read against it keeps the graceful-absence path exercised now that the
+    // committed six all carry the fields.
+    const v = viewOf(gallery("sweep-clerk-com-202608062258.json", "archive/pre-agent-20260819"))
     expect(v.notes.some((n) => n.roads !== undefined)).toBe(false)
     expect(v.integrations).toEqual([])
     expect(v.rivalLeads).toEqual([])
@@ -797,30 +798,13 @@ describe("the gallery's own stolen names", () => {
     result: JSON.parse(readFileSync(join(MAPS, file), "utf8")),
   })
 
-  /** file -> the hosts that were wearing the anchor's name, and what the map
-   *  said each of them was before the reader withdrew it. */
-  const THEFTS: Array<[string, Array<[string, string]>]> = [
-    ["sweep-vercel-com-202608062351.json", [
-      ["aws.amazon.com", "product/competitor, 328 links"],
-      ["facebook.com", "product/none, 330"],
-      ["redis.io", "product/competitor, 318"],
-      ["expo.dev", "publisher/lists, 316"],
-      ["exasol.com", "unknown/unknown, 315"],
-      ["examples.tely.ai", "product/none, 315"],
-      ["eginnovations.com", "unknown/unknown, 315"],
-    ]],
-    ["sweep-supabase-com-202608070017.json", [
-      ["aws.amazon.com", "product/dependency, 105"],
-      ["facebook.com", "product/none, 107"],
-      ["exoscale.com", "product/competitor, 97"],
-      ["widgets.weforum.org", "product/competitor, 97"],
-    ]],
-    ["sweep-stripe-com-202608070005.json", [["exalate.com", "product/shaper, 223"]]],
-    ["sweep-clerk-com-202608062258.json", [
-      ["shopify.com", "product/competitor, 9"],
-      ["eginnovations.com", "product/competitor, 9"],
-    ]],
-  ]
+  /** The 2026-08-18 gallery ships CLEAN: the anchor-identity and wrong-door
+   *  guards moved upstream into the judge (packages/core/src/judge.ts), so a
+   *  stolen name is withdrawn in-run and never reaches a stored map. The
+   *  reader's repair stays — it is what protects every map stored before the
+   *  guards, and the maps in demo/archive still exercise it — but on the
+   *  committed six it must find nothing to do. */
+  const THEFTS: Array<[string, Array<[string, string]>]> = []
 
   it.each(THEFTS)("%s: every borrowed name goes back to its host", (file, hosts) => {
     const g = graphOf(stored(file))
@@ -835,16 +819,18 @@ describe("the gallery's own stolen names", () => {
     }
   })
 
-  /** The headline each card prints, before and after, on the four maps that
-   *  had it and the two that did not. `companies` only moves for a row the
-   *  count included: 8 of the 14 were `product` with a relation. */
+  /** The headline each card prints, before and after. On the 2026-08-18
+   *  gallery the two columns are equal on every file — the engine withdraws a
+   *  stolen name before the map is stored, so the reader's repair finds
+   *  nothing to move. A future map where they differ is a map some guard
+   *  missed, and exactly what this table exists to catch. */
   it.each([
-    ["sweep-vercel-com-202608062351.json", 842, 840, 6283, 4080],
-    ["sweep-supabase-com-202608070017.json", 443, 440, 2351, 1969],
-    ["sweep-stripe-com-202608070005.json", 1008, 1007, 3017, 2794],
-    ["sweep-clerk-com-202608062258.json", 179, 177, 517, 499],
-    ["sweep-brightdata-com-202608042230.json", 442, 442, 487, 487],
-    ["sweep-cursor-com-202608070032.json", 321, 321, 1796, 1796],
+    ["sweep-vercel-com-20260818212925.json", 627, 627, 3465, 3465],
+    ["sweep-supabase-com-20260818210215.json", 501, 501, 3078, 3078],
+    ["sweep-stripe-com-20260818214527.json", 769, 769, 3067, 3067],
+    ["sweep-sentry-io-20260818232602.json", 491, 491, 4337, 4337],
+    ["sweep-brightdata-com-20260818131026.json", 528, 528, 3786, 3786],
+    ["sweep-neon-tech-20260818225808.json", 378, 378, 3294, 3294],
   ])("%s: %i companies -> %i, %i links -> %i", (file, _was, companies, _hadLinks, links) => {
     const s = summaryOf(stored(file))
     expect(s.companies).toBe(companies)
@@ -852,11 +838,8 @@ describe("the gallery's own stolen names", () => {
   })
 
   it("leaves the anchor's own row alone", () => {
-    const g = graphOf(stored("sweep-vercel-com-202608062351.json"))
+    const g = graphOf(stored("sweep-vercel-com-20260818212925.json"))
     expect(g.nodes.find((n) => n.id === "company.md")!.title).toBe("vercel.com")
-    // nextjs.org is Vercel's, and the run named it "Next.js by Vercel". A rule
-    // matching anything CONTAINING the label would take that name too.
-    expect(g.nodes.find((n) => n.domain === "nextjs.org")!.title).toBe("Next.js by Vercel")
   })
 })
 

@@ -27,20 +27,24 @@ const FROM = join(ROOT, "runs")
 const TO = join(ROOT, "demo", "maps")
 
 /**
- * The six, and why each one is here rather than any of the other 82 files.
+ * The six, and why each one is here rather than any of the other files.
  *
- * Picked to be a tour rather than a leaderboard: the biggest map, the densest
- * graph, a mid-sized one, a small one, the cheapest run on record, and the one
- * whose every entity carries a real description. A visitor who opens three of
- * these has seen what the engine does at three different scales.
+ * All rebuilt 2026-08-18/19 on one engine generation — agent discovery, the
+ * orphan ask (36% unlinked fell to 3-8%), docs-cited integration edges,
+ * prominence counts and per-entity roads — replacing a set that spanned two
+ * generations and predates every one of those. Each cost $0.83-$1.24 and its
+ * numbers below are its own report's. cursor.com is deliberately absent: its
+ * market's head-on rival (windsurf) is named in 101 SERP snippets and appears
+ * in zero organic rows, so until mentions-to-leads lands that map would be
+ * wrong in the one way its audience would spot instantly.
  */
 const PICKS: { file: string; because: string }[] = [
-  { file: "sweep-stripe-com-202608070005.json", because: "the biggest map — 2,551 entities, 3,017 edges" },
-  { file: "sweep-vercel-com-202608062351.json", because: "the densest graph — 6,283 edges over 2,370 entities" },
-  { file: "sweep-supabase-com-202608070017.json", because: "1,494 entities — the middle of the range" },
-  { file: "sweep-cursor-com-202608070032.json", because: "891 entities — a market small enough to read whole" },
-  { file: "sweep-clerk-com-202608062258.json", because: "449 entities for $0.29 — the cheapest run on record" },
-  { file: "sweep-brightdata-com-202608042230.json", because: "934 entities, 0% unreadable — every one has a real description" },
+  { file: "sweep-stripe-com-20260818214527.json", because: "1,102 entities — payments, mapped for $0.96" },
+  { file: "sweep-vercel-com-20260818212925.json", because: "1,107 entities and the densest edges of the set" },
+  { file: "sweep-supabase-com-20260818210215.json", because: "899 entities — 12 of its 14 known rivals surfaced" },
+  { file: "sweep-sentry-io-20260818232602.json", because: "892 entities — a perfect 10/10 against the field its owners know" },
+  { file: "sweep-neon-tech-20260818225808.json", because: "741 entities, and the docs' own integrations drawn as edges" },
+  { file: "sweep-brightdata-com-20260818131026.json", because: "882 entities — 19 of 20 known players, ranked by prominence" },
 ]
 
 /**

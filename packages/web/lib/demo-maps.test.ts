@@ -30,12 +30,12 @@ const MAPS = path.join(REPO, "demo", "maps")
  *  what the directory should contain proves only that reading it twice gives
  *  the same answer. */
 const EXPECTED = [
-  "brightdata-com-202608042230",
-  "clerk-com-202608062258",
-  "cursor-com-202608070032",
-  "stripe-com-202608070005",
-  "supabase-com-202608070017",
-  "vercel-com-202608062351",
+  "brightdata-com-20260818131026",
+  "neon-tech-20260818225808",
+  "sentry-io-20260818232602",
+  "stripe-com-20260818214527",
+  "supabase-com-20260818210215",
+  "vercel-com-20260818212925",
 ] as const
 
 /** Every variable these tests touch, restored afterwards. `SUPABASE_*` is in
@@ -163,10 +163,10 @@ describe("the gallery, in demo mode", () => {
     const runs = await listStoredRuns()
     const ended = runs.map((r) => r.endedAt ?? 0)
     expect(ended).toEqual([...ended].sort((a, b) => b - a))
-    // 2026-08-04 through 2026-08-07, well before this test could run.
+    // 2026-08-18 through 2026-08-19 — the rebuild's window, before this test could run.
     for (const [i, at] of ended.entries()) {
-      expect(at, runs[i]!.id).toBeLessThan(Date.parse("2026-08-08T00:00:00Z"))
-      expect(at, runs[i]!.id).toBeGreaterThan(Date.parse("2026-08-04T00:00:00Z"))
+      expect(at, runs[i]!.id).toBeLessThan(Date.parse("2026-08-20T00:00:00Z"))
+      expect(at, runs[i]!.id).toBeGreaterThan(Date.parse("2026-08-18T00:00:00Z"))
     }
   })
 

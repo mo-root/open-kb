@@ -77,18 +77,18 @@ vi.mock("@/lib/runs", async (importOriginal) => {
  *  lib/demo-maps.test.ts, which owns the directory's contents; here they are
  *  the six cards this page has to put on screen. */
 const MAPS = [
-  "brightdata-com-202608042230",
-  "clerk-com-202608062258",
-  "cursor-com-202608070032",
-  "stripe-com-202608070005",
-  "supabase-com-202608070017",
-  "vercel-com-202608062351",
+  "brightdata-com-20260818131026",
+  "neon-tech-20260818225808",
+  "sentry-io-20260818232602",
+  "stripe-com-20260818214527",
+  "supabase-com-20260818210215",
+  "vercel-com-20260818212925",
 ] as const
 
 const ANCHORS = [
   "brightdata.com",
-  "clerk.com",
-  "cursor.com",
+  "neon.tech",
+  "sentry.io",
   "stripe.com",
   "supabase.com",
   "vercel.com",
@@ -104,16 +104,10 @@ const ANCHORS = [
  * regenerated `demo/maps/` is supposed to fail here and be looked at.
  */
 const LEDGER = {
-  entities: "8,569",
-  // 14,451 until the reader learned to withdraw a name a stored map had given
-  // to a stranger. Four of the six maps carry such a row, and the 2,826 links
-  // that go with them were bought by a page naming the anchor and booked
-  // against someone else: vercel -2,203, supabase -382, stripe -223, clerk -18.
-  // The entity count does not move — every one of those rows is still here,
-  // under its own host.
-  edges: "11,625",
-  usd: "$8.4022",
-  clock: "72m 43s",
+  entities: "6,940",
+  edges: "21,027",
+  usd: "$5.9158",
+  clock: "103m 59s",
 }
 
 /** Three per-card numbers, as the card SPELLS them — thousands separators and
@@ -137,14 +131,14 @@ const LEDGER = {
  *  opposite of what the run concluded. 20.1% of every company-like row in the
  *  stored corpus is such a row, and 38.5% on figma.com, so it cannot be
  *  rounded away. See `KbSummary.companies`. */
-const STRIPE_ENTITIES = "2,522"
+const STRIPE_ENTITIES = "1,427"
 /** One lower than the 1,008 this pinned before: `exalate.com` was filed as
  *  "Stripe", `product`, `shaper`, and a row wearing a name the run never
  *  settled is not a company in this market. It is still on the map. */
-const STRIPE_COMPANIES = "1,007"
+const STRIPE_COMPANIES = "769"
 /** 6,283 before. 2,203 of vercel's links were minted by seven strangers
  *  wearing the name "Vercel" — `aws.amazon.com` alone held 331 of them. */
-const VERCEL_LINKS = "4,080"
+const DENSEST_LINKS = "4,337" // sentry.io, the densest of the set
 
 const KEYS = [
   "OPENKB_DEMO",
@@ -282,11 +276,11 @@ describe("with OPENKB_DEMO on — the maps are the page", () => {
     const html = await home()
     const at = (id: string) => html.indexOf(`href="/kb/${id}"`)
 
-    // stripe (2,522 on the map) first, clerk (445) last. Newest-first — the
-    // gallery's default — would have opened on cursor.com.
-    expect(at("stripe-com-202608070005")).toBeGreaterThan(-1)
-    expect(at("stripe-com-202608070005")).toBeLessThan(at("vercel-com-202608062351"))
-    expect(at("clerk-com-202608062258")).toBeGreaterThan(at("cursor-com-202608070032"))
+    // stripe (1,427 on the map) first, neon (941) last. Newest-first — the
+    // gallery's default — would have opened on whichever ran latest.
+    expect(at("stripe-com-20260818214527")).toBeGreaterThan(-1)
+    expect(at("stripe-com-20260818214527")).toBeLessThan(at("vercel-com-20260818212925"))
+    expect(at("neon-tech-20260818225808")).toBeGreaterThan(at("supabase-com-20260818210215"))
   })
 
   it("gives each card what makes it worth opening: a headline, its markets, its evidence", async () => {
@@ -298,10 +292,10 @@ describe("with OPENKB_DEMO on — the maps are the page", () => {
     expect(html).toContain(`${STRIPE_COMPANIES}</span>`)
     expect(html).toContain("companies in this market")
     expect(html).toContain(`${STRIPE_ENTITIES}</span> entities`)
-    expect(html).toContain(`${VERCEL_LINKS}</span> links`)
+    expect(html).toContain(`${DENSEST_LINKS}</span> links`)
     // The markets provenance drew, in the decomposition's own spelling.
-    expect(html).toContain("online payment acceptance")
-    expect(html).toContain("Proxy servers")
+    expect(html).toContain("Online payment processing")
+    expect(html).toContain("Proxy infrastructure")
     // …and never the remainder bucket dressed as one of them.
     expect(html).not.toContain(">unattributed<")
   })
