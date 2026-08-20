@@ -118,6 +118,11 @@ const out = await withSpendCap(
     // has no place on the map — the same A/B shape again. Unset is the
     // unchanged default: a first pass's refusal stands.
     dropConfirm: process.env.OPENKB_DROP_CONFIRM === "1" ? true : undefined,
+    // `OPENKB_LISTICLE_HARVEST=1` asks a model, once, to pull the vendor
+    // names a roundup-shaped result already named in its own title or
+    // description but this run never searched for — the same A/B shape
+    // again. Unset is the unchanged default: those names go unread.
+    listicleHarvest: process.env.OPENKB_LISTICLE_HARVEST === "1" ? true : undefined,
     spans,
     creds: {
       token: process.env.BRIGHTDATA_API_TOKEN!,

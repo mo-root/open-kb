@@ -217,7 +217,17 @@ export const SERP: Record<string, SearchHit[]> = {
  * UI rail: `plan` issues both the catalog and the assess calls, and `write`
  * issues none at all. These are model calls, not stages.
  */
-export type CallPhase = "understand" | "catalog" | "assess" | "classify" | "link" | "orphan" | "discovery" | "triage" | "drop-confirm"
+export type CallPhase =
+  | "understand"
+  | "catalog"
+  | "assess"
+  | "classify"
+  | "link"
+  | "orphan"
+  | "discovery"
+  | "triage"
+  | "drop-confirm"
+  | "listicle"
 
 const PHASE_BY_KEY: Array<[CallPhase, string]> = [
   ["understand", "capabilities"],
@@ -235,6 +245,9 @@ const PHASE_BY_KEY: Array<[CallPhase, string]> = [
   // hosts, from stored evidence alone. Its schema's distinctive key is
   // `placements` — deliberately not `verdicts`, which triage already owns.
   ["drop-confirm", "placements"],
+  // Listicle harvest: vendor names pulled out of a roundup-shaped row's own
+  // title/description. Its schema's distinctive key is `vendors`.
+  ["listicle", "vendors"],
 ]
 
 function phaseOf(schema: unknown): CallPhase {
@@ -256,6 +269,10 @@ const hostsOfTriage = (prompt: string): string[] =>
  *  drop-confirm prompt's per-host block header. */
 const hostsOfDropConfirm = (prompt: string): string[] =>
   [...prompt.matchAll(/^(\S+)\n {2}what:/gm)].map((m) => m[1]!)
+/** `"a title" — a description` — the listicle-harvest prompt's per-row line,
+ *  read back as the titles it carried. */
+const titlesOfListicle = (prompt: string): string[] =>
+  [...prompt.matchAll(/^"(.*)" — /gm)].map((m) => m[1]!)
 
 export interface LinkPair {
   a: string
@@ -301,6 +318,11 @@ export interface Script {
    *  every host unrelated, so a test that flips the flag without a script
    *  changes nothing. */
   dropConfirm?: (hosts: string[], prompt: string) => unknown
+  /** The listicle-harvest ask, handed the titles of the roundup-shaped rows
+   *  its prompt carried. Only reached when the run sets `listicleHarvest:
+   *  true` AND at least one row matched `ROUNDUP_SHAPE`; the default finds no
+   *  vendor, so a test that flips the flag without a script changes nothing. */
+  listicle?: (titles: string[], prompt: string) => unknown
 }
 
 /** Every model call the run made, in order. */
@@ -425,6 +447,7 @@ export function defaultScript(): Required<Script> {
         spans: [],
       })),
     }),
+    listicle: () => ({ vendors: [] }),
     discovery: (turn) =>
       turn === 0
         ? {
@@ -645,7 +668,9 @@ export async function runFixture(opts: FixtureOptions = {}): Promise<Harness> {
                     ? script.triage(hostsOfTriage(text), text)
                     : phase === "drop-confirm"
                       ? script.dropConfirm(hostsOfDropConfirm(text), text)
-                      : script.link(pairsOf(text), text)
+                      : phase === "listicle"
+                        ? script.listicle(titlesOfListicle(text), text)
+                        : script.link(pairsOf(text), text)
       return {
         content: [{ type: "text" as const, text: JSON.stringify(object) }],
         finishReason: { unified: "stop" as const, raw: undefined },

@@ -400,6 +400,25 @@ export const CALL_TIMEOUT_MS = Math.max(
   Number(process.env.OPENKB_CALL_TIMEOUT_MS ?? 120_000) || 120_000,
 );
 
+/** Roundup-shaped: the row's own title or description reads like a page that
+ *  names several vendors rather than one. Cheap and deliberately loose — a
+ *  false match costs nothing but a wasted line in one batched model call, a
+ *  false miss costs a vendor this run never asks about at all. */
+export const ROUNDUP_SHAPE = /alternatives|top \d+|best|vs\.?|comparison/i;
+
+/** How many roundup-shaped rows the listicle-harvest call may read at once.
+ *  One model call reads all of them, so this bounds that call's input rather
+ *  than batching it — TRIAGE_BATCH's precedent, sixty rows of title and
+ *  description is comfortably inside one call's input floor. */
+export const LISTICLE_MAX_ROWS = 60;
+
+/** How many fresh queries the listicle-harvest stage may fire in total. A
+ *  small hand per name (`rivalHand`'s own two-thirds/one-third split) times
+ *  a handful of names is already single digits on a normal run; this is the
+ *  backstop for the run where the extraction call names an unreasonable
+ *  number of vendors. */
+export const LISTICLE_MAX_QUERIES = 20;
+
 /**
  * How an entity stands to the anchor.
  *
@@ -982,6 +1001,28 @@ export interface SweepOptions {
    * left it. Capped at DROP_CONFIRM_CAP hosts, batched like the link phase.
    */
   dropConfirm?: boolean;
+  /**
+   * After the search phase, scan every hit's title and description for a
+   * roundup-shaped row — "10 best X", "X alternatives", "X vs Y", a
+   * comparison post — and ask a model, once, to pull out the vendor names
+   * those rows mention that this run never searched for. Each fresh name is
+   * dealt a small hand through `rivalHand` (`@open-kb/core/families`) — the
+   * SAME machinery a name the anchor's own sitemap publishes already gets —
+   * and those queries fire through the run's ordinary search path.
+   *
+   * A FLAG, NOT A MIGRATION, on the `triage`/`secondLook`/`dropConfirm`
+   * precedent: the measured case is a real cursor.com run where Windsurf,
+   * Zed, Tabnine, Codeium, Aider and Continue had ZERO direct SERP hits —
+   * every one of them existed only inside another hit's title or
+   * description, unextracted, because the search phase follows `hit.url`
+   * and reads no further. The case has to survive an A/B on the same anchor
+   * before this defaults on.
+   *
+   * ADDITIVE ONLY: this stage only ever ADDS queries on top of what the plan
+   * already bought, and every failure fails open — a call that throws or
+   * finds nothing leaves the map exactly as the search phase built it.
+   */
+  listicleHarvest?: boolean;
   /** Bounds the model's per-product debranded ask (clamped to 2-3 regardless of
    *  a larger value here; the floor of 2 is not configurable). Templates cover
    *  plain and branded and are not affected — this only trims how many
@@ -1302,12 +1343,12 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    * zero tokens rather than as a non-finite price the stream flags as a failure.
    */
   async function call<T extends z.ZodType>(
-    // `"triage"`, `"second-look"` and `"drop-confirm"` ride beside the rail's
-    // five: billing/span labels, not stages — their narration goes out as
-    // `say("rank", …)` so the rail never sees a name it does not know, while
-    // the bill's byAgent line and the span log still say which calls were
-    // whose.
-    agent: Phase | "triage" | "second-look" | "drop-confirm",
+    // `"triage"`, `"second-look"`, `"drop-confirm"` and `"listicle"` ride
+    // beside the rail's five: billing/span labels, not stages — their
+    // narration goes out as `say("sweep"/"rank", …)` so the rail never sees a
+    // name it does not know, while the bill's byAgent line and the span log
+    // still say which calls were whose.
+    agent: Phase | "triage" | "second-look" | "drop-confirm" | "listicle",
     label: string,
     schema: T,
     prompt: string,
@@ -1488,11 +1529,15 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       if (empty || timedOut) {
         say(
           // Triage, the second look and drop-confirm narrate on the rank
-          // rail — the rail's five names are a closed set, and all three are
-          // billing labels, not stages.
+          // rail; listicle harvest narrates on the sweep rail (it runs
+          // before the host fold, still inside the search phase) — the
+          // rail's five names are a closed set, and all four are billing
+          // labels, not stages.
           agent === "triage" || agent === "second-look" || agent === "drop-confirm"
             ? "rank"
-            : agent,
+            : agent === "listicle"
+              ? "sweep"
+              : agent,
           timedOut
             ? `  ${label}: no answer in ${Math.round(CALL_TIMEOUT_MS / 1000)}s, retrying once`
             : `  ${label}: the model returned nothing, retrying with more room`,
@@ -3308,6 +3353,95 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   };
 
   await Promise.all([...Array.from({ length: CONC }, worker), planner()]);
+
+  // ── 3¼. listicle harvest: vendors a roundup named but this run never asked
+  // about ──────────────────────────────────────────────────────────────────
+  //
+  // See `SweepOptions.listicleHarvest` for the contract. Off unless asked for,
+  // additive only, and every failure fails open — a call that throws, or a
+  // scan that finds nothing worth asking about, leaves the map exactly as the
+  // search phase already built it. Run here, before the host fold below, so
+  // whatever it buys folds and judges exactly like everything else the search
+  // phase found — no second path through the pipeline for what it surfaces.
+  const LISTICLE_HARVEST = opts.listicleHarvest === true;
+  let listicleRowsScanned = 0;
+  let listicleVendorsFound = 0;
+  let listicleQueriesFired = 0;
+  if (LISTICLE_HARVEST) {
+    const roundupRows = hits
+      .filter((h) => ROUNDUP_SHAPE.test(h.title) || ROUNDUP_SHAPE.test(h.description ?? ""))
+      .slice(0, LISTICLE_MAX_ROWS);
+    listicleRowsScanned = roundupRows.length;
+    if (roundupRows.length > 0) {
+      say(
+        "sweep",
+        `listicle harvest: ${roundupRows.length} roundup-shaped rows may carry vendor names this run never searched for`,
+      );
+      try {
+        const rows = roundupRows
+          .map((h) => `"${h.title}" — ${(h.description ?? "").slice(0, 200)}`)
+          .join("\n");
+        const out = await call(
+          "listicle",
+          `listicle harvest: ${roundupRows.length} rows`,
+          z.object({
+            vendors: z
+              .array(z.string())
+              .describe("distinct vendor/company names the rows mention, each written once"),
+          }),
+          prompt("listicle", { anchor, rows }),
+          { think: "none", maxOutputTokens: 1_500 },
+        );
+        // A name already IN this run's own hand buys nothing: `hostsSeen`
+        // holds every host the search phase has found so far, and a vendor
+        // whose normalized label already shows up inside one of those hosts
+        // already has a query running for it somewhere in this run.
+        const knownLabel = (name: string): boolean => {
+          const norm = name.toLowerCase().replace(/[^a-z0-9]/g, "");
+          if (!norm) return true;
+          for (const host of hostsSeen)
+            if (host.toLowerCase().replace(/[^a-z0-9]/g, "").includes(norm)) return true;
+          return false;
+        };
+        const fresh = [...new Set(out.vendors.map((v) => v.trim()).filter(Boolean))].filter(
+          (v) => !knownLabel(v) && !banned(v, "rival", anchorBanName, banCoinages),
+        );
+        listicleVendorsFound = fresh.length;
+        if (fresh.length > 0) {
+          // The SAME machinery a name the anchor's own sitemap publishes
+          // already gets — see `rivalHand` — not a second query-shape
+          // generator for a second kind of third-party name.
+          const harvested: SweptQuery[] = rivalHand(fresh, LISTICLE_MAX_QUERIES).map((fq) => ({
+            q: fq.q,
+            intent: fq.q.includes(" vs ") ? "evaluation" : "switching",
+            platform: "web",
+            why: fq.why,
+            market: "",
+            family: fq.family,
+            product: undefined,
+            term: fq.term,
+          }));
+          const room =
+            QUERY_CEILING === null ? harvested.length : Math.max(0, QUERY_CEILING - asked.length);
+          const toFire = harvested.slice(0, room);
+          listicleQueriesFired = toFire.length;
+          if (toFire.length > 0) {
+            asked.push(...toFire);
+            await Promise.all(toFire.map((q) => runOne(q)));
+          }
+          say(
+            "sweep",
+            `listicle harvest: ${fresh.length} unsurfaced vendor${fresh.length === 1 ? "" : "s"} named ` +
+              `(${fresh.join(", ")}), ${toFire.length} fresh quer${toFire.length === 1 ? "y" : "ies"} fired`,
+          );
+        } else {
+          say("sweep", "listicle harvest: no vendor named in those rows was new to this run");
+        }
+      } catch (e) {
+        say("sweep", `listicle harvest call failed (${(e as Error).message}); no vendors added`);
+      }
+    }
+  }
 
   /**
    * One entry per COMPANY, not per hostname.
@@ -5193,6 +5327,17 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           asked: dropConfirmAsked,
           rescued: dropConfirmRescued,
           confirmed: dropConfirmConfirmed,
+        }
+      : null,
+    /** Null when the flag was off — "not run" must not read as "found
+     *  nothing". When on: how many roundup-shaped rows were scanned, how
+     *  many unsurfaced vendors the call named, and how many fresh queries
+     *  those vendors were dealt. */
+    listicleHarvest: LISTICLE_HARVEST
+      ? {
+          rowsScanned: listicleRowsScanned,
+          vendorsFound: listicleVendorsFound,
+          queriesFired: listicleQueriesFired,
         }
       : null,
     recall,
