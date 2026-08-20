@@ -1283,7 +1283,23 @@ export function makeHarvestClassify(deps: HarvestClassifyDeps): HarvestClassify 
       buyer: buyer ? `${buyer.name}${buyer.what ? ` — ${buyer.what}` : ""}` : "(not recorded on the map yet)",
       host: h.host,
       seenIn: String(h.seenIn),
-      intents: h.intents.join(",") || "harvest",
+      // The doctrine's {{foundBy}} slot — "how this run found it". The sweep
+      // pre-renders the surfacing queries into it; a harvest candidate almost
+      // never carries that road (harvestTool builds intents: [] and no foundBy
+      // — the investigator NAMED the host, no query join exists at that seam).
+      // This bag kept saying `intents` after 9c33d76 renamed the slot in
+      // classify.md and packages/sweep together: render() throws on the
+      // missing slot AND the unused var, judgeHosts absorbs a classify throw
+      // as kind "unknown" — so a harvest spent its whole allowance to land an
+      // all-unknown roster, silently. The fallbacks stay honest: intents say
+      // how the searches were framed, and neither line quotes query text that
+      // was never bought. Pinned by tests/harvest-classify-prompt.test.ts
+      // against the composed file on disk.
+      foundBy:
+        h.foundBy ??
+        (h.intents.length
+          ? `  surfaced by ${h.intents.join(", ")} searches this run (query text not recorded)`
+          : "  named in a harvest call by this run's investigator (query text not recorded)"),
       page: pageText,
     })
     try {

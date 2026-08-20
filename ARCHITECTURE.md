@@ -106,7 +106,9 @@ Then the hinge: `banned(q, family, anchorName, coinages)` drops any non-branded
 query naming the anchor or one of its coined words — **before it is bought**.
 
 **sweep** fires the queries through a continuous worker pool, twenty wide by
-default, three SERP pages each.
+default. The library default is three SERP pages per query; the CLI overrides
+it to four (`OPENKB_PAGES`, default `4`), and the stored runs that record
+`pagesPerQuery` say `4` — except one early run at `3`.
 
 **assess** is the widening loop, and it runs *concurrent with* the workers so
 assessment overlaps searching instead of interrupting it. It reads a per-family,
@@ -114,7 +116,9 @@ per-product yield table and either releases held templates, writes new queries,
 or seals the run. Four independent rules can stop it — the model says enough; it
 wants more but proposes none; everything proposed was already asked or banned;
 the round that landed added almost nothing — and `MAX_WAVES` bounds how often
-the planner is consulted at all.
+the planner is consulted at all. The workers hold stops of their own besides
+these: the host ceiling and the clock seal the search from the worker side,
+whatever the planner thinks.
 
 **rank** judges every host from its own front page. Subdomains fold first. A
 host that cannot be read settles by arithmetic for `$0`, keeping a stable

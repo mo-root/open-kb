@@ -11,7 +11,9 @@ export interface SearchHit {
    * and dropped: a map built without it ranks a market's leader level with a
    * reseller nobody has heard of, because every other field says only what a
    * host IS. Optional — a port that cannot say leaves it unset and callers
-   * fall back to how many queries surfaced the host.
+   * fall back to how many queries surfaced the host. Ports construct it from
+   * page offset + within-page position rather than trusting a provider field
+   * that claims to be global — Bright Data's global_rank restarts every page.
    */
   rank?: number
 }

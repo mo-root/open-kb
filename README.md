@@ -63,7 +63,7 @@ edit.
 |---|---|---|
 | **understand** | what the company sells, and which products share a market | once per run |
 | **catalog** | a product's de-branded queries — the job, never the name | once per product |
-| **assess** | widen or stop, between rounds | up to four times |
+| **assess** | widen or stop, racing the search | up to eight times |
 | **classify** | what a host is, with its page in hand | once per host |
 | **link** | how two entities relate | 40 pairs a call |
 
@@ -79,6 +79,9 @@ flowchart TD
     K --> L["link"] --> M["the map"]
 ```
 
+<sub>One liberty in the drawing: assess is not a gate the workers wait at — it
+races the pool, and widening lands mid-flight.</sub>
+
 ## What the agents cannot do
 
 Agentic where the answer is a judgement, code where the answer is a guarantee:
@@ -90,7 +93,7 @@ Agentic where the answer is a judgement, code where the answer is a guarantee:
 | `competitor` and `substitute` need that host's own readable page — a listicle nominates, it never convicts | [`core/src/verdict.ts`](./packages/core/src/verdict.ts) |
 | A claim that loses its evidence keeps its place and wears the refusal | same path — downgrade, never delete |
 | An edge to a node nobody found gets dropped | the sweep refuses dangling edges |
-| Every paid call lands on the run's live meter, under a hard cap | [`core/src/ledger.ts`](./packages/core/src/ledger.ts) |
+| Every paid call lands on the run's live meter, and a watchdog ends the run just under its cap — the swarm's ledger goes further, reserving each mission's allowance before work starts | [`core/src/spend-cap.ts`](./packages/core/src/spend-cap.ts) |
 
 A model having a bad day writes a weak query or misreads a host. It cannot
 fabricate a citation or blind a market.

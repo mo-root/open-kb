@@ -98,7 +98,40 @@ describe("brightDataSearch", () => {
     expect(seen.some((u) => u.includes("start=20"))).toBe(true)
     // One result per query, not three, the pages are folded back together.
     expect(r!.hits).toHaveLength(3)
+    // Rank is built from the page offset, so page 3's lone hit is rank 21 —
+    // the merged rows stay comparable across pages by construction.
+    expect(r!.hits.map((h) => h.rank)).toEqual([1, 11, 21])
     expect(r!.usd).toBeCloseTo(0.0045) // billed per page, because each page is a call
+  })
+
+  it("ranks a page-2 hit 11+ even when the provider re-sends global_rank 1-10", async () => {
+    // brd_json's `global_rank` restarts on every page: across 10,218 stored
+    // entities from 4-page runs the max bestRank was 16 and not one exceeded
+    // 20, which cannot happen if page-3/4 hits carried ranks 21-40. Trusting
+    // the field flattened every page onto ranks 1-10, so a page-4 also-ran
+    // stored the prominence of a page-1 leader.
+    const fetchImpl = vi.fn(async (_u: unknown, init: unknown) => {
+      const body = JSON.parse((init as RequestInit).body as string) as { url: string }
+      const start = new URL(body.url).searchParams.get("start") ?? "0"
+      return new Response(
+        JSON.stringify({
+          organic: [
+            { link: `https://s${start}a.com/`, title: "t", description: "", global_rank: 1 },
+            { link: `https://s${start}b.com/`, title: "t", description: "", global_rank: 2 },
+          ],
+        }),
+        { status: 200 },
+      )
+    })
+    const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 2 })
+    const [r] = await s.search(["x"])
+    // Page 1 ranks 1-2; page 2 (start=10) ranks 11-12, not the 1-2 it claimed.
+    expect(r!.hits.map((h) => [h.url, h.rank])).toEqual([
+      ["https://s0a.com/", 1],
+      ["https://s0b.com/", 2],
+      ["https://s10a.com/", 11],
+      ["https://s10b.com/", 12],
+    ])
   })
 
   it("keeps a query that only partly failed, rather than discarding what it got", async () => {

@@ -217,7 +217,7 @@ export const SERP: Record<string, SearchHit[]> = {
  * UI rail: `plan` issues both the catalog and the assess calls, and `write`
  * issues none at all. These are model calls, not stages.
  */
-export type CallPhase = "understand" | "catalog" | "assess" | "classify" | "link" | "orphan" | "discovery"
+export type CallPhase = "understand" | "catalog" | "assess" | "classify" | "link" | "orphan" | "discovery" | "triage"
 
 const PHASE_BY_KEY: Array<[CallPhase, string]> = [
   ["understand", "capabilities"],
@@ -228,6 +228,9 @@ const PHASE_BY_KEY: Array<[CallPhase, string]> = [
   // The orphan ask: entities with no edge, asked where they stand. Its
   // schema's distinctive key is `stands`.
   ["orphan", "stands"],
+  // The metadata triage: batched keep/skip verdicts before any fetch. Its
+  // schema's distinctive key is `verdicts`.
+  ["triage", "verdicts"],
 ]
 
 function phaseOf(schema: unknown): CallPhase {
@@ -242,6 +245,9 @@ function phaseOf(schema: unknown): CallPhase {
 const productOf = (prompt: string): string => /the product\s{2,}(.+)/.exec(prompt)?.[1]?.trim() ?? ""
 /** `grepstack.example — how this run found it, 3 queries in all:` — the classify prompt's provenance header. */
 const hostOf = (prompt: string): string => /^(\S+) — how this run found it, \d+ quer/m.exec(prompt)?.[1] ?? ""
+/** `grepstack.example — seen in 3 queries — "…" — …` — the triage prompt's batch lines. */
+const hostsOfTriage = (prompt: string): string[] =>
+  [...prompt.matchAll(/^(\S+) — seen in \d+ quer/gm)].map((m) => m[1]!)
 
 export interface LinkPair {
   a: string
@@ -277,6 +283,10 @@ export interface Script {
    *  default answers "nobody" for all of them, so the map every existing test
    *  pins keeps exactly the edges it had. */
   orphan?: (prompt: string) => unknown
+  /** The metadata triage, handed the hosts its prompt asked about. Only
+   *  reached when the run sets `triage: true`; the default keeps every host,
+   *  so a test that flips the flag without a script changes nothing. */
+  triage?: (hosts: string[], prompt: string) => unknown
 }
 
 /** Every model call the run made, in order. */
@@ -390,6 +400,7 @@ export function defaultScript(): Required<Script> {
           },
     assess: () => ({ enough: true, missing: "", draw: [], queries: [] }),
     orphan: () => ({ stands: [] }),
+    triage: (hosts) => ({ verdicts: hosts.map((h) => ({ host: h, keep: true, why: "kept" })) }),
     discovery: (turn) =>
       turn === 0
         ? {
@@ -606,7 +617,9 @@ export async function runFixture(opts: FixtureOptions = {}): Promise<Harness> {
                 ? script.classify(subject, text)
                 : phase === "orphan"
                   ? script.orphan(text)
-                  : script.link(pairsOf(text), text)
+                  : phase === "triage"
+                    ? script.triage(hostsOfTriage(text), text)
+                    : script.link(pairsOf(text), text)
       return {
         content: [{ type: "text" as const, text: JSON.stringify(object) }],
         finishReason: { unified: "stop" as const, raw: undefined },

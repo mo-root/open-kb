@@ -162,6 +162,79 @@ export interface JudgeDeps {
  * for $0 — and a model call only on the residue, one host at a time, so the
  * model never gets within-prompt contrast to lean on.
  */
+/**
+ * The anchor's own brand, as a string two spellings of it both reduce to.
+ *
+ * Only ever compared against a name the model wrote, so it has to survive the
+ * ways a brand is written down: "Figma", "figma", "FIGMA". Punctuation goes
+ * for the same reason — "e-gain" and "eGain" are one identity.
+ */
+const identityKey = (text: string) => text.toLowerCase().replace(/[^a-z0-9]/g, "")
+
+/**
+ * True when a judged name's home is a different registrable domain — the
+ * brand spelled in a subdomain of someone else's site ("SendGrid" on
+ * sendgrid.kke.co.jp). Binding it would drag every mention of the brand
+ * onto a reseller's door while the brand's own domain never enters the
+ * map. Shared by the page path and the SERP-text path: a wrong door is a
+ * wrong door whichever text the model read.
+ *
+ * EXPORTED as the one implementation of this withdrawal, because a second
+ * judgement path (the sweep's second look) once re-admitted exactly the
+ * verdicts these guards withdraw — a name rule restated is a name rule that
+ * can drift, so any path that accepts a model-written name asks this one.
+ */
+export function wrongDoorName(name: string, host: string): boolean {
+  const nameKey = identityKey(name)
+  const regLabel = identityKey(registrableHost(host).split(".")[0] ?? "")
+  const hostKey = identityKey(host)
+  return (
+    nameKey.length >= 3 &&
+    !regLabel.includes(nameKey) &&
+    !nameKey.includes(regLabel) &&
+    hostKey.includes(nameKey)
+  )
+}
+
+/**
+ * True when the model answered with the ANCHOR's identity for a host that is
+ * not the anchor — the verdict judgeHosts withdraws whole, because a model
+ * that returned the wrong subject was not describing this page. Same export
+ * rationale as `wrongDoorName`: one implementation, asked by every path.
+ */
+export function anchorIdentityTheft(name: string, host: string, anchor: string): boolean {
+  const anchorKey = registrableHost(anchor)
+  const anchorLabel = identityKey(anchorKey.split(".")[0] ?? "")
+  return (
+    // A one- or two-letter anchor label ("x.com") would match names that have
+    // nothing to do with it, so the rule declines to fire rather than rename
+    // real entities on a coincidence.
+    anchorLabel.length >= 3 &&
+    registrableHost(host) !== anchorKey &&
+    identityKey(name) === anchorLabel
+  )
+}
+
+/**
+ * Cap a verified-span list to the stored-receipt budget: whole spans while
+ * they fit; a first span longer than the whole budget is cut to it — a prefix
+ * of a literal substring is still a literal substring. Exported so the second
+ * look stores receipts under the same budget the judge does.
+ */
+export function capReceipts(verified: readonly string[]): string[] {
+  const receipts: string[] = []
+  let receiptChars = 0
+  for (const sp of verified) {
+    if (receiptChars + sp.length > SPAN_BUDGET) {
+      if (receipts.length === 0) receipts.push(sp.slice(0, SPAN_BUDGET))
+      break
+    }
+    receipts.push(sp)
+    receiptChars += sp.length
+  }
+  return receipts
+}
+
 export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
   const threshold = deps.aggregatorThreshold
   const entities: Judged[] = []
@@ -172,15 +245,6 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
     stats.unreadableByReason[reason] = (stats.unreadableByReason[reason] ?? 0) + 1
   }
   const anchorKey = registrableHost(deps.anchor)
-  /**
-   * The anchor's own brand, as a string two spellings of it both reduce to.
-   *
-   * Only ever compared against a name the model wrote, so it has to survive the
-   * ways a brand is written down: "Figma", "figma", "FIGMA". Punctuation goes
-   * for the same reason — "e-gain" and "eGain" are one identity.
-   */
-  const identityKey = (text: string) => text.toLowerCase().replace(/[^a-z0-9]/g, "")
-  const anchorLabel = identityKey(anchorKey.split(".")[0] ?? "")
   const queue = [...hosts]
 
   // The running mean's raw ingredients — the mean itself is stored rounded,
@@ -193,25 +257,7 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
     deps.onJudged?.(e)
   }
 
-  /**
-   * True when a judged name's home is a different registrable domain — the
-   * brand spelled in a subdomain of someone else's site ("SendGrid" on
-   * sendgrid.kke.co.jp). Binding it would drag every mention of the brand
-   * onto a reseller's door while the brand's own domain never enters the
-   * map. Shared by the page path and the SERP-text path: a wrong door is a
-   * wrong door whichever text the model read.
-   */
-  const wrongDoor = (name: string, host: string): boolean => {
-    const nameKey = identityKey(name)
-    const regLabel = identityKey(registrableHost(host).split(".")[0] ?? "")
-    const hostKey = identityKey(host)
-    return (
-      nameKey.length >= 3 &&
-      !regLabel.includes(nameKey) &&
-      !nameKey.includes(regLabel) &&
-      hostKey.includes(nameKey)
-    )
-  }
+  const wrongDoor = wrongDoorName
 
   const judgeOne = async (h: HostCandidate): Promise<void> => {
     const url = `https://${h.host}/`
@@ -415,14 +461,7 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
     //
     // The entity survives wearing the refusal, which is what an unreadable host
     // gets: the host was found, and what it is went unsettled this run.
-    if (
-      // A one- or two-letter anchor label ("x.com") would match names that have
-      // nothing to do with it, so the rule declines to fire rather than rename
-      // real entities on a coincidence.
-      anchorLabel.length >= 3 &&
-      registrableHost(h.host) !== anchorKey &&
-      identityKey(out.name ?? "") === anchorLabel
-    ) {
+    if (anchorIdentityTheft(out.name ?? "", h.host, deps.anchor)) {
       emit({
         name: h.host, domain: h.host, kind: "unknown", what: "",
         relation: "unknown", why: "",
@@ -471,19 +510,9 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
     const { spans: claimed, ...judged } = out
     const verified = claimed.filter((sp) => checkQuote(pageText, sp) === "ok")
     const descSpans = { verified: verified.length, claimed: claimed.length }
-    // Receipts: whole verified spans while they fit the budget; a first span
-    // longer than the whole budget is cut to it — a prefix of a literal
-    // substring is still a literal substring.
-    const receipts: string[] = []
-    let receiptChars = 0
-    for (const sp of verified) {
-      if (receiptChars + sp.length > SPAN_BUDGET) {
-        if (receipts.length === 0) receipts.push(sp.slice(0, SPAN_BUDGET))
-        break
-      }
-      receipts.push(sp)
-      receiptChars += sp.length
-    }
+    // Receipts: capped by the one exported implementation, so the second
+    // look's stored receipts obey the same budget.
+    const receipts = capReceipts(verified)
     // An empty what claims nothing, so there is nothing to refuse; the
     // fallback names the kind the entity actually ships with.
     const whatFor = (kind: string) =>

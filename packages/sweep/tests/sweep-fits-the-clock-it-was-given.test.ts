@@ -301,8 +301,10 @@ describe("the clock running out during LINKING ships the map, it does not lose i
       new URL("../src/sweep.ts", import.meta.url),
       "utf8",
     )
-    const loop = src.slice(src.indexOf("pairBatches.map(async (batch, n)"))
-    const firstGuard = loop.slice(0, loop.indexOf("const out = await call"))
+    // The batch body lives in `runPairBatch` since the LINK_CONC cap — the
+    // chunked pool calls it — and the guard under test is the same one.
+    const loop = src.slice(src.indexOf("const runPairBatch = async (batch"))
+    const firstGuard = loop.slice(0, loop.indexOf("out = await call"))
     expect(firstGuard).toContain("unlinked += batch.length")
     expect(firstGuard).not.toContain('throw new Error("aborted")')
   })

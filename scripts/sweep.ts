@@ -82,7 +82,11 @@ const out = await withSpendCap(
   sweep({
     domain: anchor,
     queries: TARGET,
-    pages: Number(process.env.OPENKB_PAGES ?? 4),
+    // `|| 4` like the three guards below, not `?? 4` alone: OPENKB_PAGES=abc
+    // is NaN and would reach the SERP call as a page count. Same semantics
+    // too — 0 falls back, exactly as OPENKB_MAX_HOSTS=0 means "unset", not
+    // "zero of them".
+    pages: Number(process.env.OPENKB_PAGES ?? 4) || 4,
     // The width floor: rounds before the model's "enough" is accepted. The
     // CLI defaults to 3 — one 'enough' after the opening hand ended a run at
     // 36 queries where its twin ran 87 — because the shipped terminal run is
@@ -100,6 +104,15 @@ const out = await withSpendCap(
     // the single call — the A/B this flag exists for. Anything else, including
     // unset, is the unchanged default.
     discovery: process.env.OPENKB_DISCOVERY === "agent" ? "agent" : undefined,
+    // `OPENKB_TRIAGE=1` asks a model, from search metadata alone, which hosts
+    // deserve a fetch and a judgement at all — the same A/B shape as the
+    // discovery flag. Unset is the unchanged default: every host is judged.
+    triage: process.env.OPENKB_TRIAGE === "1" ? true : undefined,
+    // `OPENKB_SECOND_LOOK=1` spends one more free fetch on each host the judge
+    // left `unknown` — a page the search itself surfaced instead of the front
+    // page — and re-asks the same classify question. The same A/B shape again.
+    // Unset is the unchanged default: the first judgement stands.
+    secondLook: process.env.OPENKB_SECOND_LOOK === "1" ? true : undefined,
     spans,
     creds: {
       token: process.env.BRIGHTDATA_API_TOKEN!,
@@ -153,7 +166,7 @@ for await (const span of spans.stream()) {
   if (ui?.ns === "results" && ui.frame.kind === "searched") searched.push(ui.frame)
 }
 
-const { writeFileSync, mkdirSync } = await import("node:fs")
+const { writeFileSync, mkdirSync, existsSync } = await import("node:fs")
 mkdirSync("runs", { recursive: true })
 
 // Stamped, because the filename used to be the domain alone and a second run of
@@ -186,13 +199,34 @@ mkdirSync("runs", { recursive: true })
 // when it ran. It takes both widths now, and the 53 stamped files already on disk
 // still parse to the instant they always did.
 //
-// Narrowed, not closed, and this is the site the other three defer to so it says
-// so here. Two writes inside one second still overwrite: `writeFileSync` with no
-// existsSync check, no error, no log. Sixty seconds of exposure became one, which
-// no sweep can hit — the shortest on record is 771s — but a time-only stamp
-// cannot do better than its resolution, and pretending otherwise is how the
-// minute version read as safe for as long as it did.
+// Narrowed, then closed at the write, and this is the site the other three defer
+// to so it says so here. Sixty seconds of exposure became one, which no sweep can
+// hit — the shortest on record is 771s — but a time-only stamp cannot do better
+// than its resolution, and pretending otherwise is how the minute version read as
+// safe for as long as it did. So both writes below now ask `freshStampedPath` for
+// a name that does not exist yet, instead of handing `writeFileSync` a taken one
+// to overwrite with no error and no log. The other three writers still carry the
+// one-second hole; this file no longer does.
 const stamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "")
+
+// The close itself. packages/web/lib/runs.ts parses the 12-or-14-digit tail of
+// these filenames back into `endedAt`, so a taken name must not grow a `-2`
+// suffix or a wider stamp — it re-formats one whole second later, same fourteen
+// digits, until the name is free. Bounded at 60: past a minute of bumps
+// something other than timing owns these names, and the last candidate
+// overwrites exactly as every write here did before the loop existed.
+const freshStampedPath = (path: string): string => {
+  // `toISOString` above wrote the stamp in UTC, so `Z` parses it back exactly.
+  const at = Date.parse(stamp.replace(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/, "$1-$2-$3T$4:$5:$6Z"))
+  let candidate = path
+  for (let bump = 1; existsSync(candidate) && bump <= 60; bump++) {
+    const later = new Date(at + bump * 1000).toISOString().slice(0, 19).replace(/[-:T]/g, "")
+    // Anchored to the tail, not `replace(stamp, …)`: the slug keeps digits
+    // (`\W+` spares them), so a first-occurrence swap could hit the domain.
+    candidate = path.replace(/\d{14}(?=\.json$)/, later)
+  }
+  return candidate
+}
 
 /**
  * THE ENDING OF A RUN THAT WAS STOPPED AT ITS CAP.
@@ -210,7 +244,8 @@ const stamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "")
  * left nothing to write takes the branch below.
  */
 if (out === null && capStop.trip) {
-  const path = `runs/stopped-${anchor.replace(/\W+/g, "-")}-${stamp}.json`
+  const stampedPath = `runs/stopped-${anchor.replace(/\W+/g, "-")}-${stamp}.json`
+  const path = freshStampedPath(stampedPath)
   writeFileSync(
     path,
     JSON.stringify(
@@ -309,7 +344,8 @@ console.log(`$${stats.usd.toFixed(4)} · ${stats.seconds.toFixed(0)}s`)
   }
 }
 
-const path = `runs/sweep-${anchor.replace(/\W+/g, "-")}-${stamp}.json`
+const stampedPath = `runs/sweep-${anchor.replace(/\W+/g, "-")}-${stamp}.json`
+const path = freshStampedPath(stampedPath)
 writeFileSync(path, JSON.stringify({ ...out, searched }, null, 2))
 console.log(`\nwrote ${path} (${searched.length} queries logged)`)
 

@@ -25,6 +25,9 @@ export {
 } from "./clock.js"
 export {
   judgeHosts,
+  wrongDoorName,
+  anchorIdentityTheft,
+  capReceipts,
   JUDGED_KINDS,
   JUDGED_RELATIONS,
   type HostCandidate,

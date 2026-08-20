@@ -44,6 +44,11 @@ import {
   answerKeyRecall,
   anchorAliasSet,
   registrableHost,
+  anchorIdentityTheft,
+  capReceipts,
+  checkQuote,
+  descriptionGrounding,
+  wrongDoorName,
   type FetchPort,
   type ModelPricing,
   type PageFacts,
@@ -71,7 +76,7 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { composePrompt, render } from "@open-kb/core";
-import { judgeHosts, type Judged } from "./rank.js";
+import { judgeHosts, type HostCandidate, type Judged } from "./rank.js";
 
 /** The walk itself: from `start`, upwards, for a directory holding
  *  `prompts/doctrine`. `null` rather than a throw, because a miss is only fatal
@@ -362,6 +367,23 @@ export const CLASSIFY_KINDS = ENTITY_KINDS.filter(
  */
 export const CLASSIFY_MAX_OUTPUT_TOKENS = 450;
 
+/** Hosts per triage call. Sixty lines of host—title—description is ~4k input
+ *  tokens, and the verdict rows come back well inside the same call's floor. */
+export const TRIAGE_BATCH = 60;
+/** A host this many distinct queries returned cannot be skipped by triage:
+ *  that many roads in is the search itself vouching for it, and a title and
+ *  description do not outrank the search. */
+export const TRIAGE_KEEP_SEENIN = 5;
+/** The verdict rows are short; this documents the answer's size the way
+ *  CLASSIFY_MAX_OUTPUT_TOKENS does, and `call()` floors the wire cap anyway. */
+export const TRIAGE_MAX_OUTPUT_TOKENS = 2_000;
+
+/** How many unplaced hosts the second look may re-read. The stored runs carry
+ *  23-260 `unknown` rows each, and every one over this cap would cost a fetch
+ *  and a classify call on a host the front page already refused once — sixty
+ *  bounds the stage to roughly what one triage pass costs. */
+export const SECOND_LOOK_CAP = 60;
+
 /** How long one model call may take before it is abandoned. Argued at
  *  `withDeadline` in `call()`; overridable for a slow model or a slow host. */
 export const CALL_TIMEOUT_MS = Math.max(
@@ -649,7 +671,9 @@ export type Entity = z.infer<typeof Entity> & {
   bestRank?: number;
 } & {
   because?: string;
-  settledBy?: "predicate" | "model";
+  /** `triage` marks a host skipped from search metadata alone — never fetched,
+   *  never judged; `because` carries the model's one-line reason. */
+  settledBy?: "predicate" | "model" | "triage";
   /** Unreadable hosts only: WHY the front page could not be read, as the
    *  sniffer's stable code (rank.ts stamps it beside the `because` sentence).
    *  Persisted with the run so a stored map can say "61 bot-walled, 40
@@ -870,6 +894,45 @@ export interface SweepOptions {
    * into the understand answer in call mode).
    */
   discovery?: "call" | "agent";
+  /**
+   * Ask a model, in batches of sixty and from search metadata alone, which
+   * hosts are worth a fetch and a judgement at all — before either is spent.
+   *
+   * A FLAG, NOT A MIGRATION, on the `discovery` precedent: the measured case
+   * for it is that 12-43% of every stored run's entities were judged and then
+   * dropped by `onMap`, so the fetch and the judgement that bought them were
+   * spent on hosts a title and description already condemned. The case has to
+   * survive an A/B on the same anchor before this defaults on.
+   *
+   * Triage may only SKIP, never place: a skipped host becomes a `noise`/`none`
+   * entity carrying `settledBy: "triage"` and the model's one-line reason, so
+   * the run still records what it declined to judge and why. Every failure
+   * fails OPEN — an unanswered batch, an unanswered host, a verdict for a host
+   * that was never asked about — all of it goes to the judge unfiltered. And a
+   * host that `TRIAGE_KEEP_SEENIN`-many distinct queries returned is exempt
+   * from skipping in code: that many roads into one host is the search itself
+   * saying the market keeps bringing it up, and a snippet does not outrank it.
+   */
+  triage?: boolean;
+  /**
+   * Spend one more free direct fetch on each host the judge left `unknown`,
+   * on a page the search itself surfaced for it (`topHit`, the first hit's
+   * URL — often a docs, pricing or comparison page deeper than the front
+   * page the judge read), and re-ask the SAME classify question against it.
+   *
+   * A FLAG, NOT A MIGRATION, on the `discovery`/`triage` precedent: the
+   * measured case for it is that the stored runs carry 23-260 `unknown` rows
+   * each — hosts the map keeps, wearing a refusal a deeper page might have
+   * answered — and the case has to survive an A/B on the same anchor before
+   * this defaults on.
+   *
+   * Rescue is the only power this stage has, and every failure fails OPEN: a
+   * fetch that cannot be read, a call that fails or times out, a verdict that
+   * still says `unknown`/`none`, or one whose quotes do not verify against
+   * the page it read — all of it changes nothing, and the first judgement
+   * stands. Capped at SECOND_LOOK_CAP hosts.
+   */
+  secondLook?: boolean;
   /** Bounds the model's per-product debranded ask (clamped to 2-3 regardless of
    *  a larger value here; the floor of 2 is not configurable). Templates cover
    *  plain and branded and are not affected — this only trims how many
@@ -1098,6 +1161,12 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     failures: number;
     usd: number;
     ms: number;
+    /** Model lines only; zero on serp/fetch lines. Kept per agent so "which
+     *  agent spends the tokens" is a fact the report states rather than
+     *  arithmetic someone re-derives from the span log after the fact. */
+    tokIn: number;
+    tokOut: number;
+    tokReasoning: number;
   }
   const byKind = new Map<string, Line>();
   const byAgent = new Map<string, Line>();
@@ -1107,6 +1176,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     usd: number,
     ms: number,
     ok: boolean,
+    tok?: { in: number; out: number; reasoning: number },
   ) => {
     for (const [m, label] of [
       [byKind, kind],
@@ -1118,11 +1188,19 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         failures: 0,
         usd: 0,
         ms: 0,
+        tokIn: 0,
+        tokOut: 0,
+        tokReasoning: 0,
       };
       cur.calls += 1;
       if (!ok) cur.failures += 1;
       cur.usd += usd;
       cur.ms += ms;
+      if (tok) {
+        cur.tokIn += tok.in;
+        cur.tokOut += tok.out;
+        cur.tokReasoning += tok.reasoning;
+      }
       m.set(label, cur);
     }
   };
@@ -1175,7 +1253,11 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    * zero tokens rather than as a non-finite price the stream flags as a failure.
    */
   async function call<T extends z.ZodType>(
-    agent: Phase,
+    // `"triage"` and `"second-look"` ride beside the rail's five: billing/span
+    // labels, not stages — their narration goes out as `say("rank", …)` so the
+    // rail never sees a name it does not know, while the bill's byAgent line
+    // and the span log still say which calls were whose.
+    agent: Phase | "triage" | "second-look",
     label: string,
     schema: T,
     prompt: string,
@@ -1310,7 +1392,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       if (reasoning) tokReasoning += reasoning;
       tokIn += inTok;
       tokOut += outTok;
-      bill("llm", agent, usdFor(inTok, outTok), Date.now() - started, true);
+      bill("llm", agent, usdFor(inTok, outTok), Date.now() - started, true, { in: inTok, out: outTok, reasoning });
       spans.emit({
         runId,
         agentId: agent,
@@ -1355,7 +1437,10 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           /aborted due to timeout/i.test(String((e as Error).message ?? "")));
       if (empty || timedOut) {
         say(
-          agent,
+          // Triage and the second look narrate on the rank rail — the rail's
+          // five names are a closed set, and both are billing labels, not
+          // stages.
+          agent === "triage" || agent === "second-look" ? "rank" : agent,
           timedOut
             ? `  ${label}: no answer in ${Math.round(CALL_TIMEOUT_MS / 1000)}s, retrying once`
             : `  ${label}: the model returned nothing, retrying with more room`,
@@ -1367,9 +1452,13 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           );
           const inTok = out.usage?.inputTokens ?? 0;
           const outTok = out.usage?.outputTokens ?? 0;
+          const reasoning =
+            (out.usage as { reasoningTokens?: number } | undefined)
+              ?.reasoningTokens ?? 0;
+          if (reasoning) tokReasoning += reasoning;
           tokIn += inTok;
           tokOut += outTok;
-          bill("llm", agent, usdFor(inTok, outTok), Date.now() - started, true);
+          bill("llm", agent, usdFor(inTok, outTok), Date.now() - started, true, { in: inTok, out: outTok, reasoning });
           spans.emit({
             runId,
             agentId: agent,
@@ -1744,6 +1833,11 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       usdFor(agentIn, agentOut),
       Date.now() - dStarted,
       true,
+      // The same tokens the two lines above put in the run totals: in agent
+      // mode this loop is the understand line's dominant spend, and a byAgent
+      // token column that omits it would disagree with stats.tokIn by exactly
+      // this amount. The discovery steps do not surface reasoning tokens.
+      { in: agentIn, out: agentOut, reasoning: 0 },
     );
     discoveryFacts.current = {
       steps: d.steps,
@@ -2493,6 +2587,13 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   let serpRequests = 0;
   let serpRetries = 0;
   const serpBlocks: Record<string, number> = {};
+  /** Queries whose search was actually bought, counted where the money moves.
+   *  `asked` is the QUEUE — seeded with the whole opening hand and grown at
+   *  plan time — and the host-ceiling seal makes workers abandon its tail, so
+   *  the two diverge on any run that stops early. Measured on one vercel run:
+   *  `asked` claimed 137, the wire saw 83. `report.queries` reads this;
+   *  `report.queued` keeps the old number under its honest name. */
+  let firedCount = 0;
   let scopedQueries = 0;
   let scopeWithheld = 0;
   let tooLongToScope = 0;
@@ -2639,6 +2740,10 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           }
         }
 
+        // One fired query, counted beside the frame that proves it: this line
+        // and the `searched` frame below are one event, so `report.queries`
+        // always equals the number of `searched` frames a browser replayed.
+        firedCount += 1;
         // The results themselves, not just the count. Everything downstream, the
         // hosts, the classifications, the map, is derived from these rows, and
         // without them a reader is asked to trust an aggregate: "580 results, 88
@@ -3255,6 +3360,131 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     };
   });
 
+  // ── 3½. triage: which hosts are worth a judgement at all ─────────────────
+  //
+  // The judge's question, asked cheaper: not "what is this host" but "could it
+  // plausibly belong on this map", answered in batches of TRIAGE_BATCH from
+  // the search engine's own title and description, before any fetch is spent.
+  // Skip is the only power this stage has, and every failure fails open — see
+  // `SweepOptions.triage` for the contract, and the guard below for the one
+  // code-side exemption.
+  const TRIAGE = opts.triage === true;
+  const triagedOut: Array<{ host: string; seenIn: number; why: string }> = [];
+  /** Batches ATTEMPTED — incremented before the call, so this reconciles with
+   *  the bill's byAgent line instead of publishing a second, smaller count
+   *  when a batch fails open. `triageFailures` is the failed subset. */
+  let triageCalls = 0;
+  let triageFailures = 0;
+  let judgeList = hostList;
+  // The link pass's clock rule, applied at the head of the funnel too: with
+  // only the write reserve left there is no judging phase for triage to
+  // shrink, so the calls it would spend buy nothing. Null DEADLINE never
+  // gates.
+  const triageAffordable = DEADLINE === null || secondsLeft() > TAIL_SECONDS;
+  if (TRIAGE && hostList.length > 0 && !triageAffordable) {
+    say(
+      "rank",
+      `triage withheld: only the write reserve is left on the clock, every host goes to the judge`,
+    );
+  }
+  if (TRIAGE && hostList.length > 0 && triageAffordable) {
+    say(
+      "rank",
+      `triage: asking whether ${hostList.length} hosts belong on this map, from search metadata alone`,
+    );
+    const verdictByHost = new Map<string, { keep: boolean; why: string }>();
+    const batches: Array<typeof hostList> = [];
+    for (let i = 0; i < hostList.length; i += TRIAGE_BATCH)
+      batches.push(hostList.slice(i, i + TRIAGE_BATCH));
+    // Six in flight, the catalog stage's width: wide enough that twenty-odd
+    // batches cost the slowest few, narrow enough that a rate-limited model
+    // answers with pacing rather than a failed wave.
+    const TRIAGE_CONC = 6;
+    for (let i = 0; i < batches.length; i += TRIAGE_CONC) {
+      await Promise.all(
+        batches.slice(i, i + TRIAGE_CONC).map(async (batch) => {
+          const lines = batch
+            .map(
+              (h) =>
+                `${h.host} — seen in ${h.seenIn} queries — "${(h.titles[0] ?? "").slice(0, 90)}" — ${h.desc.slice(0, 160)}`,
+            )
+            .join("\n");
+          try {
+            triageCalls += 1;
+            const out = await call(
+              "triage",
+              `triage ${batch.length} hosts`,
+              z.object({
+                verdicts: z
+                  .array(
+                    z.object({
+                      host: z.string().describe("the host, exactly as given"),
+                      keep: z.boolean(),
+                      why: z
+                        .string()
+                        .describe(
+                          'one line making a skip plain; "kept" is enough for a keep',
+                        ),
+                    }),
+                  )
+                  .describe("one row per host, every host answered"),
+              }),
+              prompt("triage", {
+                anchor,
+                sells: decomp.sells,
+                buyer: decomp.buyer,
+                hosts: lines,
+              }),
+              { think: "none", maxOutputTokens: TRIAGE_MAX_OUTPUT_TOKENS },
+            );
+            const askedHosts = new Set(batch.map((b) => b.host));
+            for (const v of out.verdicts) {
+              // A verdict for a host this batch never asked about is noise
+              // from the model, not a decision about the map.
+              if (askedHosts.has(v.host)) verdictByHost.set(v.host, v);
+            }
+          } catch (e) {
+            triageFailures += 1;
+            // Fail open: an unanswered batch is judged in full. The judge is
+            // the stage that must not be skippable by an outage.
+            say(
+              "rank",
+              `  a triage call failed (${(e as Error).message}); its ${batch.length} hosts go to the judge unfiltered`,
+            );
+          }
+        }),
+      );
+    }
+    judgeList = [];
+    for (const h of hostList) {
+      const v = verdictByHost.get(h.host);
+      // The exemptions are code, not prompt. A host the market kept returning
+      // is not skippable on a snippet, whatever the model thought of its
+      // title. Neither is the ANCHOR's own host: its entity exists only by
+      // being judged from its own front page, so a snippet vote against it
+      // would remove the map's subject from the map — the one hole nothing
+      // downstream can repair.
+      if (
+        v &&
+        v.keep === false &&
+        h.seenIn < TRIAGE_KEEP_SEENIN &&
+        // Folded, because hostList keys are parentOf-folded: an anchor given
+        // as docs.foo.com must still shield the foo.com row it folds into.
+        h.host !== parentOf(anchor)
+      ) {
+        triagedOut.push({ host: h.host, seenIn: h.seenIn, why: v.why });
+      } else {
+        judgeList.push(h);
+      }
+    }
+    say(
+      "rank",
+      `triage kept ${judgeList.length} of ${hostList.length} hosts; ` +
+        `${triagedOut.length} skipped unfetched, for ${triageCalls} calls` +
+        (triageFailures ? ` (${triageFailures} failed open)` : ""),
+    );
+  }
+
   // Left null unless the caller supplies a real one. Calibration
   // (`scripts/calibrate-kernel.ts`) found no separation between vendor and
   // directory front pages on the measured sample, so shipping a guessed 12
@@ -3263,13 +3493,13 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   const KERNEL_THRESHOLD = opts.aggregatorThreshold ?? null;
   say(
     "rank",
-    `judging ${hostList.length} hosts from their own front pages, predicates first` +
+    `judging ${judgeList.length} hosts from their own front pages, predicates first` +
       (KERNEL_THRESHOLD === null
         ? ", aggregator rule off"
         : `, aggregator threshold ${KERNEL_THRESHOLD}`),
   );
   if (DEADLINE !== null) {
-    const need = rankSeconds(hostList.length, undefined, RANK_CONC) + TAIL_SECONDS;
+    const need = rankSeconds(judgeList.length, undefined, RANK_CONC) + TAIL_SECONDS;
     say(
       "rank",
       `about ${Math.round(need)}s of judging and writing left to do, ${leftS()}s of clock` +
@@ -3301,7 +3531,52 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     rankedBuffer = [];
   };
 
-  const judged = await judgeHosts(hostList, {
+  /**
+   * The judge's one paid question, hoisted out of the `judgeHosts` deps so the
+   * second-look stage below can re-ask EXACTLY it — same prompt, same schema —
+   * against a deeper page. Two hand-typed copies of this schema would drift;
+   * the only thing a caller chooses is the billing label the call is booked
+   * under, so the bill's byAgent line can say which spend was whose.
+   */
+  const classifyHost =
+    (agent: "rank" | "second-look") =>
+    async (h: HostCandidate, pageText: string) => {
+      const out = await call(
+        agent,
+        `classify ${h.host}`,
+        z.object({
+          name: z.string(),
+          kind: z.enum(CLASSIFY_KINDS),
+          what: z
+            .string()
+            .describe("what it is, one line, from the page itself"),
+          relation: z.enum(RELATIONS),
+          why: z
+            .string()
+            .describe("why it belongs on this map, stated against the anchor"),
+          spans: z
+            .array(z.string())
+            .min(1)
+            .max(3)
+            .describe(
+              "1-3 short quotes copied character-for-character from the page, together backing the what",
+            ),
+        }),
+        prompt("classify", {
+          anchor,
+          sells: decomp.sells,
+          buyer: decomp.buyer,
+          host: h.host,
+          seenIn: String(h.seenIn),
+          foundBy: h.foundBy ?? "  (road not recorded)",
+          page: pageText,
+        }),
+        { think: "none", maxOutputTokens: CLASSIFY_MAX_OUTPUT_TOKENS },
+      );
+      return out;
+    };
+
+  const judged = await judgeHosts(judgeList, {
     fetcher,
     anchor,
     aggregatorThreshold: KERNEL_THRESHOLD,
@@ -3358,62 +3633,214 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       if (line) think("rank", line);
       if (rankedBuffer.length >= 25) flushRanked();
       if (judgedCount % 50 === 0)
-        say("rank", `  judged ${judgedCount}/${hostList.length}`);
+        say("rank", `  judged ${judgedCount}/${judgeList.length}`);
     },
-    classify: async (h, pageText) => {
-      const out = await call(
-        "rank",
-        `classify ${h.host}`,
-        z.object({
-          name: z.string(),
-          kind: z.enum(CLASSIFY_KINDS),
-          what: z
-            .string()
-            .describe("what it is, one line, from the page itself"),
-          relation: z.enum(RELATIONS),
-          why: z
-            .string()
-            .describe("why it belongs on this map, stated against the anchor"),
-          spans: z
-            .array(z.string())
-            .min(1)
-            .max(3)
-            .describe(
-              "1-3 short quotes copied character-for-character from the page, together backing the what",
-            ),
-        }),
-        prompt("classify", {
-          anchor,
-          sells: decomp.sells,
-          buyer: decomp.buyer,
-          host: h.host,
-          seenIn: String(h.seenIn),
-          foundBy: h.foundBy ?? "  (road not recorded)",
-          page: pageText,
-        }),
-        { think: "none", maxOutputTokens: CLASSIFY_MAX_OUTPUT_TOKENS },
-      );
-      return out;
-    },
+    classify: classifyHost("rank"),
   });
   flushRanked();
   if (signal?.aborted) throw new Error("aborted");
   entities.push(...judged.entities.map((e) => ({ ...e }) as Entity));
+  // The triage skips, recorded beside the judged: same host census, honest
+  // provenance. `noise`/`none` keeps them off the map exactly as a judged
+  // noise verdict would; `settledBy: "triage"` plus the model's sentence says
+  // this one was never fetched, so a reader can tell a $0 skip from a $ judged
+  // rejection.
+  for (const t of triagedOut) {
+    entities.push({
+      name: t.host,
+      domain: t.host,
+      kind: "noise",
+      relation: "none",
+      what: "",
+      why: t.why,
+      settledBy: "triage",
+      because: `triage: ${t.why}`,
+      seenIn: t.seenIn,
+    });
+  }
   say(
     "rank",
-    `${judged.stats.settledFree} hosts settled by predicate for $0; ${judged.stats.modelJudged} judged by the model`,
+    `${judged.stats.settledFree} hosts settled by predicate for $0; ${judged.stats.modelJudged} judged by the model` +
+      (TRIAGE ? `; ${triagedOut.length} skipped by triage unfetched` : ""),
   );
   /** Hosts the run found and never judged, because the clock ran out on the
    *  pool. Zero on every run that finished the list — which is every run
    *  without a deadline. Reported rather than absorbed: a map of 300 entities
    *  drawn from 900 hosts is a different claim from a map of 300 entities. */
-  const unjudged = hostList.length - judged.entities.length;
+  const unjudged = judgeList.length - judged.entities.length;
   if (unjudged > 0) {
     say(
       "rank",
-      `stopped ${unjudged} hosts short of the ${hostList.length} found — the clock ran out, so the run is ` +
+      `stopped ${unjudged} hosts short of the ${judgeList.length} kept for judging — the clock ran out, so the run is ` +
         `writing the ${judged.entities.length} it judged instead of losing all of them`,
     );
+  }
+
+  // ── 4½. second look: one more page for the hosts the judge left unplaced ──
+  //
+  // The judge answers from the front page, and a front page that answers
+  // nothing leaves the host on the map as `unknown` — wearing the refusal.
+  // The search itself already surfaced a better page for most of them:
+  // `topHit`, the first hit's URL out of `byHost`, often a docs, pricing or
+  // comparison page deeper than the front door the judge read. One more free
+  // direct fetch each, the SAME classify call, and only a verdict that places
+  // the host with quotes verified against the page it read may replace the
+  // first judgement — see `SweepOptions.secondLook` for the contract.
+  const SECOND_LOOK = opts.secondLook === true;
+  /** Attempts, counted before the fetch — the same convention as
+   *  `triageCalls`, so the report reconciles with the bill when a look fails
+   *  open partway through. `secondLookRescued` is the replaced subset. */
+  let secondLookAsked = 0;
+  let secondLookRescued = 0;
+  /** Looks that failed OPEN — an unreadable page or a thrown call. Counted so
+   *  the census can say so, the triage stage's own convention. */
+  let secondLookFailed = 0;
+  // The same clock rule as the paid link pass: a deadline-bound run that is
+  // down to its write reserve ships what it judged rather than spending the
+  // reserve on second chances. Null DEADLINE — every CLI run — never gates.
+  const secondLookAffordable =
+    DEADLINE === null || secondsLeft() > TAIL_SECONDS;
+  if (SECOND_LOOK && !secondLookAffordable) {
+    say(
+      "rank",
+      `second look withheld: only the write reserve is left on the clock, so the first judgements stand`,
+    );
+  }
+  if (SECOND_LOOK && secondLookAffordable) {
+    const rowOf = new Map(hostList.map((h) => [h.host, h]));
+    const unplaced = entities.filter(
+      (e) => e.settledBy === "model" && e.relation === "unknown",
+    );
+    /** Is this URL just the front door again? The judge already read the
+     *  front page; a second look at the identical page re-buys the identical
+     *  refusal. Path, query or a subdomain all make it a different page. */
+    const frontDoorAgain = (url: string, domain: string): boolean => {
+      try {
+        const u = new URL(url);
+        return (
+          u.hostname.replace(/^www\./, "") === domain &&
+          (u.pathname === "/" || u.pathname === "") &&
+          !u.search
+        );
+      } catch {
+        return true; // an unparseable URL is not worth a fetch either
+      }
+    };
+    const lookAt: Array<{ e: Entity; row: HostCandidate; url: string }> = [];
+    for (const e of unplaced) {
+      if (lookAt.length >= SECOND_LOOK_CAP) break;
+      const row = rowOf.get(e.domain);
+      if (row?.topHit && !frontDoorAgain(row.topHit, e.domain))
+        lookAt.push({ e, row, url: row.topHit });
+    }
+    if (lookAt.length > 0) {
+      say(
+        "rank",
+        `second look: ${unplaced.length} hosts left unplaced; re-reading a search-surfaced page for ${lookAt.length} of them`,
+      );
+      // Six in flight — the triage stage's width, for the same reason: wide
+      // enough that sixty hosts cost the slowest few, narrow enough that a
+      // rate-limited model answers with pacing rather than a failed wave.
+      const SECOND_LOOK_CONC = 6;
+      for (let i = 0; i < lookAt.length; i += SECOND_LOOK_CONC) {
+        await Promise.all(
+          lookAt.slice(i, i + SECOND_LOOK_CONC).map(async ({ e, row, url }) => {
+            secondLookAsked += 1;
+            try {
+              const raw = await fetcher.get(url, "direct", { signal });
+              const s = sniff(raw);
+              bill("fetch", "second-look", 0, raw.ms, s.status === "found");
+              spans.emit({
+                runId,
+                agentId: "second-look",
+                parentId: null,
+                kind: "fetch",
+                name: "fetch",
+                argsDigest: url,
+                ms: raw.ms,
+                ok: s.status === "found",
+                usd: 0,
+              });
+              if (s.status !== "found") {
+                secondLookFailed += 1;
+                return;
+              }
+              const pageText = condense(s.text, 6_000).slice(0, 4_000);
+              // The {{page}} var carries a one-line header naming the URL and
+              // saying the front page left this host unplaced — the template
+              // frames the var as "its front page, condensed", and a model
+              // told it is reading the front door again would judge the wrong
+              // claim.
+              const out = await classifyHost("second-look")(
+                row,
+                `second look at ${url} — the front page left this host unplaced; this is a page the search itself surfaced for it.\n${pageText}`,
+              );
+              // Rescue is the stage's only power: an answer that still
+              // refuses to place the host changes nothing.
+              if (out.relation === "unknown" || out.relation === "none")
+                return;
+              // THE JUDGE'S WITHDRAWALS HOLD HERE TOO. judgeHosts withdraws a
+              // verdict whole when the model answers with the anchor's own
+              // identity, or with a brand whose home is another registrable
+              // domain — and it emits exactly the relation:"unknown" rows this
+              // stage targets. A second look that skipped these guards was
+              // re-admitting the withdrawn verdicts on a second page; the
+              // guards are the judge's own exports, one implementation.
+              if (
+                anchorIdentityTheft(out.name ?? "", row.host, anchor) ||
+                wrongDoorName(out.name ?? "", row.host)
+              )
+                return;
+              // The judgeHosts path re-checks spans in code; this call went
+              // around it, so the same check happens here — quotes verified
+              // against the fetched page's own condensed text (never the
+              // header), or the rescue does not stand.
+              const verified = out.spans.filter(
+                (sp) => checkQuote(pageText, sp) === "ok",
+              );
+              if (verified.length === 0) return;
+              secondLookRescued += 1;
+              e.name = out.name || e.name;
+              e.kind = out.kind;
+              e.relation = out.relation;
+              e.what = out.what;
+              e.why = out.why;
+              // Stored receipts obey the judge's own budget, and the
+              // grounding meter is re-measured against the page this
+              // description was actually written from — a rescued row
+              // carrying the front page's meter would grade new prose
+              // against text that no longer backs it.
+              e.spans = capReceipts(verified);
+              e.descGrounded =
+                Math.round(descriptionGrounding(out.what, pageText).score * 100) / 100;
+              e.descSpans = {
+                verified: verified.length,
+                claimed: out.spans.length,
+              };
+              // The trail, appended rather than replaced: the first
+              // judgement's refusal is part of how this entity was settled.
+              e.because = [e.because, `second look at ${url}`]
+                .filter(Boolean)
+                .join("; ");
+            } catch (err) {
+              // An abort must stay an abort — the same rule as the judge
+              // pool: settling on through a cancel would hand back a run
+              // nobody is waiting for.
+              if (signal?.aborted) throw err;
+              // Fail open: a fetch or model failure leaves the first
+              // judgement standing, exactly as if this look never happened —
+              // but counted, so the closing line and the census can say so.
+              secondLookFailed += 1;
+            }
+          }),
+        );
+      }
+      say(
+        "rank",
+        `second look rescued ${secondLookRescued} of ${secondLookAsked} unplaced hosts` +
+          (secondLookFailed ? ` (${secondLookFailed} looks failed open)` : ""),
+      );
+    }
   }
 
   // ── report ────────────────────────────────────────────────────────────────
@@ -3938,6 +4365,18 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    * whole map.
    */
   const canAffordLinking = secondsLeft() >= TAIL_SECONDS;
+  /**
+   * Bounded, not unleashed — the plan phase's own precedent (`CATALOG_CONC`,
+   * 6): a bare `Promise.all` over every batch fires them all at once, and on a
+   * 1,100-entity map that is ~110 concurrent model calls into a rate limiter
+   * that does not know this is a linking stage. A 429 storm here does not kill
+   * the run — both passes below eat a failed batch and ship without its edges —
+   * but every throttled batch IS edges the map does not get, bought and paid
+   * for. Wall clock: the batches were already concurrent with each other, so
+   * this caps the burst's width rather than serializing anything — chunks of
+   * eight, not one 110-wide spike.
+   */
+  const LINK_CONC = 8;
   if (!canAffordLinking && unresolved.length && !opts.skipModelLinking) {
     say(
       "link",
@@ -3963,8 +4402,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       pairBatches.push(unresolved.slice(i, i + BATCH));
 
     let linked = 0;
-    await Promise.all(
-      pairBatches.map(async (batch, n) => {
+    const runPairBatch = async (batch: (typeof pairBatches)[number], n: number) => {
         // SKIP, DO NOT THROW. Every phase before this one throws on abort
         // because everything they own is half-finished when the clock runs out
         // — a partly-searched wave and a partly-judged host list are not a map.
@@ -4037,8 +4475,15 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         }
         linked += batch.length;
         say("link", `  ${linked}/${unresolved.length} pairs`);
-      }),
-    );
+    };
+    // LINK_CONC at a time, argued at its declaration above.
+    for (let i = 0; i < pairBatches.length; i += LINK_CONC) {
+      await Promise.all(
+        pairBatches
+          .slice(i, i + LINK_CONC)
+          .map((batch, j) => runPairBatch(batch, i + j)),
+      );
+    }
     say("link", `${edges.length} edges between entities`);
   }
 
@@ -4087,7 +4532,19 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         .slice(0, 6);
     };
     const stats = { orphans: orphans.length, asked: 0, linked: 0 };
-    if (orphans.length) {
+    // THE SAME CLOCK THE PAID PAIR PASS ANSWERS TO. The gate sits below the
+    // orphan census on purpose — counting is free, and `report.linking.orphans`
+    // should still say how many stood alone when nothing was asked — but the
+    // asking is ceil(orphans/20) model calls, and before this check a
+    // deadline-bound run that had already declined the pair pass to protect its
+    // write reserve fired every one of them anyway.
+    if (orphans.length && !canAffordLinking) {
+      say(
+        "link",
+        `${orphans.length} orphans left unasked — ${leftS()}s of clock is the write reserve, ` +
+          `so they ship standing alone rather than overrun it`,
+      );
+    } else if (orphans.length) {
       say(
         "link",
         `${orphans.length} entities have no edge to anything — asking each where it stands`,
@@ -4106,9 +4563,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       const batches: Entity[][] = [];
       for (let i = 0; i < orphans.length; i += BATCH_ORPHANS)
         batches.push(orphans.slice(i, i + BATCH_ORPHANS));
-      await Promise.all(
-        batches.map((batch, n) =>
-          (async () => {
+      const runOrphanBatch = async (batch: Entity[], n: number) => {
             if (signal?.aborted) return;
             const rows = batch
               .map((o, i) => {
@@ -4151,9 +4606,15 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
               });
               stats.linked += 1;
             }
-          })(),
-        ),
-      );
+      };
+      // LINK_CONC at a time, argued at its declaration above.
+      for (let i = 0; i < batches.length; i += LINK_CONC) {
+        await Promise.all(
+          batches
+            .slice(i, i + LINK_CONC)
+            .map((batch, j) => runOrphanBatch(batch, i + j)),
+        );
+      }
       say(
         "link",
         `${stats.linked} of ${stats.orphans} orphans found a footing; ${stats.orphans - stats.linked} honestly stand alone`,
@@ -4337,13 +4798,18 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
      *  chose. Integrations are the company's claims, not judged entities —
      *  the same standing as `rivals.leads` below. */
     discovery: discoveryFacts.current,
-    // Everything actually fired, opening hand plus every widening round —
-    // matches the sum of `families` below. `stats.queries` (unchanged,
-    // read by the run registry and the older surfaces) stays the opening
-    // count alone; `opening` here is that same number, named, so the two
-    // can no longer be mistaken for the same quantity. Measured gap on one
-    // run: 63 opening vs 123 fired.
-    queries: asked.length,
+    // Everything actually fired, counted at the wire where each search was
+    // bought — NOT `asked.length`, which is the queue: the host-ceiling seal
+    // makes workers abandon the queue's tail, and on one vercel run the queue
+    // said 137 while the wire saw 83. `stats.queries` (unchanged, read by the
+    // run registry and the older surfaces) stays the opening count alone;
+    // `opening` here is that same number, named, so the two can no longer be
+    // mistaken for the same quantity. Measured gap on one run: 63 opening vs
+    // 123 fired.
+    queries: firedCount,
+    // What was QUEUED — opening hand plus every widening round, the sum of
+    // `families` below; differs from `queries` by the tail the seal abandoned.
+    queued: asked.length,
     opening: queries.length,
     results: hits.length,
     hosts: byHost.size,
@@ -4409,6 +4875,27 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     usd,
     seconds,
     kernel: { ...judged.stats, threshold: KERNEL_THRESHOLD },
+    /** Null when the flag was off — "not run" must not read as "kept all".
+     *  When on: the census of the stage's one power, with its call count. */
+    triage: TRIAGE
+      ? {
+          hosts: hostList.length,
+          kept: judgeList.length,
+          skipped: triagedOut.length,
+          calls: triageCalls,
+          failed: triageFailures,
+        }
+      : null,
+    /** Null when the flag was off — "not run" must not read as "rescued
+     *  nothing". When on: how many unplaced hosts were given a second page,
+     *  and how many first judgements that replaced. */
+    secondLook: SECOND_LOOK
+      ? {
+          asked: secondLookAsked,
+          rescued: secondLookRescued,
+          failed: secondLookFailed,
+        }
+      : null,
     recall,
     /**
      * WHAT THE CLOCK COST THIS RUN, or null when nothing was clocking it.
@@ -4427,7 +4914,11 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
             maxQueries: QUERY_CEILING,
             clockSeconds:
               DEADLINE === null ? null : Math.round((DEADLINE - t0) / 1000),
-            fired: asked.length,
+            // The WIRE count — the same quantity report.queries now carries.
+            // This field said asked.length (the queue) while its sibling was
+            // fixed, which re-created the exact confusion the fix closed, on
+            // the runs where budget is non-null.
+            fired: firedCount,
             hostsFound: byHost.size,
             hostsJudged: judged.entities.length,
             unjudged,

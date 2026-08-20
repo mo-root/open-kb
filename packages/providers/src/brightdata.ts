@@ -311,7 +311,10 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
                 return { query, hits: [], ok: false, error: reason ?? `serp http ${res.status}`, usd: price, ms, requests: 1 }
               }
               const text = await res.text()
-              let parsed: { organic?: Array<{ link?: string; title?: string; description?: string; global_rank?: number }> }
+              // The wire also carries `global_rank`, deliberately not modeled
+              // here: it restarts per page (see the rank comment below), and a
+              // field the type does not admit is a field nobody re-trusts.
+              let parsed: { organic?: Array<{ link?: string; title?: string; description?: string }> }
               try {
                 parsed = JSON.parse(text)
               } catch {
@@ -330,15 +333,20 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
               recoverPace()
               const hits = (parsed.organic ?? [])
                 .filter((h) => typeof h.link === "string")
-                // `global_rank` is the engine's own position across pages, which
-                // is what makes page 4's rank 37 comparable with page 1's rank 3.
-                // Falling back to the within-page index plus this page's offset
-                // keeps the number meaningful when the provider omits it.
+                // brd_json's `global_rank` RESTARTS on every page. This code
+                // used to trust it as "the engine's own position across pages"
+                // — measured false: across 10,218 stored entities from 4-page
+                // runs the max bestRank was 16 and not one exceeded 20, which
+                // cannot happen if page-3/4 hits carried ranks 21-40. So the
+                // global rank is built here from what this port does know —
+                // this page's offset plus the row's position. Within a page
+                // the array order and global_rank's order are identical, so
+                // ignoring the field loses nothing.
                 .map((h, i) => ({
                   url: h.link!,
                   title: h.title ?? "",
                   description: h.description ?? "",
-                  rank: typeof h.global_rank === "number" ? h.global_rank : start + i + 1,
+                  rank: start + i + 1,
                 }))
               // A page whose every link is a relative /goto?url= redirect is
               // the SERP declining to say where its results point. It parsed,

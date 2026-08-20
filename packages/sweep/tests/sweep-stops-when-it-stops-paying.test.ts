@@ -215,6 +215,22 @@ describe("the reserve is what a widening round reaches for first", () => {
   }, 30_000)
 })
 
+describe("`report.queries` is the wire's own count", () => {
+  it("equals the `searched` frames one for one, with `queued` keeping the plan's number", async () => {
+    const h = await runFixture()
+    // The counter increments beside the frame's emit — one event — so the
+    // report and a browser replaying the stream can never disagree. The queue
+    // is a different quantity: a sealed run abandons its tail (measured live:
+    // 137 queued, 83 fired), which is why `queued` ships beside `queries`.
+    expect(h.result.report.queries).toBe(h.ui("results", "searched").length)
+    expect(h.result.report.queued).toBe(14)
+    // `families` is the ledger of what was QUEUED, so it sums to `queued` —
+    // it used to be described as summing to `queries`, which was the bug.
+    const families = h.result.report.families as Record<string, number>
+    expect(Object.values(families).reduce((a, b) => a + b, 0)).toBe(h.result.report.queued)
+  }, 30_000)
+})
+
 describe("the assess call is told how saturated the last round was", () => {
   it("carries the ratio of already-seen rows into the prompt, and says so before round one", async () => {
     // Two rounds forced: the first assess proposes a query, the second says
