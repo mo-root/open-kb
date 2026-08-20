@@ -33,6 +33,10 @@ buys, and where the market argues.
 > is search, not tokens. `pnpm bench` prints that table from the run files, so you
 > can check it rather than believe it.
 
+<img src="./assets/launch.gif" alt="The launch film: twenty known domains stream past, yourcompany.com snaps into place, its glyphs detonate into 190 de-branded queries, settle into a rotating market orbit, crystallize into a labeled knowledge graph, and plug into an agent — one domain in, knowledge base out" width="100%" />
+
+<sub>The launch film — [watch it with sound](./assets/launch.mp4)</sub>
+
 <img src="./assets/hero.gif" alt="One run on stripe.com, exploded into three planes: the raw hosts it found, the entities it kept, and the relations between them" width="100%" />
 
 ## [→ Open the demo](https://open-kb-demo.vercel.app)
