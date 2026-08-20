@@ -139,6 +139,26 @@ export default function RootLayout({
           <main id="main" className="flex-1" tabIndex={-1}>
             {children}
           </main>
+          {/* One quiet line of provenance on every route: where the code
+              lives, what the product does, who powers the sweeps. It mirrors
+              the launch film's end card, which is the one sentence this
+              project has already committed to everywhere else. */}
+          <footer className="border-t border-slate-800/70">
+            <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-1 px-4 py-4 font-mono text-[10px] uppercase tracking-wider text-slate-500 sm:px-5">
+              <a
+                href="https://github.com/mo-root/open-kb"
+                target="_blank"
+                rel="noreferrer"
+                className="transition-colors hover:text-sky-300"
+              >
+                github.com/mo-root/open-kb
+              </a>
+              <span aria-hidden>&middot;</span>
+              <span>one domain in, knowledge base out</span>
+              <span aria-hidden>&middot;</span>
+              <span>powered by Bright Data</span>
+            </div>
+          </footer>
         </CommandPaletteProvider>
       </body>
     </html>
