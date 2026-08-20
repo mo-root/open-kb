@@ -510,9 +510,35 @@ const EntityEdge = z.object({
     .describe(
       "measured = a retrieved page named both; inferred = reasoned from what each does",
     ),
+  /**
+   * The paid link pass's counterpart to classify's `relationSpan`: link.md
+   * already tells the model "'Both in web scraping' is worth nothing", but
+   * that instruction was never checked against anything — a model free to
+   * assert a mechanism is a model free to assert a generic one, and nothing
+   * downstream could tell the two apart. Optional, and only the paid pass
+   * fills it: the free naming pass above proves `why` a different way (it
+   * quotes the naming row directly, in code, before an edge is ever pushed),
+   * and every existing fixture answering the link schema without this field
+   * must keep parsing.
+   */
+  whySpan: z
+    .string()
+    .min(8)
+    .optional()
+    .describe(
+      "one quote copied character-for-character from either entity's description above, backing WHY specifically",
+    ),
 });
 
-export type EntityEdge = z.infer<typeof EntityEdge>;
+export type EntityEdge = z.infer<typeof EntityEdge> & {
+  /** Whether `whySpan` verified as a literal substring of the two entities'
+   *  own descriptions (the exact text `describe()` showed the model) — the
+   *  same `checkQuote` containment check `relationGrounded` runs for the
+   *  classify pass's `relationSpan`. Measured, never a gate: an edge with
+   *  `whyGrounded: false` still ships, the same rule `descGrounded` and
+   *  `relationGrounded` already live by. */
+  whyGrounded?: boolean;
+};
 
 const Decomposition = z.object({
   sells: z
@@ -4697,11 +4723,33 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         // its domain, not a judgement any `src` entity could carry.
         const rivals = (isAnchorHost || isRival(src!)) && isRival(entity);
         if (sells(srcKind) && !rivals) demoted += 1;
+        // GROUNDED IN THE ROW THAT ACTUALLY NAMED IT, not only the fact that
+        // one did. "a page on X names Y" proves discovery — it is true of
+        // every edge this pass writes and says nothing about HOW the two
+        // relate, so a reader has nothing to act on or correct (the same bar
+        // `why` is held to at the paid link pass, prompts/agents/link.md).
+        // The row `blob` folded this hit out of is real text the run
+        // retrieved; when it says more than the bare name, quoting it turns
+        // `why` into a one-sentence mechanism instead of a discovery receipt.
+        // Never invented: a row with nothing beyond the name keeps the
+        // discovery sentence exactly as before, prefix and all, so a reader
+        // (and `edges-need-more-than-a-mention.test.ts`, which matches on
+        // that exact prefix) still finds the fact it always found.
+        const namingRow = rows.find((r) =>
+          namesIt(`${r.title} ${r.description ?? ""}`, hit),
+        );
+        const mechanism = (
+          namingRow?.description || namingRow?.title || ""
+        ).trim();
+        const why =
+          mechanism && mechanism.toLowerCase() !== hit.toLowerCase()
+            ? `a page on ${host} names "${hit}": "${mechanism.slice(0, 200)}"`
+            : `a page on ${host} names "${hit}"`;
         edges.push({
           from: host,
           to: target,
           relation: rivals ? "competitor" : mention,
-          why: `a page on ${host} names "${hit}"`,
+          why,
           confidence: "measured",
         });
         matched += 1;
@@ -4893,7 +4941,19 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           const to = e.to.toLowerCase().replace(/^www\./, "");
           if (from === to) continue;
           if (!byDomain.has(from) || !byDomain.has(to)) continue;
-          edges.push({ ...e, from, to });
+          // `whySpan` checked against exactly the text `describe()` showed the
+          // model for this pair — the same containment check `relationSpan`
+          // gets against the classify pass's page text, applied to what this
+          // pass actually had in hand instead: no fetched page survives to
+          // link time, only the `what` each entity was already judged from.
+          edges.push({
+            ...e,
+            from,
+            to,
+            whyGrounded:
+              checkQuote(`${describe(from)}\n${describe(to)}`, e.whySpan ?? "") ===
+              "ok",
+          });
         }
         linked += batch.length;
         say("link", `  ${linked}/${unresolved.length} pairs`);

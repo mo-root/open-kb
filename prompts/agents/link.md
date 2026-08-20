@@ -24,6 +24,8 @@ For each pair, either write one edge or write nothing.
   reason. Otherwise it is `inferred`. Do not mark something measured because it feels certain.
 - `why` says HOW they relate, in a line a reader can act on or correct. "Both in web scraping" is
   worth nothing.
+- `whySpan` is one quote, copied character-for-character from either company's description above,
+  that backs `why` specifically. Leave it out rather than paraphrase or invent one.
 
 Write nothing at all for a pair that merely appeared together. Two vendors listed in the same
 roundup are not automatically rivals, a blog and a forum that both mention a topic have no relation
