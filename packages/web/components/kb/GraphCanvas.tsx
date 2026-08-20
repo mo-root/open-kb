@@ -38,6 +38,7 @@ import {
   tetherStrength,
   WARMUP_TICKS,
 } from "@/lib/graph/layout";
+import { layoutKey, loadLayout, saveLayout, importLayout, MIN_COVERAGE } from "@/lib/graph/layoutCache";
 import {
   assignClusters,
   measureClusters,
@@ -636,6 +637,10 @@ export function GraphCanvas({
   const [query, setQuery] = useState("");
   const [size, setSize] = useState({ w: 800, h: FALLBACK_H });
   const [resetSeed, setResetSeed] = useState(0); // bump → rebuild data → re-layout
+  /* Bumped when a BAKED layout arrives (public/layouts/<slug>.json), so the
+     data memo rebuilds and picks it up through the same path a remembered one
+     takes. One-shot: it only ever goes 0 → 1. */
+  const [bakedSeed, setBakedSeed] = useState(0);
 
   // Canvas needs concrete colours, not CSS-var strings. We resolve the shared
   // --type-* / --dataflow / ink tokens from computed styles on mount, but hold
@@ -894,6 +899,31 @@ export function GraphCanvas({
     const clusterOf = assignClusters(nodes, meta.adj);
     for (const n of nodes) n.cluster = clusterOf.get(n.id) ?? n.id;
 
+    /* Start where the last settle ended, when this exact map has one on
+       record. A reset (resetSeed > 0) is an explicit request for a fresh
+       layout, so it never consults memory; everyone else opens on the answer
+       and pays a short relax instead of the full settle. Applied all-or-
+       nothing at MIN_COVERAGE — a map seeded partly from memory and partly
+       from the ring would tear itself apart on the first tick. */
+    let fromCache = false;
+    if (resetSeed === 0) {
+      const remembered = loadLayout(layoutKey(slug, nodeCount, showUnplaced));
+      if (remembered) {
+        let hits = 0;
+        for (const n of nodes) if (remembered.has(n.id)) hits++;
+        if (hits >= nodes.length * MIN_COVERAGE) {
+          for (const n of nodes) {
+            const at = remembered.get(n.id);
+            if (at) {
+              n.x = at.x;
+              n.y = at.y;
+            }
+          }
+          fromCache = true;
+        }
+      }
+    }
+
     const byId = new Map(nodes.map((n) => [n.id, n]));
     const links: FLink[] = (graph?.edges ?? [])
       .filter((l) => byId.has(l.source) && byId.has(l.target))
@@ -912,10 +942,43 @@ export function GraphCanvas({
           provenance: l.provenance === true,
         };
       });
-    return { nodes, links, byId, clusterOf };
-  }, [graph, meta, slug, resetSeed, showUnplaced]);
+    return { nodes, links, byId, clusterOf, fromCache };
+    /* bakedSeed is not read — it exists to re-run this memo after a baked
+       layout lands in storage, where the loadLayout above will find it. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [graph, meta, slug, resetSeed, showUnplaced, bakedSeed]);
 
   const nodeCount = Math.max(1, data.nodes.length);
+
+  /* FIRST VISIT: nothing remembered, so ask the deployment. The demo maps
+     ship with their settled layouts baked at build time
+     (scripts/bake-layouts.ts → public/layouts/<slug>.json). A hit lands in
+     localStorage and bumps the memo; a 404 is simply a map that was never
+     baked, and the settle runs the long way exactly as before. */
+  useEffect(() => {
+    if (data.fromCache || resetSeed !== 0 || bakedSeed !== 0) return;
+    let dead = false;
+    fetch(`/layouts/${encodeURIComponent(slug)}.json`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { u1?: { n?: Record<string, [number, number]> }; u0?: { n?: Record<string, [number, number]> } } | null) => {
+        if (dead || !j) return;
+        const variant = showUnplaced ? j.u1 : j.u0;
+        if (!variant || typeof variant.n !== "object" || variant.n === null) return;
+        importLayout(layoutKey(slug, nodeCount, showUnplaced), variant.n);
+        setBakedSeed(1);
+      })
+      .catch(() => {});
+    return () => {
+      dead = true;
+    };
+  }, [data.fromCache, resetSeed, bakedSeed, slug, nodeCount, showUnplaced]);
+
+  /* The point of the layout cache: a map that opens on its remembered
+     positions needs a relax, not a settle — enough ticks for collide and the
+     lobe forces to absorb drift, a fraction of the full budget on a big map. */
+  const settleBudget = data.fromCache
+    ? Math.min(110, cooldownTicks(nodeCount))
+    : cooldownTicks(nodeCount);
 
   /* What the search box searches. Derived from the same node list the canvas
      draws, so a hidden type is not findable — a result that cannot be shown is
@@ -1926,7 +1989,7 @@ export function GraphCanvas({
              component's effect can install the force recipe, so every warmup
              tick integrated the wrong physics and crushed the map. */
           warmupTicks={WARMUP_TICKS}
-          cooldownTicks={cooldownTicks(nodeCount)}
+          cooldownTicks={settleBudget}
           d3AlphaDecay={ALPHA_DECAY}
           // Above zero so the simulation genuinely STOPS. At d3's default of 0 it
           // creeps forever below the visible threshold, holding the render loop
@@ -1983,7 +2046,7 @@ export function GraphCanvas({
              spent a lot of effort removing. */
           onEngineTick={() => {
             if (!settlingRef.current) return;
-            const total = Math.max(1, cooldownTicks(nodeCount));
+            const total = Math.max(1, settleBudget);
             const pct = Math.min(1, ++tickRef.current / total);
             const bucket = Math.floor(pct * 50);
             if (bucket !== bucketRef.current) {
@@ -2004,6 +2067,12 @@ export function GraphCanvas({
                real re-layout arms it. */
             const wasSettling = settlingRef.current;
             endSettle();
+            /* A finished settle is the one moment the layout is worth
+               remembering — a drag also stops the engine, but that is a
+               reader's hand, not an equilibrium. */
+            if (wasSettling) {
+              saveLayout(layoutKey(slug, nodeCount, showUnplaced), data.nodes);
+            }
             if (!wasSettling && !shouldFitRef.current) return;
             // An explicit reset (shouldFitRef) always frames the map; a routine
             // re-settle only does so while the camera is still ours.
