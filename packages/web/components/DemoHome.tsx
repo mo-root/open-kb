@@ -215,6 +215,28 @@ export function DemoHome({
         {ledger}
       </div>
 
+      {/* The launch film, muted and looping — the pitch in 25 seconds. Sound
+          lives one click away on /film so the landing never plays audio at a
+          visitor uninvited. */}
+      <div className="mb-6">
+        <video
+          src="/launch.mp4"
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="metadata"
+          aria-label="The launch film: one domain in, knowledge base out"
+          className="w-full rounded-lg border border-slate-800"
+        />
+        <p className="mt-1.5 text-right font-mono text-[10px] uppercase tracking-wider text-slate-500">
+          the launch film ·{" "}
+          <a href="/film" className="text-sky-400 hover:text-sky-300">
+            watch with sound →
+          </a>
+        </p>
+      </div>
+
       {maps}
 
       {aside}
