@@ -113,6 +113,11 @@ const out = await withSpendCap(
     // page — and re-asks the same classify question. The same A/B shape again.
     // Unset is the unchanged default: the first judgement stands.
     secondLook: process.env.OPENKB_SECOND_LOOK === "1" ? true : undefined,
+    // `OPENKB_DROP_CONFIRM=1` asks a model, batched and from stored evidence
+    // alone, whether a host the first pass judged `relation: "none"` really
+    // has no place on the map — the same A/B shape again. Unset is the
+    // unchanged default: a first pass's refusal stands.
+    dropConfirm: process.env.OPENKB_DROP_CONFIRM === "1" ? true : undefined,
     spans,
     creds: {
       token: process.env.BRIGHTDATA_API_TOKEN!,

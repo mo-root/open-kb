@@ -36,6 +36,7 @@ import type { NodeType } from "./nodeTypes"
 export const RELATION_BLURB: Record<string, string> = {
   competitor: "sells against the anchor for the same buyer",
   substitute: "solves the same problem a different way",
+  adjacent: "sells into the same workflow, but nobody has to choose between it and the anchor",
   dependency: "the anchor is built on top of it",
   integration: "plugs into the anchor, or the anchor into it",
   shaper: "sets the terms this market is played under",

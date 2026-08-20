@@ -5,7 +5,7 @@ doctrine: 02-relations
 
 Every edge is stated **from the anchor outward** and is exactly one of these.
 
-They come in two groups: seven say how something stands to the anchor *commercially*, three say
+They come in two groups: eight say how something stands to the anchor *commercially*, three say
 where the market is *talked about*. A map needs both. Ask only the commercial
 question and of 438 hosts on one run **144 came back unplaceable** — every publication, directory
 and forum — and all 144 dropped off the map, because a node with no relation gets no edge. They were
@@ -24,6 +24,16 @@ substitute for a tool.*
 This is the most-missed category and usually the most valuable, precisely because the comparison
 content that surfaces competitors cannot surface substitutes. If your map has no substitutes, you
 have mapped the shortlist, not the market.
+
+**adjacent** — sells into the same workflow, or the same buyer's world, but nobody picks one instead
+of the other. Test: if the buyer already has the anchor, would they still plausibly buy this too?
+*A backup vendor, a support-agent platform, a hosting company are real businesses in the anchor's
+world that are on nobody's shortlist and are nobody's substitute.*
+
+An audit of one run's competitor verdicts found 27% were this shape forced into the wrong word: a
+customer-support platform, a backup vendor, a WebRTC consultancy, each carrying `AI` or `agent` in
+its own copy and none of them selling what the anchor sells. `adjacent` is the word that was
+missing, not a reason to keep calling them competitors.
 
 **shaper** — the incumbent everyone positions against, the standard the category is defined by, or
 the infrastructure the whole market sits on. Not competing with the anchor, and not noise. Test: if

@@ -26,7 +26,7 @@ function root(): string {
   throw new Error("no prompts/")
 }
 
-const AGENTS = ["understand", "catalog", "assess", "classify", "triage"]
+const AGENTS = ["understand", "catalog", "assess", "classify", "triage", "drop-confirm"]
 
 describe("the sweep's prompts", () => {
   it.each(AGENTS)("%s composes with its doctrine", (agent) => {

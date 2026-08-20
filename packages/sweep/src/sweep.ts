@@ -384,6 +384,15 @@ export const TRIAGE_MAX_OUTPUT_TOKENS = 2_000;
  *  bounds the stage to roughly what one triage pass costs. */
 export const SECOND_LOOK_CAP = 60;
 
+/** How many model-settled `relation: "none"` hosts the drop-confirm stage may
+ *  re-ask about, on the same precedent SECOND_LOOK_CAP sets: bounds the stage
+ *  to roughly what one triage pass costs, rather than re-litigating every
+ *  refusal a large map produced. Batched at the link phase's own batch size
+ *  (`BATCH`, `SweepOptions.batchSize`) rather than a constant of its own —
+ *  that number already matches the "40 per call" this stage was measured
+ *  against, and reusing it keeps the two in sync instead of drifting apart. */
+export const DROP_CONFIRM_CAP = 60;
+
 /** How long one model call may take before it is abandoned. Argued at
  *  `withDeadline` in `call()`; overridable for a slow model or a slow host. */
 export const CALL_TIMEOUT_MS = Math.max(
@@ -404,6 +413,7 @@ export const CALL_TIMEOUT_MS = Math.max(
 export const RELATIONS = [
   "competitor",
   "substitute",
+  "adjacent",
   "dependency",
   "integration",
   "shaper",
@@ -690,6 +700,18 @@ export type Entity = z.infer<typeof Entity> & {
   descSpans?: { verified: number; claimed: number };
   /** The verified quotes — the receipts, capped at 360 chars total. */
   spans?: string[];
+  /** Model-judged entities only: one sentence, the single decisive fact that
+   *  settled `kind` and `relation` — not the `why` restated, the fact that
+   *  made the `why` true. */
+  reasoning?: string;
+  /** Model-judged entities only: `spans`'s counterpart for `relation` — one
+   *  verbatim quote backing the RELATION specifically, not the `what`. */
+  relationSpan?: string;
+  /** Whether `relationSpan` verified as a literal substring of the page it
+   *  was quoted from (the same `checkQuote` containment `spans` gets) — a
+   *  measure, never a gate: this codebase's own rule for `descGrounded` is
+   *  it is never used to reject, and `relationSpan` gets the same rule. */
+  relationGrounded?: boolean;
 };
 
 export interface SweepStats {
@@ -933,6 +955,33 @@ export interface SweepOptions {
    * stands. Capped at SECOND_LOOK_CAP hosts.
    */
   secondLook?: boolean;
+  /**
+   * Ask a model, batched and from stored evidence alone, whether a host the
+   * first pass judged `relation: "none"` really has no place on the map —
+   * before the entity ships dropped for good.
+   *
+   * A FLAG, NOT A MIGRATION, on the `triage`/`secondLook` precedent: the case
+   * for it is the same shape as theirs — a single model, one pass, one page,
+   * decided a host has nothing to do with this market, and that verdict never
+   * gets a second opinion. Unlike `secondLook`, this stage does not re-fetch:
+   * the candidate's own `what`/`why`/`roads` — everything the first pass
+   * already established from the page — is what it is asked to reconsider,
+   * because that IS the page's content, already read once and paid for.
+   *
+   * Only model-settled `none` verdicts qualify (`settledBy === "model"`) —
+   * never a predicate settlement (an unreadable host has no `what`/`why` to
+   * reconsider) and never a triage skip (that host's page was never read at
+   * all, so there is nothing here to give a second look). Sequenced AFTER
+   * `secondLook`, deliberately: a rescue there can already move a host off
+   * `none`, and asking about a host twice in the same run is two calls
+   * answering one question.
+   *
+   * FAIL OPEN, the same three ways `secondLook` does: an unanswered batch, a
+   * thrown call, or a host the model's answer never mentions all leave the
+   * original verdict standing — the entity ships exactly as the first pass
+   * left it. Capped at DROP_CONFIRM_CAP hosts, batched like the link phase.
+   */
+  dropConfirm?: boolean;
   /** Bounds the model's per-product debranded ask (clamped to 2-3 regardless of
    *  a larger value here; the floor of 2 is not configurable). Templates cover
    *  plain and branded and are not affected — this only trims how many
@@ -1253,11 +1302,12 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    * zero tokens rather than as a non-finite price the stream flags as a failure.
    */
   async function call<T extends z.ZodType>(
-    // `"triage"` and `"second-look"` ride beside the rail's five: billing/span
-    // labels, not stages — their narration goes out as `say("rank", …)` so the
-    // rail never sees a name it does not know, while the bill's byAgent line
-    // and the span log still say which calls were whose.
-    agent: Phase | "triage" | "second-look",
+    // `"triage"`, `"second-look"` and `"drop-confirm"` ride beside the rail's
+    // five: billing/span labels, not stages — their narration goes out as
+    // `say("rank", …)` so the rail never sees a name it does not know, while
+    // the bill's byAgent line and the span log still say which calls were
+    // whose.
+    agent: Phase | "triage" | "second-look" | "drop-confirm",
     label: string,
     schema: T,
     prompt: string,
@@ -1437,10 +1487,12 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           /aborted due to timeout/i.test(String((e as Error).message ?? "")));
       if (empty || timedOut) {
         say(
-          // Triage and the second look narrate on the rank rail — the rail's
-          // five names are a closed set, and both are billing labels, not
-          // stages.
-          agent === "triage" || agent === "second-look" ? "rank" : agent,
+          // Triage, the second look and drop-confirm narrate on the rank
+          // rail — the rail's five names are a closed set, and all three are
+          // billing labels, not stages.
+          agent === "triage" || agent === "second-look" || agent === "drop-confirm"
+            ? "rank"
+            : agent,
           timedOut
             ? `  ${label}: no answer in ${Math.round(CALL_TIMEOUT_MS / 1000)}s, retrying once`
             : `  ${label}: the model returned nothing, retrying with more room`,
@@ -3332,7 +3384,23 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    *  that arrived through "mailchimp alternatives" (rival family) and one that
    *  arrived through a reddit thread are different claims about the same page. */
   const qMeta = new Map(asked.map((q) => [q.q, q]));
-  const hostList = [...byHost.entries()].map(([host, hs]) => {
+  /**
+   * THE ANCHOR CANNOT COMPETE WITH ITSELF. MEASURED on a live cursor.com run:
+   * the anchor's own host reached the judge and came back `kind: company,
+   * relation: competitor` — the model arguing Cursor competes with Cursor.
+   * Excluded HERE, before triage or `judgeHosts` ever sees the row, so the
+   * fetch and the classify call are both saved rather than paid for and then
+   * filtered from the verdict.
+   *
+   * Folded the same way the triage stage's own anchor exemption is (a few
+   * dozen lines below): `hostList`'s keys are already `parentOf`-folded, so
+   * comparing against `parentOf(anchor)` keeps an anchor given as
+   * docs.foo.com excluding the foo.com row it folds into.
+   */
+  const anchorFolded = parentOf(anchor);
+  const hostList = [...byHost.entries()]
+    .filter(([host]) => host !== anchorFolded)
+    .map(([host, hs]) => {
     const qs = [...new Set(hs.map((h) => h.q))];
     const foundBy =
       qs
@@ -3458,18 +3526,18 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     judgeList = [];
     for (const h of hostList) {
       const v = verdictByHost.get(h.host);
-      // The exemptions are code, not prompt. A host the market kept returning
+      // The exemption is code, not prompt: a host the market kept returning
       // is not skippable on a snippet, whatever the model thought of its
-      // title. Neither is the ANCHOR's own host: its entity exists only by
-      // being judged from its own front page, so a snippet vote against it
-      // would remove the map's subject from the map — the one hole nothing
-      // downstream can repair.
+      // title. The anchor's own host needs no exemption of its own here any
+      // more — hostList's construction (above) already excludes it before
+      // triage or judgeHosts ever sees the row, so `h.host` can never equal
+      // `parentOf(anchor)` at this point. The comparison stays as a second,
+      // free line of defense: if that exclusion ever moved or narrowed,
+      // triage would still refuse to be the reason the anchor disappears.
       if (
         v &&
         v.keep === false &&
         h.seenIn < TRIAGE_KEEP_SEENIN &&
-        // Folded, because hostList keys are parentOf-folded: an anchor given
-        // as docs.foo.com must still shield the foo.com row it folds into.
         h.host !== parentOf(anchor)
       ) {
         triagedOut.push({ host: h.host, seenIn: h.seenIn, why: v.why });
@@ -3561,6 +3629,27 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
             .describe(
               "1-3 short quotes copied character-for-character from the page, together backing the what",
             ),
+          // Optional, not `.min(1)` like `spans` above: every existing fixture
+          // and test script across this suite answers the classify schema
+          // without these two fields, and a required field the mock model
+          // never supplies fails `generateObject`'s own zod parse before the
+          // engine sees a response — the same failure a real provider that
+          // dropped a field would cause. The doctrine (classify.md) still
+          // teaches both as answer fields; optional here is a schema-level
+          // safety net, not a weaker ask.
+          reasoning: z
+            .string()
+            .optional()
+            .describe(
+              "one sentence: the single decisive fact that settled kind and relation",
+            ),
+          relationSpan: z
+            .string()
+            .min(8)
+            .optional()
+            .describe(
+              "one quote copied character-for-character from the page, backing the RELATION specifically, not the what",
+            ),
         }),
         prompt("classify", {
           anchor,
@@ -3573,7 +3662,18 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         }),
         { think: "none", maxOutputTokens: CLASSIFY_MAX_OUTPUT_TOKENS },
       );
-      return out;
+      // `relationSpan` gets the same containment check `spans` gets inside
+      // judgeHosts (checkQuote: a literal substring of this exact page text,
+      // whitespace-squashed, case-folded) — done here, not there, because this
+      // closure is the one place that still holds `pageText` once judgeHosts'
+      // rigid `JudgeDeps.classify` return type has narrowed it away. Measured,
+      // never gating: `relationGrounded` records the fact and nothing below
+      // ever reads it to reject a verdict, the same rule `descGrounded` lives
+      // by two calls downstream of this one.
+      return {
+        ...out,
+        relationGrounded: checkQuote(pageText, out.relationSpan ?? "") === "ok",
+      };
     };
 
   const judged = await judgeHosts(judgeList, {
@@ -3817,6 +3917,15 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
                 verified: verified.length,
                 claimed: out.spans.length,
               };
+              // reasoning/relationSpan/relationGrounded are per-VERDICT, not
+              // per-entity: they describe why THIS relation holds, so a
+              // rescue that overwrites the relation must overwrite them too,
+              // or the stored reasoning goes on describing a verdict this
+              // entity no longer carries. classifyHost already computed them
+              // against this call's own page — carry what it returned.
+              e.reasoning = out.reasoning;
+              e.relationSpan = out.relationSpan;
+              e.relationGrounded = out.relationGrounded;
               // The trail, appended rather than replaced: the first
               // judgement's refusal is part of how this entity was settled.
               e.because = [e.because, `second look at ${url}`]
@@ -3920,6 +4029,171 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         const ranks = rows.map((h) => h.rank).filter((n): n is number => typeof n === "number");
         if (ranks.length) e.bestRank = Math.min(...ranks);
       }
+    }
+  }
+
+  // ── 4¾. drop-confirm: a second opinion on every host the first pass dropped ──
+  //
+  // The judge's `relation: "none"` is a real verdict — model-settled, page in
+  // hand — and also the one verdict this run never gets a second look at: it
+  // costs the entity its place on the map entirely (`onMap`, above), and
+  // nothing downstream ever revisits it. This stage asks, once more and
+  // batched, whether that verdict holds — from the SAME evidence the first
+  // pass already paid for (the entity's own `what`/`why`/`roads`), never a
+  // re-fetch: that stored summary IS the page's content, already read once.
+  // Sequenced last, after the second look, on purpose — a rescue there can
+  // already move a host off `none`, and asking about a host twice in one run
+  // is two calls answering the same question. See `SweepOptions.dropConfirm`
+  // for the contract; the shape below repeats triage's and the second look's:
+  // off unless asked for, and every failure fails open.
+  const DROP_CONFIRM = opts.dropConfirm === true;
+  let dropConfirmAsked = 0;
+  let dropConfirmRescued = 0;
+  let dropConfirmConfirmed = 0;
+  // The same clock rule as triage and the second look: a deadline-bound run
+  // down to its write reserve ships what it has rather than spending the
+  // reserve on one more opinion. Null DEADLINE — every CLI run — never gates.
+  const dropConfirmAffordable =
+    DEADLINE === null || secondsLeft() > TAIL_SECONDS;
+  if (DROP_CONFIRM && !dropConfirmAffordable) {
+    say(
+      "rank",
+      `drop-confirm withheld: only the write reserve is left on the clock, so the first refusals stand`,
+    );
+  }
+  if (DROP_CONFIRM && dropConfirmAffordable) {
+    // Model-settled only: a predicate settlement (an unreadable host) has no
+    // `what`/`why` worth reconsidering, and a triage skip never had its page
+    // read at all — see `SweepOptions.dropConfirm`.
+    const dropped = entities.filter(
+      (e) => e.settledBy === "model" && e.relation === "none",
+    );
+    const candidates = dropped.slice(0, DROP_CONFIRM_CAP);
+    if (candidates.length > 0) {
+      say(
+        "rank",
+        `drop-confirm: asking whether ${candidates.length} hosts truly have no place on this market's map at all`,
+      );
+      const byDomain = new Map(candidates.map((e) => [e.domain, e]));
+      const blockFor = (e: Entity) =>
+        `${e.domain}\n` +
+        `  what: ${e.what || "(nothing said)"}\n` +
+        `  why: ${e.why || "(nothing said)"}\n` +
+        `  roads: ${(e.roads ?? []).join("; ") || "(none recorded)"}`;
+      // The rendered per-host block is the only text this call hands the
+      // model — there is no page to re-read — so it is also the only text a
+      // returned `spans` quote can be checked against. Built FROM blockFor,
+      // not reconstructed alongside it: a separately-joined string here once
+      // omitted the "what:"/"why:"/"roads:" labels blockFor renders, so a
+      // quote that legitimately included label text the model was shown
+      // would fail a check against text it was never shown.
+      const contextOf = new Map(
+        candidates.map((e) => [e.domain, blockFor(e)]),
+      );
+      const batches: Array<typeof candidates> = [];
+      for (let i = 0; i < candidates.length; i += BATCH)
+        batches.push(candidates.slice(i, i + BATCH));
+      await Promise.all(
+        batches.map(async (batch) => {
+          dropConfirmAsked += batch.length;
+          try {
+            const out = await call(
+              "drop-confirm",
+              `drop-confirm ${batch.length} hosts`,
+              z.object({
+                placements: z
+                  .array(
+                    z.object({
+                      host: z.string().describe("the host, exactly as given"),
+                      kind: z.enum(CLASSIFY_KINDS),
+                      relation: z.enum(RELATIONS),
+                      what: z
+                        .string()
+                        .describe(
+                          "what it is, one line — empty when relation is none",
+                        ),
+                      why: z
+                        .string()
+                        .describe(
+                          "the evidence for the placement, or the one line confirming nothing fits",
+                        ),
+                      spans: z
+                        .array(z.string())
+                        .max(3)
+                        .describe(
+                          "1-3 quotes copied from this host's what/why/roads below, backing a real placement; empty when relation is none",
+                        ),
+                    }),
+                  )
+                  .describe("one row per host, every host answered"),
+              }),
+              prompt("drop-confirm", {
+                anchor,
+                sells: decomp.sells,
+                buyer: decomp.buyer,
+                hosts: batch.map(blockFor).join("\n\n"),
+              }),
+              { think: "none", maxOutputTokens: TRIAGE_MAX_OUTPUT_TOKENS },
+            );
+            const askedHosts = new Set(batch.map((e) => e.domain));
+            for (const v of out.placements) {
+              // A verdict for a host this batch never asked about is noise
+              // from the model, not a decision about the map — the same
+              // guard triage's verdict loop applies.
+              if (!askedHosts.has(v.host)) continue;
+              const e = byDomain.get(v.host);
+              if (!e) continue;
+              if (v.relation === "none") {
+                dropConfirmConfirmed += 1;
+                e.because = [e.because, `drop-confirmed: ${v.why}`]
+                  .filter(Boolean)
+                  .join("; ");
+                continue;
+              }
+              // Same discipline `spans` gets in the main classify path: a
+              // literal substring of the exact text this call handed the
+              // model, or the rescue does not stand — the second look's own
+              // rule (`if (verified.length === 0) return`), repeated here.
+              const ctx = contextOf.get(v.host) ?? "";
+              const verified = v.spans.filter(
+                (sp) => checkQuote(ctx, sp) === "ok",
+              );
+              if (verified.length === 0) continue;
+              dropConfirmRescued += 1;
+              e.kind = v.kind;
+              e.relation = v.relation;
+              e.what = v.what;
+              e.why = v.why;
+              e.spans = capReceipts(verified);
+              // The first pass's reasoning/relationSpan described the "none"
+              // verdict this rescue just overwrote — left standing, they
+              // would go on explaining a relation this entity no longer
+              // carries, which is worse than carrying nothing. This call's
+              // schema asks for no fresh relationSpan (there is no page to
+              // draw one from — see the stage's own doc comment), so the
+              // honest move is to clear rather than leave a stale one.
+              e.reasoning = undefined;
+              e.relationSpan = undefined;
+              e.relationGrounded = undefined;
+              e.because = [e.because, `drop-confirmed: ${v.why}`]
+                .filter(Boolean)
+                .join("; ");
+            }
+          } catch (err) {
+            // Fail open: an unanswered batch leaves every first verdict in it
+            // standing, exactly as if this stage never ran — but the attempt
+            // is still counted, so the closing line and the census can say so.
+            say(
+              "rank",
+              `  a drop-confirm call failed (${(err as Error).message}); its ${batch.length} hosts keep their first verdict`,
+            );
+          }
+        }),
+      );
+      say(
+        "rank",
+        `drop-confirm rescued ${dropConfirmRescued} of ${dropConfirmAsked}; ${dropConfirmConfirmed} confirmed unrelated`,
+      );
     }
   }
 
@@ -4199,10 +4473,21 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     let ambiguous = 0;
     let demoted = 0;
     for (const [host, rows] of byHost) {
-      const src = keep.find(
-        (e) => e.domain.toLowerCase().replace(/^www\./, "") === host,
-      );
-      if (!src) continue;
+      // THE ANCHOR'S OWN HOST HAS NO ROW IN `keep`, since the hostList guard
+      // above excludes it before judgeHosts ever runs (never fetched, never
+      // judged, never a node on the map — see the anchor-exclusion comment
+      // there). `isRival` already treats the anchor as a rival of itself BY
+      // DOMAIN, independent of anything a `src` entity would carry, so the
+      // naming pass still lets it be the FROM side of an edge: `srcKind` is
+      // fixed to "company" for it — the anchor sells, by construction — which
+      // `sells()` and the `mention` ladder below read exactly the way they
+      // would have read a real, judged anchor row.
+      const isAnchorHost = host === anchorHost;
+      const src = isAnchorHost
+        ? undefined
+        : keep.find((e) => e.domain.toLowerCase().replace(/^www\./, "") === host);
+      if (!isAnchorHost && !src) continue;
+      const srcKind = isAnchorHost ? "company" : src!.kind;
       // Only what this host's own results said, which is text the run retrieved.
       const blob = rows
         .map((r) => `${r.title} ${r.description ?? ""}`)
@@ -4264,17 +4549,20 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         // (g2.com and gartner.com really are rivals). It sees both descriptions
         // before it answers. The string match is where the leap was.
         const mention =
-          src.kind === "community"
+          srcKind === "community"
             ? "discusses"
-            : src.kind === "directory"
+            : srcKind === "directory"
               ? "lists"
-              : src.kind === "publisher"
+              : srcKind === "publisher"
                 ? "covers"
-                : sells(src.kind)
+                : sells(srcKind)
                   ? "discusses"
                   : "unknown";
-        const rivals = isRival(src) && isRival(entity);
-        if (sells(src.kind) && !rivals) demoted += 1;
+        // `isAnchorHost` short-circuits the same way `isRival` itself would
+        // have on a real anchor row: the anchor's identity is a fact about
+        // its domain, not a judgement any `src` entity could carry.
+        const rivals = (isAnchorHost || isRival(src!)) && isRival(entity);
+        if (sells(srcKind) && !rivals) demoted += 1;
         edges.push({
           from: host,
           to: target,
@@ -4894,6 +5182,17 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           asked: secondLookAsked,
           rescued: secondLookRescued,
           failed: secondLookFailed,
+        }
+      : null,
+    /** Null when the flag was off — "not run" must not read as "nothing was
+     *  unrelated". When on: how many `relation: "none"` hosts got a second
+     *  opinion, how many it rescued onto the map, and how many it confirmed
+     *  genuinely unrelated (a checked fact now, not one model's first read). */
+    dropConfirm: DROP_CONFIRM
+      ? {
+          asked: dropConfirmAsked,
+          rescued: dropConfirmRescued,
+          confirmed: dropConfirmConfirmed,
         }
       : null,
     recall,

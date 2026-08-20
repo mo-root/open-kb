@@ -25,72 +25,76 @@ whether this host is trying to sell you the job, not how it packages what it sel
 tools, a hosted service, an open-source project with a download button — all of them are companies
 here. Say what it actually sells in `what`, where a quote has to back you.
 
-`relation` says how it stands to the anchor, stated from the anchor outward, exactly one of:
+`relation` places the host on the map, stated from the anchor outward — WHERE it belongs, not
+whether it belongs at all. Nothing this run surfaced is optional to place; the only true exit is
+`none`, and it now costs as much evidence as any relation it replaces. Exactly one of:
 
-- **competitor** — sells the same capability to the same buyer; a buyer evaluating the anchor would
-  put this on the same shortlist and pick one.
+- **competitor** — sells the same capability to the same buyer, with the instead-of fact on the
+  page: a buyer evaluating the anchor would shortlist and pick one, not both. Shared vocabulary
+  is not that fact — a customer-support AI platform is not a coding competitor just because "AI
+  agents" appears on both pages. Complementary or parallel use — works alongside X, for your Y needs
+  where Y is not the anchor's job — is adjacent, not competitor.
 - **substitute** — does the same job a completely different way (a managed service, a ready-made
-  dataset, an agency, doing it in-house); if the buyer chose this, the anchor becomes unnecessary.
+  dataset, an agency, doing it in-house), the instead-of fact visible too: if the buyer chose this,
+  the anchor becomes unnecessary.
+- **adjacent** — sells into the same workflow or buyer's world, but a buyer would not choose it
+  INSTEAD of the anchor — nothing forces the choice. A backup vendor, a support-agent platform, a
+  hosting company: real businesses in the anchor's world, on no shortlist, no substitute either.
+  Test: the buyer already has the anchor — would they still plausibly buy this too? If yes,
+  adjacent, not competitor.
 - **shaper** — the incumbent everyone positions against, the standard the category is defined by,
   or the infrastructure the market sits on; if it changed its behaviour, the others would react.
 - **dependency** — what the anchor is built on; the anchor would stop working without it.
 - **integration** — what the anchor plugs into, or what plugs into it; they appear together in a
-  working setup without either being required. Partnership evidence lives here: a partner page, an
-  integration marketplace listing, a "works with" section naming the other side.
+  working setup without either being required. Partners live here: a partner page, an integration
+  marketplace listing, a "works with" section.
 - **buyer** — buys this category; the demand side, not a vendor at all.
 - **target** — who the anchor is trying to sell to and has not yet; a buyer still an opening.
 - **covers** — writes about this market: trade press, analyst blogs, newsletters, review sites.
 - **lists** — indexes the vendors: directories, comparison pages, awesome-lists, marketplaces.
 - **discusses** — where the buyer argues about this: subreddits, forums, Q&A sites, Discords.
-- **unknown** — the page does not support any relation; downgraded, not deleted — the host stays,
-  wearing the refusal. Prefer this over promoting a guess.
-- **none** — this host is not in this market at all. It is the same call as `kind: noise` and it
-  has the same consequence: the entity leaves the map entirely, so reach for the channel relations
-  (covers, lists, discusses) before it. Say none when you would otherwise write a `why` that
-  explains what market the host is in INSTEAD of this one — that sentence is the verdict.
-
-Walk the ladder before you settle for a refusal: competitor, then substitute, then the market's
-supply side — shaper, dependency, integration — then the channels. A company that would never make
-the anchor's shortlist usually still has a stake here: it sells INTO the same workflow, sits UNDER
-it, or partners with its players, and each of those is a committed word above. `unknown` is honest
-when the page refuses every rung; `none` removes the host from the map, so it is the last word,
-not the easy one.
+- **unknown** — the page supports no relation; downgraded, not deleted — the host stays, wearing
+  the refusal. "I couldn't tell what this sells" is unknown, never `none`.
+- **none** — the only relation that removes the host from the map, so it costs the evidence any
+  other relation would: no connection to this market's buyer, product or conversation whatsoever.
+  Writing about, ranking or hosting the market's conversation belongs at covers, lists or discusses
+  instead — never too thin to place there.
 
 A page that RANKS, COMPARES or REVIEWS vendors is a directory or a publisher however much market
-vocabulary it contains — ranking for the market's vocabulary is not evidence of selling in the
-market — and a page that writes ABOUT a vendor is not that vendor. Never write a `what` or a `why`
-containing a product, a capability or a customer that is not visible on the page in front of you.
+vocabulary it contains — ranking is not evidence of selling. A page that writes ABOUT a vendor is
+not that vendor. Never write a `what` or `why` naming a product, capability or customer not visible
+on the page.
 
-Answer with: `name` (what the host calls itself on the page), `kind`, `what`, `relation`, `why`,
-and `spans`.
+Answer with: `name` (what the host calls itself on the page), `kind`, `what`, `relation`,
+`reasoning`, `why`, `spans`, and `relationSpan`.
 
 The `what` is one sentence that leads with what the host IS, then what it sells, in the buyer's
-words: "A residential proxy provider selling rotating IPs to scraping teams." Open with the
-noun — not with "Sells..." or a keyword list, which name wares without naming a seller, and not
-with the relation, which has its own field. Kindred hosts should read in parallel: two proxy
-vendors on one map differ in their facts, not their format. Do not copy the page's self-praise —
-"leading", "premium", "all-in-one", "award-winning" — or any count only the vendor can vouch for
-("70M+ IPs", "99.9% uptime"): that is the page selling, not the page saying what it sells. Every
-content word of the `what` is measured against the page text after you answer; an invented
-capability is recorded against the entity, and puffery survives that check only to embarrass the
-map. Past ~25 words a `what` is padding.
+words: "A residential proxy provider selling rotating IPs to scraping teams." Open with the noun —
+not "Sells..." or a keyword list, and not the relation, which has its own field. Do not copy the
+page's self-praise — "leading", "premium", "award-winning" — or a count only the vendor can vouch
+for ("70M+ IPs"): that is the page selling, not saying what it sells. Every content word is checked
+against the page; an invented capability is recorded against the entity. Past ~25 words a `what` is
+padding.
 
-The `spans` are the `what`'s receipts: one to three short quotes copied character-for-character
-from the page below — each a phrase of at least 8 characters, around 120 at most — that together
-back what the `what` says this host is and sells. Copy, never paraphrase: each span is checked in
-code as a literal substring of this exact page, a span that fails the check is dropped, and a
-`what` with no surviving span never reaches the reader — it is replaced by a sentence saying the
-description could not be tied to the page. The check proves a span came from the page; that it
-supports the `what` is your claim, and the term-level meter still measures that claim. Quote the
-line that sells, not the slogan.
+The `spans` are the `what`'s receipts: one to three quotes copied character-for-character from the
+page below — 8 to 120 characters each — that back what the `what` says. Copy, never paraphrase:
+each span is checked in code as a literal substring of this exact page, a span that fails is
+dropped, and a `what` with no surviving span is replaced by a sentence saying the description could
+not be tied to the page. Quote the line that sells, not the slogan.
 
-The `why` is the evidence for the relation, stated against the anchor — how it relates, not that
-it resembles — and never the `what` restated or the label said again: name the thing that makes
-the relation true. "Sells the same rotating-proxy capability to the same scraping teams that
-shortlist the anchor" is a why; "a direct competitor" is the label wearing more words. For the
-channel relations the evidence is what the host gives the market: the vendors it indexes, the
-coverage it publishes, the buyers who argue there. One sentence here too — the reader has the
-`what` one line up.
+The `why` is the evidence for the relation, stated against the anchor — how it relates, not that it
+resembles — never the `what` restated or the label said again. For channel relations the evidence
+is what the host gives the market: vendors indexed, coverage published, buyers who argue there. One
+sentence — the reader has the `what` already.
+
+The `reasoning` is one sentence: the single fact that settled both `kind` and `relation`, not the
+`why` restated — e.g. "ranks vendors, including the anchor" or "same workflow as the anchor, but a
+buyer would never choose one instead of the other".
+
+The `relationSpan` is `spans`'s counterpart for `relation`: one quote, character-for-character,
+8-120 chars, backing `relation` rather than `what`. For competitor/substitute it shows the
+instead-of fact; for adjacent, the same-workflow fact with none; for a channel relation it may
+repeat a span from `spans` when nothing else fits.
 
 {{host}} — how this run found it, {{seenIn}} queries in all:
 {{foundBy}}

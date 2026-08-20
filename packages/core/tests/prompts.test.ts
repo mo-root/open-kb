@@ -100,7 +100,13 @@ describe("prompt files", () => {
     // back unplaceable: every publication, directory and forum, 37% of the map, dropped for want
     // of a word. Recovering it clears the bar the previous raise set. Duplication that the new
     // vocabulary made redundant was trimmed out of 05 and 06 first, as before.
-    expect(composed.length).toBeLessThan(23_000)
+    //
+    // Raised again, to 24,000, for `adjacent`. An audit of one run's competitor verdicts found
+    // 27% were a company that sells into the anchor's world but was never on its shortlist — a
+    // customer-support platform, a backup vendor, a WebRTC consultancy — forced into competitor
+    // because the ladder had no other word for "real business here, not a rival". Same rule as
+    // both prior raises: it earns its length or it does not get raised for it.
+    expect(composed.length).toBeLessThan(24_000)
   })
 })
 

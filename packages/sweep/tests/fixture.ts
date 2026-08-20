@@ -217,7 +217,7 @@ export const SERP: Record<string, SearchHit[]> = {
  * UI rail: `plan` issues both the catalog and the assess calls, and `write`
  * issues none at all. These are model calls, not stages.
  */
-export type CallPhase = "understand" | "catalog" | "assess" | "classify" | "link" | "orphan" | "discovery" | "triage"
+export type CallPhase = "understand" | "catalog" | "assess" | "classify" | "link" | "orphan" | "discovery" | "triage" | "drop-confirm"
 
 const PHASE_BY_KEY: Array<[CallPhase, string]> = [
   ["understand", "capabilities"],
@@ -231,6 +231,10 @@ const PHASE_BY_KEY: Array<[CallPhase, string]> = [
   // The metadata triage: batched keep/skip verdicts before any fetch. Its
   // schema's distinctive key is `verdicts`.
   ["triage", "verdicts"],
+  // Drop-confirm: a second opinion on model-settled `relation: "none"`
+  // hosts, from stored evidence alone. Its schema's distinctive key is
+  // `placements` — deliberately not `verdicts`, which triage already owns.
+  ["drop-confirm", "placements"],
 ]
 
 function phaseOf(schema: unknown): CallPhase {
@@ -248,6 +252,10 @@ const hostOf = (prompt: string): string => /^(\S+) — how this run found it, \d
 /** `grepstack.example — seen in 3 queries — "…" — …` — the triage prompt's batch lines. */
 const hostsOfTriage = (prompt: string): string[] =>
   [...prompt.matchAll(/^(\S+) — seen in \d+ quer/gm)].map((m) => m[1]!)
+/** `grepstack.example` on its own line followed by an indented `what:` — the
+ *  drop-confirm prompt's per-host block header. */
+const hostsOfDropConfirm = (prompt: string): string[] =>
+  [...prompt.matchAll(/^(\S+)\n {2}what:/gm)].map((m) => m[1]!)
 
 export interface LinkPair {
   a: string
@@ -287,6 +295,12 @@ export interface Script {
    *  reached when the run sets `triage: true`; the default keeps every host,
    *  so a test that flips the flag without a script changes nothing. */
   triage?: (hosts: string[], prompt: string) => unknown
+  /** The drop-confirm ask, handed the hosts its prompt asked about — every
+   *  model-settled `relation: "none"` entity, up to DROP_CONFIRM_CAP. Only
+   *  reached when the run sets `dropConfirm: true`; the default confirms
+   *  every host unrelated, so a test that flips the flag without a script
+   *  changes nothing. */
+  dropConfirm?: (hosts: string[], prompt: string) => unknown
 }
 
 /** Every model call the run made, in order. */
@@ -401,6 +415,16 @@ export function defaultScript(): Required<Script> {
     assess: () => ({ enough: true, missing: "", draw: [], queries: [] }),
     orphan: () => ({ stands: [] }),
     triage: (hosts) => ({ verdicts: hosts.map((h) => ({ host: h, keep: true, why: "kept" })) }),
+    dropConfirm: (hosts) => ({
+      placements: hosts.map((h) => ({
+        host: h,
+        kind: "noise",
+        relation: "none",
+        what: "",
+        why: "confirmed unrelated",
+        spans: [],
+      })),
+    }),
     discovery: (turn) =>
       turn === 0
         ? {
@@ -619,7 +643,9 @@ export async function runFixture(opts: FixtureOptions = {}): Promise<Harness> {
                   ? script.orphan(text)
                   : phase === "triage"
                     ? script.triage(hostsOfTriage(text), text)
-                    : script.link(pairsOf(text), text)
+                    : phase === "drop-confirm"
+                      ? script.dropConfirm(hostsOfDropConfirm(text), text)
+                      : script.link(pairsOf(text), text)
       return {
         content: [{ type: "text" as const, text: JSON.stringify(object) }],
         finishReason: { unified: "stop" as const, raw: undefined },

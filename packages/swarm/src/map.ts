@@ -19,10 +19,16 @@ import { type ProvenanceTier } from "./run-evidence.js"
 /** The kinds the skill teaches. `remember` refuses anything else with a sentence. */
 export const SWARM_NODE_KINDS = ["company", "product", "capability", "buyer", "community"] as const
 
-/** The relations the skill teaches, stated from the anchor outward. */
+/** The relations the skill teaches, stated from the anchor outward. Mirrors
+ *  core's JUDGED_RELATIONS — the harvest-classify path (packages/swarm/src/
+ *  agent.ts) binds its schema to JUDGED_RELATIONS, so a value that vocabulary
+ *  accepts but this one does not is money already spent on a verdict this
+ *  map cannot record. "adjacent" landed in JUDGED_RELATIONS without landing
+ *  here first; kept in sync now, and checked for the next relation too. */
 export const SWARM_RELATIONS = [
   "competitor",
   "substitute",
+  "adjacent",
   "shaper",
   "dependency",
   "integration",
