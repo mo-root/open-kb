@@ -6,11 +6,6 @@
 
 ### One domain in, knowledge base out
 
-[![MIT](https://img.shields.io/badge/License-MIT-4B8BFF?style=flat-square&labelColor=0a1628)](./LICENSE)
-[![Node](https://img.shields.io/badge/Node-%E2%89%A520-4B8BFF?style=flat-square&labelColor=0a1628)](https://nodejs.org)
-[![Powered by Bright Data](https://img.shields.io/badge/Powered%20by-Bright%20Data-22D3EE?style=flat-square&labelColor=0a1628)](https://brightdata.com)
-[![Live demo](https://img.shields.io/badge/Live-demo-1b4fd8?style=flat-square&labelColor=0a1628)](https://open-kb-demo.vercel.app)
-
 **[→ Try the beta](https://open-kb-demo.vercel.app)**
 
 </div>
