@@ -58,18 +58,61 @@ kb-stripe-com/                       pnpm run export <run>
 └── llms.txt      the door an agent comes in through
 ```
 
-## How it works
+## The agents
 
-Five agents make the judgement calls — what the company sells, what to search,
-when to widen, what a host is, how two entities relate. Each one is a markdown
-prompt in [`prompts/`](./prompts) you can edit. Around them, code holds the
-guarantees: a citation must be a literal substring of bytes the run stored, a
-`competitor` verdict needs that host's own readable page, an edge needs both
-ends to exist, and every paid call lands on the run's live meter under a hard
-cap.
+Five agents, one judgement each, every answer in a schema. Each is a markdown
+prompt in [`prompts/`](./prompts) — changing how the engine thinks is a text
+edit.
 
-A second engine, the swarm, buys depth on top of the sweep's breadth: a lead
-agent funds missions on a priced board and six lanes work them.
+| agent | owns | runs |
+|---|---|---|
+| **understand** | what the company sells, and which products share a market | once per run |
+| **catalog** | a product's de-branded queries — the job, never the name | once per product |
+| **assess** | widen or stop, between rounds | up to four times |
+| **classify** | what a host is, with its page in hand | once per host |
+| **link** | how two entities relate | 40 pairs a call |
+
+```mermaid
+flowchart TD
+    D[domain] --> U["understand<br/>reads the site"]
+    U --> C["catalog<br/>per product, in parallel"]
+    C --> Q["query queue"]
+    Q --> W["SERP worker pool<br/><i>every hit tagged with its query</i>"]
+    W --> A{"assess<br/>widen or stop"}
+    A -- widen --> Q
+    A -- enough --> K["classify<br/>page in hand"]
+    K --> L["link"] --> M["the map"]
+```
+
+## What the agents cannot do
+
+Agentic where the answer is a judgement, code where the answer is a guarantee:
+
+| guarantee | held by |
+|---|---|
+| A citation exists only if its quote is a literal substring of bytes this run stored | [`core/src/evidence.ts`](./packages/core/src/evidence.ts) — no fallback branch |
+| A description with zero verified spans never reaches a reader | [`core/src/judge.ts`](./packages/core/src/judge.ts) |
+| `competitor` and `substitute` need that host's own readable page — a listicle nominates, it never convicts | [`core/src/verdict.ts`](./packages/core/src/verdict.ts) |
+| A claim that loses its evidence keeps its place and wears the refusal | same path — downgrade, never delete |
+| An edge to a node nobody found gets dropped | the sweep refuses dangling edges |
+| Every paid call lands on the run's live meter, under a hard cap | [`core/src/ledger.ts`](./packages/core/src/ledger.ts) |
+
+A model having a bad day writes a weak query or misreads a host. It cannot
+fabricate a citation or blind a market.
+
+## The second engine: the swarm
+
+The sweep buys breadth in one pass; the swarm buys depth. A lead agent writes
+missions onto a priced board, six lanes claim and work them with search and
+page tools, and every mission reserves its allowance before any work starts. A
+finish the scorecard objects to comes back refused — work clears a refusal,
+restating the objection does not.
+
+```bash
+pnpm swarm stripe.com 5                          # depth, with a ceiling
+pnpm swarm stripe.com 5 --from-sweep runs/<run>  # interrogate a sweep's map
+```
+
 [ARCHITECTURE.md](./ARCHITECTURE.md) covers both engines phase by phase;
 [DEPLOY.md](./DEPLOY.md) covers putting it on a host.
 
@@ -96,6 +139,20 @@ other agents to run maps, read them, and tune the query doctrine:
 
 ```bash
 npx skills add mo-root/open-kb/skills/mapping-markets
+```
+
+## Layout
+
+```
+open-kb/
+├── packages/
+│   ├── core/        pure logic: evidence mint, query families, span accounting
+│   ├── providers/   Bright Data SERP + Unlocker, OpenRouter wiring
+│   ├── sweep/       the breadth engine, one file
+│   ├── swarm/       the depth engine: a lead, a funded board, six lanes
+│   └── web/         Next.js: live run surface and the map
+├── prompts/         every judgement, as editable markdown
+└── skills/          the Agent Skill
 ```
 
 ## Stack
