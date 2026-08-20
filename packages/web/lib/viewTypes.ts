@@ -506,6 +506,16 @@ export interface GraphNode {
   id: string
   type: NodeType
   relevance: number
+  /**
+   * How prominent this entity is IN THE MARKET, from the search itself: the
+   * run's own `seenIn` (how many distinct queries returned it) and `bestRank`
+   * (its best SERP position), not a judgement. The graph's second size
+   * encoding — `relevance` says how firmly the classifier placed the entity
+   * against the anchor; this says how central the market's own searches found
+   * it to be. Anchor and market nodes, which no search measures, carry the
+   * same fixed value as their `relevance`.
+   */
+  prominence: number
 }
 
 export interface GraphEdge {

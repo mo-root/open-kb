@@ -113,6 +113,24 @@ const RELATION_WEIGHT: Record<string, number> = {
   none: 15,
 }
 
+/**
+ * Prominence: how central the market's OWN searches found this host to be,
+ * as opposed to `RELATION_WEIGHT` above, which is how firmly the classifier
+ * placed it. `seenIn` — how many distinct queries returned the host — is the
+ * primary signal, the same one `sweep.ts`'s own `prominent()` sorts orphan
+ * candidates by; `bestRank` (its best SERP position) breaks a tie among
+ * equally-seen hosts, since rank 1 on one query says more than rank 9 on the
+ * same count. Older runs and triage-skipped hosts carry neither field, so
+ * both default to the loneliest real case (seen once, ranked at the fold)
+ * rather than to zero, which would draw them as invisible pinpricks.
+ */
+function prominenceOf(e: Entity): number {
+  const seenIn = typeof e.seenIn === "number" && e.seenIn > 0 ? e.seenIn : 1
+  const rank = typeof e.bestRank === "number" ? e.bestRank : 10
+  const rankBonus = Math.max(0, 11 - Math.min(rank, 10))
+  return seenIn * 10 + rankBonus
+}
+
 const ANCHOR_PATH = "company.md"
 
 /* ------------------------------------------------------------------ utilities */
@@ -764,6 +782,10 @@ export function graphOf(run: CompletedRun): GraphView {
         id: marketPath(c.name),
         type: "product",
         relevance: 92,
+        // No search measures a market node — it is the anchor's own
+        // decomposition — so it carries the same fixed weight under either
+        // sizing mode rather than reading as prominence-zero.
+        prominence: 92,
         title: c.name,
         group: "products",
         kind: "market",
@@ -777,6 +799,9 @@ export function graphOf(run: CompletedRun): GraphView {
       id: ANCHOR_PATH,
       type: "core",
       relevance: 100,
+      // The anchor is the map's own subject; nothing on it is more prominent
+      // by definition, under either sizing mode.
+      prominence: 100,
       title: r.anchor,
       group: "overview",
       kind: "anchor",
@@ -790,6 +815,7 @@ export function graphOf(run: CompletedRun): GraphView {
         id: p.path,
         type: p.type,
         relevance: p.relevance,
+        prominence: prominenceOf(p.entity),
         title: p.entity.name || p.entity.domain,
         group: p.group,
         kind: p.entity.kind,

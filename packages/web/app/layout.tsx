@@ -156,7 +156,14 @@ export default function RootLayout({
               <span aria-hidden>&middot;</span>
               <span>one domain in, knowledge base out</span>
               <span aria-hidden>&middot;</span>
-              <span>powered by Bright Data</span>
+              <a
+                href="https://brightdata.com"
+                target="_blank"
+                rel="noreferrer"
+                className="transition-colors hover:text-sky-300"
+              >
+                powered by Bright Data
+              </a>
             </div>
           </footer>
         </CommandPaletteProvider>

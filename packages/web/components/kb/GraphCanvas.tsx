@@ -779,7 +779,13 @@ export function GraphCanvas({
       adj.get(l.source)!.add(l.target);
       adj.get(l.target)!.add(l.source);
     }
-    const maxRel = Math.max(1, ...nodes.map((n) => n.relevance || 0));
+    // The size metric follows the setting: `n.relevance` (classifier placement)
+    // or `n.prominence` (the search's own count). Read once here so every
+    // downstream consumer of `meta` — the collision seat, the top-label set,
+    // the detail card's bar — agrees with what the canvas is actually drawing.
+    const sizeOf = (n: { relevance: number; prominence: number }) =>
+      settings.sizeBy === "placement" ? n.relevance : n.prominence;
+    const maxRel = Math.max(1, ...nodes.map((n) => sizeOf(n) || 0));
 
     // THE anchor hub: highest degree; a core-type node wins near-ties.
     let hubId = "";
@@ -810,7 +816,7 @@ export function GraphCanvas({
 
     const topSet = new Set(
       [...nodes]
-        .sort((a, b) => (b.relevance || 0) - (a.relevance || 0))
+        .sort((a, b) => (sizeOf(b) || 0) - (sizeOf(a) || 0))
         .slice(0, TOP_LABELS)
         .map((n) => n.id),
     );
@@ -834,7 +840,10 @@ export function GraphCanvas({
       typeCounts, presentTypes, topSet, activeLinks, orphanCount,
       measuredLinks, unlinked,
     };
-  }, [graph]);
+    // `settings.sizeBy` alone, not the whole settings object: this block
+    // rebuilds degree/adjacency/hub, which none of the numeric sliders touch,
+    // so a slider drag must not retrigger it every frame.
+  }, [graph, settings.sizeBy]);
 
   // Build the force-graph data per graph (and per reset). Kept stable across
   // hover/focus renders so the simulation and node positions survive
@@ -854,7 +863,8 @@ export function GraphCanvas({
     const nodes: FNode[] = list.map((n) => {
       const type = nodeTypeOf(n.group);
       const deg = meta.degById.get(n.id) ?? 0;
-      const rel = Math.max(0, n.relevance || 0);
+      const sizeMetric = settings.sizeBy === "placement" ? n.relevance : n.prominence;
+      const rel = Math.max(0, sizeMetric || 0);
       const isHub = n.id === meta.hubId;
       // Seeded from the id, not from `rng()`: the old seed advanced per node, so
       // the opening shape depended on iteration order and a reset produced a
@@ -867,7 +877,7 @@ export function GraphCanvas({
         group: n.group,
         kind: n.kind,
         relation: n.relation,
-        rel: n.relevance || 0,
+        rel,
         deg,
         // Hub-ness is SHAPE, not identity, and it is an absolute degree rather
         // than a share of the node count. `deg > nodeCount * 0.3` demanded 88
@@ -946,7 +956,7 @@ export function GraphCanvas({
     /* bakedSeed is not read — it exists to re-run this memo after a baked
        layout lands in storage, where the loadLayout above will find it. */
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graph, meta, slug, resetSeed, showUnplaced, bakedSeed]);
+  }, [graph, meta, slug, resetSeed, showUnplaced, bakedSeed, settings.sizeBy]);
 
   const nodeCount = Math.max(1, data.nodes.length);
 
@@ -2290,13 +2300,20 @@ export function GraphCanvas({
                 </dd>
               </div>
               <div className="flex items-center justify-between gap-2">
-                {/* Not "relevance". The bar is a RANK derived from the relation
-                    above, not a measured score — see lib/kb-from-run.ts. */}
+                {/* The label and its number follow whichever metric is
+                    currently sizing the nodes — `card.rel` is set from that
+                    same metric above — so the bar never claims to explain a
+                    size the reader is not looking at. See lib/kb-from-run.ts
+                    for what each one is. */}
                 <dt
                   className="text-slate-500"
-                  title="How firmly the classifier placed this against the anchor. A rank derived from the relation, not a measurement."
+                  title={
+                    settings.sizeBy === "placement"
+                      ? "How firmly the classifier placed this against the anchor. A rank derived from the relation, not a measurement."
+                      : "How often the market's own searches returned this host, and how well it ranked. A count the run made, not a judgement."
+                  }
                 >
-                  placement
+                  {settings.sizeBy === "placement" ? "placement" : "prominence"}
                 </dt>
                 <dd className="tnum flex flex-1 items-center justify-end gap-2 text-slate-300">
                   <span

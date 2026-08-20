@@ -59,6 +59,22 @@ describe("loadSettings", () => {
     expect(loadSettings()).toEqual(mine)
   })
 
+  it("defaults sizeBy to prominence", () => {
+    expect(DEFAULT_SETTINGS.sizeBy).toBe("prominence")
+  })
+
+  it("round-trips an explicit placement choice", () => {
+    saveSettings({ ...DEFAULT_SETTINGS, sizeBy: "placement" })
+    expect(loadSettings().sizeBy).toBe("placement")
+  })
+
+  it("falls back to prominence for a blob with no sizeBy, or an unrecognised value", () => {
+    store.set(KEY, JSON.stringify({ nodeScale: 1.2 }))
+    expect(loadSettings().sizeBy).toBe("prominence")
+    store.set(KEY, JSON.stringify({ sizeBy: "by-color" }))
+    expect(loadSettings().sizeBy).toBe("prominence")
+  })
+
   /* The reason every number is clamped rather than trusted. */
   it("clamps every numeric field into its own slider range", () => {
     const keys = Object.keys(RANGES) as (keyof typeof RANGES)[]

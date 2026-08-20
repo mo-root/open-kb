@@ -287,9 +287,10 @@ export function NoteView({
                     href={s.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="tnum inline-flex items-baseline gap-1.5 text-slate-400 hover:text-sky-300"
+                    className="tnum inline-flex items-center gap-1.5 text-slate-400 hover:text-sky-300"
                     title={s.url}
                   >
+                    <SiteIcon domain={hostOf(s.url)} size={12} />
                     <span>{hostOf(s.url)}</span>
                     {s.retrievedAt && (
                       <span className="text-slate-500">{s.retrievedAt}</span>

@@ -13,6 +13,18 @@
  */
 
 export interface GraphSettings {
+  /**
+   * Which of the graph's two size signals a node's drawn radius follows.
+   *
+   * `"prominence"` — how often the market's own searches returned this host
+   * and how well it ranked when they did. `"placement"` — how firmly the
+   * classifier placed it against the anchor (competitor outranks covers).
+   * Prominence is the default: it is a count the run made, not a judgement,
+   * and on a market with few competitors and many publishers, placement alone
+   * draws every publisher the same modest size regardless of how central the
+   * market's own searches found it to be.
+   */
+  sizeBy: "prominence" | "placement"
   /** Multiplies every node's drawn radius (and its collision radius with it). */
   nodeScale: number
   /** Multiplies edge width. */
@@ -118,6 +130,7 @@ export interface GraphSettings {
 }
 
 export const DEFAULT_SETTINGS: GraphSettings = {
+  sizeBy: "prominence",
   nodeScale: 1,
   linkWidth: 1,
   labelPx: 11,
@@ -153,6 +166,7 @@ export const DEFAULT_SETTINGS: GraphSettings = {
 export const RANGES: Record<
   keyof Omit<
     GraphSettings,
+    | "sizeBy"
     | "arrows"
     | "colorByType"
     | "showIcons"
@@ -204,6 +218,10 @@ export function loadSettings(): GraphSettings {
     const o = JSON.parse(raw) as Record<string, unknown>
     if (!o || typeof o !== "object") return DEFAULT_SETTINGS
     return {
+      // Two valid values; anything else — unset, an old blob, a hand-edited
+      // typo — lands on the shipped default rather than propagating a string
+      // the canvas does not know how to size by.
+      sizeBy: o.sizeBy === "placement" ? "placement" : DEFAULT_SETTINGS.sizeBy,
       nodeScale: clampNum(o.nodeScale, RANGES.nodeScale, DEFAULT_SETTINGS.nodeScale),
       linkWidth: clampNum(o.linkWidth, RANGES.linkWidth, DEFAULT_SETTINGS.linkWidth),
       labelPx: clampNum(o.labelPx, RANGES.labelPx, DEFAULT_SETTINGS.labelPx),

@@ -124,6 +124,46 @@ describe("graphOf, entity-to-entity edges", () => {
   })
 })
 
+describe("graphOf, prominence — the search's own count, apart from placement", () => {
+  const nodeFor = (g: ReturnType<typeof graphOf>, id: string) =>
+    g.nodes.find((n) => n.id.includes(id))!
+
+  it("gives the anchor and every market node the same fixed prominence as their placement", () => {
+    const g = graphOf(run([entity("a.com", "competitor")]))
+    const anchor = g.nodes.find((n) => n.kind === "anchor")!
+    expect(anchor.prominence).toBe(anchor.relevance)
+    expect(anchor.prominence).toBe(100)
+  })
+
+  it("ranks a host seen by more queries as more prominent, regardless of its placement", () => {
+    // A `covers` publisher outranked by every commercial relation on
+    // PLACEMENT, seen by far more queries — prominence must not agree.
+    const g = graphOf(run([
+      { ...entity("busy-publisher.com", "covers"), seenIn: 12, bestRank: 3 },
+      { ...entity("one-off-rival.com", "competitor"), seenIn: 1, bestRank: 9 },
+    ]))
+    const busy = nodeFor(g, "busy-publisher.com")
+    const rival = nodeFor(g, "one-off-rival.com")
+    expect(rival.relevance).toBeGreaterThan(busy.relevance)
+    expect(busy.prominence).toBeGreaterThan(rival.prominence)
+  })
+
+  it("breaks a seenIn tie by the better SERP rank", () => {
+    const g = graphOf(run([
+      { ...entity("front-page.com", "competitor"), seenIn: 3, bestRank: 1 },
+      { ...entity("back-page.com", "competitor"), seenIn: 3, bestRank: 9 },
+    ]))
+    expect(nodeFor(g, "front-page.com").prominence).toBeGreaterThan(
+      nodeFor(g, "back-page.com").prominence,
+    )
+  })
+
+  it("does not throw or zero out an entity from a run written before seenIn existed", () => {
+    const g = graphOf(run([entity("old-run.com", "competitor")]))
+    expect(nodeFor(g, "old-run.com").prominence).toBeGreaterThan(0)
+  })
+})
+
 describe("graphOf, market clustering", () => {
   const cap = (name: string) => ({ name, does: `does ${name}`, centrality: "core", covers: [] })
   const withMarkets = (entities: unknown[], edges: unknown[] = []) => {

@@ -248,6 +248,47 @@ export function GraphSettingsPanel({
         </Section>
 
         <Section title="Display">
+          <label className="block">
+            <span className="flex items-baseline justify-between gap-2">
+              <span className="text-[11px] text-slate-300">Size by</span>
+            </span>
+            <div
+              role="radiogroup"
+              aria-label="Size nodes by"
+              className="mt-1 flex overflow-hidden rounded-md border border-slate-800"
+            >
+              {(
+                [
+                  {
+                    key: "prominence" as const,
+                    label: "Prominence",
+                    hint: "How often the market's own searches returned this host, and how well it ranked. A count the run made, not a judgement.",
+                  },
+                  {
+                    key: "placement" as const,
+                    label: "Placement",
+                    hint: "How firmly the classifier placed this against the anchor — competitor outranks covers.",
+                  },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  role="radio"
+                  aria-checked={settings.sizeBy === opt.key}
+                  title={opt.hint}
+                  onClick={() => set("sizeBy", opt.key)}
+                  className={`flex-1 px-2 py-1 text-[11px] transition-colors ${
+                    settings.sizeBy === opt.key
+                      ? "bg-sky-500/20 text-sky-300"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </label>
           <Slider
             label="Node size"
             value={settings.nodeScale}
