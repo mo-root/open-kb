@@ -4,9 +4,10 @@ import { useEffect, useRef } from "react";
 
 /* The film's total runtime, from the rig itself (launch-rig.html: TOTAL). */
 const TOTAL = 25.4;
-/* How much scroll buys the whole film. ~7 viewports ≈ 3.6s of film per
-   screen — slow enough to read every line, fast enough to feel driven. */
-const TRACK_VH = 700;
+/* How much scroll buys the whole film. ~18 viewports ≈ 1.4s of film per
+   screen — heavy enough that the fast beats (the ticker rip, the
+   detonation) still read frame by frame instead of blurring past. */
+const TRACK_VH = 1800;
 
 /**
  * The launch film, played by the reader's thumb.
