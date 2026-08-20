@@ -15,7 +15,7 @@
 
 </div>
 
-Point it at `stripe.com` and it maps the whole market — competitors,
+Point it at your domain and it maps the whole market — competitors,
 substitutes, integrations, buyers, and where the market argues. It never
 searches the company's name: it works out the job each product does and
 searches for the job. Every claim carries a URL and a literal quote from a page
@@ -45,13 +45,13 @@ Unlocker zone, and an [OpenRouter](https://openrouter.ai) key.
 ```bash
 git clone https://github.com/mo-root/open-kb.git && cd open-kb && pnpm install
 cp .env.example .env      # four keys, named in the file
-pnpm sweep stripe.com
+pnpm sweep yourcompany.com
 ```
 
 ```
-runs/sweep-stripe-com-<stamp>.json   every entity, edge and span
+runs/sweep-yourcompany-com-<stamp>.json   every entity, edge and span
 
-kb-stripe-com/                       pnpm run export <run>
+kb-yourcompany-com/                       pnpm run export <run>
 ├── entities/     one file per company, with its quotes
 ├── relations/    competitor · substitute · integration · buyer
 ├── segments/     each market, and who is in it
@@ -109,8 +109,8 @@ finish the scorecard objects to comes back refused — work clears a refusal,
 restating the objection does not.
 
 ```bash
-pnpm swarm stripe.com 5                          # depth, with a ceiling
-pnpm swarm stripe.com 5 --from-sweep runs/<run>  # interrogate a sweep's map
+pnpm swarm yourcompany.com 5                          # depth, with a ceiling
+pnpm swarm yourcompany.com 5 --from-sweep runs/<run>  # interrogate a sweep's map
 ```
 
 [ARCHITECTURE.md](./ARCHITECTURE.md) covers both engines phase by phase;
@@ -121,8 +121,8 @@ pnpm swarm stripe.com 5 --from-sweep runs/<run>  # interrogate a sweep's map
 ```bash
 set -a && source .env && set +a   # the CLI reads keys from the shell
 
-pnpm sweep stripe.com        # breadth: the map
-pnpm swarm stripe.com 5      # depth, with a ceiling
+pnpm sweep yourcompany.com        # breadth: the map
+pnpm swarm yourcompany.com 5      # depth, with a ceiling
 pnpm run export <run> vault  # the map as a folder of markdown
 pnpm run diff a.json b.json  # what moved between two runs of one anchor
 pnpm run audit <run>         # deal a review packet, score it symmetrically
