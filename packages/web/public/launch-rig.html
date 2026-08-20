@@ -1,0 +1,1650 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>open-kb — launch</title>
+<style>
+  :root{
+    --ink:#0e1b34;
+    --kick:#64748b;
+    --slate:#94a3b8;
+    --sans:-apple-system, "SF Pro Display", "Geist", "Inter", "Helvetica Neue", Arial, sans-serif;
+    --mono:ui-monospace, "SF Mono", "Geist Mono", Menlo, Consolas, monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;overflow:hidden}
+  body{
+    background:radial-gradient(120% 95% at 50% 44%, #ffffff 0%, #fafbfd 100%);
+    color:var(--ink);
+    font-family:var(--sans);
+    -webkit-font-smoothing:antialiased;
+    user-select:none;
+  }
+  canvas#stage{position:fixed;inset:0;display:block}
+  .fix{position:fixed;opacity:0;will-change:transform,opacity}
+  .kick{
+    font-family:var(--mono);
+    font-size:.68vw;
+    letter-spacing:.16em;
+    color:var(--kick);
+    text-transform:uppercase;
+    white-space:nowrap;
+    font-weight:500;
+  }
+  .mono{font-family:var(--mono)}
+
+  #brand{left:4.6vw;top:5.4vh}
+
+  /* agent beat — mono prompt + answer at the bottom */
+  #ap{
+    left:0;right:0;top:86.4vh;text-align:center;
+    font-family:var(--mono);font-size:1.12vw;letter-spacing:.045em;
+    color:var(--kick);white-space:pre;
+  }
+  #aa{
+    left:0;right:0;top:90.4vh;text-align:center;
+    font-family:var(--mono);font-size:1.20vw;letter-spacing:.05em;
+    font-weight:600;color:var(--ink);white-space:pre;
+  }
+
+  /* the end card */
+  #ekick{
+    left:0;right:0;top:48.9vh;text-align:center;
+    font-weight:800;font-size:1.35vw;color:var(--ink);
+  }
+  #ehead{
+    left:0;right:0;top:53.8vh;text-align:center;
+    font-weight:700;font-size:3.05vw;letter-spacing:-.02em;line-height:1.06;color:var(--ink);
+  }
+  #erepo{
+    left:0;right:0;top:75.2vh;text-align:center;
+    font-size:.62vw;letter-spacing:.18em;color:var(--slate);
+  }
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+
+<div id="brand" class="fix kick">OPEN-KB</div>
+
+<div id="ap" class="fix"></div>
+<div id="aa" class="fix"></div>
+
+<div id="ekick" class="fix">open-kb</div>
+<h1 id="ehead" class="fix">One domain in, knowledge base out.</h1>
+<div id="erepo" class="fix mono">GITHUB.COM/MO-ROOT/OPEN-KB &nbsp;&middot;&nbsp; POWERED BY BRIGHT DATA</div>
+
+<script>
+'use strict';
+/* =====================================================================
+   open-kb — THE FINAL CUT  (~25.4s, 2D, seek-safe)
+
+   0.0–0.9    the big-name band is ALREADY sliding — stripe, vercel, …
+   0.9–2.35   it accelerates; names streak with motion blur at peak
+   2.35–3.0   hard decel — the band overshoots and SNAPS centered
+   3.0        yourcompany.com lands center: the snap IS the typed opener
+   3.0–3.45   the domain springs up to hero size (its own moment)
+   3.5–5.55   "Upload your domain. Get the market map."  (kinetic CTA)
+   4.95–5.9   glyph ink detonates straight into the searching fan
+   5.35–7.15  "open-kb reads your domain."     — set under the fan beam
+   6.45–9.1   particles swing back into four counter-rotating rings
+   7.35–9.50  "It understands your product, your company —"  (above orbit)
+   9.70–11.85 "— and the whole industry."      — riding the acceleration
+   9.9–11.95  the acceleration ramp — comet trails, rings tighten
+   11.95      RELEASE — the system breaks orbit
+   11.95–13.7 nodes fling out and decelerate into the graph layout
+   12.7–14.7  the connection cascade — edges draw, shimmer, pulses land
+   13.0–15.15 "A full knowledge graph."        — beside the graph
+   17.0–19.9  the agent beat — prompt types, competitor cluster answers
+   17.2–19.40 "Plug it into your agents."      — upper lane
+   20.2–21.75 the whole graph recedes into the end-card disc
+   21.55–24.7 "One domain in, knowledge base out."  — word-staggered, held 3s+
+   Every kinetic line wipes in word-by-word with a scale-settle, floats,
+   and DISSOLVES into a few particles that drift toward the field.
+   Every position is a pure function of t; seeded randomness only.
+   ===================================================================== */
+
+const TOTAL = 25.4;
+
+const COL = {
+  ink:   [14, 27, 52],
+  kick:  [100, 116, 139],
+  slate: [148, 163, 184],
+  pink:  [235, 54, 140],
+  blue:  [61, 127, 252],
+  orange:[194, 65, 12],
+  hair:  '#dbe3ee'
+};
+const SANS = '-apple-system, "SF Pro Display", "Geist", "Inter", "Helvetica Neue", Arial, sans-serif';
+const MONO = 'ui-monospace, "SF Mono", "Geist Mono", Menlo, Consolas, monospace';
+
+/* ---------- timeline (seconds) ---------- */
+const T = {
+  typeStart: -10,  typeDt: 0.001,   /* typing replaced — the ticker snap delivers the word */
+  disStart: 4.95,  disSpan: 0.92,
+  ghostIn: 5.30,
+  convStart: 6.45,
+  centerIn: 8.05,
+  pillIn: 8.35,
+  accStart: 9.90, accDur: 2.05, rel: 11.95,
+  kickersIn: 14.50,
+  promptIn: 15.60, hlIn: 99.0, ansIn: 17.30, agentOut: 19.90,
+  recede: 20.20, recedeEnd: 21.75, endIn: 21.90,
+  ctaIn: 3.50, ctaOut: 5.10
+};
+const ROT_T0 = 8.05;
+const BOOST = 13;                       /* angular-velocity multiplier at release */
+
+/* ---------- kinetic narrative lines (canvas-set) ----------
+   Each line wipes in word-by-word (clip-reveal + scale-settle), floats,
+   and exits by dissolving into a few particles that join the field.
+   Key words wear kind colors: product=blue, company=navy-bold,
+   industry=orange, knowledge graph=pink.  No line sits longer than 2.2s. */
+const KLDEF = [
+  { t0:3.40,  t1:5.60,  x:0.500, y:0.564, fs:2.85, fw:800, stag:0.065, words:[
+    {t:'Upload'},{t:'your'},{t:'domain,'},{t:'get'},{t:'a'},{t:'market'},{t:'map.'} ]},
+  { t0:5.20,  t1:7.70,  x:0.500, y:0.690, fs:3.50, fw:700, stag:0.100, words:[
+    {t:'open-kb', fw:800, u:true, uc:COL.pink},{t:'reads'},{t:'your'},{t:'domain,'} ]},
+  { t0:7.45,  t1:9.62,  x:0.500, y:0.160, fs:3.50, fw:700, stag:0.100, words:[
+    {t:'understands'},{t:'your'},{t:'product,', c:COL.blue, fw:800, u:true} ]},
+  { t0:9.68,  t1:11.30, x:0.500, y:0.160, fs:3.50, fw:700, stag:0.100, words:[
+    {t:'your'},{t:'company,', c:COL.pink, fw:800, u:true} ]},
+  { t0:11.38, t1:13.12, x:0.500, y:0.160, fs:3.50, fw:700, stag:0.100, words:[
+    {t:'your'},{t:'industry', c:COL.orange, fw:800, u:true} ]},
+  { t0:13.20, t1:15.60, x:0.500, y:0.135, fs:3.30, fw:700, stag:0.090, words:[
+    {t:'and'},{t:'creates'},{t:'the'},{t:'full'},
+    {t:'knowledge', c:COL.pink, fw:800, u:true},{t:'graph.', c:COL.pink, fw:800, u:true} ]},
+  { t0:15.70, t1:18.55, x:0.500, y:0.128, fs:3.50, fw:700, stag:0.100, words:[
+    {t:'Plug'},{t:'it'},{t:'into'},{t:'your'},{t:'agent.', fw:800, u:true} ]}
+];
+let KL = [];
+
+const GHOSTS = [
+  'alternatives','vs','pricing','outage','reviews','migrate from',
+  'self-hosted','reddit','status page','integrations','open source'
+];
+
+/* orbit cohorts — one kind per ring, alternating rotation.
+   Reference order inside→out: pink, blue, slate, orange — tight dense bands. */
+const RMAX = 672;
+const RINGS = [
+  { p:.16, r:205, spread:10, col:COL.pink,   om: 0.50, sz:[2.8,4.6], al:.98 },
+  { p:.19, r:330, spread:11, col:COL.blue,   om:-0.38, sz:[2.8,4.6], al:.98 },
+  { p:.28, r:580, spread:11, col:COL.orange, om: 0.27, sz:[3.0,4.7], al:.96 },
+  { p:.27, r:455, spread:11, col:COL.slate,  om:-0.22, sz:[2.7,4.3], al:.88 },
+  { p:.10, r:672, spread:34, col:COL.slate,  om: 0.14, sz:[1.3,2.3], al:.50 }
+];
+const RING_HAIR = [
+  { r:205, t0:6.80 }, { r:330, t0:7.00 }, { r:455, t0:7.20 }, { r:580, t0:7.40 }
+];
+
+/* graph layout — cluster anchors + hubs, in design px relative to graph center */
+const NCOUNT = [33, 28, 26, 34, 0];      /* node quota per cohort */
+const HUBS = [
+  { ci:0, x: 298, y:-178, name:'stripe.com' },
+  { ci:0, x: 436, y: -64, name:'vercel.com' },
+  { ci:0, x: 212, y:  -6, name:'cursor.com' },
+  { ci:1, x:-322, y:-168 },
+  { ci:1, x:-436, y:  52 },
+  { ci:2, x: 108, y: 208 },
+  { ci:2, x: 258, y: 272 }
+];
+const ANCH = [
+  { ax: 330, ay:-118, sx:100, sy:74 },
+  { ax:-338, ay:-108, sx:100, sy:78, ax2:-452, ay2:88, sx2:62, sy2:52, lobe:.32 },
+  { ax: 165, ay: 232, sx:118, sy:66 },
+  {}
+];
+const KICKERS = [
+  { txt:'COMPETITORS', x: 332, y:-282, ci:0, col:COL.pink },
+  { txt:'PRODUCTS',    x:-352, y:-288, ci:1, col:COL.blue },
+  { txt:'COMMUNITIES', x: 168, y: 348, ci:2, col:COL.orange },
+  { txt:'PLAYERS',     x:-536, y: 216, ci:3, col:COL.kick }
+];
+const GEXT = 640;
+
+const PROMPT = '';
+const ANSWER = '';
+const TYPE_DT = 0.026;
+const PROMPT_END = T.promptIn + PROMPT.length * TYPE_DT;
+
+/* ---------- the big-name ticker — the cold open ---------- */
+const TICKER = [
+  'stripe.com','vercel.com','brightdata.com','cursor.com','github.com',
+  'openai.com','figma.com','notion.so','shopify.com','datadoghq.com',
+  'linear.app','supabase.com','anthropic.com','cloudflare.com','mongodb.com',
+  'twilio.com','slack.com','atlassian.com','hubspot.com','airtable.com'
+];
+const TKICONS = {};
+const ICON_COLS = [COL.pink, COL.blue, COL.orange, COL.slate];
+const iconsReady = Promise.all(TICKER.map((n, i) => new Promise(res => {
+  const im = new Image();
+  im.onload = () => { TKICONS[n] = im; res(); };
+  im.onerror = () => res();
+  im.src = 'https://icons.duckduckgo.com/ip3/' + n + '.ico';
+  setTimeout(res, 1500);
+})));
+
+const TK = {
+  tA: 0.55,     /* slow crawl ends, the throttle opens gently  */
+  tB: 2.45,     /* peak speed — full streak                    */
+  snap: 2.85,   /* the band lands centered on yourcompany.com  */
+  grow: 3.30,   /* the domain has sprung up to hero size       */
+  V: 40         /* peak/crawl ratio — starts slow, grows hard  */
+};
+/* back-out with a slight (~3%) overshoot; slope at 0 is 3.9 */
+const boK  = u => { u = c01(u); const c1 = 0.9, c3 = c1 + 1; return 1 + c3*Math.pow(u-1,3) + c1*Math.pow(u-1,2); };
+const boKd = u => { const c1 = 0.9, c3 = c1 + 1; return 3*c3*Math.pow(u-1,2) + 2*c1*(u-1); };
+
+let tkItems = [], tkSeps = [], tkYourCX = 0, tkKBand = 0.45,
+    tkStart = 0, tkV0 = 0, tkVpk = 0, tkDB = 0, tkR = 0, tkNF = 30, tkSF = 30, tkICO = 44;
+
+/* band displacement — analytic, pure function of t (seek-safe) */
+function tickD(t){
+  if (t <= TK.tA) return tkV0 * t;
+  if (t <= TK.tB){
+    const u = (t - TK.tA) / (TK.tB - TK.tA);
+    return tkV0 * t + (tkVpk - tkV0) * (TK.tB - TK.tA) * Math.pow(u, 4) / 4;
+  }
+  const w = c01((t - TK.tB) / (TK.snap - TK.tB));
+  return tkDB + tkR * boK(w);
+}
+function tickV(t){
+  if (t <= TK.tA) return tkV0;
+  if (t <= TK.tB){
+    const u = (t - TK.tA) / (TK.tB - TK.tA);
+    return tkV0 + (tkVpk - tkV0) * u * u * u;
+  }
+  if (t >= TK.snap) return 0;
+  const w = (t - TK.tB) / (TK.snap - TK.tB);
+  return Math.abs(tkR * boKd(w) / (TK.snap - TK.tB));
+}
+
+/* ---------- seeded rng ---------- */
+function mulberry32(seed){
+  return function(){
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    let z = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    z = (z + Math.imul(z ^ (z >>> 7), 61 | z)) ^ z;
+    return ((z ^ (z >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function gauss(rng){
+  const u = 1 - rng(), v = rng();
+  return Math.sqrt(-2 * Math.log(u + 1e-12)) * Math.cos(6.2831853 * v);
+}
+
+/* ---------- easing ---------- */
+const c01 = v => v < 0 ? 0 : v > 1 ? 1 : v;
+const eo3 = u => 1 - Math.pow(1 - c01(u), 3);
+const eo4 = u => 1 - Math.pow(1 - c01(u), 4);
+const eio3 = u => { u = c01(u); return u < .5 ? 4*u*u*u : 1 - Math.pow(-2*u + 2, 3)/2; };
+const eio5 = u => { u = c01(u); return u < .5 ? 16*u*u*u*u*u : 1 - Math.pow(-2*u + 2, 5)/2; };
+const bo = u => { u = c01(u); const c1 = 1.45, c3 = c1 + 1; return 1 + c3*Math.pow(u-1,3) + c1*Math.pow(u-1,2); };
+const lerp = (a, b, u) => a + (b - a) * u;
+function env(t, i0, i1, o0, o1){
+  if (t <= i0) return 0;
+  if (t < i1) return eo3((t - i0) / (i1 - i0));
+  if (o0 === undefined || t <= o0) return 1;
+  if (t < o1) return 1 - eo3((t - o0) / (o1 - o0));
+  return 0;
+}
+const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+const mix = (a, b, u) => [ lerp(a[0],b[0],u)|0, lerp(a[1],b[1],u)|0, lerp(a[2],b[2],u)|0 ];
+
+/* ---------- the acceleration ramp (analytic, seek-safe) ---------- */
+/* omega(t) = om0 * (1 + (B-1)*u^3) with u=(t-accStart)/accDur, clamped;
+   phaseBase(t) is its integral so angle is a pure function of t.       */
+function accInt(t){
+  if (t <= T.accStart) return 0;
+  const D = T.accDur, u = Math.min(1, (t - T.accStart) / D);
+  let A = D * Math.pow(u, 4) / 4;
+  if (t > T.accStart + D) A += t - (T.accStart + D);
+  return A;
+}
+const phaseBase = t => (t - ROT_T0) + (BOOST - 1) * accInt(t);
+const ringScale = t => { const u = c01((t - T.accStart) / T.accDur); return 1 - 0.24 * u * u; };
+const spdFactor = t => 1 + (BOOST - 1) * Math.pow(c01((t - T.accStart) / T.accDur), 3);
+
+/* ---------- stage ---------- */
+const cv = document.getElementById('stage');
+const cx2 = cv.getContext('2d');
+let W = 0, H = 0, S = 1, DPR = 1;
+
+const DOMAIN = 'yourcompany.com';
+const NCH = DOMAIN.length;
+const SQ = 0.44;
+const SYSROT = -0.055;
+const cosR = Math.cos(SYSROT), sinR = Math.sin(SYSROT);
+
+let domC, buildC, endC, kEnd;
+let F = 100, LS = -2, wordL = 0, wordW = 1, penX = [], chCX = [];
+let parts = [], ghosts = [], nodes = [], edges = [], namedHubs = [], dotf = [];
+let grainPat = null;
+
+let PX, PY, PSZ, PAL, PCF, PSTK, PXA, PYA, PXB, PYB;
+
+const dfxAt = t => 12 * S * Math.sin(t * 0.26);
+const dfyAt = t => 7 * S * Math.sin(t * 0.19 + 2.1);
+
+function frontT(x){ return T.disStart + c01((x - wordL) / wordW) * T.disSpan; }
+
+function rebuild(){
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  S = Math.min(W / 1920, H / 1080);
+  cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  cx2.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+  domC   = [W * 0.5,   H * 0.44];
+  buildC = [W * 0.545, H * 0.52];
+  endC   = [W * 0.5,   H * 0.385];
+  kEnd   = (H * 0.24) / (GEXT * S);
+
+  const probe = document.createElement('canvas').getContext('2d');
+  probe.font = '700 100px ' + SANS;
+  const ls100 = -2;
+  let w100 = 0;
+  for (const ch of DOMAIN) w100 += probe.measureText(ch).width + ls100;
+  w100 -= ls100;
+  F = 100 * (0.655 * 1920 * S) / w100;
+  LS = -0.02 * F;
+  probe.font = '700 ' + F + 'px ' + SANS;
+  penX = [0]; chCX = [];
+  let pen = 0;
+  for (const ch of DOMAIN){
+    const w = probe.measureText(ch).width;
+    chCX.push(pen + w / 2);
+    pen += w + LS;
+    penX.push(pen);
+  }
+  wordW = pen - LS;
+  wordL = domC[0] - wordW / 2;
+  for (let i = 0; i < NCH; i++) chCX[i] += wordL;
+
+  /* ticker layout — measured so the snap centers exactly.
+     Strip: one pad name (so the open is mid-stream) + the 12 big names
+     + yourcompany.com (the hero word scaled down, riding the band).   */
+  tkNF = 62 * S; tkSF = 30 * S;
+  tkKBand = (78 * S) / F;
+  probe.font = '700 ' + tkNF + 'px ' + SANS;
+  const seq = [TICKER[TICKER.length - 1]].concat(TICKER);
+  const GAPH = 44 * S, sepW = tkSF * 0.5;
+  tkICO = 46 * S;
+  const IGAP = 15 * S;
+  tkItems = []; tkSeps = [];
+  let tpos = 0;
+  for (let i = 0; i < seq.length; i++){
+    const nw = probe.measureText(seq[i]).width;
+    tkItems.push({ n: seq[i], x: tpos, w: tkICO + IGAP + nw,
+                   ix: tpos, tx: tpos + tkICO + IGAP,
+                   ci: (i + TICKER.length - 1) % ICON_COLS.length });
+    tpos += tkICO + IGAP + nw + GAPH;
+    tkSeps.push(tpos + sepW / 2);
+    tpos += sepW + GAPH;
+  }
+  const yourW = wordW * tkKBand;
+  tkYourCX = tpos + yourW / 2;
+  /* total travel: the pad name opens 55% off the left edge; the run of
+     velocities is solved so peak speed lands the snap dead-center.     */
+  const D = tkYourCX - W / 2 + 0.55 * tkItems[0].w;
+  const Dn = TK.tA + (TK.tB - TK.tA) * (1 + (TK.V - 1) / 4) + TK.V * (TK.snap - TK.tB) / 3.9;
+  tkV0 = D / Dn; tkVpk = TK.V * tkV0;
+  tkDB = tkV0 * TK.tB + (tkVpk - tkV0) * (TK.tB - TK.tA) / 4;
+  tkR = D - tkDB;
+  tkStart = W / 2 - tkYourCX + D;
+
+  const g = document.createElement('canvas'); g.width = g.height = 240;
+  const gc = g.getContext('2d');
+  const gr = mulberry32(4242);
+  for (let i = 0; i < 2600; i++){
+    gc.fillStyle = 'rgba(100,116,139,' + (0.22 + gr() * 0.5).toFixed(2) + ')';
+    gc.fillRect((gr() * 240) | 0, (gr() * 240) | 0, 1, 1);
+  }
+  grainPat = cx2.createPattern(g, 'repeat');
+
+  const dr = mulberry32(1719);
+  dotf = [];
+  for (let i = 0; i < 190; i++){
+    dotf.push({
+      fx: dr(), fy: dr(),
+      sz: (0.5 + dr() * 0.8),
+      al: 0.04 + dr() * 0.06,
+      ph: dr() * 6.2832,
+      pf: 0.3 + dr() * 0.7
+    });
+  }
+
+  layoutKlines();
+  sample();
+}
+
+/* ---------- kinetic line layout (seeded, resolution-aware) ---------- */
+function layoutKlines(){
+  KL = KLDEF.map((L, li) => {
+    const fsz = L.fs * W / 100;
+    const ws = L.words.map(wd => {
+      const fw = wd.fw || L.fw;
+      cx2.font = fw + ' ' + fsz + 'px ' + SANS;
+      return { t: wd.t, c: wd.c || null, u: !!wd.u, uc: wd.uc || wd.c || COL.ink,
+               fw, w: cx2.measureText(wd.t).width };
+    });
+    const spaceW = fsz * 0.30;
+    const total = ws.reduce((s, w) => s + w.w, 0) + spaceW * (ws.length - 1);
+    let x = L.x * W - total / 2;
+    for (const w of ws){ w.x = x; x += w.w + spaceW; }
+
+    /* exit-dissolve particles — spawn along the set line, drift fieldward */
+    const rng = mulberry32(9100 + li * 77);
+    const pts = [];
+    for (let k = 0; k < 16; k++){
+      const fx = rng();
+      const sx = L.x * W - total / 2 + fx * total;
+      const sy = L.y * H + (rng() - 0.5) * fsz * 0.5;
+      let col = COL.slate;
+      for (const w of ws) if (sx >= w.x - 2 && sx <= w.x + w.w + 2){ col = w.c || COL.ink; break; }
+      const dx = buildC[0] - sx, dy = buildC[1] - sy;
+      const dl = Math.hypot(dx, dy) || 1;
+      const dist = (90 + 150 * rng()) * S;
+      pts.push({
+        sx, sy,
+        tx: sx + dx / dl * dist + (rng() - .5) * 54 * S,
+        ty: sy + dy / dl * dist + (rng() - .5) * 44 * S - 18 * S,
+        sz: (1.2 + 1.6 * rng()) * S, ph: rng() * 6.2832, col
+      });
+    }
+    return { t0: L.t0, t1: L.t1, x: L.x, y: L.y, stag: L.stag,
+             fsz, ws, total, pts, seed: li * 1.7 };
+  });
+}
+
+/* ---------- kinetic line draw — pure function of t ---------- */
+function drawKLines(t){
+  cx2.textAlign = 'left'; cx2.textBaseline = 'middle'; cx2.lineJoin = 'round';
+  for (const L of KL){
+    if (t < L.t0 || t > L.t1 + 0.95) continue;
+    const exU = c01((t - (L.t1 - 0.35)) / 0.35);
+    const exE = eo3(exU);
+    const lineA = 1 - exE;
+    const inV = eo3(c01((t - L.t0) / 0.5));
+    const yBase = L.y * H + (1 - bo(inV)) * 16 * S - exE * 12 * S
+                + Math.sin(t * 0.7 + L.seed) * 2.5 * S;
+
+    if (lineA > 0.012){
+      for (let i = 0; i < L.ws.length; i++){
+        const w = L.ws[i];
+        const wIn = L.t0 + i * L.stag;
+        const u = c01((t - wIn) / 0.40);
+        if (u <= 0) continue;
+        const e = eo3(u);
+        const al = e * lineA;
+        /* words drift slightly apart as the line dissolves */
+        const xw = w.x + (w.x + w.w / 2 - L.x * W) * 0.05 * exE;
+        const yw = yBase + (1 - e) * 6 * S;
+        cx2.save();
+        cx2.beginPath();
+        cx2.rect(xw - 2 * S, yBase - L.fsz * 0.80, (w.w + 4 * S) * e, L.fsz * 1.6);
+        cx2.clip();
+        const sc = 1.06 - 0.06 * bo(u);
+        cx2.translate(xw + w.w / 2, yBase);
+        cx2.scale(sc, sc);
+        cx2.translate(-(xw + w.w / 2), -yBase);
+        cx2.font = w.fw + ' ' + L.fsz + 'px ' + SANS;
+        cx2.lineWidth = 11 * S;
+        cx2.strokeStyle = 'rgba(252,253,255,' + (0.96 * al).toFixed(3) + ')';
+        cx2.strokeText(w.t, xw, yw);
+        cx2.fillStyle = rgba(w.c || COL.ink, al);
+        cx2.fillText(w.t, xw, yw);
+        cx2.restore();
+        /* underline sweep beneath key words */
+        if (w.u){
+          const uu = eo3(c01((t - (wIn + 0.24)) / 0.42));
+          if (uu > 0){
+            cx2.beginPath();
+            cx2.moveTo(xw, yBase + L.fsz * 0.58);
+            cx2.lineTo(xw + w.w * uu, yBase + L.fsz * 0.58);
+            cx2.strokeStyle = rgba(w.uc, 0.85 * al);
+            cx2.lineWidth = Math.max(1.4, 3.2 * S);
+            cx2.lineCap = 'round';
+            cx2.stroke();
+          }
+        }
+      }
+    }
+
+    /* the dissolve — a few particles leave the line and join the field */
+    if (exU > 0){
+      for (const q of L.pts){
+        const pu = c01((t - (L.t1 - 0.45)) / 0.9);
+        if (pu <= 0 || pu >= 1) continue;
+        const ee = eo3(pu);
+        const x = lerp(q.sx, q.tx, ee);
+        const y = lerp(q.sy, q.ty, ee) + Math.sin(t * 2 + q.ph) * 2 * S;
+        cx2.beginPath();
+        cx2.arc(x, y, q.sz * (1 - 0.4 * pu), 0, 6.2832);
+        cx2.fillStyle = rgba(q.col, Math.sin(Math.PI * pu) * 0.45);
+        cx2.fill();
+      }
+    }
+  }
+  cx2.textBaseline = 'alphabetic';
+}
+
+function drawWord(ctx, t){
+  ctx.save();
+  ctx.font = '700 ' + F + 'px ' + SANS;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i < NCH; i++){
+    let al = 1;
+    if (t !== null){
+      const tin = eo3(c01((t - (T.typeStart + i * T.typeDt)) / 0.12));
+      const dis = c01((t - frontT(chCX[i])) / 0.26);
+      al = tin * (1 - dis);
+      if (al <= 0.004) continue;
+    }
+    ctx.fillStyle = rgba(COL.ink, al);
+    ctx.fillText(DOMAIN[i], wordL + penX[i], domC[1]);
+  }
+  ctx.restore();
+}
+
+/* graph node target sampler */
+function sampleNodeTarget(ci, rng, placed){
+  const A = ANCH[ci];
+  for (let tr = 0; tr < 9; tr++){
+    let x, y;
+    if (ci === 3){
+      const th = rng() * 6.2832, f = 0.82 + 0.20 * rng();
+      x = Math.cos(th) * 590 * f;
+      y = Math.sin(th) * 298 * f;
+    } else if (A.ax2 !== undefined && rng() < A.lobe){
+      x = A.ax2 + gauss(rng) * A.sx2;
+      y = A.ay2 + gauss(rng) * A.sy2;
+    } else {
+      x = A.ax + gauss(rng) * A.sx;
+      y = A.ay + gauss(rng) * A.sy;
+    }
+    const d0 = Math.hypot(x, y);
+    if (d0 < 130){ x *= 130 / (d0 + 1e-6); y *= 130 / (d0 + 1e-6); }
+    x *= S; y *= S;
+    let ok = true;
+    const md = 26 * S;
+    for (const q of placed){
+      if ((q[0]-x)*(q[0]-x) + (q[1]-y)*(q[1]-y) < md * md){ ok = false; break; }
+    }
+    if (ok || tr === 8){ placed.push([x, y]); return [x, y]; }
+  }
+}
+function sampleDustTarget(ci, rng){
+  let x, y;
+  if (ci === 4){
+    const th = rng() * 6.2832, f = 0.30 + 0.85 * rng();
+    x = Math.cos(th) * 590 * f; y = Math.sin(th) * 298 * f;
+  } else if (ci === 3){
+    const th = rng() * 6.2832, f = 0.80 + 0.32 * rng();
+    x = Math.cos(th) * 590 * f; y = Math.sin(th) * 298 * f;
+  } else {
+    const A = ANCH[ci];
+    x = A.ax + gauss(rng) * A.sx * 2.0;
+    y = A.ay + gauss(rng) * A.sy * 2.0;
+  }
+  const d0 = Math.hypot(x, y);
+  if (d0 < 120){ x *= 120 / (d0 + 1e-6); y *= 120 / (d0 + 1e-6); }
+  return [x * S, y * S];
+}
+
+function sample(){
+  const off = document.createElement('canvas');
+  off.width = W; off.height = H;
+  const oc = off.getContext('2d', { willReadFrequently: true });
+  drawWord(oc, null);
+
+  const x0 = Math.max(0, Math.floor(wordL - 30));
+  const x1 = Math.min(W, Math.ceil(wordL + wordW + 30));
+  const y0 = Math.max(0, Math.floor(domC[1] - F * 0.62));
+  const y1 = Math.min(H, Math.ceil(domC[1] + F * 0.62));
+  const img = oc.getImageData(x0, y0, x1 - x0, y1 - y0);
+
+  const step = Math.max(2, Math.round(3.2 * S));
+  let pts = [];
+  for (let y = 0; y < img.height; y += step){
+    for (let x = 0; x < img.width; x += step){
+      if (img.data[(y * img.width + x) * 4 + 3] > 120) pts.push([x + x0, y + y0]);
+    }
+  }
+
+  const rng = mulberry32(20260819);
+
+  if (pts.length > 2500){
+    const keep = 2500 / pts.length;
+    pts = pts.filter(() => rng() < keep);
+  }
+  for (let i = pts.length - 1; i > 0; i--){
+    const j = (rng() * (i + 1)) | 0;
+    const tmp = pts[i]; pts[i] = pts[j]; pts[j] = tmp;
+  }
+
+  parts = []; nodes = []; namedHubs = [];
+  const placed = [];
+  const hubsOf = [[],[],[],[],[]];
+  for (const h of HUBS) hubsOf[h.ci].push(h);
+  const roleN = [0,0,0,0,0];
+
+  let ci = 0, cum = RINGS[0].p * pts.length;
+
+  for (let i = 0; i < pts.length; i++){
+    if (i > cum && ci < RINGS.length - 1){ ci++; cum += RINGS[ci].p * pts.length; }
+    const K = RINGS[ci];
+    const gx = pts[i][0] + (rng() - .5) * 1.6, gy = pts[i][1] + (rng() - .5) * 1.6;
+
+    /* launch fan */
+    const aBase = Math.atan2((gy - domC[1]) * 2.4, gx - domC[0]);
+    const aS = aBase + (rng() - .5) * 1.1;
+    const Rs = (430 + rng() * 330) * S;
+    const sx = domC[0] + Math.cos(aS) * Rs;
+    const sy = domC[1] + Math.sin(aS) * Rs * 0.78;
+    const curl = ((rng() < .5 ? -1 : 1) * (60 + rng() * 120)) * S;
+
+    /* orbit slot */
+    const a0 = rng() < 0.5 ? rng() * 6.2832 : aS + (rng() - .5) * 1.2;
+    const rOrb = (K.r + (rng() - .5) * 2 * K.spread) * S;
+    const om = K.om * (1 + (rng() - .5) * 0.10);
+
+    const dS = frontT(gx) + rng() * 0.14;
+    const dD = 0.7 + rng() * 0.40;
+    const cS = T.convStart + ci * 0.18 + rng() * 0.5;
+    const cD = 1.0 + rng() * 0.4;
+    const tR = T.rel + rng() * 0.18;
+    const fD = 1.05 + rng() * 0.45;
+
+    /* graph role */
+    let hub = false, node = false, name = null, gt = null;
+    const rn = roleN[ci];
+    if (rn < hubsOf[ci].length){
+      hub = true; node = true;
+      const hb = hubsOf[ci][rn];
+      gt = [hb.x * S, hb.y * S];
+      placed.push(gt);
+      if (hb.name) name = hb.name;
+    } else if (rn < NCOUNT[ci]){
+      node = true;
+      let tci = ci;                        /* some nodes live among the others */
+      if (rng() < 0.18) tci = (ci + 1 + ((rng() * 3) | 0)) % 4;
+      gt = sampleNodeTarget(Math.min(tci, 3), rng, placed);
+    } else {
+      let dci = ci;
+      if (rng() < 0.15) dci = (ci + 1 + ((rng() * 3) | 0)) % 4;
+      gt = sampleDustTarget(dci, rng);
+    }
+    roleN[ci]++;
+
+    const szO = (K.sz[0] + rng() * (K.sz[1] - K.sz[0])) * S;
+    let szG, alG;
+    if (hub){ szG = (name ? 8.2 : 7.2 + rng() * 1.0) * S; alG = 0.97; }
+    else if (node){ szG = (3.4 + rng() * 1.8) * S; alG = 0.96; }
+    else { szG = (1.1 + rng() * 0.9) * S; alG = ci >= 3 ? 0.06 : 0.085; }
+
+    let col = K.col;
+    if (ci === 2) col = mix(K.col, [224, 138, 86], rng() * .5);
+    if (ci === 1 && rng() < .25) col = mix(K.col, [255, 255, 255], .25);
+
+    /* release state — baked so the fling is continuous with the spin */
+    const aR = a0 + om * phaseBase(tR);
+    const rR = rOrb * ringScale(tR);
+    const pf = 0.3 + 0.7 * (rOrb / (RMAX * S));
+    let px0 = Math.cos(aR) * rR, py0 = Math.sin(aR) * rR * SQ;
+    const p0x = px0 * cosR - py0 * sinR + dfxAt(tR) * pf;
+    const p0y = px0 * sinR + py0 * cosR + dfyAt(tR) * pf;
+    let vx = -Math.sin(aR) * rR, vy = Math.cos(aR) * rR * SQ;
+    let rvx = vx * cosR - vy * sinR, rvy = vx * sinR + vy * cosR;
+    const sgn = om >= 0 ? 1 : -1;
+    rvx *= sgn; rvy *= sgn;
+    const vlen = Math.hypot(rvx, rvy) || 1;
+    const speed = Math.abs(om) * BOOST * rR;
+    const thr = Math.min(340 * S, Math.max(70 * S, speed * 0.32));
+    const p1x = p0x + (rvx / vlen) * thr;
+    const p1y = p0y + (rvy / vlen) * thr;
+
+    const p = {
+      gx, gy, aS, sx, sy, curl, ci,
+      ph: rng() * 6.2832,
+      dS, dD, cS, cD,
+      swing: (rng() - .5) * 240 * S,
+      a0, rOrb, om, pf,
+      tR, fD, p0x, p0y, p1x, p1y,
+      gtx: gt[0], gty: gt[1],
+      szO, szG, alG, al: K.al,
+      col, hub, node, nodeIdx: -1
+    };
+
+    if (node){
+      p.nodeIdx = nodes.length;
+      const nrec = { pi: parts.length, tx: gt[0], ty: gt[1], hub, ci, name,
+                     land: tR + fD * 0.85 };
+      nodes.push(nrec);
+      if (name) namedHubs.push(nrec);
+    }
+    parts.push(p);
+  }
+
+  const N = parts.length;
+  PX = new Float32Array(N); PY = new Float32Array(N);
+  PSZ = new Float32Array(N); PAL = new Float32Array(N);
+  PCF = new Float32Array(N); PSTK = new Uint8Array(N);
+  PXA = new Float32Array(N); PYA = new Float32Array(N);
+  PXB = new Float32Array(N); PYB = new Float32Array(N);
+
+  /* ---------- edges ---------- */
+  const erng = mulberry32(919);
+  edges = [];
+  const hubIdx = [];
+  for (let k = 0; k < nodes.length; k++) if (nodes[k].hub) hubIdx.push(k);
+
+  function nearestHub(ci, x, y, any){
+    let best = -1, bd = 1e18;
+    for (const k of hubIdx){
+      const n = nodes[k];
+      if (!any && n.ci !== ci) continue;
+      const d = (n.tx - x) * (n.tx - x) + (n.ty - y) * (n.ty - y);
+      if (d < bd){ bd = d; best = k; }
+    }
+    return best;
+  }
+  function pushEdge(a, b, t0, d, thin){
+    const colA = a === -1 ? COL.ink : parts[nodes[a].pi].col;
+    const colB = parts[nodes[b].pi].col;
+    edges.push({
+      a, b, t0, d, thin,
+      bow: (erng() - .5) * 44 * S,
+      col: mix(mix(colA, colB, .5), COL.slate, .40),
+      ciA: a === -1 ? -1 : nodes[a].ci,
+      ciB: nodes[b].ci
+    });
+  }
+
+  /* center → hubs, first into the cascade */
+  for (let h = 0; h < hubIdx.length; h++)
+    pushEdge(-1, hubIdx[h], T.rel + 0.55 + h * 0.06, 0.34, false);
+
+  /* spokes: every node joins its nearest hub */
+  for (let k = 0; k < nodes.length; k++){
+    const n = nodes[k];
+    if (n.hub) continue;
+    let h = -1, thin = false;
+    if (n.ci <= 2) h = nearestHub(n.ci, n.tx, n.ty, false);
+    else if (erng() < 0.55){ h = nearestHub(0, n.tx, n.ty, true); thin = true; }
+    if (h < 0) continue;
+    const t0 = Math.min(14.45,
+      Math.max(nodes[k].land, nodes[h].land, T.rel + 0.85) + 0.08 + erng() * 1.10);
+    pushEdge(h, k, t0, 0.22 + erng() * 0.16, thin);
+  }
+
+  /* a few intra-cluster near-neighbour links */
+  for (let ci2 = 0; ci2 <= 2; ci2++){
+    const pool = [];
+    for (let k = 0; k < nodes.length; k++)
+      if (nodes[k].ci === ci2 && !nodes[k].hub) pool.push(k);
+    for (let tr = 0; tr < 10 && pool.length > 3; tr++){
+      const a = pool[(erng() * pool.length) | 0];
+      const b = pool[(erng() * pool.length) | 0];
+      if (a === b) continue;
+      const d = Math.hypot(nodes[a].tx - nodes[b].tx, nodes[a].ty - nodes[b].ty);
+      if (d > 170 * S) continue;
+      const t0 = Math.min(14.45,
+        Math.max(nodes[a].land, nodes[b].land, T.rel + 1.0) + 0.15 + erng() * 1.0);
+      pushEdge(a, b, t0, 0.22 + erng() * 0.16, true);
+    }
+  }
+
+  /* cross-cluster hub↔hub */
+  const XH = [[0,3],[1,6],[4,5],[2,4],[0,5],[1,3],[2,6],[0,6]];
+  for (let x = 0; x < XH.length; x++){
+    const a = hubIdx[XH[x][0]], b = hubIdx[XH[x][1]];
+    if (a === undefined || b === undefined) continue;
+    pushEdge(a, b, 14.05 + x * 0.10, 0.32, false);
+  }
+
+  /* ghost query fragments */
+  const grng = mulberry32(77);
+  ghosts = GHOSTS.map((w, i) => {
+    const a = -Math.PI + (i + 0.5) * (2 * Math.PI / GHOSTS.length) + (grng() - .5) * 0.5;
+    return {
+      w, a,
+      r0: (230 + grng() * 70) * S,
+      r1: (560 + grng() * 130) * S,
+      t0: T.ghostIn + i * 0.13 + grng() * 0.3,
+      d: 1.9
+    };
+  });
+}
+
+/* ---------- scene transforms ---------- */
+function emblem(t){
+  const u = eio3(c01((t - T.recede) / (T.recedeEnd - T.recede)));
+  return {
+    u,
+    cx: lerp(buildC[0], endC[0], u),
+    cy: lerp(buildC[1], endC[1], u),
+    k:  lerp(1, kEnd, u),
+    am: 1 - 0.92 * u
+  };
+}
+function ringPoint(a, r){
+  const x = Math.cos(a) * r, y = Math.sin(a) * r * SQ;
+  return [x * cosR - y * sinR, x * sinR + y * cosR];
+}
+function scatterPos(p, t){
+  const u = eio5((t - p.dS) / p.dD);
+  const v = 1 - u;
+  const mxp = (p.gx + p.sx) / 2 - Math.sin(p.aS) * p.curl;
+  const myp = (p.gy + p.sy) / 2 + Math.cos(p.aS) * p.curl;
+  let x = v * v * p.gx + 2 * v * u * mxp + u * u * p.sx;
+  let y = v * v * p.gy + 2 * v * u * myp + u * u * p.sy;
+  x += Math.sin(t * 0.6 + p.ph) * 7 * S * u;
+  y += Math.cos(t * 0.5 + p.ph) * 6 * S * u;
+  return [x, y];
+}
+function orbitAbs(p, t, em, dfx, dfy){
+  const a = p.a0 + p.om * phaseBase(t);
+  let r = p.rOrb * ringScale(t);
+  const t2 = t - (p.cS + p.cD);
+  if (t2 > 0 && t2 < 1.5) r *= 1 + 0.09 * Math.exp(-4.2 * t2) * Math.sin(8.5 * t2);
+  const q = ringPoint(a, r * (em.u > 0 ? em.k : 1));
+  return [em.cx + q[0] + dfx * p.pf, em.cy + q[1] + dfy * p.pf, a];
+}
+/* full particle position — pure function of t */
+function partPos(p, t, em, dfx, dfy, hl){
+  if (t < p.tR){
+    const cu = eio3((t - p.cS) / p.cD);
+    if (cu <= 0){ const s = scatterPos(p, t); return [s[0], s[1], null, cu, 0]; }
+    if (cu >= 1){ const o = orbitAbs(p, t, em, dfx, dfy); return [o[0], o[1], o[2], 1, 0]; }
+    const s = scatterPos(p, t), o = orbitAbs(p, t, em, dfx, dfy);
+    let x = lerp(s[0], o[0], cu), y = lerp(s[1], o[1], cu);
+    const dx = o[0] - s[0], dy = o[1] - s[1], L = Math.hypot(dx, dy) || 1;
+    const sw = p.swing * Math.sin(Math.PI * cu);
+    return [x + (-dy / L) * sw, y + (dx / L) * sw, o[2], cu, 0];
+  }
+  const tau = (t - p.tR) / p.fD;
+  const gdx = Math.sin(t * 0.68 + p.ph) * 4.4 * S;
+  const gdy = Math.cos(t * 0.58 + p.ph) * 3.8 * S;
+  let relx, rely, w;
+  if (tau >= 1){
+    w = 1; relx = p.gtx + gdx; rely = p.gty + gdy;
+    /* spring overshoot on arrival — damped radial ring-out */
+    const lt = (tau - 1) * p.fD;
+    if (lt < 1.1){
+      const dlen = Math.hypot(p.gtx, p.gty) || 1;
+      const k = Math.exp(-3.2 * lt) * Math.sin(9 * lt) * 9 * S;
+      relx += p.gtx / dlen * k; rely += p.gty / dlen * k;
+    }
+  }
+  else {
+    w = eo3(tau);
+    const v = 1 - w;
+    relx = v * v * p.p0x + 2 * v * w * p.p1x + w * w * p.gtx + gdx * w;
+    rely = v * v * p.p0y + 2 * v * w * p.p1y + w * w * p.gty + gdy * w;
+  }
+  let x = em.cx + relx * em.k, y = em.cy + rely * em.k;
+  if (p.node && p.ci === 0 && hl > 0) y -= 24 * S * hl * em.k;
+  return [x, y, null, 1, Math.max(w, 0.0001)];
+}
+
+/* left-aligned tracked mono text */
+function trackL(ctx, txt, x, y, ls){
+  let px = x;
+  for (const ch of txt){ ctx.fillText(ch, px, y); px += ctx.measureText(ch).width + ls; }
+  return px - ls - x;
+}
+function trackW(ctx, txt, ls){
+  let w = 0;
+  for (const ch of txt) w += ctx.measureText(ch).width + ls;
+  return w - ls;
+}
+function trackC(ctx, txt, x, y, ls){
+  const w = trackW(ctx, txt, ls);
+  trackL(ctx, txt, x - w / 2, y, ls);
+  return w;
+}
+
+/* ---------- the big-name ticker (cold open) ---------- */
+function drawTicker(t){
+  if (t >= TK.grow) return;
+  const o = tkStart - tickD(t);
+  const v = tickV(t);
+  const by = domC[1];
+  const others = 1 - c01((t - (TK.snap - 0.10)) / 0.28);
+  const echoN = v > 1400 * S ? 5 : v > 520 * S ? 3 : 0;
+  const dt = 0.007;
+  /* the word's growth after the snap; its left half shoves the band aside */
+  const k = t <= TK.snap ? tkKBand
+          : lerp(tkKBand, 1, boK((t - TK.snap) / (TK.grow - TK.snap)));
+  const shove = (k - tkKBand) * wordW / 2;
+
+  if (others > 0.01){
+    cx2.textBaseline = 'middle';
+    cx2.textAlign = 'left';
+    cx2.font = '700 ' + tkNF + 'px ' + SANS;
+    for (const it of tkItems){
+      const sx = o + it.x - shove;
+      if (sx > W + 60 || sx + it.w + v * dt * echoN < -60) continue;
+      const nx = o + it.tx - shove;
+      for (let e = echoN; e >= 1; e--){
+        cx2.fillStyle = rgba(COL.ink, 0.90 * others * 0.17 / e);
+        cx2.fillText(it.n, nx + v * dt * e, by);
+      }
+      /* the icon, in a rounded plate left of the name */
+      const iy = by - tkICO / 2, ixx = o + it.ix - shove;
+      cx2.save();
+      cx2.globalAlpha = 0.95 * others;
+      cx2.beginPath();
+      cx2.roundRect(ixx, iy, tkICO, tkICO, 10 * S);
+      cx2.clip();
+      const im = TKICONS[it.n];
+      if (im){
+        cx2.fillStyle = '#ffffff';
+        cx2.fillRect(ixx, iy, tkICO, tkICO);
+        cx2.drawImage(im, ixx + 4 * S, iy + 4 * S, tkICO - 8 * S, tkICO - 8 * S);
+      } else {
+        cx2.fillStyle = rgba(ICON_COLS[it.ci], 1);
+        cx2.fillRect(ixx, iy, tkICO, tkICO);
+        cx2.fillStyle = '#ffffff';
+        cx2.font = '700 ' + (26 * S) + 'px ' + SANS;
+        cx2.textAlign = 'center';
+        cx2.fillText(it.n[0].toUpperCase(), ixx + tkICO / 2, by + 1 * S);
+        cx2.textAlign = 'left';
+        cx2.font = '700 ' + tkNF + 'px ' + SANS;
+      }
+      cx2.restore();
+      cx2.fillStyle = rgba(COL.ink, 0.90 * others);
+      cx2.fillText(it.n, nx, by);
+    }
+    cx2.font = '500 ' + tkSF + 'px ' + MONO;
+    cx2.textAlign = 'center';
+    for (const sr of tkSeps){
+      const sx = o + sr - shove;
+      if (sx > W + 60 || sx < -60) continue;
+      cx2.fillStyle = rgba(COL.slate, 0.85 * others);
+      cx2.fillText('·', sx, by);
+    }
+    cx2.textAlign = 'left';
+  }
+
+  /* yourcompany.com — the hero word riding the band; on the snap it
+     lands dead-center and springs up to hero size (slight overshoot). */
+  const cxNow = o + tkYourCX;
+  if (cxNow - wordW * tkKBand / 2 < W + 80){
+    const yEcho = t < TK.snap ? echoN : 0;
+    cx2.textAlign = 'left'; cx2.textBaseline = 'middle';
+    for (let e = yEcho; e >= 0; e--){
+      cx2.save();
+      cx2.translate(cxNow - domC[0] + v * dt * e, 0);
+      cx2.translate(domC[0], by); cx2.scale(k, k); cx2.translate(-domC[0], -by);
+      cx2.font = '700 ' + F + 'px ' + SANS;
+      cx2.fillStyle = rgba(COL.ink, e === 0 ? 1 : 0.20 / e);
+      for (let i = 0; i < NCH; i++) cx2.fillText(DOMAIN[i], wordL + penX[i], by);
+      cx2.restore();
+    }
+  }
+  cx2.textBaseline = 'alphabetic';
+}
+
+/* ---------- draw ---------- */
+function draw(t){
+  cx2.clearRect(0, 0, W, H);
+  const em = emblem(t);
+  const dfx = dfxAt(t) * (1 - 0.7 * em.u);
+  const dfy = dfyAt(t) * (1 - 0.7 * em.u);
+  const hl = env(t, T.hlIn, T.hlIn + 0.55, T.agentOut + 0.05, T.agentOut + 0.6);
+
+  if (grainPat){
+    cx2.globalAlpha = 0.035;
+    cx2.fillStyle = grainPat;
+    cx2.fillRect(0, 0, W, H);
+    cx2.globalAlpha = 1;
+  }
+  const dfIn = c01(t / 0.8);
+  for (const d of dotf){
+    const x = d.fx * W + Math.sin(t * 0.16 + d.ph) * 12 * S * d.pf - dfx * 0.25 * d.pf;
+    const y = d.fy * H + Math.cos(t * 0.13 + d.ph) * 8 * S * d.pf - dfy * 0.25 * d.pf;
+    cx2.beginPath(); cx2.arc(x, y, d.sz * S, 0, 6.2832);
+    cx2.fillStyle = rgba(COL.slate,
+      d.al * dfIn * (0.65 + 0.35 * Math.sin(t * 1.3 * d.pf + d.ph * 3)));
+    cx2.fill();
+  }
+
+  /* ---- particle compute pass ---- */
+  const N = parts.length;
+  const trailA = Math.pow(c01((t - T.accStart) / T.accDur), 3);
+  const tau0 = 0.075 + 0.13 * trailA;
+  for (let i = 0; i < N; i++){
+    const p = parts[i];
+    const bA = c01((t - (p.dS - 0.04)) / 0.14);
+    if (bA <= 0){ PAL[i] = 0; continue; }
+    const r = partPos(p, t, em, dfx, dfy, hl);
+    const x = r[0], y = r[1], ang = r[2], cu = r[3], w = r[4];
+    let al, sz;
+    if (w === 0){
+      al = bA * lerp(0.8, p.al, cu);
+      sz = p.szO * (0.72 + 0.28 * cu);
+      if (ang !== null){
+        const dn = (Math.sin(ang) + 1) / 2;
+        al *= 0.86 + 0.14 * dn;
+        sz *= 0.92 + 0.08 * dn;
+        al *= 0.93 + 0.07 * Math.sin(t * 2.4 + p.ph * 6);   /* orbit twinkle */
+        if (p.ci === 1){                       /* "your products," — blue flare */
+          const fb = env(t, 7.50, 7.95, 9.10, 9.60);
+          al = Math.min(1, al * (1 + 0.55 * fb)); sz *= 1 + 0.20 * fb;
+        }
+        const ib = env(t, 11.38, 11.68, 11.95, 12.25);  /* "your industry" — one breath */
+        if (ib > 0){ al = Math.min(1, al * (1 + 0.32 * ib)); sz *= 1 + 0.07 * ib; }
+      }
+    } else {
+      al = lerp(p.al, p.alG, w);
+      sz = lerp(p.szO, p.szG, w);
+      const lt = t - (p.tR + p.fD);
+      if (lt > 0 && lt < 1.1) sz *= 1 + 0.50 * Math.exp(-3.2 * lt) * Math.sin(10 * lt);
+      if (p.node && lt > 0) sz *= 1 + 0.045 * Math.sin(t * 2.3 + p.ph);
+      if (hl > 0){
+        if (p.ci === 0){
+          if (p.node) al = Math.min(1, al * (1 + 0.35 * hl));
+          else al *= 1 - 0.30 * hl;
+        } else al *= 1 - 0.84 * hl;
+      }
+    }
+    al *= em.am;
+    PX[i] = x; PY[i] = y; PAL[i] = al; PSZ[i] = sz;
+    PCF[i] = c01((t - (p.cS + p.cD)) / 0.5);
+
+    /* trails */
+    PSTK[i] = 0;
+    if (w === 0 && cu >= 1 && t < p.tR){
+      const b1 = orbitAbs(p, t - tau0 / 2, em, dfx, dfy);
+      const b2 = orbitAbs(p, t - tau0, em, dfx, dfy);
+      if ((x - b2[0]) * (x - b2[0]) + (y - b2[1]) * (y - b2[1]) > 4 * S * S){
+        PXA[i] = b1[0]; PYA[i] = b1[1]; PXB[i] = b2[0]; PYB[i] = b2[1];
+        PSTK[i] = 1;
+      }
+    } else if (w === 0 && t > p.dS + 0.02 && cu < 0.9){
+      const pr = partPos(p, t - 0.05, em, dfx, dfy, hl);
+      let vx = x - pr[0], vy = y - pr[1];
+      const conv = cu > 0;
+      const d2 = vx * vx + vy * vy, thr = (conv ? 6.5 : 3.2) * S;
+      if (d2 > thr * thr){
+        const d = Math.sqrt(d2), maxL = (conv ? 18 : 44) * S;
+        if (d > maxL){ vx *= maxL / d; vy *= maxL / d; }
+        if (conv){ vx *= 0.55; vy *= 0.55; }
+        PXB[i] = x - vx; PYB[i] = y - vy; PSTK[i] = conv ? 3 : 2;
+      }
+    } else if (w > 0 && w < 1 && t - p.tR < 0.55){
+      const pr = partPos(p, t - 0.06, em, dfx, dfy, hl);
+      let vx = x - pr[0], vy = y - pr[1];
+      const d = Math.hypot(vx, vy), maxL = 60 * S;
+      if (d > 3 * S){
+        if (d > maxL){ vx *= maxL / d; vy *= maxL / d; }
+        PXB[i] = x - vx; PYB[i] = y - vy; PSTK[i] = 2;
+      }
+    }
+  }
+
+  /* ---- orbit hairline rings ---- */
+  const hairOut = 1 - c01((t - (T.rel - 0.35)) / 0.55);
+  if (hairOut > 0.01){
+    for (const rh of RING_HAIR){
+      const pr = eo3((t - rh.t0) / 1.1);
+      if (pr <= 0) continue;
+      const rr = rh.r * S * ringScale(t);
+      const pf = 0.3 + 0.7 * (rh.r / RMAX);
+      const circ = 2 * Math.PI * rr * 0.74;
+      cx2.save();
+      cx2.translate(buildC[0] + dfx * pf, buildC[1] + dfy * pf);
+      cx2.rotate(SYSROT);
+      cx2.scale(1, SQ);
+      cx2.beginPath();
+      cx2.arc(0, 0, rr, -1.1, -1.1 + Math.PI * 2);
+      cx2.setLineDash([circ * pr, 1e6]);
+      cx2.strokeStyle = COL.hair;
+      cx2.globalAlpha = 0.7 * pr * hairOut;
+      cx2.lineWidth = Math.max(0.6, 0.8 * S);
+      cx2.stroke();
+      /* a glint rides each hairline — edge shimmer on the rings */
+      const CC = 2 * Math.PI * rr;
+      const gdir = rh.r > 400 ? -1 : 1;
+      cx2.setLineDash([CC * 0.10, CC]);
+      cx2.lineDashOffset = -((((t * 0.07 * gdir) % 1) + 1) % 1) * CC;
+      cx2.strokeStyle = '#c3d1e3';
+      cx2.globalAlpha = 0.5 * pr * hairOut;
+      cx2.lineWidth = Math.max(0.7, 1.05 * S);
+      cx2.stroke();
+      cx2.lineDashOffset = 0;
+      cx2.setLineDash([]);
+      cx2.restore();
+      cx2.globalAlpha = 1;
+    }
+  }
+
+  /* ---- edges: the connection cascade ---- */
+  if (t > T.rel + 0.5 && em.am > 0.02){
+    cx2.lineCap = 'round';
+    for (const e of edges){
+      const u = (t - e.t0) / e.d;
+      if (u <= 0) continue;
+      const ax = e.a === -1 ? em.cx : PX[nodes[e.a].pi];
+      const ay = e.a === -1 ? em.cy : PY[nodes[e.a].pi];
+      const bx = PX[nodes[e.b].pi], by = PY[nodes[e.b].pi];
+      const w = u >= 1 ? 1 : eo3(u);
+      const dx = bx - ax, dy = by - ay, L = Math.hypot(dx, dy) || 1;
+      const cpx = (ax + bx) / 2 + (-dy / L) * e.bow * em.k;
+      const cpy = (ay + by) / 2 + (dx / L) * e.bow * em.k;
+      let al;
+      if (u < 1) al = 0.80;
+      else al = 0.32 + 0.45 * Math.exp(-2.6 * (t - (e.t0 + e.d)))
+              + 0.06 * (0.5 + 0.5 * Math.sin(t * 2.6 + e.bow));
+      if (hl > 0){
+        const lit = (e.ciA === 0 || e.a === -1 && e.ciB === 0) && e.ciB === 0;
+        al *= lit ? (1 + 0.8 * hl) : (1 - 0.82 * hl);
+      }
+      al *= em.am;
+      if (al < 0.01) continue;
+      cx2.beginPath();
+      cx2.moveTo(ax, ay);
+      const SEG = 8;
+      for (let s2 = 1; s2 <= SEG; s2++){
+        const q = (s2 / SEG) * w, v = 1 - q;
+        cx2.lineTo(v * v * ax + 2 * v * q * cpx + q * q * bx,
+                   v * v * ay + 2 * v * q * cpy + q * q * by);
+      }
+      cx2.strokeStyle = rgba(e.col, Math.min(1, al));
+      cx2.lineWidth = Math.max(0.6, (e.thin ? 0.85 : 1.35) * S);
+      cx2.stroke();
+
+      /* traveling shimmer along settled edges */
+      if (u >= 1 && !e.thin){
+        const q = ((t * 0.22 + Math.abs(e.bow) * 0.13) % 1 + 1) % 1;
+        const v3 = 1 - q;
+        const shx = v3 * v3 * ax + 2 * v3 * q * cpx + q * q * bx;
+        const shy = v3 * v3 * ay + 2 * v3 * q * cpy + q * q * by;
+        cx2.beginPath();
+        cx2.arc(shx, shy, 1.6 * S, 0, 6.2832);
+        cx2.fillStyle = rgba(e.col, Math.min(0.55, al * 1.1));
+        cx2.fill();
+      }
+
+      /* landing pulse at the far node */
+      const pu = (t - (e.t0 + e.d)) / 0.45;
+      if (pu > 0 && pu < 1){
+        const pc = parts[nodes[e.b].pi].col;
+        cx2.beginPath();
+        cx2.arc(bx, by, PSZ[nodes[e.b].pi] + (3 + 24 * eo3(pu)) * S, 0, 6.2832);
+        cx2.strokeStyle = rgba(pc, (1 - pu) * 0.78 * em.am);
+        cx2.lineWidth = Math.max(0.6, 1.35 * S);
+        cx2.stroke();
+      }
+    }
+  }
+
+  /* ---- the ticker cold open, then the word until it dissolves ---- */
+  drawTicker(t);
+  if (t >= TK.grow && t < T.disStart + T.disSpan + 0.5) drawWord(cx2, t);
+
+  /* ---- particles ---- */
+  for (let i = 0; i < N; i++){
+    const al = PAL[i];
+    if (al <= 0.008) continue;
+    const p = parts[i];
+    const cf = PCF[i];
+    const col = cf <= 0 ? COL.slate : cf >= 1 ? p.col : mix(COL.slate, p.col, cf);
+    const sz = PSZ[i];
+    const st = PSTK[i];
+    if (st === 1){
+      /* orbit comet trail: two-segment arc, taper by alpha */
+      cx2.lineCap = 'round';
+      cx2.beginPath();
+      cx2.moveTo(PXB[i], PYB[i]);
+      cx2.quadraticCurveTo(PXA[i], PYA[i], PX[i], PY[i]);
+      cx2.strokeStyle = rgba(col, al * 0.50);
+      cx2.lineWidth = Math.max(0.6, sz * 0.72);
+      cx2.stroke();
+    } else if (st === 2 || st === 3){
+      cx2.lineCap = 'round';
+      cx2.beginPath();
+      cx2.moveTo(PXB[i], PYB[i]);
+      cx2.lineTo(PX[i], PY[i]);
+      cx2.strokeStyle = rgba(col, al * (st === 3 ? 0.3 : 0.5));
+      cx2.lineWidth = Math.max(0.6, sz * (st === 3 ? 0.55 : 0.75));
+      cx2.stroke();
+    }
+    cx2.beginPath();
+    cx2.arc(PX[i], PY[i], sz, 0, 6.2832);
+    cx2.fillStyle = rgba(col, al);
+    cx2.fill();
+  }
+
+  /* soft paper glow clears the middle */
+  const glowA = c01((t - 7.7) / 1.2) * 0.9 * em.am;
+  if (glowA > 0){
+    const gr2 = Math.max(165 * S * em.k, 1);
+    const g = cx2.createRadialGradient(em.cx, em.cy, 0, em.cx, em.cy, gr2);
+    g.addColorStop(0, 'rgba(252,253,255,' + glowA.toFixed(3) + ')');
+    g.addColorStop(1, 'rgba(252,253,255,0)');
+    cx2.fillStyle = g;
+    cx2.fillRect(em.cx - gr2, em.cy - gr2, gr2 * 2, gr2 * 2);
+  }
+
+  /* navy anchor dot — the domain, survives to the end card */
+  const cenIn = c01((t - T.centerIn) / 0.55);
+  const cPul = env(t, 9.68, 9.98, 10.90, 11.30);   /* "your company," beat */
+  if (cenIn > 0){
+    const r = lerp(13, 8.5, em.u) * S * bo(cenIn)
+            * (1 + 0.03 * Math.sin(t * 1.8) + 0.26 * cPul);
+    cx2.beginPath();
+    cx2.arc(em.cx, em.cy, r, 0, 6.2832);
+    cx2.fillStyle = rgba(COL.ink, eo3(c01((t - T.centerIn) / 0.4)));
+    cx2.fill();
+    for (let j4 = 0; j4 < 2; j4++){              /* navy rings ride the company beat */
+      const pu4 = c01((t - (9.75 + j4 * 0.55)) / 0.85);
+      if (pu4 > 0 && pu4 < 1){
+        cx2.beginPath();
+        cx2.arc(em.cx, em.cy, r + (6 + 74 * eo3(pu4)) * S, 0, 6.2832);
+        cx2.strokeStyle = rgba(COL.ink, (1 - pu4) * 0.45);
+        cx2.lineWidth = Math.max(0.6, 1.4 * S);
+        cx2.stroke();
+      }
+    }
+  }
+
+  /* breathing pulse rings from the anchor while the graph lives */
+  if (t > 12.8 && t < T.recede + 0.2){
+    const pbase = c01((t - 12.8) / 1.0) * (1 - c01((t - (T.recede - 0.35)) / 0.55));
+    if (pbase > 0.01){
+      for (let j = 0; j < 2; j++){
+        const pu2 = (((t - 12.8) / 2.3 + j * 0.5) % 1 + 1) % 1;
+        const rr2 = (15 + 98 * eo3(pu2)) * S * em.k;
+        const a2 = (1 - pu2) * (1 - pu2) * 0.20 * pbase * em.am;
+        if (a2 < 0.012) continue;
+        cx2.beginPath();
+        cx2.arc(em.cx, em.cy, rr2, 0, 6.2832);
+        cx2.strokeStyle = rgba(COL.ink, a2);
+        cx2.lineWidth = Math.max(0.6, 1.1 * S);
+        cx2.stroke();
+      }
+    }
+  }
+
+  /* ---- the open-kb mark assembles out of the receded graph ---- */
+  if (t > 21.25){
+    const lcx = W * 0.5, lcy = H * 0.385;
+    const u2 = 2.05 * S * (1 + 0.012 * Math.sin(t * 1.6));
+    const SATS = [
+      [0, -38, COL.blue], [33, -19, COL.blue], [33, 19, COL.pink],
+      [0, 38, [212, 84, 30]], [-33, 19, [212, 84, 30]], [-33, -19, COL.pink]
+    ];
+    cx2.lineCap = 'round';
+    for (let i3 = 0; i3 < 6; i3++){          /* spokes draw from center */
+      const sp = eo3(c01((t - (21.75 + i3 * 0.045)) / 0.5));
+      if (sp <= 0) continue;
+      cx2.beginPath();
+      cx2.moveTo(lcx, lcy);
+      cx2.lineTo(lcx + SATS[i3][0] * u2 * sp, lcy + SATS[i3][1] * u2 * sp);
+      cx2.strokeStyle = 'rgba(195,213,242,' + (0.9 * sp).toFixed(3) + ')';
+      cx2.lineWidth = Math.max(0.8, 0.8 * u2);
+      cx2.stroke();
+    }
+    const hr2 = eo3(c01((t - 22.15) / 0.55)); /* hairline hex + ring */
+    if (hr2 > 0){
+      cx2.beginPath();
+      for (let i3 = 0; i3 <= 6; i3++){
+        const s4 = SATS[i3 % 6];
+        const hx = lcx + s4[0] * u2, hy = lcy + s4[1] * u2;
+        i3 === 0 ? cx2.moveTo(hx, hy) : cx2.lineTo(hx, hy);
+      }
+      cx2.strokeStyle = 'rgba(221,231,249,' + (0.85 * hr2).toFixed(3) + ')';
+      cx2.lineWidth = Math.max(0.7, 0.55 * u2);
+      cx2.stroke();
+      cx2.beginPath();
+      cx2.arc(lcx, lcy, 46 * u2, 0, 6.2832);
+      cx2.strokeStyle = 'rgba(226,234,250,' + (0.9 * hr2).toFixed(3) + ')';
+      cx2.lineWidth = Math.max(0.6, 0.5 * u2);
+      cx2.stroke();
+    }
+    for (let i3 = 0; i3 < 6; i3++){          /* satellites glide in, kind-colored */
+      const su = c01((t - (21.30 + i3 * 0.07)) / 0.6);
+      if (su <= 0) continue;
+      const e2 = eo3(su);
+      cx2.beginPath();
+      cx2.arc(lcx + SATS[i3][0] * u2 * (2.6 - 1.6 * e2),
+              lcy + SATS[i3][1] * u2 * (2.6 - 1.6 * e2),
+              4.6 * u2 * (0.6 + 0.4 * bo(su)), 0, 6.2832);
+      cx2.fillStyle = rgba(SATS[i3][2], e2);
+      cx2.fill();
+    }
+    const an = c01((t - 22.35) / 0.5);       /* the anchor lands last */
+    if (an > 0){
+      cx2.beginPath();
+      cx2.arc(lcx, lcy, 9.5 * u2 * bo(an), 0, 6.2832);
+      cx2.fillStyle = rgba(COL.ink, eo3(an));
+      cx2.fill();
+      const wc = c01((t - 22.60) / 0.35);
+      if (wc > 0){
+        cx2.beginPath();
+        cx2.arc(lcx, lcy, 4 * u2 * bo(wc), 0, 6.2832);
+        cx2.fillStyle = 'rgba(255,255,255,' + eo3(wc).toFixed(3) + ')';
+        cx2.fill();
+      }
+    }
+  }
+
+  /* host pill under the anchor */
+  const pillA = env(t, T.pillIn, T.pillIn + 0.6, T.recede, T.recede + 0.7);
+  if (pillA > 0){
+    const py = em.cy + 52 * S * em.k
+             + (1 - pillA) * 12 * S + Math.sin(t * 0.7) * 2.5 * S;
+    cx2.font = '500 ' + (12.5 * S) + 'px ' + MONO;
+    cx2.textAlign = 'left'; cx2.textBaseline = 'middle';
+    const tw = trackW(cx2, 'YOURCOMPANY.COM', 2.2 * S);
+    const pw = tw + 30 * S, phh = 27 * S;
+    cx2.globalAlpha = pillA;
+    cx2.beginPath();
+    cx2.roundRect(em.cx - pw / 2, py - phh / 2, pw, phh, phh / 2);
+    cx2.fillStyle = '#ffffff'; cx2.fill();
+    cx2.strokeStyle = '#dfe6ef'; cx2.lineWidth = 1; cx2.stroke();
+    cx2.fillStyle = rgba(COL.ink, 1);
+    trackL(cx2, 'YOURCOMPANY.COM', em.cx - tw / 2, py + 0.5, 2.2 * S);
+    cx2.globalAlpha = 1;
+  }
+
+  /* cluster kickers */
+  const kickA = env(t, T.kickersIn, T.kickersIn + 0.6, T.recede - 0.1, T.recede + 0.5);
+  if (kickA > 0){
+    cx2.font = '700 ' + (17 * S) + 'px ' + MONO;
+    cx2.textBaseline = 'middle';
+    cx2.lineJoin = 'round';
+    /* letter-tracking eases from wide to set as the kickers land */
+    const kin = eo3(c01((t - T.kickersIn) / 0.9));
+    for (const K of KICKERS){
+      let a2 = kickA * 0.96;
+      if (hl > 0) a2 *= K.ci === 0 ? 1 : (1 - 0.65 * hl);
+      const x = em.cx + K.x * S * em.k;
+      const y = em.cy + K.y * S * em.k
+              + (1 - kickA) * 10 * S + Math.sin(t * 0.9 + K.x) * 2 * S;
+      const ls2 = (5.5 - 2.5 * kin) * S;
+      const tw2 = trackW(cx2, K.txt, ls2);
+      /* paper halo so the label cuts through nodes and edges */
+      cx2.lineWidth = 6 * S;
+      cx2.strokeStyle = 'rgba(252,253,255,' + (0.9 * Math.min(1, a2) * em.am).toFixed(3) + ')';
+      let hx2 = x - tw2 / 2;
+      for (const ch of K.txt){ cx2.strokeText(ch, hx2, y); hx2 += cx2.measureText(ch).width + ls2; }
+      cx2.fillStyle = rgba(K.col, Math.min(1, a2) * em.am);
+      trackC(cx2, K.txt, x, y, ls2);
+    }
+  }
+
+  /* the plug — flow-lines stream from the graph's hubs into the prompt */
+  const fla = env(t, T.promptIn - 0.10, T.promptIn + 0.45, T.agentOut, T.agentOut + 0.5);
+  if (fla > 0 && em.am > 0.02){
+    const ptx = W * 0.5, chipY = H * 0.778, pty = chipY - 32 * S;
+    const srcs = [];
+    for (const nh of namedHubs) srcs.push([PX[nh.pi], PY[nh.pi], parts[nh.pi].col]);
+    srcs.push([em.cx, em.cy, COL.ink]);
+    cx2.lineCap = 'round';
+    for (let i2 = 0; i2 < srcs.length; i2++){
+      const sxx = srcs[i2][0], syy = srcs[i2][1], scol = srcs[i2][2];
+      const gu = eo3(c01((t - (T.promptIn - 0.05 + i2 * 0.12)) / 0.55));
+      if (gu <= 0) continue;
+      const cpx = (sxx + ptx) / 2 + (i2 - 1.5) * 34 * S;
+      const cpy = (syy + pty) / 2 + 48 * S;
+      cx2.beginPath();
+      cx2.moveTo(sxx, syy);
+      for (let s3 = 1; s3 <= 10; s3++){
+        const q = (s3 / 10) * gu, v = 1 - q;
+        cx2.lineTo(v * v * sxx + 2 * v * q * cpx + q * q * ptx,
+                   v * v * syy + 2 * v * q * cpy + q * q * pty);
+      }
+      cx2.strokeStyle = rgba(mix(scol, COL.slate, 0.35), 0.30 * fla);
+      cx2.lineWidth = Math.max(0.6, 1.0 * S);
+      cx2.stroke();
+      for (let j2 = 0; j2 < 2; j2++){      /* packets riding the line down */
+        const q = (((t * 0.55 + j2 * 0.5 + i2 * 0.23) % 1) + 1) % 1;
+        if (q > gu) continue;
+        const v = 1 - q;
+        cx2.beginPath();
+        cx2.arc(v * v * sxx + 2 * v * q * cpx + q * q * ptx,
+                v * v * syy + 2 * v * q * cpy + q * q * pty, 2.3 * S, 0, 6.2832);
+        cx2.fillStyle = rgba(scol, 0.65 * fla);
+        cx2.fill();
+      }
+      /* the answer beams back up — pink packets return to the lit hubs */
+      if (t > T.ansIn && i2 < srcs.length - 1){
+        for (let j3 = 0; j3 < 2; j3++){
+          const q = 1 - ((((t - T.ansIn) * 0.65 + j3 * 0.5 + i2 * 0.19) % 1) + 1) % 1;
+          if (q > gu) continue;
+          const v = 1 - q;
+          cx2.beginPath();
+          cx2.arc(v * v * sxx + 2 * v * q * cpx + q * q * ptx,
+                  v * v * syy + 2 * v * q * cpy + q * q * pty, 2.8 * S, 0, 6.2832);
+          cx2.fillStyle = rgba(COL.pink, 0.8 * fla);
+          cx2.fill();
+        }
+      }
+    }
+    /* the agent itself — a chip the graph docks into */
+    const chipW = 72 * S, chipH = 50 * S;
+    const dock = eo3(c01((t - (T.promptIn - 0.05)) / 0.5));
+    if (dock > 0){
+      const cyy = chipY + (1 - bo(dock)) * 14 * S;
+      /* arrival pulses — rings leave the chip as packets land */
+      for (let j5 = 0; j5 < 2; j5++){
+        const pq = (((t * 0.55 + j5 * 0.5) % 1) + 1) % 1;
+        const a5 = (1 - pq) * 0.35 * fla;
+        if (a5 > 0.012){
+          cx2.beginPath();
+          cx2.arc(ptx, cyy, (chipW * 0.42 + 30 * S * eo3(pq)), 0, 6.2832);
+          cx2.strokeStyle = rgba(COL.ink, a5);
+          cx2.lineWidth = Math.max(0.6, 1.1 * S);
+          cx2.stroke();
+        }
+      }
+      /* answer flash */
+      const fl2 = t > T.ansIn ? Math.exp(-3.5 * (t - T.ansIn)) : 0;
+      cx2.globalAlpha = fla * dock;
+      cx2.beginPath();
+      cx2.roundRect(ptx - chipW / 2, cyy - chipH / 2, chipW, chipH, 12 * S);
+      cx2.fillStyle = '#ffffff';
+      cx2.fill();
+      cx2.strokeStyle = rgba(t > T.ansIn ? COL.pink : COL.ink, 0.85 + 0.15 * fl2);
+      cx2.lineWidth = Math.max(1.2, (2.0 + 1.6 * fl2) * S);
+      cx2.stroke();
+      /* the chip's core breathes; goes pink when the answer lands */
+      cx2.beginPath();
+      cx2.arc(ptx, cyy, (8.5 + 1.4 * Math.sin(t * 3.1) + 5 * fl2) * S, 0, 6.2832);
+      cx2.fillStyle = rgba(t > T.ansIn ? COL.pink : COL.ink, 1);
+      cx2.fill();
+      cx2.beginPath();
+      cx2.arc(ptx, cyy, 3.4 * S, 0, 6.2832);
+      cx2.fillStyle = '#ffffff';
+      cx2.fill();
+      /* antenna ticks — it reads as the agent */
+      cx2.strokeStyle = rgba(COL.ink, 0.8);
+      cx2.lineWidth = Math.max(1, 1.6 * S);
+      for (const dxk of [-1, 0, 1]){
+        cx2.beginPath();
+        cx2.moveTo(ptx + dxk * 18 * S, cyy - chipH / 2);
+        cx2.lineTo(ptx + dxk * 18 * S, cyy - chipH / 2 - 10 * S);
+        cx2.stroke();
+      }
+      cx2.globalAlpha = 1;
+    }
+  }
+
+  /* the answer labels — real host names beside the lifted hubs */
+  if (t > T.hlIn){
+    cx2.textBaseline = 'middle';
+    for (let i = 0; i < namedHubs.length; i++){
+      const nh = namedHubs[i];
+      const la = env(t, T.hlIn + 0.12 + i * 0.13, T.hlIn + 0.52 + i * 0.13,
+                     T.agentOut, T.agentOut + 0.5);
+      if (la <= 0) continue;
+      const x = PX[nh.pi],
+            y = PY[nh.pi] + (1 - la) * 7 * S + Math.sin(t * 1.2 + i * 2.4) * 2 * S,
+            r = PSZ[nh.pi];
+      /* pop ring as the name lands */
+      const pu = c01((t - (T.hlIn + 0.10 + i * 0.13)) / 0.5);
+      if (pu > 0 && pu < 1){
+        cx2.beginPath();
+        cx2.arc(x, y, r + (4 + 17 * eo3(pu)) * S, 0, 6.2832);
+        cx2.strokeStyle = rgba(COL.pink, (1 - pu) * 0.7);
+        cx2.lineWidth = Math.max(0.6, 1.2 * S);
+        cx2.stroke();
+      }
+      cx2.font = '600 ' + (13.5 * S) + 'px ' + MONO;
+      const tw = trackW(cx2, nh.name, 1.4 * S);
+      const right = x < W * 0.72;
+      const tx = right ? x + r + 11 * S : x - r - 11 * S - tw;
+      /* paper halo for legibility */
+      cx2.lineWidth = 4 * S; cx2.strokeStyle = 'rgba(255,255,255,' + (0.85 * la).toFixed(3) + ')';
+      cx2.lineJoin = 'round';
+      let px2 = tx;
+      for (const ch of nh.name){ cx2.strokeText(ch, px2, y); px2 += cx2.measureText(ch).width + 1.4 * S; }
+      cx2.fillStyle = rgba(COL.ink, la);
+      trackL(cx2, nh.name, tx, y, 1.4 * S);
+    }
+    cx2.textBaseline = 'alphabetic';
+  }
+
+  /* ghost query fragments riding the fan out */
+  cx2.font = '400 ' + (15.5 * S) + 'px ' + MONO;
+  cx2.textBaseline = 'alphabetic';
+  for (const g of ghosts){
+    const u = c01((t - g.t0) / g.d);
+    if (u <= 0 || u >= 1) continue;
+    const al = Math.sin(Math.PI * u) * 0.6;
+    const r = lerp(g.r0, g.r1, eo4(u));
+    const x = domC[0] + Math.cos(g.a) * r * 1.24;
+    const y = domC[1] + Math.sin(g.a) * r * 0.70;
+    cx2.fillStyle = rgba(COL.kick, al);
+    trackC(cx2, g.w, x, y, (1.1 + 1.3 * eo3(u)) * S);   /* tracking widens as it rides out */
+  }
+
+  /* ---- kinetic narrative lines, top layer ---- */
+  drawKLines(t);
+
+  cx2.textAlign = 'left'; cx2.textBaseline = 'alphabetic';
+}
+
+/* ---------- DOM per-frame ---------- */
+const el = id => document.getElementById(id);
+const DOMS = {
+  brand: el('brand'),
+  ap: el('ap'), aa: el('aa'),
+  ekick: el('ekick'), ehead: el('ehead'), erepo: el('erepo')
+};
+
+/* the end headline splits into word spans — copy identical, words stagger in */
+const EHW = (() => {
+  const words = DOMS.ehead.textContent.split(' ');
+  DOMS.ehead.textContent = '';
+  return words.map((wd, i) => {
+    const s = document.createElement('span');
+    s.textContent = wd;
+    s.style.display = 'inline-block';
+    s.style.willChange = 'transform,opacity';
+    DOMS.ehead.appendChild(s);
+    if (i < words.length - 1) DOMS.ehead.appendChild(document.createTextNode(' '));
+    return s;
+  });
+})();
+
+function rise(elm, u, px){
+  elm.style.opacity = eo3(u).toFixed(3);
+  elm.style.transform = 'translateY(' + ((1 - bo(u)) * px).toFixed(2) + 'px)';
+}
+function put(elm, a, px){
+  elm.style.opacity = a.toFixed(3);
+  elm.style.transform = 'translateY(' + ((1 - a) * px).toFixed(2) + 'px)';
+}
+
+function domFrame(t){
+  const ba = env(t, 0.20, 0.60, T.recede, T.recede + 0.6);
+  put(DOMS.brand, ba, 8);
+  DOMS.brand.style.letterSpacing = (0.16 + 0.14 * (1 - ba)).toFixed(3) + 'em';
+
+  /* agent prompt types; answer returns with a tracking settle */
+  const pa = env(t, T.promptIn - 0.05, T.promptIn + 0.2, T.agentOut, T.agentOut + 0.5);
+  DOMS.ap.style.opacity = pa.toFixed(3);
+  if (pa > 0 && PROMPT.length){
+    const n = Math.max(0, Math.min(PROMPT.length, Math.floor((t - T.promptIn) / TYPE_DT) + 1));
+    let txt = PROMPT.slice(0, n);
+    if (t < PROMPT_END + 0.4 && (Math.floor(t * 3.4) % 2 === 0)) txt += '▍';
+    DOMS.ap.textContent = txt;
+  } else if (!PROMPT.length) DOMS.ap.textContent = '';
+  const aa = env(t, T.ansIn, T.ansIn + 0.45, T.agentOut, T.agentOut + 0.5);
+  put(DOMS.aa, aa, 14);
+  DOMS.aa.style.letterSpacing = (0.05 + 0.09 * (1 - aa)).toFixed(3) + 'em';
+  DOMS.aa.textContent = ANSWER;
+
+  /* the end card — kicker tracking eases in, headline lands word by word */
+  const ek = c01((t - T.endIn) / 0.6);
+  rise(DOMS.ekick, ek, 10);
+  DOMS.ekick.style.letterSpacing = (0.08 - 0.07 * eo3(ek)).toFixed(3) + 'em';
+  DOMS.ehead.style.opacity = t > T.endIn ? '1' : '0';
+  for (let i = 0; i < EHW.length; i++){
+    const u = c01((t - (T.endIn + 0.05 + i * 0.065)) / 0.5);
+    EHW[i].style.opacity = eo3(u).toFixed(3);
+    EHW[i].style.transform = 'translateY(' + ((1 - bo(u)) * 20).toFixed(2) + 'px)';
+  }
+  const er = c01((t - (T.endIn + 0.50)) / 0.6);
+  rise(DOMS.erepo, er, 10);
+  DOMS.erepo.style.letterSpacing = (0.30 - 0.12 * eo3(er)).toFixed(3) + 'em';
+}
+
+function frame(t){
+  draw(t);
+  domFrame(t);
+}
+
+/* ---------- run ---------- */
+rebuild();
+window.addEventListener('resize', () => { rebuild(); if (lastT !== null) frame(lastT); });
+
+let lastT = null;
+const qs = new URLSearchParams(location.search);
+const seek = qs.has('t') ? Math.min(TOTAL, Math.max(0, parseFloat(qs.get('t')) || 0)) : null;
+const RM = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+window.SEEK = function(t){
+  lastT = Math.min(TOTAL, Math.max(0, t));
+  frame(lastT);
+};
+window.__N = function(){ return parts.length; };
+
+if (seek !== null){
+  window.SEEK(seek);
+  const again = () => { rebuild(); frame(seek); };
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(again);
+  setTimeout(again, 350);
+} else if (RM){
+  window.SEEK(TOTAL);
+  const again = () => { rebuild(); frame(TOTAL); };
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(again);
+  setTimeout(again, 350);
+} else {
+  let start = null;
+  const loop = now => {
+    if (start === null) start = now;
+    const t = (now - start) / 1000;
+    lastT = Math.min(t, TOTAL);
+    if (t >= TOTAL){ frame(TOTAL); return; }
+    frame(t);
+    requestAnimationFrame(loop);
+  };
+  const kick = () => requestAnimationFrame(loop);
+  frame(0);                     /* the band is on screen from the first frame */
+  const pre = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();
+  pre.then(() => { frame(0); return iconsReady; }).then(kick);
+}
+window.__ready = true;
+</script>
+</body>
+</html>

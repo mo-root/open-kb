@@ -23,7 +23,10 @@ export default function FilmPage() {
         className="w-full rounded-lg border border-slate-800"
       />
       <p className="mt-3 text-center font-mono text-[10px] uppercase tracking-wider text-slate-500">
-        one domain in, knowledge base out
+        one domain in, knowledge base out &middot;{" "}
+        <a href="/story" className="text-sky-400 hover:text-sky-300">
+          or scroll it &rarr;
+        </a>
       </p>
     </div>
   );

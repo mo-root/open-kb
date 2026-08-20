@@ -233,6 +233,10 @@ export function DemoHome({
           the launch film ·{" "}
           <a href="/film" className="text-sky-400 hover:text-sky-300">
             watch with sound →
+          </a>{" "}
+          ·{" "}
+          <a href="/story" className="text-sky-400 hover:text-sky-300">
+            scroll it →
           </a>
         </p>
       </div>
