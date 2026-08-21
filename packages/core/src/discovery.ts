@@ -66,6 +66,12 @@ export interface DiscoveryResult {
   usd: number
   steps: number
   pagesRead: number
+  /** Whether the agent called `finish` itself, rather than running out of turns.
+   *  A run that never finished still returns whatever it had submitted so far —
+   *  see the comment above the return below — but a reader deciding whether that
+   *  product list is complete or truncated needs to be able to tell the two apart,
+   *  which nothing here exposed before this field existed. */
+  finished: boolean
   /**
    * The agent's own per-turn steps, handed through untouched so a caller can price
    * each turn separately from the total this already carries.
@@ -401,6 +407,6 @@ export async function discover(opts: DiscoverOptions): Promise<DiscoveryResult> 
     steps: steps.length,
     pagesRead: readUrls.size,
     _steps: steps,
-    ...(finished ? {} : {}),
+    finished,
   }
 }
