@@ -126,10 +126,27 @@ host that cannot be read settles by arithmetic for `$0`, keeping a stable
 model, and every quote it returns is re-checked in code; a claim with zero
 verified spans has its prose replaced by a refusal.
 
+The relation vocabulary includes `adjacent` — a real business in the anchor's
+world that nobody picks *instead of* it — beside the commercial and
+non-commercial stances. `none`, the only relation that drops a host from the
+map, now costs the same evidence as any other verdict: a one-sentence
+`reasoning` and a `relationSpan` quote, checked against the page the same way
+`spans` are — measured, never gating, the same rule `descGrounded` lives by.
+An opt-in drop-confirm pass (`OPENKB_DROP_CONFIRM=1`) gives every settled
+`none` one further batched opinion from the record already paid for, no
+re-fetch, before the host ships dropped for good.
+
 **link** draws edges. A free pass first, where one host's own SERP title and
 description name another entity — those are `measured`. The residue goes to a
 batched model call over co-occurring pairs — those are `inferred`. An edge whose
 endpoint is not on the map is dropped.
+
+An edge's `why` proves mechanism now, not just discovery: the free pass quotes
+the naming row's own text when it says more than the bare name, grounded in
+retrieved bytes and never invented; the paid pass carries an optional
+`whySpan` — a quote copied from either entity's own description — checked the
+same `relationGrounded`/`descGrounded` way and recorded as `whyGrounded`,
+measured, never gating.
 
 ---
 
