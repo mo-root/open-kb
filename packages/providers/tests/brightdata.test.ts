@@ -895,4 +895,53 @@ describe("brightDataSearch obeys a stated rate limit", () => {
     expect(r!.ok).toBe(false)
     expect(r!.error).toContain("throttled")
   })
+
+  /**
+   * Measured: the "auto-throttled" sentence never opens a bad stretch, it
+   * only confirms one already in progress — the stored runs show a run of
+   * plain rejections before the account ever names a rate. Proactively
+   * narrowing the pace on that trend, rather than waiting for the message,
+   * is what this proves: a sagging success rate over a real window of
+   * requests paces new work even though `x-brd-error` never once fired.
+   */
+  it("narrows the pace on a sagging success rate, before any throttle message", async () => {
+    let n = 0
+    const fetchImpl = vi.fn(async (..._: FetchArgs) => {
+      n += 1
+      // 5 plain failures (no x-brd-error at all) in a window of 20 — a 75%
+      // success rate, under the 85% floor, with nothing for THROTTLED or
+      // RETRYABLE to match so none of them retries.
+      return n <= 5
+        ? new Response("", { status: 404 })
+        : new Response(JSON.stringify({ organic: [] }), { status: 200 })
+    })
+    const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 1, retryMs: 0 })
+
+    // Fills the rolling window: 20 distinct queries, one request each.
+    await s.search(Array.from({ length: 20 }, (_, i) => `q${i}`))
+    expect(fetchImpl).toHaveBeenCalledTimes(20)
+
+    // No x-brd-error was ever sent, so this is the proactive signal alone.
+    const pacedStart = Date.now()
+    await s.search(["y", "z"])
+    expect(Date.now() - pacedStart).toBeGreaterThan(500)
+  })
+
+  it("stays concurrent on an equally mixed run that never crosses the floor", async () => {
+    let n = 0
+    const fetchImpl = vi.fn(async (..._: FetchArgs) => {
+      n += 1
+      // 3 failures in 20 — an 85% success rate, exactly at the floor and not
+      // below it.
+      return n <= 3
+        ? new Response("", { status: 404 })
+        : new Response(JSON.stringify({ organic: [] }), { status: 200 })
+    })
+    const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 1, retryMs: 0 })
+    await s.search(Array.from({ length: 20 }, (_, i) => `q${i}`))
+
+    const t0 = Date.now()
+    await s.search(["y", "z"])
+    expect(Date.now() - t0).toBeLessThan(300)
+  })
 })

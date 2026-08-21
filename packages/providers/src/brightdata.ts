@@ -165,13 +165,50 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
     nextSlotAt = slot + minGapMs
     if (slot > now) await new Promise((r) => setTimeout(r, slot - now))
   }
+  /** Raise the floor, never lower it — shared by the reactive and proactive
+   *  triggers below so a message and a trend cannot fight over the pace. */
+  const applyGap = (gap: number) => {
+    if (gap > minGapMs) minGapMs = gap
+    lastThrottleAt = Date.now()
+  }
   const noteThrottle = (msg: string) => {
     const perMin = statedRate(msg)
     // Ninety percent of the stated rate: sitting exactly on a limit is how you
     // discover it was measured differently at the other end.
     const gap = perMin ? Math.ceil(60_000 / (perMin * 0.9)) : 6_000
-    if (gap > minGapMs) minGapMs = gap
-    lastThrottleAt = Date.now()
+    applyGap(gap)
+  }
+
+  /**
+   * PROACTIVE — narrows the pace on a worsening trend, before the provider
+   * ever names a rate. `noteThrottle` above is reactive: it can only act
+   * once a throttle message exists to read, and the stored "auto-throttled"
+   * runs did not start with that sentence — they started as a run of plain
+   * RETRYABLE rejections that only later crossed the account's threshold
+   * for the provider to say something. Waiting for the sentence spends
+   * requests into the same wall in the meantime.
+   *
+   * A rolling window over the last WINDOW_SIZE individual requests (not
+   * queries — a page counts once, a retry counts again, same unit
+   * `noteThrottle` reacts to) is the smallest sample that is still an
+   * account-wide rate rather than one page's bad luck. Below it, new
+   * requests are paced by a small, fixed, bounded gap — a fraction of
+   * `noteThrottle`'s own unstated-rate fallback of 6s — through the exact
+   * same `applyGap` lever, so a real throttle message that arrives after
+   * still wins outright (it only ever raises the floor) and recovery is
+   * the one `recoverPace` already has. In-flight requests are untouched:
+   * `pace()` is only ever awaited before a request STARTS.
+   */
+  const WINDOW_SIZE = 20
+  const MIN_SUCCESS_RATE = 0.85
+  const PROACTIVE_GAP_MS = 2_000
+  const window: boolean[] = []
+  const noteOutcome = (ok: boolean) => {
+    window.push(ok)
+    if (window.length > WINDOW_SIZE) window.shift()
+    if (window.length < WINDOW_SIZE) return
+    const rate = window.filter(Boolean).length / window.length
+    if (rate < MIN_SUCCESS_RATE) applyGap(PROACTIVE_GAP_MS)
   }
   /**
    * THE PENALTY HAS TO EXPIRE, OR ONE MESSAGE COSTS THE WHOLE RUN.
@@ -308,6 +345,7 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
               if (brdError && THROTTLED.test(brdError)) noteThrottle(brdError)
 
               if (!res.ok) {
+                noteOutcome(false)
                 return { query, hits: [], ok: false, error: reason ?? `serp http ${res.status}`, usd: price, ms, requests: 1 }
               }
               const text = await res.text()
@@ -318,6 +356,7 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
               try {
                 parsed = JSON.parse(text)
               } catch {
+                noteOutcome(false)
                 return {
                   query,
                   hits: [],
@@ -354,10 +393,13 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
               // downstream. 'try again' matches RETRYABLE above, so the
               // existing retry re-buys the page on the other zone for free.
               if (hits.length && hits.every((h) => h.url.startsWith("/"))) {
+                noteOutcome(false)
                 return { query, hits: [], ok: false, error: "serp returned redirect-encoded links — try again", usd: price, ms, requests: 1 }
               }
+              noteOutcome(true)
               return { query, hits, ok: true, usd: price, ms, requests: 1 }
             } catch (e) {
+              noteOutcome(false)
               const timedOut = (e as Error).name === "TimeoutError" || (e as Error).name === "AbortError"
               return {
                 query,
