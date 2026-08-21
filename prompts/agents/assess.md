@@ -26,6 +26,16 @@ What each family has bought so far, and what remains unreleased:
 
     {{families}}
 
+Every query opens reading two pages of results. Where a product has bought both, here is
+what page 2 added beyond page 1:
+
+    {{pageYield}}
+
+A product whose page 2 kept finding hosts page 1 did not is a market this run has not
+finished reading at this depth — name it in `deepen` and its queries read four pages
+instead of two from here on. A product whose page 2 mostly repeated page 1 is already
+saturated at this depth; naming it would spend real money on rows already seen.
+
 Template queries still held in reserve, per product:
 
     {{reserve}}

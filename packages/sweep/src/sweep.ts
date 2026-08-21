@@ -885,11 +885,20 @@ export interface SweepOptions {
    *  from `@open-kb/providers`; pass it only to price a model that table has
    *  not met. */
   pricing?: ModelPricing;
-  /** Result pages read per query. Measured: one query across five pages returned
-   *  37 distinct hosts against 7 from the first page alone, and had not
-   *  saturated. A page costs exactly what a query costs, so depth here buys more
-   *  of a market than breadth does. */
+  /** Result pages read per query the FIRST time it is asked. Measured: one query
+   *  across five pages returned 37 distinct hosts against 7 from the first page
+   *  alone, and had not saturated. A page costs exactly what a query costs, so
+   *  depth here buys more of a market than breadth does — but paying that depth
+   *  on every query, including the ones whose second page only repeats the
+   *  first, buys corroboration nobody asked for. See `deepPages`: every product
+   *  opens at this depth, and only the ones `assess` names from a real page-2
+   *  yield go deeper. */
   pages?: number;
+  /** Result pages read per query for a product `assess` has asked to deepen —
+   *  see `SweepOptions.pages`. Left at its default, this roughly doubles the
+   *  read for a product whose second page kept finding hosts the first page
+   *  did not; a product nobody names stays at `pages` for the whole run. */
+  deepPages?: number;
   /** Ceiling on how many times the run may look at its own map and ask for more
    *  queries. It usually stops before this because the model says it has enough. */
   maxWaves?: number;
@@ -1197,7 +1206,21 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   const CONC = Math.max(1, Math.floor(opts.concurrency ?? 20));
   const BATCH = Math.max(1, Math.floor(opts.batchSize ?? 40));
 
-  const PAGES = Math.max(1, Math.floor(opts.pages ?? 3));
+  /** Every query's opening depth — see `SweepOptions.pages`. A flat depth
+   *  bought a fixed number of pages for every query in a market regardless of
+   *  whether the second page was still finding new hosts or just repeating
+   *  the first — the same page count for a thin market and a crowded one.
+   *  Lowered from 3 so a query opens cheap by default; `DEEP_PAGES` below is
+   *  where the third-and-fourth page goes instead, spent only on the products
+   *  `assess` has real per-page-yield evidence for (see the `deepen` field on
+   *  its verdict and `depthByProduct` further down). */
+  const SHALLOW_PAGES = Math.max(1, Math.floor(opts.pages ?? 2));
+  /** The depth a product earns once `assess` names it — see
+   *  `SweepOptions.deepPages`. */
+  const DEEP_PAGES = Math.max(
+    SHALLOW_PAGES,
+    Math.floor(opts.deepPages ?? 4),
+  );
   /** How many times the run may look at what it has and ask for more. A ceiling,
    *  not a target, most runs stop earlier because the model says enough. */
   // 8, raised from 4: on the measured run the wave ceiling was the binding
@@ -1252,12 +1275,24 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    *  and the write. Reserved out of the clock rather than discovered at the end
    *  of it — a map that is not written down is a map nobody has. */
   const TAIL_SECONDS = MEASURED_PHASE_COSTS.tailSeconds;
-  // Unset is the production path, and it is the same two expressions with the
-  // same arguments it has always been — see `SweepOptions.ports` for why the
-  // override is a pair and not two independent fields.
-  const search =
-    opts.ports?.search ?? brightDataSearch(creds, { pages: PAGES });
+  // Unset is the production path, and it is the same expression it has always
+  // been — see `SweepOptions.ports` for why the override is a pair and not
+  // two independent fields. Two port instances now instead of one, because a
+  // query fired for a deepened product must read four pages and every other
+  // query must still read two: when `opts.ports` IS set (every test in this
+  // package) both branches short-circuit to the SAME injected port, so which
+  // one `runOne` picks changes nothing a fixture can see — only a real,
+  // uninjected caller ever builds two distinct Bright Data ports here.
+  const searchAt = {
+    shallow: opts.ports?.search ?? brightDataSearch(creds, { pages: SHALLOW_PAGES }),
+    deep: opts.ports?.search ?? brightDataSearch(creds, { pages: DEEP_PAGES }),
+  };
   const fetcher = opts.ports?.fetch ?? brightDataFetch(creds);
+  /** Which depth a product's queries fire at, updated only by `assess`'s
+   *  `deepen` verdict (see the widening loop below). Absent means shallow —
+   *  every product opens here, and only ones named from real page-2 yield
+   *  move to `"deep"`, never back. */
+  const depthByProduct = new Map<string, "shallow" | "deep">();
 
   const t0 = Date.now();
   const sec = () => Math.round((Date.now() - t0) / 1000);
@@ -2669,7 +2704,9 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     // the reader a run was capped at 40 when nothing capped it at all.
     requested: opts.queries,
     written: planned.length,
-    estimatedUsd: queries.length * PAGES * 0.0015,
+    // The pre-run estimate: nothing has been asked yet, so no product has
+    // earned `DEEP_PAGES` — every query is priced at its opening depth.
+    estimatedUsd: queries.length * SHALLOW_PAGES * 0.0015,
     budgetUsd: 0,
     uncapped: opts.queries === undefined && QUERY_CEILING === null,
     // The whole run's ceiling and the clock it was derived from, so the reader
@@ -2805,7 +2842,15 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         tooLongToScope += 1;
       }
     }
-    const [r] = await search.search([fired]);
+    // Untagged queries (the model's own free-form widening proposals carry no
+    // `product`, only a `market`) have never been named by `assess`, so they
+    // stay shallow — `depthByProduct` only ever holds product names, and a
+    // lookup that finds nothing defaults exactly like one that finds "shallow".
+    const depth = planned.product
+      ? (depthByProduct.get(planned.product) ?? "shallow")
+      : "shallow";
+    const port = depth === "deep" ? searchAt.deep : searchAt.shallow;
+    const [r] = await port.search([fired]);
     if (!r) return;
     // What the wire actually cost, beside what was asked for. A refusal bills
     // like an answer, so a throttled run pays for the throttling: measured at
@@ -2822,11 +2867,14 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       {
         // Guarded on the same condition the port uses to decide whether to
         // dispatch at all. A blank query used to buy a full wave of `q=` pages,
-        // so adding PAGES unconditionally was true; the port now refuses it
-        // locally for $0 and issues nothing, which would leave this counter
-        // describing requests that were never made. `usd` was already honest
-        // either way — this is the count catching up with it.
-        if (fired.trim()) serpCalls += PAGES;
+        // so adding a page count unconditionally was true; the port now
+        // refuses it locally for $0 and issues nothing, which would leave this
+        // counter describing requests that were never made. `usd` was already
+        // honest either way — this is the count catching up with it. The
+        // depth billed is the SAME `depth` the port choice above already
+        // decided — never re-derived, so this can never disagree with what was
+        // actually fired.
+        if (fired.trim()) serpCalls += depth === "deep" ? DEEP_PAGES : SHALLOW_PAGES;
         bill("serp", "sweep", r.usd, r.ms, r.ok);
         // One span per SERP call, carrying the query text, the only place a
         // reader can see which question the run just paid for.
@@ -2926,7 +2974,8 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
 
   say(
     "sweep",
-    `${queries.length} queries × ${PAGES} pages, ${CONC} at a time, topping up as it goes`,
+    `${queries.length} queries × ${SHALLOW_PAGES} pages, ${CONC} at a time, topping up as it goes ` +
+      `(a product assess names for its page-2 yield reads ${DEEP_PAGES} instead)`,
   );
 
   /** Said once, by whichever worker gets there first. Twenty workers reaching
@@ -3129,6 +3178,61 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           products: prodLines.join("\n"),
         };
       })();
+      /**
+       * PAGE-2 YIELD, PER PRODUCT — the evidence `assess`'s `deepen` verdict is
+       * asked to act on, not a guess.
+       *
+       * Every query opens at SHALLOW_PAGES, so by the time this runs a
+       * product's queries already hold both of its first two pages: ranks 1-10
+       * and 11-20. `rank` can be trusted as genuinely global across pages here
+       * — `brightdata.ts` builds it from each page's own offset rather than
+       * the wire's own `global_rank`, which restarts every page and was
+       * measured to disagree (max observed `bestRank` was 16 across 10,218
+       * stored entities from 4-page runs, impossible if page 3/4 hits carried
+       * ranks 21-40 under the old field). A product whose second page kept
+       * finding hosts the first did not is a market this run has not finished
+       * reading at this depth; one whose second page mostly repeated the first
+       * is already saturated here, and DEEP_PAGES on it would buy
+       * corroboration, not coverage.
+       *
+       * Untagged queries (the model's own free-form `queries`, which carry no
+       * `product` — see the `depth` lookup in `runOne`) are excluded the same
+       * way `famTable`'s per-product rows are: there is no product to credit
+       * the yield to.
+       */
+      const pageYield = (() => {
+        const byQ = new Map(asked.map((x) => [x.q, x]));
+        const byProd = new Map<
+          string,
+          { page1: Set<string>; page2: Set<string> }
+        >();
+        for (const h of hits) {
+          const q = byQ.get(h.q);
+          if (!q?.product || h.rank === undefined) continue;
+          const host = hostOfHit(h.url);
+          if (!host) continue;
+          const b = byProd.get(q.product) ?? {
+            page1: new Set<string>(),
+            page2: new Set<string>(),
+          };
+          if (h.rank <= 10) b.page1.add(host);
+          else if (h.rank <= SHALLOW_PAGES * 10) b.page2.add(host);
+          byProd.set(q.product, b);
+        }
+        const lines = [...byProd.entries()].map(([p, b]) => {
+          const fresh = [...b.page2].filter((h) => !b.page1.has(h)).length;
+          return `  ${p} — page 1: ${b.page1.size} hosts, page 2 added ${fresh} not already on page 1`;
+        });
+        return {
+          text:
+            lines.join("\n") || "  (no product has two full pages of ranked results yet)",
+          // The only product names `deepen` may act on — a name the model
+          // invents that never asked a ranked query is silently ignored where
+          // the verdict is applied, exactly like `draw` ignores an unknown
+          // product against `reserve`.
+          known: new Set(byProd.keys()),
+        };
+      })();
       const reserveLines =
         [...reserve.entries()]
           .filter(([, v]) => v.length)
@@ -3160,6 +3264,20 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
             .describe(
               "fresh debranded queries aimed at what no template can reach. Empty if enough.",
             ),
+          // Optional, unlike its three siblings above: this field is younger
+          // than they are, and every existing assess fixture in this repo's
+          // tests was written before it existed. Required would make every
+          // one of those a validation failure over a field the test has no
+          // opinion on; optional lets an absent answer mean exactly what a
+          // model saying nothing about depth should mean — stay shallow.
+          deepen: z
+            .array(z.string())
+            .optional()
+            .describe(
+              "products (name exactly as listed under page-2 yield) whose second page kept " +
+                "finding hosts the first did not — read four pages instead of two for these " +
+                "next wave. Empty or omitted if none earned it.",
+            ),
         }),
         prompt("assess", {
           anchor,
@@ -3176,6 +3294,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
             .join("\n"),
           sample: [...distinctHosts()].slice(0, 60).join(", "),
           families: `${famTable.families}\n${famTable.products}`,
+          pageYield: pageYield.text,
           reserve: reserveLines,
           saturation: !lastRound.fired
             ? "(no widening round has fired yet)"
@@ -3196,6 +3315,24 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       // to `asked` that nothing will ever buy: `report.queries` counts what was
       // FIRED, and a plan nobody executed must not inflate it.
       if (sealed || signal?.aborted) return;
+
+      // Recorded before any of the stop rules below: a round that goes on to
+      // seal this run should still keep what `assess` learned, and a round
+      // that proceeds via the MIN_WAVES override a few lines down needs
+      // `depthByProduct` already updated when it fires its own queries.
+      // `pageYield.known` is the same guard `draws` below applies against
+      // `reserve` — a product name the model invents that never asked a
+      // ranked query is ignored rather than trusted. Deepening never reverts:
+      // a product already `"deep"` just gets named again, which is a no-op.
+      for (const p of verdict.deepen ?? []) {
+        if (!pageYield.known.has(p) || depthByProduct.get(p) === "deep")
+          continue;
+        depthByProduct.set(p, "deep");
+        say(
+          "plan",
+          `${p}: page 2 kept finding hosts page 1 did not — reading ${DEEP_PAGES} pages for it from here`,
+        );
+      }
 
       // queries.length === 0 alone no longer means "enough": the prompt now
       // tells the model to release reserve instead of inventing when a
@@ -5272,7 +5409,14 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     serp: {
       requests: serpRequests,
       retries: serpRetries,
-      pagesPerQuery: PAGES,
+      // The depth every query opens at. No longer the whole story once a
+      // product earns `deepPagesPerQuery` instead — `deepenedProducts` names
+      // which ones did, so a reader is not left assuming this ran flat.
+      pagesPerQuery: SHALLOW_PAGES,
+      deepPagesPerQuery: DEEP_PAGES,
+      deepenedProducts: [...depthByProduct.entries()]
+        .filter(([, d]) => d === "deep")
+        .map(([p]) => p),
       blocked: serpBlocks,
     },
     /** Agent-mode phase one's own account: turns, pages, and the integrations
