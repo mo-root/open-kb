@@ -763,7 +763,13 @@ export function KbOverview({
 
     fetch(`/api/kb/${slug}`)
       .then(async (r) => {
-        const data = (await r.json()) as KbView & { error?: string };
+        // `.catch(() => ({}))` guards a non-JSON body — a platform-level
+        // 502/504 or proxy timeout answers !r.ok with an HTML error page, and
+        // an unguarded r.json() throws on that, which fell through to the
+        // outer .catch below and printed "could not reach the kb endpoint"
+        // even though the request plainly did reach a server. Same shape
+        // NoteView.tsx:107 and GraphCanvas.tsx:745 already use.
+        const data = (await r.json().catch(() => ({}))) as KbView & { error?: string };
         if (cancelled) return;
         if (!r.ok) setError(data.error || `request failed (${r.status})`);
         else setEnvelope(data);
