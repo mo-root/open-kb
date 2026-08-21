@@ -22,11 +22,12 @@ order in which agents run — the run decides that.
 | file | owns |
 |---|---|
 | `01-the-thesis.md` | Why searching a company's own words only returns that company. What a run produces. |
-| `02-relations.md` | The five relations — competitor, substitute, dependency, integration, shaper — and the test that separates each from its nearest neighbour. |
+| `02-relations.md` | The relations — eight commercial (competitor, substitute, adjacent, shaper, dependency, integration, buyer, target) and three channel (covers, lists, discusses) — and the test that separates each from its nearest neighbour. |
 | `03-evidence.md` | What a claim must carry, and why recording *is* the job. |
 | `04-search-craft.md` | How to compose a query and what kind of page each shape buys. |
 | `05-reading-the-web.md` | How to read a company and a page cheaply, and when an expensive fetch earns its cost. |
 | `06-breadth.md` | Why the map is the ecosystem and not the shortlist. |
+| `07-query-families.md` | The plain, debranded and branded query families — which door each opens, and why debranded means de-anchored, not de-named. |
 
 ## How composition works
 
