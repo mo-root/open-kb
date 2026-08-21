@@ -376,7 +376,18 @@ export interface FixtureOptions {
    *  surface this company does not publish — a sitemap, say. Merged rather than
    *  replacing, so a test adds one url without restating the whole company, and
    *  a run that passes nothing here fetches exactly what it always did. */
-  fetchTable?: Record<string, { httpStatus: number; body: string; contentType?: string }>
+  fetchTable?: Record<
+    string,
+    {
+      httpStatus: number
+      body: string
+      contentType?: string
+      /** The DIFFERENT answer an `unlocked` fetch gets for this same URL — the
+       *  one way a test tells a blocked page's two modes apart. Omit to answer
+       *  both modes identically, the table's behaviour before this field existed. */
+      unlocked?: { httpStatus: number; body: string; contentType?: string }
+    }
+  >
   sweepOptions?: Partial<SweepOptions>
 }
 

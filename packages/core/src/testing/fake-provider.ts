@@ -70,12 +70,23 @@ export class FakeSearch implements SearchPort {
  * also lets tests exercise the measured "200 with a zero-byte body" hostile-site behaviour
  * by configuring that row explicitly. Cost and latency differ by mode: direct is free and
  * fast, unlocked costs money and is slow, mirroring the real providers Task 8 will write.
+ *
+ * `unlocked`, on a row, is the one way a test tells the two modes apart: a real blocked
+ * site answers `direct` and `unlocked` differently (that gap is the whole reason an
+ * unlocker exists), and a row with no `unlocked` override keeps answering both modes
+ * identically — every existing table in this repo, unchanged.
  */
 export class FakeFetch implements FetchPort {
   constructor(
     private table: Record<
       string,
-      { httpStatus: number; body: string; contentType?: string; providerError?: string }
+      {
+        httpStatus: number
+        body: string
+        contentType?: string
+        providerError?: string
+        unlocked?: { httpStatus: number; body: string; contentType?: string; providerError?: string }
+      }
     >,
   ) {}
 
@@ -92,12 +103,13 @@ export class FakeFetch implements FetchPort {
   async get(url: string, mode: FetchMode, opts?: { signal?: AbortSignal }): Promise<FetchResponse> {
     this.calls.push({ url, mode, signal: opts?.signal })
     const row = this.table[url] ?? { httpStatus: 404, body: "" }
+    const served = mode === "unlocked" ? (row.unlocked ?? row) : row
     return {
       url,
-      httpStatus: row.httpStatus,
-      body: row.body,
-      contentType: row.contentType,
-      providerError: row.providerError,
+      httpStatus: served.httpStatus,
+      body: served.body,
+      contentType: served.contentType,
+      providerError: served.providerError,
       ms: mode === "unlocked" ? 14_000 : 300,
       usd: mode === "unlocked" ? 0.008 : 0,
     }

@@ -123,7 +123,7 @@ describe("second look", () => {
 
     // The census, and the bill: the re-judgement is booked under its own
     // label, not smuggled into the rank line.
-    expect((h.result.report as { secondLook: unknown }).secondLook).toEqual({ asked: 1, rescued: 1, failed: 0 })
+    expect((h.result.report as { secondLook: unknown }).secondLook).toEqual({ asked: 1, rescued: 1, failed: 0, unlocked: 0 })
     expect(lineOf(costOf(h.result).byAgent, "second-look").usd).toBe(USD_PER_MODEL_CALL)
     expect(h.says.some((s) => s.includes("second look rescued 1 of 1"))).toBe(true)
   })
@@ -160,7 +160,7 @@ describe("second look", () => {
     expect(e.relation).toBe("unknown")
     expect(e.because ?? "").not.toContain("second look")
     // The attempt is still counted — the report reconciles with the bill.
-    expect((h.result.report as { secondLook: unknown }).secondLook).toEqual({ asked: 1, rescued: 0, failed: 1 })
+    expect((h.result.report as { secondLook: unknown }).secondLook).toEqual({ asked: 1, rescued: 0, failed: 1, unlocked: 0 })
   })
 
   it("a second look that still says unknown changes nothing", async () => {
@@ -174,6 +174,85 @@ describe("second look", () => {
     expect(e.kind).toBe("unknown")
     expect(e.relation).toBe("unknown")
     expect(e.because ?? "").not.toContain("second look")
-    expect((h.result.report as { secondLook: unknown }).secondLook).toEqual({ asked: 1, rescued: 0, failed: 0 })
+    expect((h.result.report as { secondLook: unknown }).secondLook).toEqual({ asked: 1, rescued: 0, failed: 0, unlocked: 0 })
+  })
+
+  it("escalates through the unlocker when the search-surfaced page is also walled", async () => {
+    // Grepstack is corroborated in 3 queries (SERP's own comment) — well past
+    // the seenIn>=2 bar — so a blocked pricing page earns one unlocker retry
+    // rather than failing open on the spot.
+    const h = await runFixture({
+      serp: SERP_DEEP,
+      fetchTable: {
+        [DEEP]: {
+          httpStatus: 403,
+          body: "",
+          unlocked: { httpStatus: 200, contentType: "text/html", body: DEEP_PAGE },
+        },
+      },
+      sweepOptions: { secondLook: true },
+      script: rescueScript(() => RESCUED),
+    })
+
+    // Both modes hit the SAME url, in order: the direct read first, the
+    // unlocker only once it came back blocked.
+    const deepFetches = h.fetch.calls.filter((c) => c.url === DEEP)
+    expect(deepFetches.map((c) => c.mode)).toEqual(["direct", "unlocked"])
+
+    // Rescued exactly as the direct-success case is — the unlocked page,
+    // not the blocked one, is what the classify call actually reads.
+    const e = h.result.entities.find((x) => x.domain === HOSTS.grepstack)!
+    expect(e.kind).toBe("company")
+    expect(e.relation).toBe("competitor")
+    expect(e.because).toContain(`second look at ${DEEP}`)
+
+    expect((h.result.report as { secondLook: unknown }).secondLook).toEqual({
+      asked: 1,
+      rescued: 1,
+      failed: 0,
+      unlocked: 1,
+    })
+    expect(h.says.some((s) => s.includes("1 escalated through the unlocker"))).toBe(true)
+  })
+
+  it("does not spend an unlocker retry on a host the search barely corroborated", async () => {
+    // A deliberately sparse SERP, not the fixture's usual one: Loglens named
+    // in exactly one query and carrying no rank at all (fixture hits never
+    // set one) — under BOTH bars (`seenIn>=2`, `bestRank<=5`) at once, to
+    // prove the gate holds when neither condition is met.
+    const SPARSE_DEEP = `https://${HOSTS.loglens}/pricing`
+    const SPARSE_SERP = {
+      "log search": [
+        { url: `https://${HOSTS.loglens}/pricing`, title: "Loglens", description: "Priced on ingest." },
+      ],
+    }
+    const h = await runFixture({
+      serp: SPARSE_SERP,
+      fetchTable: {
+        [SPARSE_DEEP]: {
+          httpStatus: 403,
+          body: "",
+          unlocked: { httpStatus: 200, contentType: "text/html", body: DEEP_PAGE },
+        },
+      },
+      sweepOptions: { secondLook: true },
+      script: {
+        classify: (host) =>
+          host === HOSTS.loglens
+            ? UNPLACED
+            : defaultScript().classify(host, ""),
+      },
+    })
+
+    // Only the direct read was spent — the unlocker never fires for a host
+    // that earned neither bar.
+    const sparseFetches = h.fetch.calls.filter((c) => c.url === SPARSE_DEEP)
+    expect(sparseFetches.map((c) => c.mode)).toEqual(["direct"])
+    expect((h.result.report as { secondLook: unknown }).secondLook).toEqual({
+      asked: 1,
+      rescued: 0,
+      failed: 1,
+      unlocked: 0,
+    })
   })
 })

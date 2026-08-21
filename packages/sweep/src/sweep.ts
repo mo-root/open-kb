@@ -384,6 +384,15 @@ export const TRIAGE_MAX_OUTPUT_TOKENS = 2_000;
  *  bounds the stage to roughly what one triage pass costs. */
 export const SECOND_LOOK_CAP = 60;
 
+/** How many second-look fetches may escalate to the unlocker in one run. About
+ *  half of a real run's second looks landed on a page that was ALSO walled —
+ *  the direct fetch the stage already spends is not a different door than the
+ *  one the judge's front page hit. Only a host that earned its first look
+ *  twice over (`seenIn>=2` or `bestRank<=5` — the rank phase's own corroboration
+ *  bar, not a new one) gets the unlocker's ~$0.008; ten of them is roughly what
+ *  the rank phase's own `OPENKB_RANK_UNLOCK` bar spends on one fresh map. */
+export const SECOND_LOOK_UNLOCK_BUDGET = 10;
+
 /** How many model-settled `relation: "none"` hosts the drop-confirm stage may
  *  re-ask about, on the same precedent SECOND_LOOK_CAP sets: bounds the stage
  *  to roughly what one triage pass costs, rather than re-litigating every
@@ -1007,6 +1016,15 @@ export interface SweepOptions {
    * still says `unknown`/`none`, or one whose quotes do not verify against
    * the page it read — all of it changes nothing, and the first judgement
    * stands. Capped at SECOND_LOOK_CAP hosts.
+   *
+   * A direct fetch that comes back blocked earns ONE unlocker retry — the
+   * rank phase's own escalation (`unlockSeenIn`/`OPENKB_RANK_UNLOCK` in
+   * judge.ts), re-asked here rather than reinvented — but only for a host
+   * that already earned its place twice over: `seenIn>=2` or `bestRank<=5`.
+   * About half of a real run's second looks landed on a page that was ALSO
+   * walled, the same door the judge's front page already hit, and paying to
+   * knock on it again is only worth it for a host the search corroborated.
+   * Bounded at SECOND_LOOK_UNLOCK_BUDGET escalations per run.
    */
   secondLook?: boolean;
   /**
@@ -4092,6 +4110,10 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   /** Looks that failed OPEN — an unreadable page or a thrown call. Counted so
    *  the census can say so, the triage stage's own convention. */
   let secondLookFailed = 0;
+  /** Unlocker escalations spent on a second-look fetch that came back blocked.
+   *  Bounded by SECOND_LOOK_UNLOCK_BUDGET, checked before every escalation so
+   *  the count never runs past it. */
+  let secondLookUnlocked = 0;
   // The same clock rule as the paid link pass: a deadline-bound run that is
   // down to its write reserve ships what it judged rather than spending the
   // reserve on second chances. Null DEADLINE — every CLI run — never gates.
@@ -4123,6 +4145,25 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         return true; // an unparseable URL is not worth a fetch either
       }
     };
+    /** The same `bestRank` the report section computes on entities later —
+     *  earlier here, because the unlock ladder below needs it before that
+     *  section runs. `byHost` is the one source both read; a second field
+     *  restated on `Entity` would just be this, cached. */
+    const bestRankOf = (domain: string): number | undefined => {
+      const rows = byHost.get(domain) ?? [];
+      const ranks = rows
+        .map((h) => h.rank)
+        .filter((n): n is number => typeof n === "number");
+      return ranks.length ? Math.min(...ranks) : undefined;
+    };
+    /** Earned a second knock on a page that came back blocked: corroborated
+     *  by more than one query, or ranked well by at least one — the same
+     *  read `unlockSeenIn` gives the rank phase, applied here because a
+     *  second-look fetch is a fresh door, not a retry of the judge's own.
+     *  Reads `row.seenIn`, not `e.seenIn`: the entity's own `seenIn` is not
+     *  filled in until the report section below this stage runs. */
+    const earnedUnlock = (row: HostCandidate, domain: string): boolean =>
+      row.seenIn >= 2 || (bestRankOf(domain) ?? Infinity) <= 5;
     const lookAt: Array<{ e: Entity; row: HostCandidate; url: string }> = [];
     for (const e of unplaced) {
       if (lookAt.length >= SECOND_LOOK_CAP) break;
@@ -4144,8 +4185,8 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           lookAt.slice(i, i + SECOND_LOOK_CONC).map(async ({ e, row, url }) => {
             secondLookAsked += 1;
             try {
-              const raw = await fetcher.get(url, "direct", { signal });
-              const s = sniff(raw);
+              let raw = await fetcher.get(url, "direct", { signal });
+              let s = sniff(raw);
               bill("fetch", "second-look", 0, raw.ms, s.status === "found");
               spans.emit({
                 runId,
@@ -4158,6 +4199,38 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
                 ok: s.status === "found",
                 usd: 0,
               });
+              // The search-surfaced page can be walled the same as the front
+              // door was — about half of one real run's second looks were —
+              // so a corroborated host earns one unlocker retry before the
+              // look fails open, the same bar (not a new one) and the same
+              // blocked-shape check (`unlockSeenIn`) the rank phase applies
+              // to the judge's own front-page fetch.
+              if (
+                s.status !== "found" &&
+                (s.reason === "thin-render" || /^http-4/.test(s.reason)) &&
+                secondLookUnlocked < SECOND_LOOK_UNLOCK_BUDGET &&
+                earnedUnlock(row, e.domain)
+              ) {
+                secondLookUnlocked += 1;
+                const retried = await fetcher.get(url, "unlocked", { signal });
+                const s2 = sniff(retried);
+                bill("unlocker", "second-look", retried.usd, retried.ms, s2.status === "found");
+                spans.emit({
+                  runId,
+                  agentId: "second-look",
+                  parentId: null,
+                  kind: "fetch",
+                  name: "unlocker",
+                  argsDigest: url,
+                  ms: retried.ms,
+                  ok: s2.status === "found",
+                  usd: retried.usd,
+                });
+                if (s2.status === "found") {
+                  raw = retried;
+                  s = s2;
+                }
+              }
               if (s.status !== "found") {
                 secondLookFailed += 1;
                 return;
@@ -4244,7 +4317,8 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       say(
         "rank",
         `second look rescued ${secondLookRescued} of ${secondLookAsked} unplaced hosts` +
-          (secondLookFailed ? ` (${secondLookFailed} looks failed open)` : ""),
+          (secondLookFailed ? ` (${secondLookFailed} looks failed open)` : "") +
+          (secondLookUnlocked ? ` (${secondLookUnlocked} escalated through the unlocker)` : ""),
       );
     }
   }
@@ -5514,12 +5588,14 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       : null,
     /** Null when the flag was off — "not run" must not read as "rescued
      *  nothing". When on: how many unplaced hosts were given a second page,
-     *  and how many first judgements that replaced. */
+     *  how many first judgements that replaced, and how many of those looks
+     *  spent an unlocker escalation on a page that came back blocked. */
     secondLook: SECOND_LOOK
       ? {
           asked: secondLookAsked,
           rescued: secondLookRescued,
           failed: secondLookFailed,
+          unlocked: secondLookUnlocked,
         }
       : null,
     /** Null when the flag was off — "not run" must not read as "nothing was
