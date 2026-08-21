@@ -543,7 +543,7 @@ function harvestTools(wire: WireOpts, writer: string): ToolSet {
   return {
     harvest: tool({
       description:
-        "Buy one bulk judgement: up to 40 hosts, each read from its own front page — unreadable and aggregator-shaped hosts settle free, one model call judges each residue host, and every judged host lands on the map through remember with its page-backed quote. Costs draw per host; a harvest that dies keeps everything already judged.",
+        "Buy one bulk judgement: up to 40 hosts, each read from its own front page — unreadable and aggregator-shaped hosts settle free, one model call judges each residue host, and a host judged noise or with no relation to the anchor leaves the map with a reason. Every other judged host lands on the map through remember with its page-backed quote. Costs draw per host; a harvest that dies keeps everything already judged.",
       inputSchema: z.object({ hosts: z.array(z.string()), why: whyField }),
       execute: async ({ hosts, why }) => {
         const started = Date.now()
