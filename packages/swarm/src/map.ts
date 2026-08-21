@@ -149,7 +149,14 @@ const slug = (s: string) => s.trim().toLowerCase().replace(/\s+/g, "-")
 
 /** The one place a node key is minted. "" when the item cannot be keyed. */
 export function nodeKey(kind: string, name: string, domain: string): string {
-  const host = domain.trim() ? registrableHost(domain.trim().replace(/^https?:\/\//, "").split("/")[0] ?? "") : ""
+  // The scheme strip has to be case-insensitive: registrableHost lowercases
+  // its input, but only AFTER this line runs. A domain arriving as
+  // "HTTPS://Example.com" (a model echoing a URL it just read, capitals and
+  // all) missed the old `/^https?:\/\//` match, so `.split("/")[0]` kept
+  // "HTTPS:" as the host and every such node minted the same garbage key —
+  // silently merging unrelated companies that all happened to arrive
+  // uppercase.
+  const host = domain.trim() ? registrableHost(domain.trim().replace(/^https?:\/\//i, "").split("/")[0] ?? "") : ""
   if (kind === "company" || kind === "product") return host
   if (host) return host
   return name.trim() ? `${kind}:${slug(name)}` : ""
