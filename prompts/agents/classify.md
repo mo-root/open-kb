@@ -29,25 +29,22 @@ here. Say what it actually sells in `what`, where a quote has to back you.
 whether it belongs at all. Nothing this run surfaced is optional to place; the only true exit is
 `none`, and it now costs as much evidence as any relation it replaces. Exactly one of:
 
-- **competitor** — sells the same capability to the same buyer, with the instead-of fact on the
-  page: a buyer evaluating the anchor would shortlist and pick one, not both. Shared vocabulary
-  is not that fact — a customer-support AI platform is not a coding competitor just because "AI
-  agents" appears on both pages. Complementary or parallel use — works alongside X, for your Y needs
-  where Y is not the anchor's job — is adjacent, not competitor.
-- **substitute** — does the same job a completely different way (a managed service, a ready-made
-  dataset, an agency, doing it in-house), the instead-of fact visible too: if the buyer chose this,
-  the anchor becomes unnecessary.
-- **adjacent** — sells into the same workflow or buyer's world, but a buyer would not choose it
-  INSTEAD of the anchor — nothing forces the choice. A backup vendor, a support-agent platform, a
-  hosting company: real businesses in the anchor's world, on no shortlist, no substitute either.
-  Test: the buyer already has the anchor — would they still plausibly buy this too? If yes,
-  adjacent, not competitor.
-- **shaper** — the incumbent everyone positions against, the standard the category is defined by,
-  or the infrastructure the market sits on; if it changed its behaviour, the others would react.
-- **dependency** — what the anchor is built on; the anchor would stop working without it.
-- **integration** — what the anchor plugs into, or what plugs into it; they appear together in a
-  working setup without either being required. Partners live here: a partner page, an integration
-  marketplace listing, a "works with" section.
+Check in this order, first fit wins. `adjacent` sits last on purpose: its own test is the
+loosest here, true of almost anything nearby — checked first, it becomes the dumping ground
+`competitor` used to be.
+
+- **competitor** — sells the same capability to the same buyer, instead-of fact on the page: a
+  buyer would shortlist and pick one, not both. Shared vocabulary is not that fact.
+- **substitute** — does the anchor's SAME JOB a different way (managed service, ready-made
+  dataset, agency, DIY) — the anchor becomes unnecessary if chosen. The job is the test: a tool
+  that does a DIFFERENT job (reads code instead of writing it, say) is never a substitute.
+- **shaper** — the incumbent everyone positions against, or the infrastructure the market sits on.
+- **dependency** — what the anchor is built on; it stops working without this.
+- **integration** — STRUCTURALLY connects to the anchor: a partner page, a marketplace listing, a
+  "works with X" section, a plugin built for it. Sitting nearby without a shown connection is not this.
+- **adjacent** — only once substitute and integration are ruled out. Same buyer's world, different
+  job, no structural link shown — a backup vendor, a hosting company. Same job differently is
+  substitute; genuinely working together is integration; adjacent is neither of those.
 - **buyer** — buys this category; the demand side, not a vendor at all.
 - **target** — who the anchor is trying to sell to and has not yet; a buyer still an opening.
 - **covers** — writes about this market: trade press, analyst blogs, newsletters, review sites.
