@@ -5107,9 +5107,16 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    * but every throttled batch IS edges the map does not get, bought and paid
    * for. Wall clock: the batches were already concurrent with each other, so
    * this caps the burst's width rather than serializing anything — chunks of
-   * eight, not one 110-wide spike.
+   * (now a pool's width, since P0-2) sixteen, not one 110-wide spike. Raised
+   * from 8: link is 43% of a measured run's wall time (12.3 of 28.5 minutes,
+   * runs/sweep-cursor-com-20260821105321.json), the largest single phase, and
+   * — like RANK_CONC above — a deployment with rate-limit headroom can widen
+   * it past the old hardcoded default.
    */
-  const LINK_CONC = 8;
+  const LINK_CONC = Math.max(
+    1,
+    Math.floor(Number(process.env.OPENKB_LINK_CONCURRENCY ?? 16) || 16),
+  );
   if (!canAffordLinking && unresolved.length && !opts.skipModelLinking) {
     say(
       "link",
