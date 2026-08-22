@@ -123,7 +123,7 @@ listicle-harvest. The web route does not pass a single one of them either.
   what it traded away and how to run the full thing. Document it in the README's
   command block.
 
-- [ ] **P1-8. Free-settle is effectively off: 2 hosts of 926 settled by
+- [x] **P1-8. Free-settle is effectively off: 2 hosts of 926 settled by
   predicate.** `KERNEL_THRESHOLD = opts.aggregatorThreshold ?? null` (~line
   3877) ships null because `scripts/calibrate-kernel.ts` found no separation
   between vendor and directory front pages on the sample it had. Every other
@@ -131,6 +131,24 @@ listicle-harvest. The web route does not pass a single one of them either.
   disk (there are 17 sweeps, several far larger than when it was last tried) and
   report honestly whether a defensible threshold now exists. If it does, propose
   it with the measurement; **if it does not, say so and mark this BLOCKED** —
+  **BLOCKED (2026-08-22 overnight fire).** Neither precondition this item names
+  holds in the container a scheduled fire actually runs in: `runs/` is
+  gitignored and this is a fresh clone from `origin/hardening/overnight-2026-08-21`
+  with no `runs/*.json` on disk at all (checked — the directory doesn't exist),
+  so "the 17 sweeps... on disk" from the evening analysis are not reachable
+  from here and never will be, since nothing in this branch's history writes
+  real sweep output back into git. Separately, `calibrate-kernel.ts` fetches
+  every candidate host's live front page directly (`fetch(https://${host}/)`)
+  to measure outbound-link counts — that's a live network call to arbitrary
+  third-party sites, which is exactly the class of thing this loop is
+  forbidden from doing ("no live or paid runs, ever... offline fixture tests
+  only"), even though it costs no API credits. Both blockers are structural to
+  this environment, not fixable by picking a different run or writing a
+  fixture: a fixture front-page HTML sample would not be "the runs now on
+  disk" the item asks for, and synthesizing one would be exactly the
+  "arithmetic dressed as evidence" this item itself warns against shipping.
+  Leaving `KERNEL_THRESHOLD` at `null` (unchanged) until someone runs
+  `calibrate-kernel.ts` with real `runs/` data outside this sandboxed loop.
   shipping a guessed threshold would be arithmetic dressed as evidence, which is
   precisely what the current `null` is avoiding.
 
