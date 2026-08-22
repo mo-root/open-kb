@@ -983,11 +983,11 @@ export interface SweepOptions {
    * Ask a model, in batches of sixty and from search metadata alone, which
    * hosts are worth a fetch and a judgement at all — before either is spent.
    *
-   * A FLAG, NOT A MIGRATION, on the `discovery` precedent: the measured case
-   * for it is that 12-43% of every stored run's entities were judged and then
-   * dropped by `onMap`, so the fetch and the judgement that bought them were
-   * spent on hosts a title and description already condemned. The case has to
-   * survive an A/B on the same anchor before this defaults on.
+   * A FLAG, NOT A MIGRATION, on the `discovery` precedent — and the A/B it was
+   * gated on has now run and survived: 123 of 926 hosts skipped unfetched on
+   * the cursor.com run, for ~$0.02 of triage calls, roughly time-neutral once
+   * the fetches and classify calls it buys back are counted. DEFAULT ON since
+   * 2026-08-22; `false` (or `OPENKB_TRIAGE=0` at the CLI) still turns it off.
    *
    * Triage may only SKIP, never place: a skipped host becomes a `noise`/`none`
    * entity carrying `settledBy: "triage"` and the model's one-line reason, so
@@ -1005,11 +1005,11 @@ export interface SweepOptions {
    * URL — often a docs, pricing or comparison page deeper than the front
    * page the judge read), and re-ask the SAME classify question against it.
    *
-   * A FLAG, NOT A MIGRATION, on the `discovery`/`triage` precedent: the
-   * measured case for it is that the stored runs carry 23-260 `unknown` rows
-   * each — hosts the map keeps, wearing a refusal a deeper page might have
-   * answered — and the case has to survive an A/B on the same anchor before
-   * this defaults on.
+   * A FLAG, NOT A MIGRATION, on the `discovery`/`triage` precedent — and the
+   * A/B it was gated on has now run and survived: it rescued 12 of 23 and 13
+   * of 22 unplaced hosts across two runs, for ~$0.005. DEFAULT ON since
+   * 2026-08-22; `false` (or `OPENKB_SECOND_LOOK=0` at the CLI) still turns it
+   * off.
    *
    * Rescue is the only power this stage has, and every failure fails OPEN: a
    * fetch that cannot be read, a call that fails or times out, a verdict that
@@ -1040,6 +1040,12 @@ export interface SweepOptions {
    * already established from the page — is what it is asked to reconsider,
    * because that IS the page's content, already read once and paid for.
    *
+   * UNLIKE `triage`/`secondLook`/`listicleHarvest`, THIS ONE STAYS OFF BY
+   * DEFAULT. Its own A/B ran alongside theirs and did not survive it: 0 of
+   * 12, 0 of 27 and 5 of 29 rescued across three runs — it rarely changes
+   * anything, so the case to default it on is not made yet. `true` (or
+   * `OPENKB_DROP_CONFIRM=1` at the CLI) still turns it on.
+   *
    * Only model-settled `none` verdicts qualify (`settledBy === "model"`) —
    * never a predicate settlement (an unreadable host has no `what`/`why` to
    * reconsider) and never a triage skip (that host's page was never read at
@@ -1064,12 +1070,14 @@ export interface SweepOptions {
    * and those queries fire through the run's ordinary search path.
    *
    * A FLAG, NOT A MIGRATION, on the `triage`/`secondLook`/`dropConfirm`
-   * precedent: the measured case is a real cursor.com run where Windsurf,
-   * Zed, Tabnine, Codeium, Aider and Continue had ZERO direct SERP hits —
-   * every one of them existed only inside another hit's title or
-   * description, unextracted, because the search phase follows `hit.url`
-   * and reads no further. The case has to survive an A/B on the same anchor
-   * before this defaults on.
+   * precedent — and the A/B it was gated on has now run and survived: a real
+   * cursor.com run found Windsurf, Zed, Tabnine, Codeium, Aider and Continue
+   * with ZERO direct SERP hits — every one of them existed only inside
+   * another hit's title or description, unextracted, because the search
+   * phase follows `hit.url` and reads no further — and grundfos.com surfaced
+   * 18 real pump vendors the same way, for one model call at ~4s and
+   * ~$0.0003. DEFAULT ON since 2026-08-22; `false` (or
+   * `OPENKB_LISTICLE_HARVEST=0` at the CLI) still turns it off.
    *
    * ADDITIVE ONLY: this stage only ever ADDS queries on top of what the plan
    * already bought, and every failure fails open — a call that throws or
@@ -3538,13 +3546,18 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   // ── 3¼. listicle harvest: vendors a roundup named but this run never asked
   // about ──────────────────────────────────────────────────────────────────
   //
-  // See `SweepOptions.listicleHarvest` for the contract. Off unless asked for,
-  // additive only, and every failure fails open — a call that throws, or a
-  // scan that finds nothing worth asking about, leaves the map exactly as the
-  // search phase already built it. Run here, before the host fold below, so
-  // whatever it buys folds and judges exactly like everything else the search
-  // phase found — no second path through the pipeline for what it surfaces.
-  const LISTICLE_HARVEST = opts.listicleHarvest === true;
+  // See `SweepOptions.listicleHarvest` for the contract. DEFAULT ON since
+  // 2026-08-22: the A/B this flag was gated on found Windsurf, Zed, Tabnine,
+  // Codeium, Aider and Continue on cursor.com with zero direct SERP hits
+  // across 66 queries, and 18 real vendors on grundfos.com, for one model
+  // call at ~4s and ~$0.0003 — a clear win kept opt-OUT-able for
+  // `OPENKB_LISTICLE_HARVEST=0`. Additive only, and every failure fails
+  // open — a call that throws, or a scan that finds nothing worth asking
+  // about, leaves the map exactly as the search phase already built it. Run
+  // here, before the host fold below, so whatever it buys folds and judges
+  // exactly like everything else the search phase found — no second path
+  // through the pipeline for what it surfaces.
+  const LISTICLE_HARVEST = opts.listicleHarvest !== false;
   let listicleRowsScanned = 0;
   let listicleVendorsFound = 0;
   let listicleQueriesFired = 0;
@@ -3750,8 +3763,11 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   // the search engine's own title and description, before any fetch is spent.
   // Skip is the only power this stage has, and every failure fails open — see
   // `SweepOptions.triage` for the contract, and the guard below for the one
-  // code-side exemption.
-  const TRIAGE = opts.triage === true;
+  // code-side exemption. DEFAULT ON since 2026-08-22: the A/B this flag was
+  // gated on skipped 123 of 926 hosts on the cursor.com run, buying back
+  // their fetch and classify calls for ~$0.02 of triage calls — roughly
+  // time-neutral, and kept opt-OUT-able for `OPENKB_TRIAGE=0`.
+  const TRIAGE = opts.triage !== false;
   const triagedOut: Array<{ host: string; seenIn: number; why: string }> = [];
   /** Batches ATTEMPTED — incremented before the call, so this reconciles with
    *  the bill's byAgent line instead of publishing a second, smaller count
@@ -4101,7 +4117,10 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   // direct fetch each, the SAME classify call, and only a verdict that places
   // the host with quotes verified against the page it read may replace the
   // first judgement — see `SweepOptions.secondLook` for the contract.
-  const SECOND_LOOK = opts.secondLook === true;
+  // DEFAULT ON since 2026-08-22: the A/B this flag was gated on rescued 12
+  // of 23 and 13 of 22 unplaced hosts across two runs, for ~$0.005 — kept
+  // opt-OUT-able for `OPENKB_SECOND_LOOK=0`.
+  const SECOND_LOOK = opts.secondLook !== false;
   /** Attempts, counted before the fetch — the same convention as
    *  `triageCalls`, so the report reconciles with the bill when a look fails
    *  open partway through. `secondLookRescued` is the replaced subset. */

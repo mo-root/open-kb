@@ -81,15 +81,20 @@ on every sweep:
 | **link** | how two entities relate | 40 pairs a call |
 | **orphan** | a relation for an entity no pair reached | 20 at a time |
 
-Five more are off by default, one environment variable each: **discover** and
+Three more run BY DEFAULT since 2026-08-22 — each survived an A/B on a stored
+run and each has an opt-OUT environment variable: **listicle-harvest** mines
+the vendor names a roundup already printed (`OPENKB_LISTICLE_HARVEST=0` turns
+it off — found Windsurf, Zed, Tabnine, Codeium, Aider and Continue on
+cursor.com with zero direct SERP hits, and 18 real vendors on grundfos.com);
+**triage** skips hosts from search metadata before a fetch is spent
+(`OPENKB_TRIAGE=0` — 123 of 926 hosts skipped on the newest run);
+**second-look** re-asks **classify** itself against a deeper page for hosts
+left `unknown` (`OPENKB_SECOND_LOOK=0` — 22 asked, 13 rescued on that same
+run). Two more stay opt-in, one environment variable each: **discover** and
 **group** replace the single understand call (`OPENKB_DISCOVERY=agent`);
-**listicle-harvest** mines the vendor names a roundup already printed
-(`OPENKB_LISTICLE_HARVEST=1`); **triage** skips hosts from search metadata
-before a fetch is spent (`OPENKB_TRIAGE=1` — 123 of 926 hosts skipped on the
-newest run); **drop-confirm** gives every settled `none` a second batched
-opinion (`OPENKB_DROP_CONFIRM=1`). `OPENKB_SECOND_LOOK=1` re-asks **classify**
-itself against a deeper page for hosts left `unknown`: 22 asked, 13 rescued on
-that same run.
+**drop-confirm** gives every settled `none` a second batched opinion
+(`OPENKB_DROP_CONFIRM=1`) — its own A/B did not survive, rescuing 0 of 12, 0 of
+27 and 5 of 29 across three runs.
 
 ```mermaid
 flowchart TD
@@ -100,10 +105,10 @@ flowchart TD
     W --> A{"assess"}
     A -->|"widen: more queries"| Q
     A -->|"deepen: 2 pages to 4"| Q
-    A -->|"enough"| H["listicle-harvest<br/><i>opt-in</i>"]
-    H --> T["triage<br/><i>opt-in — skip before fetching</i>"]
+    A -->|"enough"| H["listicle-harvest<br/><i>default on</i>"]
+    H --> T["triage<br/><i>default on — skip before fetching</i>"]
     T --> K["classify<br/>page in hand"]
-    K --> S["second-look · drop-confirm<br/><i>opt-in — re-ask, then confirm the drops</i>"]
+    K --> S["second-look · drop-confirm<br/><i>second-look default on · drop-confirm opt-in</i>"]
     S --> L["link"] --> O["orphan"] --> M["the map"]
 ```
 

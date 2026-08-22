@@ -133,11 +133,11 @@ how often the planner is consulted at all. The workers hold stops of their own
 besides these: the host ceiling and the clock seal the search from the worker
 side, whatever the planner thinks.
 
-Between the search and the fold sits one more opt-in stage.
-`OPENKB_LISTICLE_HARVEST=1` scans the roundup-shaped rows already in hand for
-vendor names their own title or description printed but no query ever asked for,
-and puts them back through the ordinary fold and judge — additive only, and no
-second path onto the map.
+Between the search and the fold sits one more stage, default ON since
+2026-08-22. `OPENKB_LISTICLE_HARVEST=0` turns it off; it scans the
+roundup-shaped rows already in hand for vendor names their own title or
+description printed but no query ever asked for, and puts them back through
+the ordinary fold and judge — additive only, and no second path onto the map.
 
 **rank** judges every host from its own front page. Subdomains fold first. A
 host that cannot be read settles by arithmetic for `$0`, keeping a stable
@@ -145,14 +145,15 @@ host that cannot be read settles by arithmetic for `$0`, keeping a stable
 model, and every quote it returns is re-checked in code; a claim with zero
 verified spans has its prose replaced by a refusal.
 
-Two opt-in stages move that boundary. `OPENKB_TRIAGE=1` lets a model decide from
-the search engine's own title and description, before any fetch, which hosts
-deserve a judgement at all — skip is its only power, and a skipped host ships
-carrying `settledBy: "triage"`. `OPENKB_SECOND_LOOK=1` re-asks the identical
-classify question — same prompt, same schema, booked under its own billing label
-— against a deeper page the search itself surfaced, for hosts the first pass left
-`unknown`. On `runs/sweep-cursor-com-20260821105321.json`: triage skipped 123 of
-926 hosts, and second-look asked 22 and replaced 13.
+Two more default-on stages move that boundary. `OPENKB_TRIAGE=0` turns off a
+model deciding from the search engine's own title and description, before any
+fetch, which hosts deserve a judgement at all — skip is its only power, and a
+skipped host ships carrying `settledBy: "triage"`. `OPENKB_SECOND_LOOK=0` turns
+off the identical classify question re-asked — same prompt, same schema,
+booked under its own billing label — against a deeper page the search itself
+surfaced, for hosts the first pass left `unknown`. On
+`runs/sweep-cursor-com-20260821105321.json`: triage skipped 123 of 926 hosts,
+and second-look asked 22 and replaced 13.
 
 The relation vocabulary includes `adjacent` — a real business in the anchor's
 world that nobody picks *instead of* it — beside the commercial and

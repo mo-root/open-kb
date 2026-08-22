@@ -5,9 +5,9 @@ import type { SearchHit } from "@open-kb/core"
 /**
  * Listicle harvest: a roundup-shaped row's own title/description can name a
  * vendor this run never fired a query for. Its whole contract is the same
- * shape as triage/second-look/drop-confirm — off unless asked for, additive
- * only, and every failure fails open — and each sentence gets its suite
- * below.
+ * shape as triage/second-look — defaults ON (its A/B survived, see
+ * `SweepOptions.listicleHarvest`), additive only, and every failure fails
+ * open — and each sentence gets its suite below.
  */
 
 const ROUNDUP: SearchHit = {
@@ -28,11 +28,23 @@ const serpWithRoundup = (): Record<string, SearchHit[]> => ({
 })
 
 describe("listicle harvest", () => {
-  it("does not exist unless asked for", async () => {
-    const h = await runFixture({ serp: serpWithRoundup() })
+  it("does not exist when explicitly disabled", async () => {
+    const h = await runFixture({ serp: serpWithRoundup(), sweepOptions: { listicleHarvest: false } })
     expect(h.calls.filter((c) => c.phase === "listicle")).toEqual([])
     expect((h.result.report as { listicleHarvest?: unknown }).listicleHarvest).toBeNull()
     expect(h.result.entities.some((e) => e.domain === "runlog.example")).toBe(false)
+  })
+
+  it("runs by default, with no flag needed", async () => {
+    const h = await runFixture({
+      serp: serpWithRoundup(),
+      script: {
+        listicle: () => ({ vendors: ["Grepstack", "Tailwatch", "Runlog"] }),
+      },
+    })
+    expect(h.calls.filter((c) => c.phase === "listicle").length).toBe(1)
+    expect(h.asked).toContain("Runlog alternatives")
+    expect(h.result.entities.some((e) => e.domain === "runlog.example")).toBe(true)
   })
 
   it("a roundup row naming an unsurfaced vendor fires a fresh query for it", async () => {

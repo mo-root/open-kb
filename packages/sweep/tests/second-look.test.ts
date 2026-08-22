@@ -13,9 +13,9 @@ import {
 /**
  * The second look: one more free fetch for each host the judge left `unknown`,
  * on a page the search itself surfaced (`topHit`), and the SAME classify call
- * against it. Its contract is the triage stage's, re-worn: off unless asked
- * for, rescue is its only power, and every failure fails open — each sentence
- * gets its case below.
+ * against it. Its contract is the triage stage's, re-worn: defaults ON (its
+ * A/B survived, see `SweepOptions.secondLook`), rescue is its only power, and
+ * every failure fails open — each sentence gets its case below.
  *
  * The market is bent in one place to give the stage something real to do: every
  * grepstack SERP hit points at a PRICING page rather than the front door, so
@@ -128,11 +128,25 @@ describe("second look", () => {
     expect(h.says.some((s) => s.includes("second look rescued 1 of 1"))).toBe(true)
   })
 
-  it("does not exist unless asked for", async () => {
+  it("runs by default, with no flag needed", async () => {
+    const h = await runFixture({
+      serp: SERP_DEEP,
+      fetchTable,
+      script: rescueScript(() => RESCUED),
+    })
+    const looks = h.calls.filter((c) => c.phase === "classify" && c.subject === HOSTS.grepstack)
+    expect(looks).toHaveLength(2)
+    const e = h.result.entities.find((x) => x.domain === HOSTS.grepstack)!
+    expect(e.kind).toBe("company")
+    expect((h.result.report as { secondLook: unknown }).secondLook).toEqual({ asked: 1, rescued: 1, failed: 0, unlocked: 0 })
+  })
+
+  it("does not exist when explicitly disabled", async () => {
     // The same bent market, the same script — everything but the flag.
     const h = await runFixture({
       serp: SERP_DEEP,
       fetchTable,
+      sweepOptions: { secondLook: false },
       script: rescueScript(() => RESCUED),
     })
     // One classify call per host, no second: the counter never reached two.

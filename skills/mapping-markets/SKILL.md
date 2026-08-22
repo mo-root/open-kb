@@ -81,8 +81,9 @@ For the small end: a 10-query probe on `clerk.com` returned 449 entities for $0.
 **Say the cost before spending it.** These are real dollars.
 
 The other levers, all optional and all documented in `references/onboarding.md`: `OPENKB_PAGES`
-(result pages per query), `OPENKB_MIN_WAVES`, `OPENKB_MAX_HOSTS`, and four off-by-default stage
-flags — `OPENKB_TRIAGE`, `OPENKB_SECOND_LOOK`, `OPENKB_DROP_CONFIRM`, `OPENKB_LISTICLE_HARVEST`.
+(result pages per query), `OPENKB_MIN_WAVES`, `OPENKB_MAX_HOSTS`, and four stage flags — `OPENKB_TRIAGE`,
+`OPENKB_SECOND_LOOK`, `OPENKB_LISTICLE_HARVEST` (all three on by default, `0` disables) and
+`OPENKB_DROP_CONFIRM` (off by default, `1` enables).
 
 ## Step 3 — Run it
 

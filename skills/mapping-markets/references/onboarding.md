@@ -58,10 +58,10 @@ Real environment variables win over the file, which is what you want for anythin
 |---|---|---|
 | `OPENKB_MODEL` | `deepseek/deepseek-v4-flash-0731` | any OpenRouter model id |
 | `OPENKB_PAGES` | `4` (CLI) / `2` (library) | result pages read per query |
-| `OPENKB_TRIAGE` | off | skip hosts from search metadata, before a fetch is spent |
-| `OPENKB_SECOND_LOOK` | off | re-ask classify against a deeper page for `unknown` hosts |
-| `OPENKB_DROP_CONFIRM` | off | one more batched opinion on every settled `none` |
-| `OPENKB_LISTICLE_HARVEST` | off | mine the vendor names a roundup already printed |
+| `OPENKB_TRIAGE` | on (`0` disables) | skip hosts from search metadata, before a fetch is spent |
+| `OPENKB_SECOND_LOOK` | on (`0` disables) | re-ask classify against a deeper page for `unknown` hosts |
+| `OPENKB_DROP_CONFIRM` | off (`1` enables) | one more batched opinion on every settled `none` |
+| `OPENKB_LISTICLE_HARVEST` | on (`0` disables) | mine the vendor names a roundup already printed |
 
 `OPENKB_MODEL` is worth leaving alone. The bake-off ran five configs over one company: the DeepSeek
 flash row returned 449 entities for $0.29, where `google/gemini-3.5-flash` returned 315 for $1.93. A

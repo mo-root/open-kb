@@ -25,6 +25,14 @@ import {
   stoppedRun,
 } from "./spend-caps.js"
 
+/** `"0"`/`"false"` (case-insensitive) reads as an explicit disable; unset or
+ *  anything else leaves a default-on flag standing. Mirrors the "0"/"off"/
+ *  "false" disable shape `OPENKB_SWARM_FAMILIES` already uses in swarm.ts. */
+const disablesFlag = (raw: string | undefined) => {
+  const v = (raw ?? "").trim().toLowerCase()
+  return v === "0" || v === "false"
+}
+
 const anchor = process.argv[2] ?? "resend.com"
 // Unset unless a third arg is given — the normal case, and now the same
 // default the web route already used (`route.ts`: "undefined is not a bad
@@ -112,25 +120,18 @@ const out = await withSpendCap(
     // the single call — the A/B this flag exists for. Anything else, including
     // unset, is the unchanged default.
     discovery: process.env.OPENKB_DISCOVERY === "agent" ? "agent" : undefined,
-    // `OPENKB_TRIAGE=1` asks a model, from search metadata alone, which hosts
-    // deserve a fetch and a judgement at all — the same A/B shape as the
-    // discovery flag. Unset is the unchanged default: every host is judged.
-    triage: process.env.OPENKB_TRIAGE === "1" ? true : undefined,
-    // `OPENKB_SECOND_LOOK=1` spends one more free fetch on each host the judge
-    // left `unknown` — a page the search itself surfaced instead of the front
-    // page — and re-asks the same classify question. The same A/B shape again.
-    // Unset is the unchanged default: the first judgement stands.
-    secondLook: process.env.OPENKB_SECOND_LOOK === "1" ? true : undefined,
-    // `OPENKB_DROP_CONFIRM=1` asks a model, batched and from stored evidence
-    // alone, whether a host the first pass judged `relation: "none"` really
-    // has no place on the map — the same A/B shape again. Unset is the
-    // unchanged default: a first pass's refusal stands.
+    // `triage`, `secondLook` and `listicleHarvest` DEFAULT ON as of
+    // 2026-08-22 — each survived the A/B its doc comment describes (see
+    // `SweepOptions` in `packages/sweep/src/sweep.ts` for the measured
+    // numbers) — so the env var now DISABLES rather than enables:
+    // `OPENKB_TRIAGE=0` (or `false`) turns it off, anything else, unset
+    // included, leaves the new default standing. `dropConfirm` did not
+    // survive its own A/B and stays the odd one out: opt-in,
+    // `OPENKB_DROP_CONFIRM=1` still the only way to turn it on.
+    triage: disablesFlag(process.env.OPENKB_TRIAGE) ? false : undefined,
+    secondLook: disablesFlag(process.env.OPENKB_SECOND_LOOK) ? false : undefined,
     dropConfirm: process.env.OPENKB_DROP_CONFIRM === "1" ? true : undefined,
-    // `OPENKB_LISTICLE_HARVEST=1` asks a model, once, to pull the vendor
-    // names a roundup-shaped result already named in its own title or
-    // description but this run never searched for — the same A/B shape
-    // again. Unset is the unchanged default: those names go unread.
-    listicleHarvest: process.env.OPENKB_LISTICLE_HARVEST === "1" ? true : undefined,
+    listicleHarvest: disablesFlag(process.env.OPENKB_LISTICLE_HARVEST) ? false : undefined,
     spans,
     creds: {
       token: process.env.BRIGHTDATA_API_TOKEN!,

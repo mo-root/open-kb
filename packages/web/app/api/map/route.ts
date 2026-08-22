@@ -26,6 +26,15 @@ import { LIMIT_VARS, MEASURED_RUN_COST, noteRunEnded, spendGate } from "@/lib/sp
  * request whose failure destroys work that had already been paid for.
  */
 
+/** `"0"`/`"false"` (case-insensitive) reads as an explicit disable for
+ *  `triage`/`secondLook`/`listicleHarvest` below — the same env-disable
+ *  shape `scripts/sweep.ts` uses, so the hosted "Try the beta" path and a
+ *  local clone default to the same stages and are turned off the same way. */
+const disablesFlag = (raw: string | undefined) => {
+  const v = (raw ?? "").trim().toLowerCase()
+  return v === "0" || v === "false"
+}
+
 /** Node, not Edge: the run outlives the request that started it, and the engine
  *  reads credentials off `process.env`. */
 export const runtime = "nodejs"
@@ -502,6 +511,15 @@ export const POST = guarded(async (req: Request) => {
         deadlineAt: startedAt + CLOCK_S * 1000,
         // Search-wave width, same dial the CLI takes; retry-afters keep it honest.
         concurrency: Number(process.env.OPENKB_SEARCH_CONCURRENCY ?? 0) || undefined,
+        // The three stages that default on in `@open-kb/sweep` itself
+        // (`SweepOptions.triage`/`.secondLook`/`.listicleHarvest`) — passed
+        // explicitly, read from the SAME env vars `scripts/sweep.ts` reads,
+        // so an operator can disable one on this deployment exactly as they
+        // would from a terminal, and the hosted path is not silently a
+        // different product from a local clone.
+        triage: disablesFlag(process.env.OPENKB_TRIAGE) ? false : undefined,
+        secondLook: disablesFlag(process.env.OPENKB_SECOND_LOOK) ? false : undefined,
+        listicleHarvest: disablesFlag(process.env.OPENKB_LISTICLE_HARVEST) ? false : undefined,
         spans: record.spans,
         creds: {
           token: process.env.BRIGHTDATA_API_TOKEN!,
