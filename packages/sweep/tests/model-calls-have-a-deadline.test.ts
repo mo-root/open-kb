@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { CALL_TIMEOUT_MS } from "../src/sweep.js"
+import { CALL_TIMEOUT_MS, LINK_CALL_TIMEOUT_MS } from "../src/sweep.js"
 
 /**
  * A model call that never answers used to be a run that never ends.
@@ -19,6 +19,14 @@ describe("every model call carries a deadline", () => {
     // The slowest legitimate calls in runs/ are classify retries at 56-62s.
     expect(CALL_TIMEOUT_MS).toBeGreaterThan(62_000)
     expect(CALL_TIMEOUT_MS).toBeLessThanOrEqual(600_000)
+  })
+
+  it("gives link a shorter deadline than every other agent, within the backlog's 45-60s range", () => {
+    // P0-4: link and orphan calls are batched, uniform, and already retried
+    // once, so a hang there does not need the full CALL_TIMEOUT_MS runway.
+    expect(LINK_CALL_TIMEOUT_MS).toBeGreaterThanOrEqual(45_000)
+    expect(LINK_CALL_TIMEOUT_MS).toBeLessThanOrEqual(60_000)
+    expect(LINK_CALL_TIMEOUT_MS).toBeLessThan(CALL_TIMEOUT_MS)
   })
 
   it("composes with the run's cancel without replacing it", async () => {

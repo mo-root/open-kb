@@ -409,6 +409,21 @@ export const CALL_TIMEOUT_MS = Math.max(
   Number(process.env.OPENKB_CALL_TIMEOUT_MS ?? 120_000) || 120_000,
 );
 
+/** The link and orphan calls' own deadline — tighter than `CALL_TIMEOUT_MS`'s
+ *  global 120s. `docs/overnight-backlog.md`'s P0-4 finding: on the measured
+ *  cursor.com run (runs/sweep-cursor-com-20260821105321.json) two timed-out
+ *  link batches cost about 4 minutes of the 12.3-minute link phase — the same
+ *  run that motivated `LINK_CONC` above. Unlike a one-off classify call, link
+ *  and orphan calls are batched, uniform, and already retried once on the
+ *  same original ceiling, so a hung call does not need 120s of runway before
+ *  that retry fires. 60s halves the cost of a hang against the 120s default;
+ *  the backlog's own suggested range was 45-60s and this takes the upper,
+ *  safer end of it. */
+export const LINK_CALL_TIMEOUT_MS = Math.max(
+  1_000,
+  Number(process.env.OPENKB_LINK_CALL_TIMEOUT_MS ?? 60_000) || 60_000,
+);
+
 /** Roundup-shaped: the row's own title or description reads like a page that
  *  names several vendors rather than one. Cheap and deliberately loose — a
  *  false match costs nothing but a wasted line in one batched model call, a
@@ -1559,9 +1574,15 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
      *
      * A timeout leaves `signal.aborted` false, so the caller's own check still
      * tells a host that stopped answering apart from a visitor who left.
+     *
+     * `link` alone gets the shorter `LINK_CALL_TIMEOUT_MS` — argued at its own
+     * declaration above — because its calls are batched, uniform, and already
+     * retried once; every other agent keeps the full two minutes this comment
+     * measures against.
      */
+    const timeoutMs = agent === "link" ? LINK_CALL_TIMEOUT_MS : CALL_TIMEOUT_MS;
     const withDeadline = () => {
-      const timeout = AbortSignal.timeout(CALL_TIMEOUT_MS);
+      const timeout = AbortSignal.timeout(timeoutMs);
       return signal ? AbortSignal.any([signal, timeout]) : timeout;
     };
 
@@ -1659,7 +1680,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
               ? "sweep"
               : agent,
           timedOut
-            ? `  ${label}: no answer in ${Math.round(CALL_TIMEOUT_MS / 1000)}s, retrying once`
+            ? `  ${label}: no answer in ${Math.round(timeoutMs / 1000)}s, retrying once`
             : `  ${label}: the model returned nothing, retrying with more room`,
         );
         try {
