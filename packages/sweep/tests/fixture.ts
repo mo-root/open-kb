@@ -331,6 +331,13 @@ export interface ModelCall {
   prompt: string
   /** The product for a catalog call, the host for a classify call, "" elsewhere. */
   subject: string
+  /** The generateObject schema's own property order for this call — undefined
+   *  for the text-only discovery turns, which carry no schema at all. Field
+   *  order here is the order a structured-output provider fills the object
+   *  in, which is not necessarily the order the prompt mentions fields in;
+   *  P1-6 (docs/overnight-backlog.md) found `reasoning` and its prompt at
+   *  odds about that order and this is what would have caught it. */
+  schemaKeys?: string[]
 }
 
 /** Fixed, so the bill is arithmetic a test can do independently. With the
@@ -663,7 +670,10 @@ export async function runFixture(opts: FixtureOptions = {}): Promise<Harness> {
 
       const phase = phaseOf(responseFormat)
       const subject = phase === "catalog" ? productOf(text) : phase === "classify" ? hostOf(text) : ""
-      calls.push({ phase, prompt: text, subject })
+      const schemaKeys = Object.keys(
+        ((responseFormat as { schema?: { properties?: Record<string, unknown> } })?.schema?.properties) ?? {},
+      )
+      calls.push({ phase, prompt: text, subject, schemaKeys })
       const object =
         phase === "understand"
           ? script.understand(text)

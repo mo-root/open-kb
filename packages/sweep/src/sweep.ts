@@ -4004,6 +4004,31 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
             .string()
             .describe("what it is, one line, from the page itself"),
           relation: z.enum(RELATIONS),
+          // Declared here, right after `relation` and before `why`/`spans`,
+          // because classify.md:65-66 has always told the model to answer in
+          // exactly this order — state the decisive fact, THEN back it with
+          // evidence — but the schema used to declare `reasoning` after
+          // `spans`, contradicting its own prompt. Structured-output decoding
+          // fills fields in schema-declaration order, not prompt-mention
+          // order: a model asked for the mechanism only after it had already
+          // spent its output on two required fields (`why`, `spans`) had
+          // every incentive to treat this trailing optional field as done.
+          // Measured on the cursor.com run (docs/overnight-backlog.md,
+          // P1-6): 202 of 776 entities (26%) carried a `reasoning`, against
+          // 85% for `relationSpan` — the other optional field, which sits
+          // right after its own required counterpart (`spans`) rather than
+          // after an unrelated one. Not `.min(1)`, and still optional: every
+          // existing fixture and test script across this suite answers the
+          // classify schema without it, and a required field the mock model
+          // never supplies fails `generateObject`'s own zod parse before the
+          // engine sees a response — the same failure a real provider that
+          // dropped a field would cause.
+          reasoning: z
+            .string()
+            .optional()
+            .describe(
+              "one sentence: the single decisive fact that settled kind and relation",
+            ),
           why: z
             .string()
             .describe("why it belongs on this map, stated against the anchor"),
@@ -4013,20 +4038,6 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
             .max(3)
             .describe(
               "1-3 short quotes copied character-for-character from the page, together backing the what",
-            ),
-          // Optional, not `.min(1)` like `spans` above: every existing fixture
-          // and test script across this suite answers the classify schema
-          // without these two fields, and a required field the mock model
-          // never supplies fails `generateObject`'s own zod parse before the
-          // engine sees a response — the same failure a real provider that
-          // dropped a field would cause. The doctrine (classify.md) still
-          // teaches both as answer fields; optional here is a schema-level
-          // safety net, not a weaker ask.
-          reasoning: z
-            .string()
-            .optional()
-            .describe(
-              "one sentence: the single decisive fact that settled kind and relation",
             ),
           relationSpan: z
             .string()
