@@ -1194,6 +1194,39 @@ export function rankThinkLine(e: Judged): string | null {
   return `${head} — ${e.kind}/${e.relation}${reason ? `: ${reason}` : ""}`;
 }
 
+/**
+ * A pool, not a barrier — the same fix the SEARCH phase already made (see the
+ * "topping up as it goes" comment above `runOne`), now applied to the LINK
+ * phase's two dispatch sites (pair batches and orphan batches).
+ *
+ * Both used to chunk their batches into groups of `LINK_CONC` and
+ * `await Promise.all` each group before starting the next — a barrier per
+ * group, costing that group its slowest member while finished workers idled.
+ * Link is 43% of a measured run's wall time (12.3 of 28.5 minutes on
+ * runs/sweep-cursor-com-20260821105321.json), the largest single phase, which
+ * is exactly the shape the search phase's own chunked-dispatch fix was
+ * written to describe. This is that fix, generalised: each worker takes the
+ * next item the moment it frees up, so one slow batch delays only itself.
+ * Same concurrency, same batch size, no barrier.
+ */
+export async function runPool<T>(
+  items: T[],
+  conc: number,
+  fn: (item: T, i: number) => Promise<void>,
+): Promise<void> {
+  let next = 0;
+  const worker = async () => {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) return;
+      await fn(items[i]!, i);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(conc, items.length) }, worker),
+  );
+}
+
 export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   const {
     domain: rawDomain,
@@ -5188,14 +5221,9 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         linked += batch.length;
         say("link", `  ${linked}/${unresolved.length} pairs`);
     };
-    // LINK_CONC at a time, argued at its declaration above.
-    for (let i = 0; i < pairBatches.length; i += LINK_CONC) {
-      await Promise.all(
-        pairBatches
-          .slice(i, i + LINK_CONC)
-          .map((batch, j) => runPairBatch(batch, i + j)),
-      );
-    }
+    // LINK_CONC at a time, a pool rather than a barrier — argued at `runPool`'s
+    // own declaration above.
+    await runPool(pairBatches, LINK_CONC, (batch, i) => runPairBatch(batch, i));
     say("link", `${edges.length} edges between entities`);
   }
 
@@ -5319,14 +5347,9 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
               stats.linked += 1;
             }
       };
-      // LINK_CONC at a time, argued at its declaration above.
-      for (let i = 0; i < batches.length; i += LINK_CONC) {
-        await Promise.all(
-          batches
-            .slice(i, i + LINK_CONC)
-            .map((batch, j) => runOrphanBatch(batch, i + j)),
-        );
-      }
+      // LINK_CONC at a time, a pool rather than a barrier — argued at
+      // `runPool`'s own declaration above.
+      await runPool(batches, LINK_CONC, (batch, i) => runOrphanBatch(batch, i));
       say(
         "link",
         `${stats.linked} of ${stats.orphans} orphans found a footing; ${stats.orphans - stats.linked} honestly stand alone`,
