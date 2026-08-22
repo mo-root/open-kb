@@ -36,18 +36,17 @@ function resolve(arg: string): string {
   const dir = "runs"
   const files = readdirSync(dir).filter((f) => f.endsWith(".json"))
   const slug = arg.replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/\W+/g, "-")
-  const matches = files
-    .filter((f) => f.includes(slug) || f.includes(arg))
-    .map((f) => ({ f, t: readFileSync(path.join(dir, f), "utf8").length }))
+  const matches = files.filter((f) => f.includes(slug) || f.includes(arg))
   if (!matches.length) {
     throw new Error(`no run matching "${arg}". runs/ holds:\n  ${files.slice(-8).join("\n  ")}`)
   }
   // Newest wins: a domain mapped twice should read back as the latest attempt.
-  const newest = matches
-    .map((m) => ({ ...m, mtime: Date.parse(readFileSync(path.join(dir, m.f), "utf8").slice(0, 0) || "") || 0 }))
-    .sort((a, b) => a.f.localeCompare(b.f))
-    .at(-1)!
-  return path.join(dir, newest.f)
+  // Run filenames end in a zero-padded timestamp (scripts/sweep.ts, scripts/swarm.ts),
+  // so the lexical max of the filename IS the newest run — no file needs opening to
+  // find it. (It used to open every match twice, once for a length and once for a
+  // `mtime` built from `Date.parse("")`, always 0 — both discarded, never read.)
+  const newest = [...matches].sort().at(-1)!
+  return path.join(dir, newest)
 }
 
 const arg = process.argv[2]
