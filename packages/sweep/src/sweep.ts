@@ -5019,12 +5019,25 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         // discovery sentence exactly as before, prefix and all, so a reader
         // (and `edges-need-more-than-a-mention.test.ts`, which matches on
         // that exact prefix) still finds the fact it always found.
-        const namingRow = rows.find((r) =>
-          namesIt(`${r.title} ${r.description ?? ""}`, hit),
-        );
-        const mechanism = (
-          namingRow?.description || namingRow?.title || ""
-        ).trim();
+        //
+        // EVERY ROW THIS HOST HAS, not just the first that matched. A host
+        // turns up in `rows` once per query that surfaced it, and the naming
+        // pass used to take `.find()`'s first hit — so a target named once
+        // in passing (an empty-description listing page) and once with real
+        // context (a comparison page from a different query) fell to the
+        // bare fallback whenever the thin row happened to sort first. Taking
+        // the richest of every row that names it costs nothing this pass
+        // wasn't already paying for — the same `rows` it already had in
+        // hand — and only ever adds a mechanism, never removes one: a host
+        // with exactly one naming row keeps behaving exactly as before,
+        // which is what the two existing tests above lock in.
+        let mechanism = "";
+        for (const r of rows) {
+          if (!namesIt(`${r.title} ${r.description ?? ""}`, hit)) continue;
+          const candidate = (r.description || r.title || "").trim();
+          if (candidate.toLowerCase() === hit.toLowerCase()) continue;
+          if (candidate.length > mechanism.length) mechanism = candidate;
+        }
         const why =
           mechanism && mechanism.toLowerCase() !== hit.toLowerCase()
             ? `a page on ${host} names "${hit}": "${mechanism.slice(0, 200)}"`

@@ -66,6 +66,38 @@ describe("the free naming pass", () => {
     expect(e).toBeDefined()
     expect(e!.why).toBe(`a page on ${HOSTS.grepstack} names "Loglens"`)
   })
+
+  it("prefers the richest of every row that names the target, not just the first", async () => {
+    // A host turns up in `rows` once per query that surfaced it. The bare
+    // row here — same shape as the fallback case above — used to be picked
+    // whenever `.find()` reached it first, even though a second query's row
+    // for the same host said something real a paragraph later.
+    const h = await runFixture({
+      sweepOptions: { skipModelLinking: true },
+      serp: {
+        ...SERP,
+        "log search": [
+          { url: `https://${HOSTS.grepstack}/`, title: "Loglens", description: "" },
+          ...SERP["log search"]!.slice(1),
+        ],
+        "log search alternatives": [
+          {
+            url: `https://${HOSTS.grepstack}/`,
+            title: "Grepstack vs Loglens",
+            description:
+              "Reviewed this week alongside Loglens, the retention-priced alternative.",
+          },
+          ...SERP["log search alternatives"]!.slice(1),
+        ],
+      },
+    })
+    const e = named(h).find((x) => x.from === HOSTS.grepstack && x.to === HOSTS.loglens)
+    expect(e, "grepstack's own rows never named loglens").toBeDefined()
+    expect(e!.why).toBe(
+      `a page on ${HOSTS.grepstack} names "Loglens": ` +
+        `"Reviewed this week alongside Loglens, the retention-priced alternative."`,
+    )
+  })
 })
 
 describe("the paid link pass", () => {
