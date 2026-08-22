@@ -29,7 +29,34 @@ export interface RunContext {
   signal?: AbortSignal
 }
 
-export const RELATIONS = ["competitor", "substitute", "dependency", "integration", "shaper"] as const
+/**
+ * The relations `remember`'s edge schema will accept from the investigator agent — a third
+ * copy of the vocabulary `prompts/doctrine/02-relations.md` teaches, alongside core's own
+ * `JUDGED_RELATIONS` (judge.ts) and the swarm's `SWARM_RELATIONS` (packages/swarm/src/map.ts).
+ * This one sat at five words — the doctrine's original commercial set — while the doctrine grew
+ * to twelve: `adjacent` landed for the 27% of competitor verdicts that were actually "real
+ * business here, not a rival", then the channel words `buyer`/`target`/`covers`/`lists`/
+ * `discusses`/`unknown` landed for the 144 of 438 hosts one run could not place at all. The
+ * doctrine the investigator reads taught it every one of those words; this enum, unlike the
+ * swarm's copy, was never updated to let `remember` accept them — an edge in any of the seven
+ * missing words failed the tool call outright, not as a `rejected` reason the agent could read
+ * and act on. `none` is excluded on purpose, matching `SWARM_RELATIONS`: it means "write no
+ * edge", not a value an edge object carries.
+ */
+export const RELATIONS = [
+  "competitor",
+  "substitute",
+  "adjacent",
+  "shaper",
+  "dependency",
+  "integration",
+  "buyer",
+  "target",
+  "covers",
+  "lists",
+  "discusses",
+  "unknown",
+] as const
 export type Relation = (typeof RELATIONS)[number]
 
 export const NODE_KINDS = ["company", "product", "capability", "buyer", "community"] as const

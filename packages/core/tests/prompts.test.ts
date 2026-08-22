@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest"
-import { readdirSync } from "node:fs"
+import { readdirSync, readFileSync } from "node:fs"
 import { loadPrompt, composePrompt } from "../src/prompts.js"
+import { RELATIONS } from "../src/tools.js"
 
 const DOCTRINE = "prompts/doctrine"
 const AGENTS = "prompts/agents"
@@ -107,6 +108,37 @@ describe("prompt files", () => {
     // because the ladder had no other word for "real business here, not a rival". Same rule as
     // both prior raises: it earns its length or it does not get raised for it.
     expect(composed.length).toBeLessThan(24_000)
+  })
+})
+
+describe("remember's edge vocabulary matches what the investigator is taught", () => {
+  /**
+   * The drift this exists to catch: `RELATIONS` (tools.ts, `remember`'s edge schema) sat at
+   * the doctrine's original five commercial words — competitor, substitute, dependency,
+   * integration, shaper — while `02-relations.md` grew to twelve, `adjacent` and the three
+   * channel words and `unknown` all landing without a matching update here. The doctrine taught
+   * the investigator to write an `adjacent` or `covers` edge; the tool schema rejected the call
+   * outright the moment it tried. `packages/swarm/src/map.ts` caught and fixed the identical
+   * drift for its own copy of this vocabulary; this is the same check for core's.
+   */
+  it("documents every relation `remember` will accept", () => {
+    const doc = readFileSync("prompts/doctrine/02-relations.md", "utf8")
+    const undocumented = RELATIONS.filter((r) => !doc.includes(`**${r}**`))
+    expect(undocumented).toEqual([])
+  })
+
+  it("accepts every commercial and channel word the doctrine teaches, `none` excluded", () => {
+    // `none` means "write no edge", not a value an edge object carries — `remember`'s schema
+    // is only ever consulted for an edge someone decided to write. Anchored to the start of a
+    // line: the doctrine's definitions are all "**word** — ...", and that shape alone is what
+    // separates a taught relation from the file's ordinary inline emphasis ("built **on**
+    // versus plugged **into**", "Say **how** it relates"), which names no relation at all.
+    const doc = readFileSync("prompts/doctrine/02-relations.md", "utf8")
+    const bolded = [...doc.matchAll(/^\*\*([a-z]+)\*\* —/gm)].map((m) => m[1]!)
+    const taught = [...new Set(bolded)].filter((w) => w !== "none")
+    expect(taught.length).toBeGreaterThan(5)
+    const unaccepted = taught.filter((w) => !(RELATIONS as readonly string[]).includes(w))
+    expect(unaccepted).toEqual([])
   })
 })
 
