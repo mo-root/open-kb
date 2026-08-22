@@ -153,6 +153,7 @@ pnpm swarm yourcompany.com 5 --from-sweep runs/<run>  # interrogate a sweep's ma
 set -a && source .env && set +a   # the CLI reads keys from the shell
 
 pnpm sweep yourcompany.com        # breadth: the map
+pnpm sweep yourcompany.com --quick  # a bounded first look: ~90 hosts, no paid link pass
 pnpm swarm yourcompany.com 5      # depth, with a ceiling
 pnpm run export <run> vault  # the map as a folder of markdown
 pnpm run diff a.json b.json  # what moved between two runs of one anchor

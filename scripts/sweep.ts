@@ -6,6 +6,7 @@
  * you see here is what the browser runs.
  *
  * Usage:  set -a && . ./.env && set +a && npx tsx scripts/sweep.ts resend.com [nQueries]
+ *         npx tsx scripts/sweep.ts resend.com --quick   # a bounded first look
  *
  * The run stops itself at $8.00 — see the watchdog below and the numbers behind
  * that figure in `scripts/spend-caps.ts`. `OPENKB_CLI_RUN_CAP_USD` changes it;
@@ -33,7 +34,16 @@ const disablesFlag = (raw: string | undefined) => {
   return v === "0" || v === "false"
 }
 
-const anchor = process.argv[2] ?? "resend.com"
+// P1-7 (docs/overnight-backlog.md): a user's first run is currently a
+// ~28-minute wait (runs/sweep-cursor-com-20260821105321.json) before they see
+// anything. `--quick` is argv, not an env var — it is a one-time human choice
+// for a first look, not a standing shell setting like the OPENKB_* guards
+// below. It is filtered out of argv here so it can sit anywhere on the command
+// line without shifting the two positional args past it.
+const QUICK = process.argv.includes("--quick")
+const positional = process.argv.slice(2).filter((a) => a !== "--quick")
+
+const anchor = positional[0] ?? "resend.com"
 // Unset unless a third arg is given — the normal case, and now the same
 // default the web route already used (`route.ts`: "undefined is not a bad
 // value, it is the normal one now"). Left as a hardcoded `?? 40` here, every
@@ -41,8 +51,36 @@ const anchor = process.argv[2] ?? "resend.com"
 // script exists to validate — every product dealt its own opening hand, the
 // spend ceiling as the only brake — could never actually be exercised from a
 // terminal. A numeric third arg still bounds a probe exactly as before.
-const TARGET = process.argv[3] !== undefined ? Number(process.argv[3]) : undefined
+const TARGET = positional[1] !== undefined ? Number(positional[1]) : undefined
 const MODEL = process.env.OPENKB_MODEL ?? "deepseek/deepseek-v4-flash-0731"
+
+/**
+ * `--quick`'s preset, over `SweepOptions` fields that already exist — no new
+ * engine capability, per the backlog item. Both levers are chosen from the
+ * SAME measured run the backlog cites:
+ *
+ *   - `maxHosts` is the estimation stop that ends both the search-widening
+ *     loop and the fetch/classify phase early (`HOST_CEILING`, sweep.ts). The
+ *     cursor run bought 926 hosts against a default sizing of 900; capping at
+ *     a tenth of that cuts the two phases that were 26% + 25% of its wall
+ *     time (search+widening, classify) roughly proportionally.
+ *   - `skipModelLinking: true` drops the paid link pass entirely — 43% of
+ *     that same run's wall time (12.3 of 28.5 minutes), the single biggest
+ *     phase. The free naming pass (pages that name another player outright)
+ *     still runs, so a quick map still carries edges, just fewer of them.
+ *
+ * An explicit `OPENKB_MAX_HOSTS`/`OPENKB_SKIP_MODEL_LINKING` still wins over
+ * this preset below — `--quick` fills gaps, it does not override a setting
+ * the operator already made.
+ */
+const QUICK_MAX_HOSTS = 90
+
+if (QUICK) {
+  console.log(
+    `--quick: capping this run at ~${QUICK_MAX_HOSTS} hosts and skipping the paid link pass ` +
+      `— a smaller, faster-linked map for a first look. Drop --quick for the full run.`,
+  )
+}
 
 const spans = new SpanStream()
 const startedAt = Date.now()
@@ -110,12 +148,14 @@ const out = await withSpendCap(
     // model's own judgement.
     minWaves: Number(process.env.OPENKB_MIN_WAVES ?? 3) || undefined,
     // The estimation stop: ~900 distinct hosts lands near ~700 kept nodes,
-    // which is already a big map. OPENKB_MAX_HOSTS resizes it.
-    maxHosts: Number(process.env.OPENKB_MAX_HOSTS ?? 0) || undefined,
+    // which is already a big map. OPENKB_MAX_HOSTS resizes it; `--quick`
+    // fills in a smaller one (QUICK_MAX_HOSTS above) when the env var is
+    // unset.
+    maxHosts: Number(process.env.OPENKB_MAX_HOSTS ?? 0) || (QUICK ? QUICK_MAX_HOSTS : undefined),
     // Search-wave width. The provider adapter obeys retry-afters, so pushing
     // this is observable-safe: too wide answers as 429s and pacing, never loss.
     concurrency: Number(process.env.OPENKB_SEARCH_CONCURRENCY ?? 0) || undefined,
-    skipModelLinking: process.env.OPENKB_SKIP_MODEL_LINKING === "1",
+    skipModelLinking: process.env.OPENKB_SKIP_MODEL_LINKING === "1" || QUICK,
     // `OPENKB_DISCOVERY=agent` runs phase one as the discovery agent instead of
     // the single call — the A/B this flag exists for. Anything else, including
     // unset, is the unchanged default.
