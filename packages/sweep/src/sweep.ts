@@ -431,7 +431,7 @@ export const LISTICLE_MAX_QUERIES = 20;
 /**
  * How an entity stands to the anchor.
  *
- * Seven are commercial stances. Three cover hosts that have no commercial
+ * Eight are commercial stances. Three cover hosts that have no commercial
  * stance but still relate: publications, directories, forums. `unknown` is
  * the downgrade for a claim the evidence refused — the host stays, wearing
  * the refusal. With only commercial words, 144 of 438 hosts on one run came
