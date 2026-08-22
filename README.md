@@ -46,26 +46,50 @@ pnpm sweep yourcompany.com
 ```
 runs/sweep-yourcompany-com-<stamp>.json   every entity, edge and span
 
-kb-yourcompany-com/                       pnpm run export <run>
+runs/exports/kb-yourcompany-com/          pnpm run export <run>
 ├── entities/     one file per company, with its quotes
-├── relations/    competitor · substitute · integration · buyer
+├── relations/    one file per relation found: adjacent, competitor, substitute …
 ├── segments/     each market, and who is in it
 └── llms.txt      the door an agent comes in through
 ```
 
+**Why those two accounts.** Bright Data because a map is only as good as what
+comes back: across the 17 sweeps in `runs/`, 11–15% of hosts stayed unreadable
+after a direct fetch and one Web Unlocker escalation, and those stay on the map
+wearing the reason rather than vanishing from it. OpenRouter because the
+judgement does not need a frontier model: in the bake-off — five configs, one
+company, ten queries each — the DeepSeek flash default came in cheapest per
+entity at $0.00065, against $0.0008 for the next best and $0.002 for the dearest
+config that beat it on volume. Two configs did find roughly 2.4x more entities
+for 3.5x and 7.7x the money; the default wins on cost per entity and on the
+recall probe, at the same description grounding. That is why the cheap model is
+the default and the spend caps are sized for it — not a claim that it finds the
+most.
+
 ## The agents
 
-Five agents, one judgement each, every answer in a schema. Each is a markdown
-prompt in [`prompts/`](./prompts) — changing how the engine thinks is a text
-edit.
+One judgement each, every answer in a schema. Each is a markdown prompt in
+[`prompts/`](./prompts) — changing how the engine thinks is a text edit. Six run
+on every sweep:
 
 | agent | owns | runs |
 |---|---|---|
 | **understand** | what the company sells, and which products share a market | once per run |
 | **catalog** | a product's de-branded queries — the job, never the name | once per product |
-| **assess** | widen or stop, racing the search | up to eight times |
-| **classify** | what a host is, with its page in hand | once per host |
+| **assess** | widen, deepen or stop, racing the search | up to eight times |
+| **classify** | what a host is, with its page in hand | once per host on the default path |
 | **link** | how two entities relate | 40 pairs a call |
+| **orphan** | a relation for an entity no pair reached | 20 at a time |
+
+Five more are off by default, one environment variable each: **discover** and
+**group** replace the single understand call (`OPENKB_DISCOVERY=agent`);
+**listicle-harvest** mines the vendor names a roundup already printed
+(`OPENKB_LISTICLE_HARVEST=1`); **triage** skips hosts from search metadata
+before a fetch is spent (`OPENKB_TRIAGE=1` — 123 of 926 hosts skipped on the
+newest run); **drop-confirm** gives every settled `none` a second batched
+opinion (`OPENKB_DROP_CONFIRM=1`). `OPENKB_SECOND_LOOK=1` re-asks **classify**
+itself against a deeper page for hosts left `unknown`: 22 asked, 13 rescued on
+that same run.
 
 ```mermaid
 flowchart TD
@@ -73,14 +97,18 @@ flowchart TD
     U --> C["catalog<br/>per product, in parallel"]
     C --> Q["query queue"]
     Q --> W["SERP worker pool<br/><i>every hit tagged with its query</i>"]
-    W --> A{"assess<br/>widen or stop"}
-    A -- widen --> Q
-    A -- enough --> K["classify<br/>page in hand"]
-    K --> L["link"] --> M["the map"]
+    W --> A{"assess"}
+    A -->|"widen: more queries"| Q
+    A -->|"deepen: 2 pages to 4"| Q
+    A -->|"enough"| H["listicle-harvest<br/><i>opt-in</i>"]
+    H --> T["triage<br/><i>opt-in — skip before fetching</i>"]
+    T --> K["classify<br/>page in hand"]
+    K --> S["second-look · drop-confirm<br/><i>opt-in — re-ask, then confirm the drops</i>"]
+    S --> L["link"] --> O["orphan"] --> M["the map"]
 ```
 
 <sub>One liberty in the drawing: assess is not a gate the workers wait at — it
-races the pool, and widening lands mid-flight.</sub>
+races the pool, and both widening and deepening land mid-flight.</sub>
 
 ## What the agents cannot do
 
@@ -90,7 +118,7 @@ Agentic where the answer is a judgement, code where the answer is a guarantee:
 |---|---|
 | A citation exists only if its quote is a literal substring of bytes this run stored | [`core/src/evidence.ts`](./packages/core/src/evidence.ts) — no fallback branch |
 | A description with zero verified spans never reaches a reader | [`core/src/judge.ts`](./packages/core/src/judge.ts) |
-| `competitor` and `substitute` need that host's own readable page — a listicle nominates, it never convicts | [`core/src/verdict.ts`](./packages/core/src/verdict.ts) |
+| `competitor` and `substitute` need that host's own readable page — a listicle nominates, it never convicts. `adjacent`, the softest placement and the most common one, carries no such bar | [`core/src/verdict.ts`](./packages/core/src/verdict.ts) |
 | A claim that loses its evidence keeps its place and wears the refusal | same path — downgrade, never delete |
 | An edge to a node nobody found gets dropped | the sweep refuses dangling edges |
 | Every paid call lands on the run's live meter, and a watchdog ends the run just under its cap — the swarm's ledger goes further, reserving each mission's allowance before work starts | [`core/src/spend-cap.ts`](./packages/core/src/spend-cap.ts) |
@@ -124,7 +152,8 @@ pnpm swarm yourcompany.com 5      # depth, with a ceiling
 pnpm run export <run> vault  # the map as a folder of markdown
 pnpm run diff a.json b.json  # what moved between two runs of one anchor
 pnpm run audit <run>         # deal a review packet, score it symmetrically
-pnpm test                    # 1,387 tests, no network, no keys
+pnpm test                    # 1,784 tests, no network, no keys
+pnpm check                   # CI's gate: three guards, tsc, five test projects
 
 cd packages/web && pnpm dev  # the app, http://localhost:3210
 ```

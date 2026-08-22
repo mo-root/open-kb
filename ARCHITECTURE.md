@@ -91,7 +91,11 @@ the claimed host's own site.
 
 ## `sweep` — breadth in one pass
 
-Six phases. Three of them spend.
+Six phases — `understand`, `plan`, `sweep`, `rank`, `link`, `write`. Five of them
+spend; only `write` is free. `runs/sweep-vercel-com-20260818212925.json` bills
+all five in `report.cost.byAgent`: sweep $0.558, rank $0.303, link $0.0465,
+understand $0.0329, plan $0.0103. The optional stages below bill under their own
+labels — the newest run names nine.
 
 **understand** reads `llms.txt`, the sitemap and the nav, and produces a
 decomposition: what the company sells, its products, its capabilities, and the
@@ -106,19 +110,34 @@ Then the hinge: `banned(q, family, anchorName, coinages)` drops any non-branded
 query naming the anchor or one of its coined words — **before it is bought**.
 
 **sweep** fires the queries through a continuous worker pool, twenty wide by
-default. The library default is three SERP pages per query; the CLI overrides
-it to four (`OPENKB_PAGES`, default `4`), and the stored runs that record
-`pagesPerQuery` say `4` — except one early run at `3`.
+default. A query opens at **two** SERP pages (`SHALLOW_PAGES`, `opts.pages ?? 2`)
+and a second, deeper search port stands at four (`DEEP_PAGES`,
+`opts.deepPages ?? 4`) for the products `assess` names — two ports, built once,
+and a product moves between them but never back. The CLI passes `OPENKB_PAGES`,
+default `4`, which collapses the pair: `DEEP_PAGES` is floored at
+`SHALLOW_PAGES`, so a terminal run reads four pages throughout and the `deepen`
+verdict has nothing left to buy. The web route passes no `pages` and gets the
+real 2→4 behaviour. Stored runs record `pagesPerQuery` as `4` except one at `3`
+and one at `2`; the two newest also carry `deepPagesPerQuery: 4` beside a
+`deepenedProducts` list, empty in both so far.
 
 **assess** is the widening loop, and it runs *concurrent with* the workers so
 assessment overlaps searching instead of interrupting it. It reads a per-family,
-per-product yield table and either releases held templates, writes new queries,
-or seals the run. Four independent rules can stop it — the model says enough; it
-wants more but proposes none; everything proposed was already asked or banned;
-the round that landed added almost nothing — and `MAX_WAVES` bounds how often
-the planner is consulted at all. The workers hold stops of their own besides
-these: the host ceiling and the clock seal the search from the worker side,
-whatever the planner thinks.
+per-product yield table and answers with one of four things: release held
+templates, write new queries, **deepen** — name a product whose second page kept
+finding hosts the first did not, moving it onto the deep port for the rest of
+the run — or seal the run. Four independent rules can stop it — the model says
+enough; it wants more but proposes none; everything proposed was already asked
+or banned; the round that landed added almost nothing — and `MAX_WAVES` bounds
+how often the planner is consulted at all. The workers hold stops of their own
+besides these: the host ceiling and the clock seal the search from the worker
+side, whatever the planner thinks.
+
+Between the search and the fold sits one more opt-in stage.
+`OPENKB_LISTICLE_HARVEST=1` scans the roundup-shaped rows already in hand for
+vendor names their own title or description printed but no query ever asked for,
+and puts them back through the ordinary fold and judge — additive only, and no
+second path onto the map.
 
 **rank** judges every host from its own front page. Subdomains fold first. A
 host that cannot be read settles by arithmetic for `$0`, keeping a stable
@@ -126,20 +145,36 @@ host that cannot be read settles by arithmetic for `$0`, keeping a stable
 model, and every quote it returns is re-checked in code; a claim with zero
 verified spans has its prose replaced by a refusal.
 
+Two opt-in stages move that boundary. `OPENKB_TRIAGE=1` lets a model decide from
+the search engine's own title and description, before any fetch, which hosts
+deserve a judgement at all — skip is its only power, and a skipped host ships
+carrying `settledBy: "triage"`. `OPENKB_SECOND_LOOK=1` re-asks the identical
+classify question — same prompt, same schema, booked under its own billing label
+— against a deeper page the search itself surfaced, for hosts the first pass left
+`unknown`. On `runs/sweep-cursor-com-20260821105321.json`: triage skipped 123 of
+926 hosts, and second-look asked 22 and replaced 13.
+
 The relation vocabulary includes `adjacent` — a real business in the anchor's
 world that nobody picks *instead of* it — beside the commercial and
-non-commercial stances. `none`, the only relation that drops a host from the
-map, now costs the same evidence as any other verdict: a one-sentence
+non-commercial stances. It is now the plurality placement (302 of 776 kept on
+the newest run, 395 on the one before), and it is deliberately outside the
+`COMMERCIAL` set in `core/src/verdict.ts`, so unlike `competitor` and
+`substitute` it carries no own-readable-page requirement. `none`, the only
+relation that drops a host from the map, now costs the same evidence as any
+other verdict: a one-sentence
 `reasoning` and a `relationSpan` quote, checked against the page the same way
 `spans` are — measured, never gating, the same rule `descGrounded` lives by.
 An opt-in drop-confirm pass (`OPENKB_DROP_CONFIRM=1`) gives every settled
 `none` one further batched opinion from the record already paid for, no
 re-fetch, before the host ships dropped for good.
 
-**link** draws edges. A free pass first, where one host's own SERP title and
-description name another entity — those are `measured`. The residue goes to a
-batched model call over co-occurring pairs — those are `inferred`. An edge whose
-endpoint is not on the map is dropped.
+**link** draws edges in three passes. A free pass first, where one host's own
+SERP title and description name another entity — those are `measured`. The
+residue goes to a batched model call over co-occurring pairs, 40 a call — those
+are `inferred`. Then a second model pass over the entities no pair ever reached:
+the `orphan` prompt, 20 at a time, against a peer-relations-only schema. On the
+newest run that pass was handed 168 orphans and placed 131. An edge whose
+endpoint is not on the map is dropped, whichever pass drew it.
 
 An edge's `why` proves mechanism now, not just discovery: the free pass quotes
 the naming row's own text when it says more than the bare name, grounded in
@@ -216,9 +251,14 @@ ceiling is, and every accepted finish records *why* it stood — clean, work,
 disarmed, turn-cap, budget-floor, or refusals-spent — beside a receipt naming
 the page or mission that paid.
 
-**Status.** The gate is covered by tests, including complete offline runs, but
-it landed after the runs currently on disk were captured. No stored artifact
-carries its fields yet.
+**Status.** Five stored swarm artifacts under `runs/archive/pre-agent-20260816/`
+carry `report.scorecard` with the fractions above and a `gate` object, and two of
+them record the gate actually firing: `swarm-brightdata-com-202608060833.json`
+and `swarm-resend-com-202608060732.json` each hold `gate.refusals: 1` with the
+refused finish and the objections that survived it — "9 of 16 planned families
+have zero page-tier nodes", "20 of 28 nodes rest on a single source". Only the
+later receipt fields, `stood` and `answeredBy`, postdate every run on disk and
+appear in no stored `gate` yet.
 
 ---
 
@@ -233,9 +273,12 @@ inside the opening window); or the caller aborted.
 
 ## Honest limits
 
-- **Bot walls.** Thirteen to eighteen per cent of hosts cannot be read. They stay
-  on the map with a machine-readable reason.
-- **Grounding.** Description grounding averages 0.55–0.60. It is measured on
+- **Bot walls.** Eleven to fifteen per cent of hosts cannot be read — across the
+  17 sweeps in `runs/`, `kernel.unreadable / kernel.fetched` runs from 11.3%
+  (123/1092) to 15.1% (257/1705), counted after a direct fetch and one unlocker
+  retry. They stay on the map with a machine-readable reason.
+- **Grounding.** Description grounding averages 0.51–0.57 over those same 17
+  runs — no run reaches 0.60 and 11 of the 17 sit under 0.55. It is measured on
   every description and **nothing gates on it**.
 - **Edges are the weaker claim.** They carry a reason and a confidence, but not a
   URL, and a minority are inferred from co-occurrence rather than from a page.

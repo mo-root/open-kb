@@ -82,11 +82,19 @@ const out = await withSpendCap(
   sweep({
     domain: anchor,
     queries: TARGET,
-    // `|| 4` like the three guards below, not `?? 4` alone: OPENKB_PAGES=abc
-    // is NaN and would reach the SERP call as a page count. Same semantics
-    // too — 0 falls back, exactly as OPENKB_MAX_HOSTS=0 means "unset", not
-    // "zero of them".
-    pages: Number(process.env.OPENKB_PAGES ?? 4) || 4,
+    // UNSET BY DEFAULT, and that is the whole point since variable page depth
+    // landed. The engine opens a query at SHALLOW_PAGES (2) and moves a product
+    // to DEEP_PAGES (4) only once `assess` has per-page-yield evidence for it —
+    // but `DEEP_PAGES` is floored at `SHALLOW_PAGES`, so passing 4 here
+    // collapsed the pair and every CLI run bought four pages on everything.
+    // MEASURED: both runs on 2026-08-21 recorded `deepenedProducts: []` — the
+    // deepen verdict had nothing left to buy, and the feature was inert on the
+    // one path a cloner actually uses. Unset restores 2→4.
+    //
+    // `|| undefined` like the guards below, not `?? undefined` alone:
+    // OPENKB_PAGES=abc is NaN and would reach the SERP call as a page count;
+    // 0 falls back too, exactly as OPENKB_MAX_HOSTS=0 means "unset".
+    pages: Number(process.env.OPENKB_PAGES ?? 0) || undefined,
     // The width floor: rounds before the model's "enough" is accepted. The
     // CLI defaults to 3 — one 'enough' after the opening hand ended a run at
     // 36 queries where its twin ran 87 — because the shipped terminal run is
