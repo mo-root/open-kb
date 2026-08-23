@@ -94,11 +94,6 @@ export class Ledger {
     this.finishReserveUsd = Math.max(0.12, 0.1 * ceilingUsd)
   }
 
-  /** The whole ceiling minus the carved reserve — what work may ever touch. */
-  get workPoolUsd(): number {
-    return this.ceilingUsd - this.finishReserveUsd
-  }
-
   #outstandingUsd(): number {
     let sum = 0
     for (const c of this.#claims.values()) sum += c.reservedUsd
