@@ -264,19 +264,56 @@ export function condense(text: string, budget = 24_000): string {
   }
   if (!tree.size) return text.slice(0, budget)
 
-  const sections = [...tree.entries()]
+  const sectionLines = [...tree.entries()]
     .sort((a, b) => b[1] - a[1])
     .map(([k, n]) => `  ${k} (${n})`)
-    .join("\n")
 
-  // Prose still gets whatever budget the structure did not need, the structure
+  /**
+   * BOTH LISTS ARE CAPPED, or `budget` is a suggestion rather than a bound.
+   *
+   * `structure` used to be built from EVERY heading and EVERY section and only
+   * then subtracted from the budget. A page with thousands of headings
+   * therefore produced a structure larger than the whole budget, `room` went
+   * negative, the prose was dropped — and the oversized structure was returned
+   * anyway. MEASURED on datadoghq.com/llms.txt (566,047 chars): this function
+   * returned 96,760 chars at budget 24,000 and the SAME 96,760 at budget
+   * 8,000, so the argument did nothing. Downstream that blew the understand
+   * prompt past what the model would answer: the call was refused twice on a
+   * truncated body and the run ended before it bought a single search. An
+   * anchor that publishes a large enough index could not be mapped at all.
+   *
+   * Sections are taken first because they are the denser summary and are
+   * already ordered by page count, so a truncation keeps the biggest parts of
+   * the site. Each list says how many rows it dropped: a reader who sees
+   * "+1,842 more" knows the map was built off a sample, where a silently
+   * shortened list reads as the whole thing.
+   */
+  const take = (lines: string[], room: number) => {
+    const kept: string[] = []
+    let used = 0
+    for (const l of lines) {
+      if (used + l.length + 1 > room) break
+      kept.push(l)
+      used += l.length + 1
+    }
+    const dropped = lines.length - kept.length
+    if (dropped > 0) kept.push(`  +${dropped.toLocaleString()} more`)
+    return kept
+  }
+
+  const structureRoom = Math.max(0, budget - 32)
+  const keptSections = take(sectionLines, Math.floor(structureRoom * 0.6))
+  const keptHeads = take(heads, structureRoom - keptSections.join("\n").length - 64)
+
+  // Prose still gets whatever budget the structure did not need: the structure
   // says what exists, the prose says what it is for, and the first answer is
   // useless without some of the second.
-  const structure = [...heads, "", "sections, by page count:", sections].join("\n")
+  const structure = [...keptHeads, "", "sections, by page count:", ...keptSections].join("\n")
   const room = budget - structure.length - 32
   const prose =
     room > 500
       ? `\n\nfrom the page text:\n${text.replace(/^\s*[-*]\s*\[.+$/gm, "").replace(/\n{3,}/g, "\n\n").slice(0, room)}`
       : ""
-  return structure + prose
+  // The bound this function has always promised, now actually held.
+  return (structure + prose).slice(0, budget)
 }
