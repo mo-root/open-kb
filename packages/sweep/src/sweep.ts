@@ -2621,7 +2621,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
             terms: z
               .array(z.string())
               .describe(
-                "1-3 terms a buyer types for this job, ordered, closest first",
+                "2-4 terms a buyer types for this job, ordered, closest first — each a different door into the market, not a rephrasing",
               ),
             generic: z
               .boolean()
@@ -2664,7 +2664,15 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           const terms = out.terms
             .map((t) => t.trim())
             .filter(Boolean)
-            .slice(0, 3);
+            // FOUR, raised from three. The old cap was binding, not
+            // generous: 436 of the 486 products stripped across `runs/`
+            // returned exactly three terms, so the distribution was censored
+            // at the ceiling and nobody could see what a fourth would have
+            // been. And a fourth is worth having — measured over 5,381 pairs
+            // of terms this agent wrote, two terms return the same host only
+            // 11% of the time, so each one is close to a whole extra search
+            // rather than a rephrasing of the last.
+            .slice(0, 4);
           strips.push({
             product,
             terms,

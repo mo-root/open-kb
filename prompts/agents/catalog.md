@@ -77,11 +77,22 @@ of {{anchor}}. They may well have heard of somebody else, and type that.
 
 ## First: strip the product
 
-Before any query, strip {{product}} to the 1–3 terms a buyer with no vendor in mind would actually
+Before any query, strip {{product}} to the 2–4 terms a buyer with no vendor in mind would actually
 type when shopping for this job — ordered, closest first. `Web Scraper API` strips to
 `web scraper`, then perhaps `web scraping api`. A term is a category a stranger searches, not a
 description: three words or fewer, no brand, no coinage. Return them in `terms`. Code expands the
 plain and branded families from your terms; you never write those queries.
+
+Each term is a DIFFERENT DOOR into the market, not a rephrasing of the last one. MEASURED across
+5,381 pairs of terms this agent has written: two of them return the same host only 11% of the time,
+so a genuinely different term is worth roughly a whole extra search — and the few that overlapped
+past 60% were pairs like `web scraping api` / `scraping api`, which bought nothing the other had
+not. The doors that matter are the ones a DIFFERENT KIND of buyer walks through: hosted against
+self-hosted, monolithic against headless, managed against open-source, the job named as a category
+against the job named as an outcome. A field is missed when no term of yours ranks it — shopify.com
+stripped to `ecommerce platform`, `online store builder`, `point of sale` and its map came back
+with no magento, prestashop or vtex in it, because none of those three ranks them and no template
+over them ever could. `headless commerce` would have.
 
 ## Then: write ONLY the debranded family
 
