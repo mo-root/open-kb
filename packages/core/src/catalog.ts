@@ -49,6 +49,56 @@ const OFFERING = /^\/(products?|platform|pricing|solutions?|services?|features?)
  */
 const FIRST_TIER = /^\/(products?|platform|pricing|features?)(\/|$)/i
 
+/**
+ * A THIRD TIER: the product that sits at the root.
+ *
+ * `OFFERING` requires a namespace — `/products/x`, `/platform/x`. A large
+ * class of modern sites has none: the product IS the top-level path.
+ * MEASURED on cursor.com/sitemap.xml (189 urls, fetched 2026-08-23):
+ * `/tab`, `/bugbot`, `/cli`, `/cloud`, `/composer`, `/sdk`, `/automate` and
+ * `/mobile` are its products, and `candidatesFromSitemap` returned exactly
+ * two candidates — `/pricing` and `/product`, the two the understand prompt
+ * itself calls "pages *about* products rather than products". With no
+ * catalog to read, four runs of the same anchor on the same day decomposed
+ * it into 4, 7, 8 and 17 products: the model was naming products off a
+ * documentation index because nothing else was offered.
+ *
+ * So a depth-1 path that is not content and not one of the pages every site
+ * has is a candidate, ranked after the two namespaced tiers. It is a
+ * CANDIDATE, not a product — each is fetched and shown to the model as what
+ * the page says about itself, and the prompt already tells it that a hub, a
+ * pricing page or a solutions page is not a product. The cost of a wrong
+ * guess is one fetch out of twenty-five; the cost of the miss was the whole
+ * decomposition.
+ */
+const ROOT_TIER = /^\/[^/]+\/?$/
+
+/** How few namespaced candidates mean the site has no product namespace at
+ *  all, and the root tier should be consulted. cursor.com and linear.app
+ *  yield two each (`/pricing` and one hub); shopify.com yields five and
+ *  vercel.com eleven, and neither of those needs or gets the fallback. */
+const NO_NAMESPACE_BELOW = 5
+
+/** A path that names a file is not a page about a product: `/ads.txt`,
+ *  `/404-static`, `/sitemap.xml`. Root paths only — a namespaced path with a
+ *  dot in it is rare enough to leave to the tiers above. */
+const FILEISH = /\.[a-z0-9]{2,4}$|^\/\d{3}(-|$)/i
+
+/**
+ * Depth-1 paths that are on almost every site and are never the thing it
+ * sells: legal, account, company, and the calls to action. Written against
+ * the real sitemaps of cursor.com, vercel.com, linear.app and shopify.com —
+ * `CONTENT` above already drops the big content namespaces, and this drops
+ * what is left at the root once those are gone.
+ */
+const NOT_PRODUCT =
+  /^\/(privacy|terms|terms-of-service|tos|cookie-policy|cookies|legal|dpa|gdpr|ccpa|acceptable-use-policy|acceptable-use|data-use|data-processing|abuse|trust|security|compliance|subprocessors|imprint|accessibility|sitemap|robots|rss|feed|search|login|log-in|signin|sign-in|signup|sign-up|register|logout|account|dashboard|app|admin|settings|billing-portal|download|downloads|install|start|get-started|getting-started|demo|contact|contact-sales|contact-us|sales|book|booking|schedule|talk-to-sales|support|status|changelog|releases|roadmap|brand|press-kit|media-kit|logos|newsletter|subscribe|unsubscribe|jobs|hiring|team|leadership|investors|partners|affiliates|ambassadors|students|education|nonprofits|startups|workshops|events|webinars|awards|merch|store|shop|swag|refer|referrals|sitemap-index)\/?$/i
+
+/** Legal boilerplate that varies in name from site to site — matched by
+ *  shape rather than by listing every wording. cursor.com alone carries
+ *  `/licenses`, `/cookie-table` and `/marketplace-publisher-terms`. */
+const LEGALISH = /(^\/|-)(terms|policy|policies|agreement|licen[sc]es?|eula|dmca|disclaimer|cookie-table)\/?$/i
+
 /** Content namespaces that swamp a sitemap and never contain a product. */
 const CONTENT = /^\/(blog|news|articles?|posts?|stories|resources?|guides?|templates?|customers?|case-studies?|events?|docs?|help|support|legal|about|careers?|press|community|universe|learn|academy|glossary|integrations?|lp|landing|compare|vs|alternatives?)(\/|$)/i
 
@@ -115,19 +165,44 @@ export function candidatesFromSitemap(xml: string, limit = 25): Candidate[] {
 function rank(cands: readonly Candidate[], limit: number): Candidate[] {
   const seen = new Set<string>()
   const kept: { c: Candidate; depth: number; tier: number }[] = []
+  const rooted: { c: Candidate; depth: number; tier: number }[] = []
   for (const c of cands) {
     const path = pathOf(c.url)
-    if (!path || CONTENT.test(path) || !OFFERING.test(path)) continue
+    if (!path || CONTENT.test(path)) continue
     const depth = path.split("/").filter(Boolean).length
     if (depth > MAX_DEPTH) continue
     if (seen.has(path)) continue
-    seen.add(path)
-    kept.push({ c, depth, tier: FIRST_TIER.test(path) ? 0 : 1 })
+    if (OFFERING.test(path)) {
+      seen.add(path)
+      kept.push({ c, depth, tier: FIRST_TIER.test(path) ? 0 : 1 })
+      continue
+    }
+    // The root tier, held back — see ROOT_TIER. `/` itself is the homepage,
+    // which has already been read.
+    if (
+      ROOT_TIER.test(path) &&
+      path !== "/" &&
+      !NOT_PRODUCT.test(path) &&
+      !LEGALISH.test(path) &&
+      !FILEISH.test(path)
+    ) {
+      seen.add(path)
+      rooted.push({ c, depth, tier: 2 })
+    }
   }
-  return kept
-    .sort((a, b) => a.tier - b.tier || a.depth - b.depth || a.c.url.localeCompare(b.c.url))
-    .slice(0, limit)
-    .map((k) => k.c)
+  const byRank = (
+    a: { tier: number; depth: number; c: Candidate },
+    b: { tier: number; depth: number; c: Candidate },
+  ) => a.tier - b.tier || a.depth - b.depth || a.c.url.localeCompare(b.c.url)
+  // A FALLBACK, not a widening. A site with a real product namespace has
+  // already said where its products live and is left exactly as it was; the
+  // root tier is consulted only when almost nothing came back, which is the
+  // measured failure (cursor.com: 189 urls, two candidates, both of them
+  // pages *about* products). Selection inside the root tier is alphabetical
+  // like every other tier, which on a big site would be meaningless — hence
+  // the guard rather than a blend.
+  const pool = kept.length < NO_NAMESPACE_BELOW ? [...kept, ...rooted] : kept
+  return pool.sort(byRank).slice(0, limit).map((k) => k.c)
 }
 
 /** True when every entry points at another sitemap, which means this is an index. */

@@ -50,6 +50,80 @@ describe("candidate selection", () => {
     expect(out[0]!.url).toContain("the-only-real-one")
   })
 
+  /**
+   * THE PRODUCT THAT SITS AT THE ROOT.
+   *
+   * `OFFERING` requires a namespace, and a large class of sites has none.
+   * MEASURED on cursor.com/sitemap.xml (189 urls, 2026-08-23): its products
+   * are `/tab`, `/bugbot`, `/cli`, `/cloud`, `/composer`, `/sdk`,
+   * `/automate` and `/mobile`, and this function returned exactly two
+   * candidates — `/pricing` and `/product`, the two the understand prompt
+   * itself calls pages *about* products. With no catalog to read, four runs
+   * of that anchor on one day decomposed it into 4, 7, 8 and 17 products.
+   */
+  it("falls back to root-level paths when no namespace claims any product", () => {
+    const out = candidatesFromSitemap(
+      sitemap([
+        "https://x.com/",
+        "https://x.com/pricing",
+        "https://x.com/product",
+        "https://x.com/tab",
+        "https://x.com/bugbot",
+        "https://x.com/cli",
+      ]),
+    )
+    const paths = out.map((c) => new URL(c.url).pathname)
+    expect(paths).toContain("/tab")
+    expect(paths).toContain("/bugbot")
+    expect(paths).toContain("/cli")
+    // The namespaced ones still rank first, and the homepage is not a
+    // candidate — it has already been read.
+    expect(paths.slice(0, 2)).toEqual(["/pricing", "/product"])
+    expect(paths).not.toContain("/")
+  })
+
+  /**
+   * A FALLBACK, NOT A WIDENING. A site that has said where its products live
+   * is left exactly as it was — otherwise a big sitemap's root would flood
+   * the budget alphabetically, which is the bug FIRST_TIER exists to prevent.
+   */
+  it("ignores root-level paths when the site does have a product namespace", () => {
+    const out = candidatesFromSitemap(
+      sitemap([
+        "https://x.com/products/alpha",
+        "https://x.com/products/beta",
+        "https://x.com/products/gamma",
+        "https://x.com/platform/delta",
+        "https://x.com/solutions/epsilon",
+        "https://x.com/ads",
+        "https://x.com/zebra",
+      ]),
+    )
+    const paths = out.map((c) => new URL(c.url).pathname)
+    expect(paths).not.toContain("/ads")
+    expect(paths).not.toContain("/zebra")
+    expect(paths).toHaveLength(5)
+  })
+
+  it("never offers legal, account or file paths as products", () => {
+    const out = candidatesFromSitemap(
+      sitemap([
+        "https://x.com/thing",
+        "https://x.com/privacy",
+        "https://x.com/terms-of-service",
+        "https://x.com/licenses",
+        "https://x.com/cookie-table",
+        "https://x.com/marketplace-publisher-terms",
+        "https://x.com/login",
+        "https://x.com/contact-sales",
+        "https://x.com/download",
+        "https://x.com/ads.txt",
+        "https://x.com/404-static",
+      ]),
+    )
+    expect(out.map((c) => new URL(c.url).pathname)).toEqual(["/thing"])
+  })
+
   /** A landing page is a campaign, not a product. */
   it("drops marketing landing pages", () => {
     const out = candidatesFromSitemap(
