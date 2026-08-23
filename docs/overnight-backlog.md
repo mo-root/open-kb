@@ -282,9 +282,23 @@ above stay first; these follow.
   skip census — same gated census as before, untouched by a docs/metadata
   change).
 
-- [ ] **C4. CHANGELOG.md / release notes** for what this branch changed since
+- [x] **C4. CHANGELOG.md / release notes** for what this branch changed since
   main. Read `git log a7bbc57..HEAD` for the real list rather than trusting any
   summary. Group by what a user would notice.
+  DONE (2026-08-23 overnight fire). Added `CHANGELOG.md` at repo root, built
+  from `git log a7bbc57..HEAD --reverse` (34 commits) and the full body of
+  each — not from `docs/overnight-backlog.md`'s own summaries, which
+  describe the intent behind a change more than its shipped shape. Grouped
+  into four sections a user would actually recognize: pipeline defaults and
+  performance (P0-1..P0-4, P1-7, the harvest/second-look/pacing/depth
+  features), map quality (the placement-ladder feature and P1-5/P1-6),
+  web app (B1-B4), and repo/docs (C1-C3). A closing "also in this range"
+  paragraph rolls up the SELF-tagged correctness/test commits that have no
+  independent user-facing story. Left `package.json`'s version at `0.1.0`
+  and the changelog under an `[Unreleased]` heading — nothing in this range
+  cut a release or bumped a version number, and it isn't this item's place
+  to invent one. `pnpm check && pnpm test` both green: 1820 tests passing,
+  12 skipped (gated/live), unchanged by a docs-only change.
 
 ## D. Deep architecture work
 
