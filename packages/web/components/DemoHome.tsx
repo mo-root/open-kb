@@ -215,7 +215,7 @@ export function DemoHome({
         {ledger}
       </div>
 
-      {/* The launch film, muted and looping — the pitch in 25 seconds. Sound
+      {/* The launch film, muted and looping — the pitch in 32 seconds. Sound
           lives one click away on /film so the landing never plays audio at a
           visitor uninvited. */}
       <div className="mb-6">

@@ -96,16 +96,21 @@
    11.95–13.7 nodes fling out and decelerate into the graph layout
    12.7–14.7  the connection cascade — edges draw, shimmer, pulses land
    13.0–15.15 "A full knowledge graph."        — beside the graph
-   17.0–19.9  the agent beat — prompt types, competitor cluster answers
-   17.2–19.40 "Plug it into your agents."      — upper lane
-   20.2–21.75 the whole graph recedes into the end-card disc
-   21.55–24.7 "One domain in, knowledge base out."  — word-staggered, held 3s+
+   15.7–18.55 "Plug it into your agent."       — upper lane
+   15.6–27.0  AGENT-HERO ENDING (variant): the chip relocates to the graph's
+              own center and grows 1x→4.4x as the whole graph — every hub,
+              every node, not just the named competitors — streams into it
+   19.6–27.0  three GTM taglines land in the same upper lane, one at a time:
+              "Context your agent never had." / "Your market, already
+              mapped." / "One domain in. A smarter agent out."
+   27.3–28.85 the whole (still-intact) graph recedes into the end-card disc
+   29.0–32.35 "One domain in, knowledge base out."  — word-staggered, held 3s+
    Every kinetic line wipes in word-by-word with a scale-settle, floats,
    and DISSOLVES into a few particles that drift toward the field.
    Every position is a pure function of t; seeded randomness only.
    ===================================================================== */
 
-const TOTAL = 25.4;
+const TOTAL = 32.50;
 
 const COL = {
   ink:   [14, 27, 52],
@@ -129,8 +134,8 @@ const T = {
   pillIn: 8.35,
   accStart: 9.90, accDur: 2.05, rel: 11.95,
   kickersIn: 14.50,
-  promptIn: 15.60, hlIn: 99.0, ansIn: 17.30, agentOut: 19.90,
-  recede: 20.20, recedeEnd: 21.75, endIn: 21.90,
+  promptIn: 15.60, hlIn: 99.0, ansIn: 17.30, agentOut: 27.00,
+  recede: 27.30, recedeEnd: 28.85, endIn: 29.00,
   ctaIn: 3.50, ctaOut: 5.10
 };
 const ROT_T0 = 8.05;
@@ -156,7 +161,14 @@ const KLDEF = [
     {t:'and'},{t:'creates'},{t:'the'},{t:'full'},
     {t:'knowledge', c:COL.pink, fw:800, u:true},{t:'graph.', c:COL.pink, fw:800, u:true} ]},
   { t0:15.70, t1:18.55, x:0.500, y:0.128, fs:3.50, fw:700, stag:0.100, words:[
-    {t:'Plug'},{t:'it'},{t:'into'},{t:'your'},{t:'agent.', fw:800, u:true} ]}
+    {t:'Plug'},{t:'it'},{t:'into'},{t:'your'},{t:'agent.', fw:800, u:true} ]},
+  /* the three GTM taglines — land in the same lane once the chip has taken the graph */
+  { t0:19.60, t1:21.80, x:0.500, y:0.128, fs:3.60, fw:700, stag:0.100, words:[
+    {t:'Context', c:COL.pink, fw:800, u:true},{t:'your'},{t:'agent'},{t:'never'},{t:'had.'} ]},
+  { t0:21.95, t1:24.15, x:0.500, y:0.128, fs:3.60, fw:700, stag:0.100, words:[
+    {t:'Your'},{t:'market,', c:COL.pink, fw:800, u:true},{t:'already'},{t:'mapped.'} ]},
+  { t0:24.30, t1:27.00, x:0.500, y:0.128, fs:3.75, fw:700, stag:0.100, words:[
+    {t:'One'},{t:'domain'},{t:'in.'},{t:'A'},{t:'smarter', c:COL.pink, fw:800, u:true},{t:'agent'},{t:'out.'} ]}
 ];
 let KL = [];
 
@@ -282,6 +294,7 @@ const eo4 = u => 1 - Math.pow(1 - c01(u), 4);
 const eio3 = u => { u = c01(u); return u < .5 ? 4*u*u*u : 1 - Math.pow(-2*u + 2, 3)/2; };
 const eio5 = u => { u = c01(u); return u < .5 ? 16*u*u*u*u*u : 1 - Math.pow(-2*u + 2, 5)/2; };
 const bo = u => { u = c01(u); const c1 = 1.45, c3 = c1 + 1; return 1 + c3*Math.pow(u-1,3) + c1*Math.pow(u-1,2); };
+const elOut = u => { u = c01(u); return u === 0 || u === 1 ? u : Math.pow(2, -10*u) * Math.sin((u*10 - 0.75) * (2*Math.PI/3)) + 1; };
 const lerp = (a, b, u) => a + (b - a) * u;
 function env(t, i0, i1, o0, o1){
   if (t <= i0) return 0;
@@ -1274,7 +1287,7 @@ function draw(t){
   }
 
   /* ---- the open-kb mark assembles out of the receded graph ---- */
-  if (t > 21.25){
+  if (t > T.recede + 1.05){
     const lcx = W * 0.5, lcy = H * 0.385;
     const u2 = 2.05 * S * (1 + 0.012 * Math.sin(t * 1.6));
     const SATS = [
@@ -1283,7 +1296,7 @@ function draw(t){
     ];
     cx2.lineCap = 'round';
     for (let i3 = 0; i3 < 6; i3++){          /* spokes draw from center */
-      const sp = eo3(c01((t - (21.75 + i3 * 0.045)) / 0.5));
+      const sp = eo3(c01((t - (T.recedeEnd + i3 * 0.045)) / 0.5));
       if (sp <= 0) continue;
       cx2.beginPath();
       cx2.moveTo(lcx, lcy);
@@ -1292,7 +1305,7 @@ function draw(t){
       cx2.lineWidth = Math.max(0.8, 0.8 * u2);
       cx2.stroke();
     }
-    const hr2 = eo3(c01((t - 22.15) / 0.55)); /* hairline hex + ring */
+    const hr2 = eo3(c01((t - (T.recede + 1.95)) / 0.55)); /* hairline hex + ring */
     if (hr2 > 0){
       cx2.beginPath();
       for (let i3 = 0; i3 <= 6; i3++){
@@ -1310,7 +1323,7 @@ function draw(t){
       cx2.stroke();
     }
     for (let i3 = 0; i3 < 6; i3++){          /* satellites glide in, kind-colored */
-      const su = c01((t - (21.30 + i3 * 0.07)) / 0.6);
+      const su = c01((t - ((T.recede + 1.10) + i3 * 0.07)) / 0.6);
       if (su <= 0) continue;
       const e2 = eo3(su);
       cx2.beginPath();
@@ -1320,13 +1333,13 @@ function draw(t){
       cx2.fillStyle = rgba(SATS[i3][2], e2);
       cx2.fill();
     }
-    const an = c01((t - 22.35) / 0.5);       /* the anchor lands last */
+    const an = c01((t - (T.recede + 2.15)) / 0.5);       /* the anchor lands last */
     if (an > 0){
       cx2.beginPath();
       cx2.arc(lcx, lcy, 9.5 * u2 * bo(an), 0, 6.2832);
       cx2.fillStyle = rgba(COL.ink, eo3(an));
       cx2.fill();
-      const wc = c01((t - 22.60) / 0.35);
+      const wc = c01((t - (T.recede + 2.40)) / 0.35);
       if (wc > 0){
         cx2.beginPath();
         cx2.arc(lcx, lcy, 4 * u2 * bo(wc), 0, 6.2832);
@@ -1381,19 +1394,25 @@ function draw(t){
     }
   }
 
-  /* the plug — flow-lines stream from the graph's hubs into the prompt */
+  /* the plug — the whole graph streams into the agent, which grows as it absorbs */
   const fla = env(t, T.promptIn - 0.10, T.promptIn + 0.45, T.agentOut, T.agentOut + 0.5);
   if (fla > 0 && em.am > 0.02){
-    const ptx = W * 0.5, chipY = H * 0.778, pty = chipY - 32 * S;
+    const ptx = buildC[0], chipY = buildC[1], pty = chipY;
     const srcs = [];
-    for (const nh of namedHubs) srcs.push([PX[nh.pi], PY[nh.pi], parts[nh.pi].col]);
-    srcs.push([em.cx, em.cy, COL.ink]);
+    for (const n of nodes) if (n.hub) srcs.push([PX[n.pi], PY[n.pi], parts[n.pi].col, 1]);
+    let mi = 0;
+    for (const n of nodes){
+      if (n.hub) continue;
+      if ((mi++ % 3) === 0) srcs.push([PX[n.pi], PY[n.pi], parts[n.pi].col, 0]);
+    }
+    const stag = 1.8 / srcs.length;
     cx2.lineCap = 'round';
     for (let i2 = 0; i2 < srcs.length; i2++){
-      const sxx = srcs[i2][0], syy = srcs[i2][1], scol = srcs[i2][2];
-      const gu = eo3(c01((t - (T.promptIn - 0.05 + i2 * 0.12)) / 0.55));
+      const sxx = srcs[i2][0], syy = srcs[i2][1], scol = srcs[i2][2], tier = srcs[i2][3];
+      const gu = eo3(c01((t - (T.promptIn - 0.05 + i2 * stag)) / 0.55));
       if (gu <= 0) continue;
-      const cpx = (sxx + ptx) / 2 + (i2 - 1.5) * 34 * S;
+      const tierA = tier ? 1 : 0.42;
+      const cpx = (sxx + ptx) / 2 + (i2 % 9 - 4) * 8 * S;
       const cpy = (syy + pty) / 2 + 48 * S;
       cx2.beginPath();
       cx2.moveTo(sxx, syy);
@@ -1402,76 +1421,92 @@ function draw(t){
         cx2.lineTo(v * v * sxx + 2 * v * q * cpx + q * q * ptx,
                    v * v * syy + 2 * v * q * cpy + q * q * pty);
       }
-      cx2.strokeStyle = rgba(mix(scol, COL.slate, 0.35), 0.30 * fla);
-      cx2.lineWidth = Math.max(0.6, 1.0 * S);
+      cx2.strokeStyle = rgba(mix(scol, COL.slate, 0.35), 0.10 * fla * tierA);
+      cx2.lineWidth = Math.max(0.6, (tier ? 1.0 : 0.6) * S);
       cx2.stroke();
-      for (let j2 = 0; j2 < 2; j2++){      /* packets riding the line down */
+      for (let j2 = 0; j2 < 2; j2++){      /* packets riding the line in */
         const q = (((t * 0.55 + j2 * 0.5 + i2 * 0.23) % 1) + 1) % 1;
         if (q > gu) continue;
         const v = 1 - q;
         cx2.beginPath();
         cx2.arc(v * v * sxx + 2 * v * q * cpx + q * q * ptx,
-                v * v * syy + 2 * v * q * cpy + q * q * pty, 2.3 * S, 0, 6.2832);
-        cx2.fillStyle = rgba(scol, 0.65 * fla);
+                v * v * syy + 2 * v * q * cpy + q * q * pty, (tier ? 2.3 : 1.5) * S, 0, 6.2832);
+        cx2.fillStyle = rgba(scol, 0.55 * fla * tierA);
         cx2.fill();
       }
-      /* the answer beams back up — pink packets return to the lit hubs */
-      if (t > T.ansIn && i2 < srcs.length - 1){
+      /* the answer beams back up — pink packets return to the graph */
+      if (t > T.ansIn){
         for (let j3 = 0; j3 < 2; j3++){
           const q = 1 - ((((t - T.ansIn) * 0.65 + j3 * 0.5 + i2 * 0.19) % 1) + 1) % 1;
           if (q > gu) continue;
           const v = 1 - q;
           cx2.beginPath();
           cx2.arc(v * v * sxx + 2 * v * q * cpx + q * q * ptx,
-                  v * v * syy + 2 * v * q * cpy + q * q * pty, 2.8 * S, 0, 6.2832);
-          cx2.fillStyle = rgba(COL.pink, 0.8 * fla);
+                  v * v * syy + 2 * v * q * cpy + q * q * pty, (tier ? 2.8 : 1.8) * S, 0, 6.2832);
+          cx2.fillStyle = rgba(COL.pink, 0.5 * fla * tierA);
           cx2.fill();
         }
       }
     }
-    /* the agent itself — a chip the graph docks into */
-    const chipW = 72 * S, chipH = 50 * S;
-    const dock = eo3(c01((t - (T.promptIn - 0.05)) / 0.5));
+    /* the agent itself — liquid squash-and-stretch: wobbles up like jelly,
+       squashes flat on exit, then pops away */
+    const growUY = c01((t - T.promptIn) / 1.6);
+    const growUX = c01((t - T.promptIn - 0.06) / 1.6);
+    const baseScaleY = lerp(0.22, 4.4, elOut(growUY));
+    const baseScaleX = lerp(0.22, 4.4, elOut(growUX));
+    const outRaw = t > T.agentOut ? (t - T.agentOut) : 0;
+    const outA = c01(outRaw / 0.22);
+    const outB = c01((outRaw - 0.22) / 0.28);
+    const squashY = 1 - 0.72 * eo3(outA);
+    const squashX = 1 + 0.30 * eo3(outA);
+    const popE = eo4(outB);
+    const chipScaleY = baseScaleY * squashY * (1 - popE);
+    const chipScaleX = baseScaleX * squashX * (1 - popE);
+    const chipH = 50 * S * chipScaleY, chipW = 72 * S * chipScaleX;
+    const chipScale = (chipScaleX + chipScaleY) / 2;   /* shared decorations below use the average */
+    const cr = Math.min(10 * S * chipScale, Math.max(chipW, 0.01) / 2, Math.max(chipH, 0.01) / 2);
+    const dock = t > T.promptIn - 0.10 ? 1 : 0;
     if (dock > 0){
-      const cyy = chipY + (1 - bo(dock)) * 14 * S;
+      const cyy = chipY;
       /* arrival pulses — rings leave the chip as packets land */
       for (let j5 = 0; j5 < 2; j5++){
         const pq = (((t * 0.55 + j5 * 0.5) % 1) + 1) % 1;
         const a5 = (1 - pq) * 0.35 * fla;
         if (a5 > 0.012){
           cx2.beginPath();
-          cx2.arc(ptx, cyy, (chipW * 0.42 + 30 * S * eo3(pq)), 0, 6.2832);
+          cx2.arc(ptx, cyy, (chipW * 0.42 + 30 * S * chipScale * eo3(pq)), 0, 6.2832);
           cx2.strokeStyle = rgba(COL.ink, a5);
-          cx2.lineWidth = Math.max(0.6, 1.1 * S);
+          cx2.lineWidth = Math.max(0.6, 1.1 * S * chipScale);
           cx2.stroke();
         }
       }
       /* answer flash */
       const fl2 = t > T.ansIn ? Math.exp(-3.5 * (t - T.ansIn)) : 0;
-      cx2.globalAlpha = fla * dock;
+      cx2.globalAlpha = fla;
       cx2.beginPath();
-      cx2.roundRect(ptx - chipW / 2, cyy - chipH / 2, chipW, chipH, 12 * S);
+      cx2.roundRect(ptx - chipW / 2, cyy - chipH / 2, Math.max(chipW, 0.01), Math.max(chipH, 0.01), cr);
       cx2.fillStyle = '#ffffff';
       cx2.fill();
       cx2.strokeStyle = rgba(t > T.ansIn ? COL.pink : COL.ink, 0.85 + 0.15 * fl2);
-      cx2.lineWidth = Math.max(1.2, (2.0 + 1.6 * fl2) * S);
+      cx2.lineWidth = Math.max(1.2, (2.0 + 1.6 * fl2) * S * chipScale);
       cx2.stroke();
       /* the chip's core breathes; goes pink when the answer lands */
       cx2.beginPath();
-      cx2.arc(ptx, cyy, (8.5 + 1.4 * Math.sin(t * 3.1) + 5 * fl2) * S, 0, 6.2832);
+      cx2.arc(ptx, cyy, (8.5 + 1.4 * Math.sin(t * 3.1) + 5 * fl2) * S * chipScale, 0, 6.2832);
       cx2.fillStyle = rgba(t > T.ansIn ? COL.pink : COL.ink, 1);
       cx2.fill();
       cx2.beginPath();
-      cx2.arc(ptx, cyy, 3.4 * S, 0, 6.2832);
+      cx2.arc(ptx, cyy, 3.4 * S * chipScale, 0, 6.2832);
       cx2.fillStyle = '#ffffff';
       cx2.fill();
-      /* antenna ticks — it reads as the agent */
-      cx2.strokeStyle = rgba(COL.ink, 0.8);
-      cx2.lineWidth = Math.max(1, 1.6 * S);
+      /* antenna ticks — wobble in with the same elastic settle, fold away before the squash */
+      const tickFold = 1 - eo3(outA);
+      cx2.strokeStyle = rgba(COL.ink, 0.8 * tickFold);
+      cx2.lineWidth = Math.max(1, 1.6 * S * chipScale);
       for (const dxk of [-1, 0, 1]){
         cx2.beginPath();
-        cx2.moveTo(ptx + dxk * 18 * S, cyy - chipH / 2);
-        cx2.lineTo(ptx + dxk * 18 * S, cyy - chipH / 2 - 10 * S);
+        cx2.moveTo(ptx + dxk * 18 * S * chipScaleX, cyy - chipH / 2);
+        cx2.lineTo(ptx + dxk * 18 * S * chipScaleX, cyy - chipH / 2 - 10 * S * chipScale * tickFold);
         cx2.stroke();
       }
       cx2.globalAlpha = 1;
