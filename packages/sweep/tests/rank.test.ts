@@ -110,6 +110,51 @@ describe("judgeHosts", () => {
     expect(out.stats.unreadable).toBe(1)
   })
 
+  /**
+   * A SNIPPET MAY NAME A VENDOR AND MAY NOT NAME A PUBLISHER.
+   *
+   * MEASURED over 217 hosts judged from their page in one run and from a
+   * snippet in another: a market relation claimed from search text agreed
+   * with the page 80% of the time, a channel relation 48%. And the
+   * disagreement is one-way — 59 demotions from market to channel-or-unknown
+   * against 2 promotions, 29.5 to 1 — because a vendor's blog post ranking
+   * for a market term reads, in a search result, exactly like a publication
+   * about that market.
+   */
+  // Long enough to clear the 80-char floor the SERP-judged branch requires.
+  const surfaced = (host: string): HostCandidate => ({
+    host, seenIn: 2, intents: ["evaluation"],
+    titles: ["A long enough result title about payment processing for online businesses"],
+    desc: "Guides, comparisons and explainers about accepting card payments on the web",
+  })
+
+  it("keeps a market relation claimed from a snippet — that call holds up 80% of the time", async () => {
+    const out = await judgeHosts([surfaced("blocked-vendor.com")], {
+      fetcher: fakeFetcher({}),
+      classify: async () => ({ name: "Blocked Vendor", kind: "company", what: "sells payments", relation: "competitor", why: "same job", spans: [] }),
+      anchor: "anchor.com",
+      aggregatorThreshold: 12,
+    })
+    expect(out.entities[0]!).toMatchObject({ relation: "competitor", kind: "company" })
+    expect(out.entities[0]!.because).toMatch(/could not be read/)
+  })
+
+  it("refuses a channel relation claimed from a snippet, and says why rather than dropping the host", async () => {
+    const out = await judgeHosts([surfaced("blocked-blog.com")], {
+      fetcher: fakeFetcher({}),
+      classify: async () => ({ name: "Blocked Blog", kind: "publisher", what: "writes about payments", relation: "covers", why: "publishes explainers", spans: [] }),
+      anchor: "anchor.com",
+      aggregatorThreshold: 12,
+    })
+    const e = out.entities[0]!
+    // Downgraded, not deleted — the host stays on the map wearing the refusal.
+    expect(e.relation).toBe("unknown")
+    expect(e.domain).toBe("blocked-blog.com")
+    expect(e.because).toMatch(/48%/)
+    // The claim it could not support is not left standing as evidence.
+    expect(e.why).toBe("")
+  })
+
   it("sends a readable vendor page to the model and gates its answer", async () => {
     const out = await judgeHosts([cand("acme.com")], {
       fetcher: fakeFetcher({ "https://acme.com/": vendorHtml }),

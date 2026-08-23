@@ -440,11 +440,44 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
             return
           }
           const verified = out.spans.filter((sp) => checkQuote(serpText, sp) === "ok")
+          /**
+           * A SNIPPET MAY NAME A VENDOR. IT MAY NOT NAME A PUBLISHER.
+           *
+           * Judging from search text at all is a deliberate trade — 61 of one
+           * map's 63 blanks carried enough of it to say something. What was
+           * never checked is WHICH of the things it says hold up. Measured
+           * over 217 hosts that were judged from their page in one run and
+           * from a snippet in another, the same host both ways:
+           *
+           *   the snippet claimed a MARKET relation    80% the page agreed
+           *   the snippet claimed a CHANNEL relation   48% the page agreed
+           *
+           * The second is a coin flip, and it is not a symmetric one. Across
+           * those hosts the snippet path moved 44 rows from market to channel
+           * and 1 the other way, 15 from market to unknown against 1 back —
+           * 59 demotions to 2 promotions, 29.5 to 1. Engine drift would move
+           * them both ways; this only moves down. The reason is visible once
+           * stated: a vendor's blog post ranking for a market term reads,
+           * in a search result, exactly like a publication about that market.
+           *
+           * So the market half is kept and the channel half is refused. An
+           * unreadable host that looks like a publisher is recorded as
+           * `unknown`, which is what this codebase already says to do when the
+           * evidence will not carry a relation — "a reader can finish an
+           * unknown, and cannot correct an invention". It ships 2checkout.com
+           * on the stripe map as a publisher writing educational articles;
+           * unknown would have been true.
+           */
+          const CHANNEL_FROM_SNIPPET = ["covers", "lists", "discusses"]
+          const overreach = CHANNEL_FROM_SNIPPET.includes(out.relation)
           emit({
             name: out.name || h.host, domain: h.host,
             kind: out.kind, what: out.what,
-            relation: out.relation, why: out.why,
-            because: `its front page could not be read this run (${s.status}); judged from the search results that surfaced it`,
+            relation: overreach ? "unknown" : out.relation,
+            why: overreach ? "" : out.why,
+            because: overreach
+              ? `its front page could not be read this run (${s.status}), and the search results read as ${out.relation} — a call that agrees with the page only 48% of the time, so the relation is withheld rather than guessed`
+              : `its front page could not be read this run (${s.status}); judged from the search results that surfaced it`,
             unreadableReason: s.reason,
             settledBy: "model",
             ...(verified.length ? { spans: verified } : {}),
