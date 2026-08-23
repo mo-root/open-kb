@@ -7,6 +7,10 @@
     "type": "git",
     "url": "https://github.com/mo-root/open-kb.git"
   },
+  "homepage": "https://github.com/mo-root/open-kb#readme",
+  "bugs": {
+    "url": "https://github.com/mo-root/open-kb/issues"
+  },
   "private": true,
   "type": "module",
   "engines": {

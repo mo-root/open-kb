@@ -6,6 +6,16 @@
 
 ### One domain in, knowledge base out
 
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+[![Node.js >=20](https://img.shields.io/badge/node-%3E%3D20-339933?logo=node.js&logoColor=white)](package.json)
+
+<!--
+  No CI status badge. .github/workflows/check.yml has never run on GitHub —
+  see its own header comment — so a status badge would render "unknown" at
+  best and a stale or misleading state at worst on a public repo. Add one
+  once a push has actually gone green.
+-->
+
 **[→ Try the beta](https://open-kb-demo.vercel.app)**
 
 </div>

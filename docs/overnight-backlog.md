@@ -257,10 +257,30 @@ above stay first; these follow.
   vulnerability and that keys live only in `.env`. Bug template should ask for
   the run artifact and anchor domain. Keep them short.
 
-- [ ] **C3. README badge row and repo metadata.** `.github/workflows/check.yml`
-  has NEVER RUN — origin/main is a squashed v0.1.0 ~215 commits behind. Do NOT
-  claim CI is green. Do correct or remove any badge that would render broken or
-  false on a public repo.
+- [x] **C3. README badge row and repo metadata.**
+  DONE (2026-08-23 overnight fire). No badge existed anywhere in the repo to
+  correct or remove (checked with a repo-wide grep for "badge"/"shields.io"
+  before starting) — this was a green-field add. `check.yml` has never run on
+  GitHub (its own header comment says so, unchanged from when this item was
+  written), so a CI status badge was left out entirely: shields.io would
+  render it "unknown" at best, and the item's own instruction is "do NOT
+  claim CI is green." Added two badges instead, both statically true and
+  independent of any CI run: a License badge reading MIT (matches `LICENSE`
+  and `package.json`'s `"license": "MIT"`) and a Node badge reading `>=20`
+  (matches `package.json`'s `engines.node` and `check.yml`'s
+  `node-version: 20`). Left an HTML comment in the README next to them
+  explaining why no CI badge is there, so a future editor doesn't add one
+  the day after a red run. For repo metadata, `package.json` had `license`
+  and `repository` but no `homepage` or `bugs` — added
+  `"homepage": "https://github.com/mo-root/open-kb#readme"` and
+  `"bugs": {"url": "https://github.com/mo-root/open-kb/issues"}`, both
+  standard npm fields pointing at the repo's actual GitHub location (verified
+  against `git remote -v`). Did not touch the `packageManager`/`devEngines`
+  gap `check.yml` calls out as "open queue item 12b" — that is a distinct,
+  already-named item, not this one. `pnpm check && pnpm test` both green:
+  1820 tests passed, 12 skipped (6 live/paid-gated, plus 3 duplicated in the
+  skip census — same gated census as before, untouched by a docs/metadata
+  change).
 
 - [ ] **C4. CHANGELOG.md / release notes** for what this branch changed since
   main. Read `git log a7bbc57..HEAD` for the real list rather than trusting any
