@@ -480,6 +480,20 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
            * one query to about 70% at two or more. Nothing here says which
            * blocked host is worth a dollar per hundred, so the money is not
            * spent and the claim is withheld instead.
+           *
+           * MEASURED ON THE WIRE, two shopify.com runs either side of it:
+           *
+           *              snippet rows   channel claims   unknown   kept
+           *   before              140               87         4   1100
+           *   after               183                9        98   1242
+           *
+           * And the nine that survive are not snippet guesses. The gate
+           * withholds them, which leaves them unplaced, which is what the
+           * second look is for — it fetches a search-surfaced page and places
+           * them on evidence. thecmo.com comes back `covers` with a real
+           * `why` and its `because` carries both halves: the claim withheld
+           * and the page that finally answered. So the two stages compose:
+           * this refuses to guess, and the next one goes and looks.
            */
           const CHANNEL_FROM_SNIPPET = ["covers", "lists", "discusses"]
           const overreach = CHANNEL_FROM_SNIPPET.includes(out.relation)
