@@ -1429,6 +1429,9 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    *  discipline (see `openrouterOpts`), and this is the only way a run can
    *  say which one kept refusing. `report.model.servedBy`. */
   const servedBy: Record<string, { calls: number; refused: number }> = {};
+  /** The host that answered this run's first call, and every call after it —
+   *  argued at `openrouterOpts`. Null until the first answer names one. */
+  let stickyHost: string | null = null;
   const hostOf = (x: unknown): string | undefined => {
     const meta = (x as { providerMetadata?: { openrouter?: { provider?: unknown } } })
       ?.providerMetadata?.openrouter?.provider;
@@ -1611,10 +1614,10 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
      * where it was measured to matter. */
     const openrouterOpts = (
       think: string | undefined,
-      // The retry changes the sort. A host that answered nothing, or answered
-      // with a body that would not parse, is the wrong host to ask the same
-      // question twice; sorting by latency instead of throughput lands on a
-      // different leader, which is the cheapest way to make the second ask a
+      // The retry changes the route. A host that answered nothing, or
+      // answered with a body that would not parse, is the wrong host to ask
+      // the same question twice; sorting by latency instead of sticking lands
+      // on a different one, which is the cheapest way to make the second ask a
       // different ask. Everything else below holds for both attempts.
       routed = true,
     ) => ({
@@ -1622,7 +1625,38 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       ...(modelId.startsWith("deepseek/")
         ? {
             provider: {
-              sort: routed ? "throughput" : "latency",
+              /**
+               * ONE HOST FOR THE WHOLE RUN, discovered rather than hardcoded.
+               *
+               * `sort: "throughput"` re-picks per call, and a gateway serves
+               * one model id from ~30 hosts at fp4, fp8 and bf16. The map then
+               * disagrees with itself: MEASURED 2026-08-23 by asking the same
+               * 27 pages the identical classify question three times over —
+               *
+               *   throughput sort, temperature unset   12 of 27 unstable (44%)
+               *   throughput sort, temperature 0       12 of 27 unstable (44%)
+               *   one pinned host, temperature unset    9 of 27 unstable (33%)
+               *   one pinned host, temperature 0        3 of 27 unstable (11%)
+               *
+               * — where "unstable" means the same host got a different
+               * `relation` across three identical asks. Nearly half the map's
+               * relations were a coin flip, and temperature alone could not
+               * fix it because the hosts disagree with each other.
+               *
+               * A HARDCODED pin is what this file already learned not to do
+               * (see the parasail order removed this morning: fast when it was
+               * written, 3x slower when it was measured again). So the pin is
+               * per RUN: the first call goes out on the throughput sort, and
+               * whichever host answers it is `stickyHost` for every call
+               * after. Fresh every run, stable within one. `allow_fallbacks`
+               * stays open, so a host going down degrades to another rather
+               * than failing the run — and `report.model.servedBy` records
+               * what actually answered, which is how a bad sticky host is
+               * caught rather than assumed away.
+               */
+              ...(routed && stickyHost
+                ? { order: [stickyHost] }
+                : { sort: routed ? "throughput" : "latency" }),
               // Only hosts that support every parameter this request carries
               // — `response_format: json_schema` above all. The run on
               // 2026-08-23 (run D) had its catalog retry answered by a host
@@ -1643,6 +1677,16 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           }
         : {}),
     });
+
+    /**
+     * TEMPERATURE ZERO, on every call this pipeline makes.
+     *
+     * It was never set, so every call ran at whatever the host defaults to —
+     * ~1.0 on an OpenAI-compatible endpoint. Nothing here wants a sampled
+     * answer: each call is a judgement about a page, and two runs of the same
+     * map disagreeing is a defect, not variety. Worth 33% -> 11% instability
+     * on the measurement above, on top of the sticky host.
+     */
 
     /**
      * A DEADLINE PER CALL, not just the run's cancel signal.
@@ -1742,7 +1786,8 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           : prompt,
         abortSignal: withDeadline(),
         maxOutputTokens: maxOut,
-        // `attempt` is only ever the retry: unrouted, see `openrouterOpts`.
+        temperature: 0,
+        // `attempt` is only ever the retry: rerouted, see `openrouterOpts`.
         providerOptions: { openrouter: openrouterOpts(think, false) },
       });
 
@@ -1761,6 +1806,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         // the cap was never to be tight, only to stop reserving 65,536 tokens of
         // credit on every call.
         maxOutputTokens: Math.max(6_000, opts.maxOutputTokens ?? 8_192),
+        temperature: 0,
         providerOptions: {
           openrouter: openrouterOpts(opts.think),
         },
@@ -1776,6 +1822,9 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       tokOut += outTok;
       bill("llm", agent, usdFor(inTok, outTok), Date.now() - started, true, { in: inTok, out: outTok, reasoning });
       const host = hostOf(out);
+      // The first host to answer becomes the run's host. Set from a SUCCESS
+      // only: a host that refused is not one to route the rest of the map to.
+      if (!stickyHost && host) stickyHost = host;
       noteServed(host, false);
       spans.emit({
         runId,
@@ -1859,6 +1908,11 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           tokOut += outTok;
           bill("llm", agent, usdFor(inTok, outTok), Date.now() - started, true, { in: inTok, out: outTok, reasoning });
           const retryHost = hostOf(out);
+          // A retry can be the first answer a run ever gets (the very first
+          // call failing is exactly when there is no sticky host yet), so it
+          // may set one — but it never REPLACES a host already chosen, or the
+          // run's route would wander every time one call needed a second ask.
+          if (!stickyHost && retryHost) stickyHost = retryHost;
           noteServed(retryHost, false);
           spans.emit({
             runId,
