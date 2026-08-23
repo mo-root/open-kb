@@ -94,18 +94,6 @@ export const TYPE_ORDER: NodeType[] = ["core", "product", "player", "community"]
  */
 export const COMPANY_TYPES: readonly NodeType[] = ["product", "player"]
 
-/**
- * How many companies a map holds — the one number a surface may print as
- * "companies", derived in one place so two surfaces cannot disagree about it.
- *
- * Takes the tally rather than the notes so the caller pays nothing: every
- * reader shape here already carries `TypeCounts` (`KbSummary.counts`,
- * `KbView.counts`), and both are built by the same loop in lib/kb-from-run.ts.
- */
-export function companyCount(counts: Record<NodeType, number>): number {
-  return COMPANY_TYPES.reduce((n, t) => n + counts[t], 0)
-}
-
 /** Map a raw graph group (top-level folder) to the label shown to a reader. */
 export function groupLabel(group: string): string {
   return group === "overview" ? "core" : group

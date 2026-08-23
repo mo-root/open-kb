@@ -32,8 +32,9 @@ import type { KbSummary } from "@/lib/viewTypes";
 //     never a small market, it was the classifier calling 1,272 companies
 //     `product` and one of them `company`.
 //
-// One labelled headline replaces all of it. See `companyCount` in
-// lib/nodeTypes.ts for why the headline is a union and not `counts.player`.
+// One labelled headline replaces all of it. See `COMPANY_TYPES` in
+// lib/nodeTypes.ts for why the headline is a union, and `KbSummary.companies`
+// in lib/viewTypes.ts for why it is not `counts.player + counts.product`.
 
 /** How many markets a showcase card names before it stops and counts the rest.
  *  Three, measured on the six committed maps at the three-column breakpoint:
