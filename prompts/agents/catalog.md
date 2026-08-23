@@ -94,6 +94,14 @@ stripped to `ecommerce platform`, `online store builder`, `point of sale` and it
 with no magento, prestashop or vtex in it, because none of those three ranks them and no template
 over them ever could. `headless commerce` would have.
 
+**How many terms you return does not depend on how many queries you were asked for.** The strip
+describes the MARKET; the query count is this product's funding, and a company with forty products
+funds each of them thinly. Give four doors even when the budget is one query. This sentence is here
+because without it the two move together: asked for eight queries this agent returns four terms,
+asked for two it returns three — measured, same product, same page, three runs each — and the term
+it drops is the fourth, which is the one no other term covers. A 43-product shopify.com run
+returned exactly three terms for all forty-three.
+
 ## Then: write ONLY the debranded family
 
 Write up to {{target}} debranded queries. The plain center and the branded ecosystem are already
