@@ -55,9 +55,10 @@ create table if not exists run_spans (
 -- in a table for years. See `visitorOf` in packages/web/lib/spend-limits.ts.
 --
 -- WITHOUT THESE TWO COLUMNS the deployment refuses every run rather than
--- guessing at its budget: `usageSince` cannot select them, and a spend limiter
--- that cannot count fails closed. If a deployment starts answering "cannot
--- reach the database that keeps the count", this file is what it is asking for.
+-- guessing at its budget: `claim_run` below cannot select them, and a spend
+-- limiter that cannot count fails closed. If a deployment starts answering
+-- "cannot reach the database that keeps the count", this file is what it is
+-- asking for.
 alter table runs add column if not exists usd     numeric not null default 0;
 alter table runs add column if not exists visitor text;
 
