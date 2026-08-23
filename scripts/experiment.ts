@@ -71,15 +71,6 @@ async function keyUsage(): Promise<number> {
   return data.usage
 }
 
-async function headroom(): Promise<number> {
-  const res = await fetch("https://openrouter.ai/api/v1/key", {
-    headers: { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}` },
-  })
-  if (!res.ok) throw new Error(`could not read key limit: ${res.status}`)
-  const { data } = (await res.json()) as { data: { limit: number | null; usage: number } }
-  return data.limit === null ? Number.POSITIVE_INFINITY : data.limit - data.usage
-}
-
 /** Read back what the arm produced, from the file the run wrote. */
 function measure(anchor: string): Record<string, unknown> {
   const dir = "runs"
