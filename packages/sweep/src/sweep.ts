@@ -443,6 +443,32 @@ export const CALL_TIMEOUT_MS = Math.max(
   Number(process.env.OPENKB_CALL_TIMEOUT_MS ?? 60_000) || 60_000,
 );
 
+/**
+ * The `understand` call's own deadline, and the reason it needs one.
+ *
+ * It is the largest prompt this pipeline sends — every anchor page condensed,
+ * plus a line for each of up to 25 product pages — and it is the ONLY call
+ * with no fail-open anywhere downstream: `sells`, `buyer` and the capability
+ * list are what every later stage is built on, so a failure here is a dead
+ * run rather than a narrower map. When CALL_TIMEOUT_MS came down from 120s to
+ * 60s (100ae58) it took this call with it, and 60s was chosen against a
+ * one-host classify that answers in 2-3s.
+ *
+ * MEASURED, the expensive way: a datadoghq.com run on 2026-08-23 read 25
+ * product pages, spent 60s on the understand call, spent another 60s on its
+ * retry, and died having bought nothing. An earlier datadoghq.com run the
+ * same evening cleared 60s and finished — so the call sits right on the
+ * boundary for a large anchor, which is the worst place for a deadline to be.
+ *
+ * Three minutes. One call per run, so the ceiling costs nothing in aggregate
+ * even when it is never approached, and the alternative it guards against is
+ * a run that ends before its first search.
+ */
+export const UNDERSTAND_CALL_TIMEOUT_MS = Math.max(
+  1_000,
+  Number(process.env.OPENKB_UNDERSTAND_CALL_TIMEOUT_MS ?? 180_000) || 180_000,
+);
+
 /** The link and orphan calls' own deadline — was tighter than `CALL_TIMEOUT_MS`
  *  when that stood at 120s; the two now meet at 60s and this one is kept as
  *  its own knob. `docs/overnight-backlog.md`'s P0-4 finding: on the measured
@@ -1730,7 +1756,9 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
             agent === "second-look" ||
             agent === "drop-confirm"
           ? RANK_CALL_TIMEOUT_MS
-          : CALL_TIMEOUT_MS;
+          : agent === "understand"
+            ? UNDERSTAND_CALL_TIMEOUT_MS
+            : CALL_TIMEOUT_MS;
     /**
      * THE DEADLINE HAS TO BE HELD, OR THE RUNTIME DROPS IT — `heldDeadline`
      * (deadline.ts) is the pin and carries the argument. MEASURED in the wild

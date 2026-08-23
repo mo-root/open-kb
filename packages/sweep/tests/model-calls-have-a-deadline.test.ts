@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest"
 import { execFileSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
-import { CALL_TIMEOUT_MS, LINK_CALL_TIMEOUT_MS, RANK_CALL_TIMEOUT_MS } from "../src/sweep.js"
+import { CALL_TIMEOUT_MS, LINK_CALL_TIMEOUT_MS, RANK_CALL_TIMEOUT_MS, UNDERSTAND_CALL_TIMEOUT_MS } from "../src/sweep.js"
 
 /**
  * A model call that never answers used to be a run that never ends.
@@ -36,6 +36,16 @@ describe("every model call carries a deadline", () => {
     // plus one retry is how long a run waits on its stragglers.
     expect(RANK_CALL_TIMEOUT_MS).toBeGreaterThanOrEqual(15_000)
     expect(RANK_CALL_TIMEOUT_MS).toBeLessThanOrEqual(CALL_TIMEOUT_MS / 2)
+  })
+
+  it("gives understand the longest deadline, because it is the one call that cannot fail open", () => {
+    // Largest prompt in the pipeline, one call per run, and nothing
+    // downstream can proceed without `sells`. MEASURED: a datadoghq.com run
+    // read 25 product pages, spent 60s on this call, spent 60s more on its
+    // retry, and died before buying a single search.
+    expect(UNDERSTAND_CALL_TIMEOUT_MS).toBeGreaterThan(CALL_TIMEOUT_MS)
+    expect(UNDERSTAND_CALL_TIMEOUT_MS).toBeGreaterThanOrEqual(120_000)
+    expect(UNDERSTAND_CALL_TIMEOUT_MS).toBeLessThanOrEqual(600_000)
   })
 
   it("gives link no longer a deadline than any other agent, within the backlog's 45-60s range", () => {
