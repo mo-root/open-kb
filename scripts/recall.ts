@@ -23,10 +23,13 @@
  *   anchor            map   truth    found   as rival
  *   stripe.com       1123      15      93%        87%
  *   figma.com         919      12      92%        83%
+ *   vercel.com       1107       8      88%        88%
+ *   sentry.io         892       8      88%        88%
  *   cursor.com        775      12      83%        67%
  *   cloudflare.com   1122      10      80%        80%
  *   shopify.com      1226      14      71%        71%
- *   openai.com        651      11      36%        27%
+ *   supabase.com      899       8      63%        50%
+ *   openai.com       1194      11      55%        45%
  *
  * The gap between the two columns is small everywhere — 0 to 16 points. Where
  * a rival is found it is usually placed correctly, so PLACEMENT is not the
@@ -39,9 +42,10 @@
  * says the remaining inflated rows are the smaller prize. The bigger one is
  * the shopify map with no magento, prestashop, saleor or vtex in it.
  *
- * The openai.com row is a caveat, not a finding: that run stopped at 651
- * entities where its siblings reached 900-1,200, so it measures a thin run
- * rather than a bad classifier. Re-run before drawing anything from it.
+ * openai.com is where that shows most, and it also demonstrates the trap in
+ * reading this table without checking run size: it first scored 36% found on a
+ * run that stopped at 651 entities, and 55% on a re-run that reached 1,194.
+ * The classifier had not changed. Check the map column before believing a row.
  *
  * GROUND TRUTH IS HAND-WRITTEN and deliberately conservative — only names
  * whose rivalry a practitioner would not argue about. It is a floor on the
@@ -50,6 +54,39 @@
  *
  *   npx tsx scripts/recall.ts
  *   npx tsx scripts/recall.ts stripe.com     # one anchor, listing every miss
+ *   npx tsx scripts/recall.ts --by family    # which queries find the field
+ *
+ * WHICH QUERIES FIND THE FIELD (21 runs across 9 anchors, 2026-08-23), where
+ * a query scores when it is the FIRST in its run to surface a ground-truth
+ * rival:
+ *
+ *   family       queries  rivals  per 100 q   $/rival
+ *   branded          115      13       11.3    $0.045
+ *   plain            889      96       10.8    $0.043
+ *   debranded       1037      59        5.7    $0.083
+ *   rival            286      11        3.8    $0.107
+ *
+ * The templates find the known field about twice as often as the model's own
+ * queries and for half the price — the same ordering `scripts/query-yield.ts`
+ * found for market share, arrived at from the opposite direction. `debranded`
+ * is the LARGEST family and the second worst at this.
+ *
+ * The `rival` family being last is worth sitting with: it is a template over a
+ * name the anchor itself published, so it searches `<someone else> alternatives`
+ * and lands on that someone's neighbours rather than the anchor's.
+ *
+ * TWO HYPOTHESES WERE TESTED HERE AND BOTH FAILED. Recorded so they are not
+ * proposed again:
+ *
+ *   1. "The four reserve templates — best X, X vs, top X companies, open
+ *      source X — are roundup-shaped, so promoting them to the opening hand
+ *      would find more of the field." They surfaced ZERO ground-truth rivals
+ *      across 32 queries, and buy market entities at 41-43% against the two
+ *      open templates' 55%. Promoting them would cost yield and buy nothing.
+ *
+ *   2. "`branded` finds rivals 2.7x better than `plain`, so fire more of it."
+ *      That was 18 queries on 6 anchors. Widened to 115 queries on 9, the gap
+ *      is 11.3 against 10.8 — noise.
  */
 import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
@@ -61,13 +98,23 @@ const TRUTH: Record<string, string[]> = {
   "openai.com": ["anthropic.com", "mistral.ai", "cohere.com", "ai21.com", "huggingface.co", "together.ai", "perplexity.ai", "x.ai", "stability.ai", "replicate.com", "deepmind.com"],
   "cloudflare.com": ["akamai.com", "fastly.com", "bunny.net", "keycdn.com", "imperva.com", "sucuri.net", "vercel.com", "netlify.com", "digitalocean.com", "stackpath.com"],
   "cursor.com": ["windsurf.com", "zed.dev", "codeium.com", "tabnine.com", "replit.com", "aider.chat", "continue.dev", "cline.bot", "sourcegraph.com", "jetbrains.com", "warp.dev", "devin.ai"],
+  // These three have no fresh run, but they have older ones, and `--by family`
+  // reads every run an anchor has rather than only the newest.
+  "vercel.com": ["netlify.com", "render.com", "fly.io", "railway.app", "heroku.com", "deno.com", "cloudflare.com", "digitalocean.com"],
+  "supabase.com": ["firebase.google.com", "planetscale.com", "neon.tech", "cockroachlabs.com", "appwrite.io", "nhost.io", "pocketbase.io", "xata.io"],
+  "sentry.io": ["datadoghq.com", "newrelic.com", "rollbar.com", "bugsnag.com", "honeybadger.io", "raygun.com", "airbrake.io", "logrocket.com"],
 }
 
 /** The two relations that mean "a buyer would pick one of these, not both". */
 const RIVAL = new Set(["competitor", "substitute"])
 
 const runsDir = join(process.cwd(), "runs")
-const only = process.argv[2]
+const byFamily = process.argv.includes("--by") && process.argv[process.argv.indexOf("--by") + 1] === "family"
+const only = process.argv[2] && !process.argv[2].startsWith("--") ? process.argv[2] : undefined
+
+const hostOf = (u: string): string => {
+  try { return new URL(u).hostname.toLowerCase().replace(/^www\./, "") } catch { return "" }
+}
 
 /** The newest run for an anchor — filenames carry a sortable stamp. */
 const newestRun = (anchor: string): string | undefined =>
@@ -114,3 +161,41 @@ for (const [anchor, rivals] of Object.entries(TRUTH)) {
   }
 }
 console.log("\n  ground truth is hand-written and conservative — a floor on the real field, not a census\n")
+
+/**
+ * The same ground truth, asked of the SEARCHES rather than the map: which kind
+ * of query was the first to surface each rival. A miss in the main table is a
+ * discovery failure; this says which family would have had to find it.
+ */
+if (byFamily) {
+  const fam: Record<string, { q: number; rivals: number; usd: number }> = {}
+  let runs = 0
+  for (const [anchor, rivals] of Object.entries(TRUTH)) {
+    const field = new Set(rivals)
+    for (const f of readdirSync(runsDir).filter((f) => f.startsWith(`sweep-${anchor.replace(/\./g, "-")}-`) && f.endsWith(".json"))) {
+      let r: { searched?: any[] }
+      try { r = JSON.parse(readFileSync(join(runsDir, f), "utf8")) } catch { continue }
+      if (!Array.isArray(r.searched)) continue
+      runs++
+      const seen = new Set<string>()
+      for (const s of r.searched) {
+        const hosts = [...new Set((s.hits ?? []).map((h: any) => hostOf(h.url)).filter(Boolean))] as string[]
+        // FIRST to surface it: a rival already seen this run is not this
+        // query's find, however many times it comes back afterwards.
+        const found = hosts.filter((h) => !seen.has(h) && field.has(h)).length
+        hosts.forEach((h) => seen.add(h))
+        const c = (fam[s.family ?? "?"] ??= { q: 0, rivals: 0, usd: 0 })
+        c.q++
+        c.rivals += found
+        c.usd += s.usd ?? 0
+      }
+    }
+  }
+  console.log(`\nWhich family first surfaced a rival — ${runs} runs\n`)
+  console.log("  " + "family".padEnd(12) + "queries".padStart(8) + "rivals".padStart(8) + "per 100 q".padStart(11) + "$/rival".padStart(10))
+  for (const [k, c] of Object.entries(fam).sort((a, b) => b[1].rivals / b[1].q - a[1].rivals / a[1].q)) {
+    console.log("  " + k.padEnd(12) + String(c.q).padStart(8) + String(c.rivals).padStart(8) +
+      (100 * c.rivals / c.q).toFixed(1).padStart(11) + `$${(c.usd / (c.rivals || 1)).toFixed(3)}`.padStart(10))
+  }
+  console.log("")
+}
