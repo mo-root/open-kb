@@ -515,7 +515,7 @@ export function ProductsTab({
               glyph="community"
               color={TYPE_CSS.community}
               title="The surrounding market"
-              blurb="Dependencies, integrations, shapers, buyers and targets — placed against the anchor, but not selling against it."
+              blurb="Adjacent players, dependencies, integrations, shapers, buyers and targets — placed against the anchor, but not selling against it."
               players={related}
               openNote={openNote}
             />

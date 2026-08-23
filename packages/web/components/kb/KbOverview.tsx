@@ -65,6 +65,14 @@ import {
 const RELATION_ORDER = [
   "competitor",
   "substitute",
+  // Missing here until B3: `adjacent` fell through to the `seen` catch-all at
+  // the bottom of `ordered` (below) and the muted fallback colour, even
+  // though the night-4 web audit measured it as the largest single relation
+  // on a modern map — the biggest bar in the panel was wearing the "we don't
+  // know this one" hue and never made the top-3 gloss line. Placed right
+  // after `substitute`, matching its RELATION_WEIGHT rank in kb-from-run.ts
+  // (competitor 95, substitute 85, adjacent 78).
+  "adjacent",
   "integration",
   "dependency",
   "shaper",
@@ -75,6 +83,9 @@ const RELATION_ORDER = [
 const RELATION_COLOR: Record<string, string> = {
   competitor: "var(--type-player, #EB368C)",
   substitute: "#F072AC",
+  // Lavender, between rival pink and partner blue — see the file header
+  // comment ("blue / lavender / muted tokens").
+  adjacent: "#B98CF2",
   integration: "#76A5FF",
   dependency: "var(--type-community, #D95926)",
   shaper: "var(--accent, #3D7FFC)",

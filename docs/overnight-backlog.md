@@ -188,11 +188,34 @@ above stay first; these follow.
   quote as a receipt on the relation and mark ungrounded ones honestly rather
   than hiding them — receipts-on-everything is the whole pitch.
 
-- [ ] **B3. Confirm `adjacent` is handled everywhere the UI enumerates
+- [x] **B3. Confirm `adjacent` is handled everywhere the UI enumerates
   relations** — colours, legend, glyphs, filters, sort orders, group labels. It
   has a blurb (`viewTypes.ts:39`) and a weight (`kb-from-run.ts:98`) but may be
   missing elsewhere. On a modern map it is the largest single relation, so an
   unhandled case is very visible.
+  DONE (2026-08-23 overnight fire). Audited every spot the web app enumerates
+  relations. The graph canvas's own legend/colour system (`GraphLegend`,
+  `TYPE_CSS`) is keyed on `NodeType`, not `relation`, so it was never in
+  scope — confirmed by reading `GraphCanvas.tsx` end to end. Two real gaps
+  found and fixed, both in `KbOverview.tsx`'s "Who's in this market" panel and
+  `ProductsTab.tsx`'s ecosystem grouping:
+    - `RELATION_ORDER` / `RELATION_COLOR` (`KbOverview.tsx`) had no entry for
+      `adjacent`. It still rendered (the `seen` catch-all after `RELATION_ORDER`
+      and the `?? "var(--type-core, #9DB2D6)"` fallback both apply), but as the
+      largest relation on a modern map it landed last in `ordered` — never one
+      of the `ordered.slice(0, 3)` bars the panel glosses in words — wearing the
+      generic muted fallback rather than a distinct hue. Added `adjacent` to
+      `RELATION_ORDER` right after `substitute` (matching its rank in
+      `RELATION_WEIGHT`: competitor 95, substitute 85, adjacent 78) and gave it
+      `#B98CF2`, a lavender between the rival pink and the partner blue.
+    - `ProductsTab.tsx`'s "The surrounding market" group blurb named
+      "Dependencies, integrations, shapers, buyers and targets" — every relation
+      that lands in that bucket (`!IS_RIVAL && relation !== "none"`) EXCEPT
+      `adjacent`, its largest member. Reworded to lead with "Adjacent players".
+  Also corrected a doc-comment in `FindingsPanel.tsx` (`EntityData.relation`)
+  that listed the same relations minus `adjacent`.
+  `pnpm check && pnpm test` both green, 1819 tests passing (12 gated/live
+  skipped, same census as before).
 
 - [ ] **B4. Audit error and empty states end to end**: a failed run, a map with
   zero entities, a missing run id, a non-JSON fetch response, a one-node graph.

@@ -21,7 +21,7 @@ export interface EntityData {
   name?: string;
   /** company · product · community · publisher · directory */
   kind?: string;
-  /** competitor · substitute · dependency · integration · shaper · buyer · target · none */
+  /** competitor · substitute · adjacent · dependency · integration · shaper · buyer · target · none */
   relation?: string;
   what?: string;
   why?: string;
