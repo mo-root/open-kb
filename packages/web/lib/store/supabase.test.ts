@@ -236,4 +236,164 @@ describe("the supabase store", () => {
       expect(column).toContain("boom")
     })
   })
+
+  /**
+   * `countRunsSince` and `claimRun` had zero tests despite both gating real
+   * money: `lib/public-runs.ts` treats a `null` count as "refuse the run" and
+   * `lib/spend-limits.ts` treats anything but `{kind: "claimed"}` as "refuse
+   * the run" — see the doctrine comments on both in supabase.ts explaining why
+   * "could not tell" must never collapse into "nothing today". Coverage gap
+   * found sweeping web/lib/store (D-scope: "areas nobody has swept").
+   */
+  describe("countRunsSince", () => {
+    it("is null, not zero, when unconfigured — a full allowance must never come from a laptop", async () => {
+      vi.stubEnv("SUPABASE_URL", "")
+      vi.stubEnv("SUPABASE_SECRET_KEY", "")
+      const f = vi.fn()
+      vi.stubGlobal("fetch", f)
+      expect(await (await load()).countRunsSince("2026-08-03T00:00:00Z")).toBeNull()
+      expect(f).not.toHaveBeenCalled()
+    })
+
+    it("reads the total out of Content-Range", async () => {
+      vi.stubEnv("SUPABASE_URL", "https://x.supabase.co")
+      vi.stubEnv("SUPABASE_SECRET_KEY", "k")
+      vi.stubGlobal("fetch", vi.fn(async () =>
+        new Response("[]", { status: 200, headers: { "content-range": "0-0/137" } }),
+      ))
+      expect(await (await load()).countRunsSince("2026-08-03T00:00:00Z")).toBe(137)
+    })
+
+    it("reads zero from the `*/0` shape PostgREST sends for no match", async () => {
+      vi.stubEnv("SUPABASE_URL", "https://x.supabase.co")
+      vi.stubEnv("SUPABASE_SECRET_KEY", "k")
+      vi.stubGlobal("fetch", vi.fn(async () =>
+        new Response("[]", { status: 200, headers: { "content-range": "*/0" } }),
+      ))
+      expect(await (await load()).countRunsSince("2026-08-03T00:00:00Z")).toBe(0)
+    })
+
+    it("is null, never zero, when the header is missing or unparseable", async () => {
+      vi.stubEnv("SUPABASE_URL", "https://x.supabase.co")
+      vi.stubEnv("SUPABASE_SECRET_KEY", "k")
+      vi.spyOn(console, "error").mockImplementation(() => {})
+      vi.stubGlobal("fetch", vi.fn(async () => new Response("[]", { status: 200 })))
+      expect(await (await load()).countRunsSince("2026-08-03T00:00:00Z")).toBeNull()
+    })
+
+    it("is null when the store answers non-2xx", async () => {
+      vi.stubEnv("SUPABASE_URL", "https://x.supabase.co")
+      vi.stubEnv("SUPABASE_SECRET_KEY", "k")
+      vi.stubGlobal("fetch", vi.fn(async () => new Response("nope", { status: 500 })))
+      expect(await (await load()).countRunsSince("2026-08-03T00:00:00Z")).toBeNull()
+    })
+
+    it("is null rather than throwing on a network failure", async () => {
+      vi.stubEnv("SUPABASE_URL", "https://x.supabase.co")
+      vi.stubEnv("SUPABASE_SECRET_KEY", "k")
+      vi.spyOn(console, "error").mockImplementation(() => {})
+      vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("ECONNREFUSED") }))
+      expect(await (await load()).countRunsSince("2026-08-03T00:00:00Z")).toBeNull()
+    })
+  })
+
+  describe("claimRun", () => {
+    const ARGS = {
+      id: "r1",
+      domain: "a.com",
+      queries: 4,
+      startedAt: "2026-08-03T00:00:00Z",
+      visitor: "h:abc",
+      since: "2026-08-03T00:00:00Z",
+      windowMs: 86_400_000,
+      runCapUsd: 1,
+      dayCapUsd: 10,
+      perVisitorPerDay: 3,
+      atOnce: 2,
+    }
+
+    it("is unconfigured without a round trip when the store has no key", async () => {
+      vi.stubEnv("SUPABASE_URL", "")
+      vi.stubEnv("SUPABASE_SECRET_KEY", "")
+      const f = vi.fn()
+      vi.stubGlobal("fetch", f)
+      expect(await (await load()).claimRun(ARGS)).toEqual({ kind: "unconfigured" })
+      expect(f).not.toHaveBeenCalled()
+    })
+
+    it("claims against rpc/claim_run and reports the counts Postgres computed", async () => {
+      vi.stubEnv("SUPABASE_URL", "https://x.supabase.co")
+      vi.stubEnv("SUPABASE_SECRET_KEY", "k")
+      const f = vi.fn(async () =>
+        new Response(JSON.stringify({ ok: true, by_visitor: 1, spent_usd: 0.4, in_flight: 1 }), { status: 200 }),
+      )
+      vi.stubGlobal("fetch", f)
+      const got = await (await load()).claimRun(ARGS)
+
+      expect(got).toEqual({ kind: "claimed", byVisitor: 1, spentUsd: 0.4, inFlight: 1 })
+      const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit]
+      expect(url).toContain("/rest/v1/rpc/claim_run")
+      const body = JSON.parse(init.body as string)
+      expect(body).toMatchObject({ p_id: "r1", p_domain: "a.com", p_at_once: 2 })
+    })
+
+    it("is refused with the limit Postgres named, when the transaction says no", async () => {
+      vi.stubEnv("SUPABASE_URL", "https://x.supabase.co")
+      vi.stubEnv("SUPABASE_SECRET_KEY", "k")
+      vi.stubGlobal("fetch", vi.fn(async () =>
+        new Response(JSON.stringify({ ok: false, limit: "day", by_visitor: 3, spent_usd: 10, in_flight: 0 }), { status: 200 }),
+      ))
+      const got = await (await load()).claimRun(ARGS)
+      expect(got).toEqual({ kind: "refused", limit: "day", byVisitor: 3, spentUsd: 10, inFlight: 0 })
+    })
+
+    it("is unavailable, never refused, when Postgres declines without naming a limit", async () => {
+      vi.stubEnv("SUPABASE_URL", "https://x.supabase.co")
+      vi.stubEnv("SUPABASE_SECRET_KEY", "k")
+      vi.spyOn(console, "error").mockImplementation(() => {})
+      vi.stubGlobal("fetch", vi.fn(async () =>
+        new Response(JSON.stringify({ ok: false, by_visitor: 0, spent_usd: 0, in_flight: 0 }), { status: 200 }),
+      ))
+      const got = await (await load()).claimRun(ARGS)
+      expect(got).toEqual({ kind: "unavailable", why: "the store refused a run without saying which limit" })
+    })
+
+    it("names the missing migration on a 404, rather than reading as an outage", async () => {
+      vi.stubEnv("SUPABASE_URL", "https://x.supabase.co")
+      vi.stubEnv("SUPABASE_SECRET_KEY", "k")
+      vi.spyOn(console, "error").mockImplementation(() => {})
+      vi.stubGlobal("fetch", vi.fn(async () => new Response("not found", { status: 404 })))
+      const got = await (await load()).claimRun(ARGS)
+      expect(got).toEqual({
+        kind: "unavailable",
+        why: "this deployment has no claim_run function — re-run scripts/supabase-schema.sql",
+      })
+    })
+
+    it("is unavailable on any other non-2xx", async () => {
+      vi.stubEnv("SUPABASE_URL", "https://x.supabase.co")
+      vi.stubEnv("SUPABASE_SECRET_KEY", "k")
+      vi.spyOn(console, "error").mockImplementation(() => {})
+      vi.stubGlobal("fetch", vi.fn(async () => new Response("boom", { status: 500 })))
+      const got = await (await load()).claimRun(ARGS)
+      expect(got).toEqual({ kind: "unavailable", why: "the store answered 500" })
+    })
+
+    it("is unavailable, not claimed, when the body has no readable `ok`", async () => {
+      vi.stubEnv("SUPABASE_URL", "https://x.supabase.co")
+      vi.stubEnv("SUPABASE_SECRET_KEY", "k")
+      vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ nonsense: true }), { status: 200 })))
+      const got = await (await load()).claimRun(ARGS)
+      expect(got).toEqual({ kind: "unavailable", why: "the store answered something the budget could not read" })
+    })
+
+    it("is unavailable rather than throwing on a network failure — the fallback must never spend", async () => {
+      vi.stubEnv("SUPABASE_URL", "https://x.supabase.co")
+      vi.stubEnv("SUPABASE_SECRET_KEY", "k")
+      vi.spyOn(console, "error").mockImplementation(() => {})
+      vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("ECONNREFUSED") }))
+      const got = await (await load()).claimRun(ARGS)
+      expect(got).toEqual({ kind: "unavailable", why: "the store could not be reached" })
+    })
+  })
 })

@@ -36,6 +36,7 @@ import type { NodeType } from "./nodeTypes"
 export const RELATION_BLURB: Record<string, string> = {
   competitor: "sells against the anchor for the same buyer",
   substitute: "solves the same problem a different way",
+  adjacent: "sells into the same workflow, but nobody has to choose between it and the anchor",
   dependency: "the anchor is built on top of it",
   integration: "plugs into the anchor, or the anchor into it",
   shaper: "sets the terms this market is played under",
@@ -478,6 +479,23 @@ export interface NoteView {
    *  mostly hosts whose front page it could not read at all — and on runs
    *  recorded before the kernel kept them. */
   spans?: string[]
+  /** Model-judged entities only: one sentence, the single decisive fact that
+   *  settled `kind` and `relation` — not `evidence` restated, the fact that
+   *  made it true. Optional on the wire (`.optional()` in the classify
+   *  schema, kept for pre-existing fixtures), and present on 26% of entities
+   *  measured on the cursor run: absent renders as nothing, never an empty
+   *  row. */
+  reasoning?: string
+  /** `spans`'s counterpart for `relation`: one verbatim quote backing the
+   *  RELATION specifically, not `what`. Optional on the wire, same as
+   *  `reasoning` — model-judged entities only. */
+  relationSpan?: string
+  /** Whether `relationSpan` verified as a literal substring of the page it
+   *  was quoted from (`checkQuote`, in code — the same check `spans` gets).
+   *  A measurement, never a gate: an ungrounded quote still renders, labelled
+   *  honestly, rather than being hidden — receipts-on-everything is the
+   *  point, including the receipts that didn't check out. */
+  relationGrounded?: boolean
   /** the kernel's refusal, when this claim was downgraded — rendered so a
    *  reader sees why the map does not trust it. */
   because?: string

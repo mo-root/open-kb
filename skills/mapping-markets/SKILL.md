@@ -46,7 +46,7 @@ Do not skip 5. See "How much to trust it" below — it is measured, not a discla
 
 ## Step 1 — Credentials
 
-Three, in a `.env` at the repo root:
+Four, in a `.env` at the repo root:
 
 | Variable | What it is |
 |---|---|
@@ -59,20 +59,31 @@ Three, in a `.env` at the repo root:
 
 ## Step 2 — Depth
 
-The query count is the only lever, and it is a floor rather than a budget: the planner queues more
-while the run is going, at whatever it judges thin. Roughly:
+The query count is the main lever, and it is a floor rather than a budget: the planner queues more
+while the run is going, at whatever it judges thin. So the argument sets where a run opens, and the
+table below is keyed on what actually fired:
 
-| queries | entities | cost | time |
+| queries fired | entities found | cost | wall |
 |---|---|---|---|
-| 10 | ~90 | ~$0.40 | ~5 min |
-| 18 | ~160 | ~$0.70 | ~3 min |
-| 40 | ~640 | ~$2.00 | ~11 min |
-| 80 | ~690 | ~$2.30 | ~12 min |
+| 36 | 456 | $0.40 | 6 min |
+| 66 | 926 | $0.71 | 29 min |
+| 106 | 1,440 | $0.96 | 13 min |
+| 192 | 1,705 | $2.24 | 14 min |
 
-Measured on `brightdata.com` and `resend.com`. Note 40 and 80 land close: past a point the planner
-stops because new queries are buying corroboration.
+Found, not kept — the judge keeps 74–84% of those across the same runs. Measured on the stored runs
+in `runs/` (resend.com, cursor.com, stripe.com, brightdata.com); a least-squares fit over all 17 of
+them puts it at `usd ≈ 0.026 + 0.0098 × queries fired`. Wall clock is set by SERP pacing rather than
+query count and scatters badly — 190 queries took 55 minutes on one run and 192 took 14 on another —
+so quote the cost confidently and the time loosely.
+
+For the small end: a 10-query probe on `clerk.com` returned 449 entities for $0.29 in 229 seconds.
 
 **Say the cost before spending it.** These are real dollars.
+
+The other levers, all optional and all documented in `references/onboarding.md`: `OPENKB_PAGES`
+(result pages per query), `OPENKB_MIN_WAVES`, `OPENKB_MAX_HOSTS`, and four stage flags — `OPENKB_TRIAGE`,
+`OPENKB_SECOND_LOOK`, `OPENKB_LISTICLE_HARVEST` (all three on by default, `0` disables) and
+`OPENKB_DROP_CONFIRM` (off by default, `1` enables).
 
 ## Step 3 — Run it
 

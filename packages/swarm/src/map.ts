@@ -19,10 +19,16 @@ import { type ProvenanceTier } from "./run-evidence.js"
 /** The kinds the skill teaches. `remember` refuses anything else with a sentence. */
 export const SWARM_NODE_KINDS = ["company", "product", "capability", "buyer", "community"] as const
 
-/** The relations the skill teaches, stated from the anchor outward. */
+/** The relations the skill teaches, stated from the anchor outward. Mirrors
+ *  core's JUDGED_RELATIONS — the harvest-classify path (packages/swarm/src/
+ *  agent.ts) binds its schema to JUDGED_RELATIONS, so a value that vocabulary
+ *  accepts but this one does not is money already spent on a verdict this
+ *  map cannot record. "adjacent" landed in JUDGED_RELATIONS without landing
+ *  here first; kept in sync now, and checked for the next relation too. */
 export const SWARM_RELATIONS = [
   "competitor",
   "substitute",
+  "adjacent",
   "shaper",
   "dependency",
   "integration",
@@ -143,7 +149,14 @@ const slug = (s: string) => s.trim().toLowerCase().replace(/\s+/g, "-")
 
 /** The one place a node key is minted. "" when the item cannot be keyed. */
 export function nodeKey(kind: string, name: string, domain: string): string {
-  const host = domain.trim() ? registrableHost(domain.trim().replace(/^https?:\/\//, "").split("/")[0] ?? "") : ""
+  // The scheme strip has to be case-insensitive: registrableHost lowercases
+  // its input, but only AFTER this line runs. A domain arriving as
+  // "HTTPS://Example.com" (a model echoing a URL it just read, capitals and
+  // all) missed the old `/^https?:\/\//` match, so `.split("/")[0]` kept
+  // "HTTPS:" as the host and every such node minted the same garbage key —
+  // silently merging unrelated companies that all happened to arrive
+  // uppercase.
+  const host = domain.trim() ? registrableHost(domain.trim().replace(/^https?:\/\//i, "").split("/")[0] ?? "") : ""
   if (kind === "company" || kind === "product") return host
   if (host) return host
   return name.trim() ? `${kind}:${slug(name)}` : ""

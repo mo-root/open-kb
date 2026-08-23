@@ -92,6 +92,10 @@ const KIND_GROUP: Record<string, string> = {
 const RELATION_WEIGHT: Record<string, number> = {
   competitor: 95,
   substitute: 85,
+  // A real commercial relation — the anchor and this host both sell into the
+  // same workflow — but nobody has to pick one over the other, which is what
+  // keeps it below a rival and above the supply-side relations underneath it.
+  adjacent: 78,
   dependency: 70,
   integration: 65,
   shaper: 55,
@@ -733,6 +737,9 @@ export function noteOf(run: CompletedRun, path: string): NoteView | null {
     // The panel prints `descGrounded` beside them, and a number about evidence
     // is worth much less than the evidence.
     spans: textsOf(hit.entity.spans),
+    reasoning: hit.entity.reasoning,
+    relationSpan: hit.entity.relationSpan,
+    relationGrounded: hit.entity.relationGrounded,
     because: (hit.entity as { because?: string }).because,
     tier: tierOf(hit.entity),
     descGrounded: descGroundedOf(hit.entity),

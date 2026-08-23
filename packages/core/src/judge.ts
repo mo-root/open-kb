@@ -37,6 +37,11 @@ export const JUDGED_KINDS = [
 export const JUDGED_RELATIONS = [
   "competitor",
   "substitute",
+  // Mirrors packages/sweep/src/sweep.ts's RELATIONS — the reason two copies
+  // of this vocabulary exist is core cannot import from sweep, and the
+  // swarm's harvest-classify schema (packages/swarm/src/agent.ts) binds to
+  // this one.
+  "adjacent",
   "dependency",
   "integration",
   "shaper",
@@ -171,6 +176,63 @@ export interface JudgeDeps {
  */
 const identityKey = (text: string) => text.toLowerCase().replace(/[^a-z0-9]/g, "")
 
+/** Either identity key contains the other — the one containment test this
+ *  file runs on every label pair, named once instead of repeated inline. */
+const relates = (a: string, b: string): boolean => a.length > 0 && b.length > 0 && (a.includes(b) || b.includes(a))
+
+/**
+ * Registrable domains where the entity a model names can legitimately live in
+ * the host's own leftmost label rather than the domain's — a small, named
+ * exception, not a PSL. MEASURED on one cursor.com run, all three withdrawn
+ * by the plain registrable-label check before this list existed:
+ *   - github.io  (tree-sitter.github.io is tree-sitter's own docs; "github"
+ *                 is the platform's label, not the tenant's)
+ *   - medium.com (martinterhaak.medium.com is a legitimate personal-blog
+ *                 author page on a multi-tenant publishing platform)
+ *   - google.com (firebase.google.com is Firebase's own home; "google" is
+ *                 the parent's label, not the product the model named)
+ * sendgrid.kke.co.jp is deliberately NOT on this list: kke.co.jp is a
+ * reseller's own domain, not a platform, and its leftmost label ("sendgrid")
+ * matches the name exactly the same way tree-sitter's does — gating on this
+ * list (rather than comparing the leftmost label unconditionally) is what
+ * keeps that case withdrawn. Extend only on a measured miss.
+ */
+const SUBDOMAIN_IDENTITY_HOSTS = new Set(["github.io", "medium.com", "google.com"])
+
+/**
+ * A trailing generic suffix stripped from the WRITTEN NAME ONLY, for a
+ * second, LAXER comparison pass against the UNSTRIPPED registrable/host
+ * label — never replacing the strict one, only added beside it. MEASURED:
+ * getpanto.ai (registrable label "getpanto", model wrote "Panto AI") defeats
+ * plain substring matching because the written name wears a generic suffix
+ * the domain doesn't; stripping it ("pantoai" -> "panto") lets containment
+ * find it inside "getpanto" on its own — a domain wearing a vanity PREFIX
+ * needs no separate correction, because containment already looks for the
+ * shorter string anywhere inside the longer one.
+ *
+ * ONE-SIDED ON PURPOSE. A prior version of this pass also stripped a leading
+ * vanity prefix (get/try/use/my) from BOTH the name and the domain label
+ * independently, which fixed trypear.ai but MEASURABLY introduced a false
+ * negative an adversarial review caught by execution: wrongDoorName(
+ * "TryHackMe", "tryhackme.hackmehq.com") returned false, because "try" and
+ * "hq" strip off two UNRELATED strings ("tryhackme", "hackmehq") down to the
+ * same accidental remainder ("hackme") — two brands neither of which is the
+ * other, forgiven on a coincidence of vanity spelling. Stripping only the
+ * name and comparing against the domain's label UNCHANGED cannot manufacture
+ * that kind of two-sided collision, and still resolves trypear.ai: containment
+ * of the stripped name ("pear") inside the untouched label ("trypear") holds
+ * exactly because containment does not care what sits in front of a match.
+ */
+const VANITY_SUFFIXES = ["ai", "app", "io", "hq", "labs", "inc"]
+
+/** The suffix off the top, only if the key is longer than it — stripping a
+ *  key down to its own suffix would turn every short label into an
+ *  empty-string match against everything. */
+const stripVanitySuffix = (key: string): string => {
+  const suffix = VANITY_SUFFIXES.find((suf) => key.length > suf.length && key.endsWith(suf))
+  return suffix ? key.slice(0, -suffix.length) : key
+}
+
 /**
  * True when a judged name's home is a different registrable domain — the
  * brand spelled in a subdomain of someone else's site ("SendGrid" on
@@ -179,6 +241,13 @@ const identityKey = (text: string) => text.toLowerCase().replace(/[^a-z0-9]/g, "
  * map. Shared by the page path and the SERP-text path: a wrong door is a
  * wrong door whichever text the model read.
  *
+ * Two corrections layered on top of the original registrable-label check,
+ * both MEASURED as false-positive fixes on one cursor.com run (5 of 6 real
+ * entities silently withdrawn before either existed): subdomain-label
+ * awareness (SUBDOMAIN_IDENTITY_HOSTS, above) and a name-side vanity-suffix
+ * strip (stripVanitySuffix, above). Neither replaces the strict check that
+ * follows — each only adds a further reason to stand down.
+ *
  * EXPORTED as the one implementation of this withdrawal, because a second
  * judgement path (the sweep's second look) once re-admitted exactly the
  * verdicts these guards withdraw — a name rule restated is a name rule that
@@ -186,14 +255,34 @@ const identityKey = (text: string) => text.toLowerCase().replace(/[^a-z0-9]/g, "
  */
 export function wrongDoorName(name: string, host: string): boolean {
   const nameKey = identityKey(name)
-  const regLabel = identityKey(registrableHost(host).split(".")[0] ?? "")
+  if (nameKey.length < 3) return false
+
+  const reg = registrableHost(host)
+  const regLabel = identityKey(reg.split(".")[0] ?? "")
   const hostKey = identityKey(host)
-  return (
-    nameKey.length >= 3 &&
-    !regLabel.includes(nameKey) &&
-    !nameKey.includes(regLabel) &&
-    hostKey.includes(nameKey)
-  )
+  // The name has to show up in the host SOMEWHERE, or there is nothing to
+  // withdraw — a name unrelated to the host entirely is a different verdict.
+  if (!hostKey.includes(nameKey)) return false
+  // Strict pass, unchanged from before either correction: the name is the
+  // registrable domain's own brand.
+  if (relates(regLabel, nameKey)) return false
+
+  // Correction 1 — subdomain-label awareness. Gated to
+  // SUBDOMAIN_IDENTITY_HOSTS: see that constant's comment for why an
+  // ungated comparison here would also forgive sendgrid.kke.co.jp.
+  const onPlatform = SUBDOMAIN_IDENTITY_HOSTS.has(reg)
+  const hostLabel = onPlatform ? identityKey(host.split(".")[0] ?? "") : ""
+  if (onPlatform && relates(hostLabel, nameKey)) return false
+
+  // Correction 2 — strip a generic suffix off the NAME only, compare
+  // against the domain's label UNCHANGED. See stripVanitySuffix's comment
+  // for why the domain side is never stripped: doing so on both sides at
+  // once is how two unrelated brands collided on a shared remainder.
+  const laxName = stripVanitySuffix(nameKey)
+  if (laxName.length >= 3 && relates(regLabel, laxName)) return false
+  if (onPlatform && relates(hostLabel, laxName)) return false
+
+  return true
 }
 
 /**

@@ -108,7 +108,8 @@ async function main() {
       console.log(`\nstopping: the key has spent $${real.toFixed(2)} of the $${budget} ceiling`)
       break
     }
-    if (Number.isFinite(await headroom()) && (await headroom()) < RESERVE_USD) {
+    const room = await headroom()
+    if (Number.isFinite(room) && room < RESERVE_USD) {
       console.log(`\nstopping: below the $${RESERVE_USD} reserve on the key itself`)
       break
     }

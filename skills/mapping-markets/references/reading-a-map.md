@@ -14,6 +14,7 @@ They split into two groups, and the split is the point.
 |---|---|---|
 | `competitor` | a buyer would shortlist both and pick one | the battlecard list |
 | `substitute` | solves the same problem a different way, so never appears in a comparison article | usually the most valuable and the most missed. If a map has none, it mapped a shortlist rather than a market |
+| `adjacent` | sells into the same workflow or the same buyer's world, but nobody picks one *instead of* the other — a backup vendor, a support platform, a host | usually the largest group on a map, and the softest: only `competitor` and `substitute` need the host's own readable page, so read this one's `why` before repeating it |
 | `shaper` | the incumbent everyone positions against, or the infrastructure the market sits on | if it moved, everyone else would react. Watch it |
 | `dependency` | what the anchor is built on | supply risk |
 | `integration` | plugs into it, or it plugs in | partnership surface |
@@ -31,8 +32,10 @@ most actionable rows on the map.
 | `lists` | indexes the vendors: directories, comparison pages, awesome-lists | a shortcut to more of the map. One directory can name a hundred players |
 | `discusses` | where the buyer argues: subreddits, forums, Q&A, HN | where to show up |
 
-`none` means the classifier kept the host and would not place it. It gets no edge and sits
-unconnected.
+Two more relations never appear as rows you can act on. `none` is the judge saying the host has no
+place here at all, and it is the one verdict that drops a host off the map — a node with no relation
+gets no edge. `unknown` is the downgrade for a claim the evidence refused: the host stays, wearing
+the refusal, which is why the `unknown` pile is a lead list rather than noise.
 
 ## Reading it well
 
@@ -45,8 +48,14 @@ substitutes are what the comparison content cannot surface, which is exactly why
 **`lists` rows are leads to more map.** A directory naming a hundred vendors is worth more than one
 more competitor.
 
+**`adjacent` will usually be the biggest pile** — 302 of 776 kept entities on the newest stored run.
+That is the fix for a classifier that used to force those hosts into `competitor`, not a defect. But
+it carries no own-readable-page requirement the way `competitor` and `substitute` do, so it is where
+to spot-check first.
+
 **Read the `why`, not the label.** The label is a bucket; the reason is what a reader can act on or
-correct. "Adjacent player in the same space" is worth nothing and means the classifier had nothing.
+correct. A `why` that restates the label — "adjacent player in the same space" — is the classifier
+having nothing; the label `adjacent` itself is a real placement with a real definition above.
 
 ## Edges between entities
 
@@ -63,23 +72,26 @@ query is what any two pages of a broad search have in common.
 
 ## What not to trust
 
-Measured, on a real map: 207 entities checked against the live web, **86 right, 121 wrong**.
+Two numbers, and the difference between them is the engine, not the market.
 
-The head of the market was entirely correct. The failures were all in the tail and all the same
-mistake — the classifier reads a hostname, three titles and a snippet, so anything ranking for the
-market's vocabulary becomes a competitor:
-
-- A vendor-comparison site that **ranked the anchor first** was recorded as a rival selling the
-  anchor's product category.
-- An affiliate blog about a vendor was described using *that vendor's* product line.
-- A host whose name contained "llm" was given a product it does not have, invented from the domain.
+- **The old classifier** judged a host from its hostname, three titles and a snippet. An audit
+  checked 207 of its entities against the live web: **86 right, 121 wrong**. Every failure was the
+  same mistake — anything ranking for the market's vocabulary became a competitor, so a
+  vendor-comparison site that ranked the anchor first was recorded as a rival, and an affiliate blog
+  was described using the product line of the vendor it wrote about. That number is why the engine
+  was rebuilt, and it does not describe any map this tool produces now.
+- **The engine that ships** fetches each host's own page and judges from it, and every quote is
+  verified as a literal substring of bytes the run stored. A 30-entity spot audit measured **1
+  wrong — 3.3%, which at n=30 honestly means 0.6%–16.7%** (the Wilson interval; never quote the rate
+  without it).
 
 So when reading a map:
 
 1. Trust the head of the competitor list.
 2. Treat unfamiliar hosts as leads to verify, not findings.
 3. Never repeat a `why` about a host you do not recognise as though it were established.
-4. Expect the total to be inflated.
+4. Treat the `unknown` pile as unfinished work rather than noise — real competitors sit in it when a
+   page refused to load.
 
-A one-line check that catches most of it: open the domain. A page that ranks, compares or reviews
-vendors is a directory or a publisher, however much market vocabulary it contains.
+A one-line check that catches most of what remains: open the domain. A page that ranks, compares or
+reviews vendors is a directory or a publisher, however much market vocabulary it contains.

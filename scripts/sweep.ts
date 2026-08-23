@@ -6,6 +6,7 @@
  * you see here is what the browser runs.
  *
  * Usage:  set -a && . ./.env && set +a && npx tsx scripts/sweep.ts resend.com [nQueries]
+ *         npx tsx scripts/sweep.ts resend.com --quick   # a bounded first look
  *
  * The run stops itself at $8.00 — see the watchdog below and the numbers behind
  * that figure in `scripts/spend-caps.ts`. `OPENKB_CLI_RUN_CAP_USD` changes it;
@@ -25,7 +26,24 @@ import {
   stoppedRun,
 } from "./spend-caps.js"
 
-const anchor = process.argv[2] ?? "resend.com"
+/** `"0"`/`"false"` (case-insensitive) reads as an explicit disable; unset or
+ *  anything else leaves a default-on flag standing. Mirrors the "0"/"off"/
+ *  "false" disable shape `OPENKB_SWARM_FAMILIES` already uses in swarm.ts. */
+const disablesFlag = (raw: string | undefined) => {
+  const v = (raw ?? "").trim().toLowerCase()
+  return v === "0" || v === "false"
+}
+
+// P1-7 (docs/overnight-backlog.md): a user's first run is currently a
+// ~28-minute wait (runs/sweep-cursor-com-20260821105321.json) before they see
+// anything. `--quick` is argv, not an env var — it is a one-time human choice
+// for a first look, not a standing shell setting like the OPENKB_* guards
+// below. It is filtered out of argv here so it can sit anywhere on the command
+// line without shifting the two positional args past it.
+const QUICK = process.argv.includes("--quick")
+const positional = process.argv.slice(2).filter((a) => a !== "--quick")
+
+const anchor = positional[0] ?? "resend.com"
 // Unset unless a third arg is given — the normal case, and now the same
 // default the web route already used (`route.ts`: "undefined is not a bad
 // value, it is the normal one now"). Left as a hardcoded `?? 40` here, every
@@ -33,8 +51,36 @@ const anchor = process.argv[2] ?? "resend.com"
 // script exists to validate — every product dealt its own opening hand, the
 // spend ceiling as the only brake — could never actually be exercised from a
 // terminal. A numeric third arg still bounds a probe exactly as before.
-const TARGET = process.argv[3] !== undefined ? Number(process.argv[3]) : undefined
+const TARGET = positional[1] !== undefined ? Number(positional[1]) : undefined
 const MODEL = process.env.OPENKB_MODEL ?? "deepseek/deepseek-v4-flash-0731"
+
+/**
+ * `--quick`'s preset, over `SweepOptions` fields that already exist — no new
+ * engine capability, per the backlog item. Both levers are chosen from the
+ * SAME measured run the backlog cites:
+ *
+ *   - `maxHosts` is the estimation stop that ends both the search-widening
+ *     loop and the fetch/classify phase early (`HOST_CEILING`, sweep.ts). The
+ *     cursor run bought 926 hosts against a default sizing of 900; capping at
+ *     a tenth of that cuts the two phases that were 26% + 25% of its wall
+ *     time (search+widening, classify) roughly proportionally.
+ *   - `skipModelLinking: true` drops the paid link pass entirely — 43% of
+ *     that same run's wall time (12.3 of 28.5 minutes), the single biggest
+ *     phase. The free naming pass (pages that name another player outright)
+ *     still runs, so a quick map still carries edges, just fewer of them.
+ *
+ * An explicit `OPENKB_MAX_HOSTS`/`OPENKB_SKIP_MODEL_LINKING` still wins over
+ * this preset below — `--quick` fills gaps, it does not override a setting
+ * the operator already made.
+ */
+const QUICK_MAX_HOSTS = 90
+
+if (QUICK) {
+  console.log(
+    `--quick: capping this run at ~${QUICK_MAX_HOSTS} hosts and skipping the paid link pass ` +
+      `— a smaller, faster-linked map for a first look. Drop --quick for the full run.`,
+  )
+}
 
 const spans = new SpanStream()
 const startedAt = Date.now()
@@ -82,11 +128,19 @@ const out = await withSpendCap(
   sweep({
     domain: anchor,
     queries: TARGET,
-    // `|| 4` like the three guards below, not `?? 4` alone: OPENKB_PAGES=abc
-    // is NaN and would reach the SERP call as a page count. Same semantics
-    // too — 0 falls back, exactly as OPENKB_MAX_HOSTS=0 means "unset", not
-    // "zero of them".
-    pages: Number(process.env.OPENKB_PAGES ?? 4) || 4,
+    // UNSET BY DEFAULT, and that is the whole point since variable page depth
+    // landed. The engine opens a query at SHALLOW_PAGES (2) and moves a product
+    // to DEEP_PAGES (4) only once `assess` has per-page-yield evidence for it —
+    // but `DEEP_PAGES` is floored at `SHALLOW_PAGES`, so passing 4 here
+    // collapsed the pair and every CLI run bought four pages on everything.
+    // MEASURED: both runs on 2026-08-21 recorded `deepenedProducts: []` — the
+    // deepen verdict had nothing left to buy, and the feature was inert on the
+    // one path a cloner actually uses. Unset restores 2→4.
+    //
+    // `|| undefined` like the guards below, not `?? undefined` alone:
+    // OPENKB_PAGES=abc is NaN and would reach the SERP call as a page count;
+    // 0 falls back too, exactly as OPENKB_MAX_HOSTS=0 means "unset".
+    pages: Number(process.env.OPENKB_PAGES ?? 0) || undefined,
     // The width floor: rounds before the model's "enough" is accepted. The
     // CLI defaults to 3 — one 'enough' after the opening hand ended a run at
     // 36 queries where its twin ran 87 — because the shipped terminal run is
@@ -94,25 +148,30 @@ const out = await withSpendCap(
     // model's own judgement.
     minWaves: Number(process.env.OPENKB_MIN_WAVES ?? 3) || undefined,
     // The estimation stop: ~900 distinct hosts lands near ~700 kept nodes,
-    // which is already a big map. OPENKB_MAX_HOSTS resizes it.
-    maxHosts: Number(process.env.OPENKB_MAX_HOSTS ?? 0) || undefined,
+    // which is already a big map. OPENKB_MAX_HOSTS resizes it; `--quick`
+    // fills in a smaller one (QUICK_MAX_HOSTS above) when the env var is
+    // unset.
+    maxHosts: Number(process.env.OPENKB_MAX_HOSTS ?? 0) || (QUICK ? QUICK_MAX_HOSTS : undefined),
     // Search-wave width. The provider adapter obeys retry-afters, so pushing
     // this is observable-safe: too wide answers as 429s and pacing, never loss.
     concurrency: Number(process.env.OPENKB_SEARCH_CONCURRENCY ?? 0) || undefined,
-    skipModelLinking: process.env.OPENKB_SKIP_MODEL_LINKING === "1",
+    skipModelLinking: process.env.OPENKB_SKIP_MODEL_LINKING === "1" || QUICK,
     // `OPENKB_DISCOVERY=agent` runs phase one as the discovery agent instead of
     // the single call — the A/B this flag exists for. Anything else, including
     // unset, is the unchanged default.
     discovery: process.env.OPENKB_DISCOVERY === "agent" ? "agent" : undefined,
-    // `OPENKB_TRIAGE=1` asks a model, from search metadata alone, which hosts
-    // deserve a fetch and a judgement at all — the same A/B shape as the
-    // discovery flag. Unset is the unchanged default: every host is judged.
-    triage: process.env.OPENKB_TRIAGE === "1" ? true : undefined,
-    // `OPENKB_SECOND_LOOK=1` spends one more free fetch on each host the judge
-    // left `unknown` — a page the search itself surfaced instead of the front
-    // page — and re-asks the same classify question. The same A/B shape again.
-    // Unset is the unchanged default: the first judgement stands.
-    secondLook: process.env.OPENKB_SECOND_LOOK === "1" ? true : undefined,
+    // `triage`, `secondLook` and `listicleHarvest` DEFAULT ON as of
+    // 2026-08-22 — each survived the A/B its doc comment describes (see
+    // `SweepOptions` in `packages/sweep/src/sweep.ts` for the measured
+    // numbers) — so the env var now DISABLES rather than enables:
+    // `OPENKB_TRIAGE=0` (or `false`) turns it off, anything else, unset
+    // included, leaves the new default standing. `dropConfirm` did not
+    // survive its own A/B and stays the odd one out: opt-in,
+    // `OPENKB_DROP_CONFIRM=1` still the only way to turn it on.
+    triage: disablesFlag(process.env.OPENKB_TRIAGE) ? false : undefined,
+    secondLook: disablesFlag(process.env.OPENKB_SECOND_LOOK) ? false : undefined,
+    dropConfirm: process.env.OPENKB_DROP_CONFIRM === "1" ? true : undefined,
+    listicleHarvest: disablesFlag(process.env.OPENKB_LISTICLE_HARVEST) ? false : undefined,
     spans,
     creds: {
       token: process.env.BRIGHTDATA_API_TOKEN!,
@@ -306,7 +365,9 @@ console.log(`$${stats.usd.toFixed(4)} · ${stats.seconds.toFixed(0)}s`)
 {
   const report = out!.report as Record<string, unknown>
   const cost = report.cost as { usd: number; byKind: { label: string; calls: number; failures: number; usd: number; ms: number }[] }
-  const serp = report.serp as { requests: number; retries: number; pagesPerQuery: number; blocked: Record<string, number> } | undefined
+  const serp = report.serp as
+    | { requests: number; retries: number; pagesPerQuery: number; blocked: Record<string, number>; failed?: Record<string, number> }
+    | undefined
   const kernel = report.kernel as { fetched: number; unreadable: number; unreadableByReason: Record<string, number>; unlocked?: number; serpJudged?: number } | undefined
   const pct = (n: number) => `${((100 * n) / (cost.usd || 1)).toFixed(1)}%`
 
@@ -330,6 +391,31 @@ console.log(`$${stats.usd.toFixed(4)} · ${stats.seconds.toFixed(0)}s`)
     )
     const blocks = Object.entries(serp.blocked).sort((a, b) => b[1] - a[1]).slice(0, 6)
     for (const [reason, n] of blocks) console.log(`  ${String(n).padStart(4)} × ${reason}`)
+    // Retries are the provider letting a query in on the second ask; these
+    // are the queries it never let in at all. Printed apart so an account
+    // suspension — which is not retried, and so never appears above — is
+    // the first line a reader sees rather than a number in the JSON.
+    const failed = Object.entries(serp.failed ?? {}).sort((a, b) => b[1] - a[1]).slice(0, 6)
+    if (failed.length) {
+      const total = failed.reduce((n, [, c]) => n + c, 0)
+      console.log(`  ${total} queries failed outright:`)
+      for (const [reason, n] of failed) console.log(`  ${String(n).padStart(4)} × ${reason}`)
+    }
+  }
+
+  // Which upstream hosts answered for the model id, and how often each
+  // refused. One model id, ~30 hosts of very different discipline: the
+  // host is the first thing to read when refusals climb.
+  const model = report.model as { id: string; ignored: string[]; servedBy: Record<string, { calls: number; refused: number }> } | undefined
+  if (model && Object.keys(model.servedBy).length) {
+    const rows = Object.entries(model.servedBy).sort((a, b) => b[1].calls - a[1].calls)
+    console.log(`\nmodel   ${model.id}` + (model.ignored.length ? ` — never routed to ${model.ignored.join(", ")}` : ""))
+    for (const [host, r] of rows) {
+      console.log(
+        `  ${host.padEnd(16)} ${String(r.calls).padStart(5)} calls` +
+          (r.refused ? `, ${r.refused} refused (${((100 * r.refused) / r.calls).toFixed(0)}%)` : ""),
+      )
+    }
   }
 
   if (kernel) {

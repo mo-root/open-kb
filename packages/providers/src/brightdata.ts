@@ -165,13 +165,50 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
     nextSlotAt = slot + minGapMs
     if (slot > now) await new Promise((r) => setTimeout(r, slot - now))
   }
+  /** Raise the floor, never lower it — shared by the reactive and proactive
+   *  triggers below so a message and a trend cannot fight over the pace. */
+  const applyGap = (gap: number) => {
+    if (gap > minGapMs) minGapMs = gap
+    lastThrottleAt = Date.now()
+  }
   const noteThrottle = (msg: string) => {
     const perMin = statedRate(msg)
     // Ninety percent of the stated rate: sitting exactly on a limit is how you
     // discover it was measured differently at the other end.
     const gap = perMin ? Math.ceil(60_000 / (perMin * 0.9)) : 6_000
-    if (gap > minGapMs) minGapMs = gap
-    lastThrottleAt = Date.now()
+    applyGap(gap)
+  }
+
+  /**
+   * PROACTIVE — narrows the pace on a worsening trend, before the provider
+   * ever names a rate. `noteThrottle` above is reactive: it can only act
+   * once a throttle message exists to read, and the stored "auto-throttled"
+   * runs did not start with that sentence — they started as a run of plain
+   * RETRYABLE rejections that only later crossed the account's threshold
+   * for the provider to say something. Waiting for the sentence spends
+   * requests into the same wall in the meantime.
+   *
+   * A rolling window over the last WINDOW_SIZE individual requests (not
+   * queries — a page counts once, a retry counts again, same unit
+   * `noteThrottle` reacts to) is the smallest sample that is still an
+   * account-wide rate rather than one page's bad luck. Below it, new
+   * requests are paced by a small, fixed, bounded gap — a fraction of
+   * `noteThrottle`'s own unstated-rate fallback of 6s — through the exact
+   * same `applyGap` lever, so a real throttle message that arrives after
+   * still wins outright (it only ever raises the floor) and recovery is
+   * the one `recoverPace` already has. In-flight requests are untouched:
+   * `pace()` is only ever awaited before a request STARTS.
+   */
+  const WINDOW_SIZE = 20
+  const MIN_SUCCESS_RATE = 0.85
+  const PROACTIVE_GAP_MS = 2_000
+  const window: boolean[] = []
+  const noteOutcome = (ok: boolean) => {
+    window.push(ok)
+    if (window.length > WINDOW_SIZE) window.shift()
+    if (window.length < WINDOW_SIZE) return
+    const rate = window.filter(Boolean).length / window.length
+    if (rate < MIN_SUCCESS_RATE) applyGap(PROACTIVE_GAP_MS)
   }
   /**
    * THE PENALTY HAS TO EXPIRE, OR ONE MESSAGE COSTS THE WHOLE RUN.
@@ -211,6 +248,30 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
   // pick over a small number of zones is lumpy.
   let cursor = 0
   const nextZone = () => zones[cursor++ % zones.length]!
+  /** The zone AFTER the one a request just failed on — the retry's zone.
+   *  `nextZone()` twice is not that: twenty workers advance the same cursor
+   *  between one worker's two calls, so its second pick is whatever the
+   *  round-robin happens to be at, the failed zone included. Probed: one
+   *  query, two pages, refused on zone A, retried on zone A. */
+  const otherZone = (failed: string) =>
+    zones[(Math.max(0, zones.indexOf(failed)) + 1) % zones.length]!
+
+  /**
+   * A SUSPENDED ACCOUNT IS NOT A THING TO KEEP ASKING.
+   *
+   * Measured on runs/sweep-cursor-com-20260823064255.json: the account was
+   * suspended at query 137 of 156, and the 19 queries after it were each
+   * bought, refused, waited out and refused again — $0.09 booked against
+   * an account that could not answer, and the run's unlocker escalations
+   * lost the same way. Once the provider has said "suspended", every later
+   * request from this port instance is refused HERE, for $0 and no wire,
+   * until the instance is gone — a port lives for one run, and a run cannot
+   * reactivate a billing account from inside itself. The sweep says the
+   * refusal aloud the first time; this makes the rest of the run honest
+   * about it rather than busy.
+   */
+  let suspended: string | null = null
+  const SUSPENDED = /suspended/i
 
   /**
    * How many result pages to read per query.
@@ -308,6 +369,7 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
               if (brdError && THROTTLED.test(brdError)) noteThrottle(brdError)
 
               if (!res.ok) {
+                noteOutcome(false)
                 return { query, hits: [], ok: false, error: reason ?? `serp http ${res.status}`, usd: price, ms, requests: 1 }
               }
               const text = await res.text()
@@ -318,6 +380,7 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
               try {
                 parsed = JSON.parse(text)
               } catch {
+                noteOutcome(false)
                 return {
                   query,
                   hits: [],
@@ -354,10 +417,13 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
               // downstream. 'try again' matches RETRYABLE above, so the
               // existing retry re-buys the page on the other zone for free.
               if (hits.length && hits.every((h) => h.url.startsWith("/"))) {
+                noteOutcome(false)
                 return { query, hits: [], ok: false, error: "serp returned redirect-encoded links — try again", usd: price, ms, requests: 1 }
               }
+              noteOutcome(true)
               return { query, hits, ok: true, usd: price, ms, requests: 1 }
             } catch (e) {
+              noteOutcome(false)
               const timedOut = (e as Error).name === "TimeoutError" || (e as Error).name === "AbortError"
               return {
                 query,
@@ -372,10 +438,23 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
             }
           }
 
-          let out = await once(nextZone())
+          if (suspended) {
+            return {
+              query,
+              hits: [],
+              ok: false,
+              error: suspended,
+              usd: 0,
+              ms: 0,
+              requests: 0,
+            }
+          }
+          const firstZone = nextZone()
+          let out = await once(firstZone)
+          if (!out.ok && SUSPENDED.test(out.error ?? "")) suspended = out.error ?? "Account is suspended"
           // One retry, past the interval the provider names. Workers run
           // concurrently, so this costs one worker's time rather than the wave's.
-          if (!out.ok && (RETRYABLE.test(out.error ?? "") || THROTTLED.test(out.error ?? ""))) {
+          if (!out.ok && !suspended && (RETRYABLE.test(out.error ?? "") || THROTTLED.test(out.error ?? ""))) {
             // A throttled call waits a full pacing slot; anything else waits the
             // interval the provider named for a transient failure.
             const wait = THROTTLED.test(out.error ?? "") ? Math.max(retryMs, minGapMs) : retryMs
@@ -383,7 +462,7 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
             // A different zone on the retry where one exists: if the first is
             // throttling, waiting is only half the answer.
             const first = out
-            const second = await once(nextZone())
+            const second = await once(otherZone(firstZone))
             // Bill both: each was a request the provider serviced. The refusal
             // that caused the retry is kept as a counted, named fact — a run
             // that pays 28% extra to be let in should be able to say so.

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { answerKeyRecall, namesHost } from "../src/coverage.js"
+import { answerKeyRecall, escapeRe, namesHost } from "../src/coverage.js"
 
 const page = (vendors: string[], namesAnchor = true) => ({
   url: "https://listicle.com/best",
@@ -85,5 +85,40 @@ describe("namesHost", () => {
   it("matches at the very start and very end of the text", () => {
     expect(namesHost("io.com leads the pack", "io.com")).toBe(true)
     expect(namesHost("the pack is led by io.com", "io.com")).toBe(true)
+  })
+  it("treats the host's own dot as a literal, not a regex wildcard", () => {
+    // Every case above uses a real hostname, so an unescaped "." (which matches
+    // any character as a regex wildcard) would pass them all the same — the
+    // dot always sits between two real characters in the fixture text too.
+    // This is the one case that tells the two apart: "a.com" must not match
+    // "aXcom", where an unescaped "." would.
+    expect(namesHost("check out aXcom for pricing", "a.com")).toBe(false)
+    expect(namesHost("check out a.com for pricing", "a.com")).toBe(true)
+  })
+})
+
+/**
+ * escapeRe is shared by namesHost above and by grounding.ts's span matcher
+ * (`grounding.ts:41`) so the two cannot drift on what counts as a literal —
+ * neither caller tested it directly before this. The property that matters
+ * is not "it inserts backslashes" but that the escaped string, dropped into
+ * `new RegExp()`, matches only the exact original text and nothing a
+ * metacharacter reading of it would additionally match.
+ */
+describe("escapeRe", () => {
+  it("escapes every regex metacharacter it lists", () => {
+    expect(escapeRe(".*+?^${}()|[]\\")).toBe("\\.\\*\\+\\?\\^\\$\\{\\}\\(\\)\\|\\[\\]\\\\")
+  })
+  it("leaves ordinary characters untouched", () => {
+    expect(escapeRe("a-b_c 123")).toBe("a-b_c 123")
+  })
+  it("round-trips through RegExp to match only the literal string", () => {
+    for (const raw of ["a.com", "sdk.com", "a+b.io", "weird[host].com", "a(b).com"]) {
+      const re = new RegExp(`^${escapeRe(raw)}$`)
+      expect(re.test(raw)).toBe(true)
+      // The mangled form a metacharacter reading would additionally accept —
+      // "." as any-char, "+" as one-or-more, "[...]" as a class — must not match.
+      expect(re.test(raw.replace(/[.+[\]()]/g, "X"))).toBe(false)
+    }
   })
 })

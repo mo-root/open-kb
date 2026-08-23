@@ -122,6 +122,17 @@ describe("graphOf, entity-to-entity edges", () => {
     expect(() => graphOf(r)).not.toThrow()
     expect(graphOf(r).edges).toHaveLength(1)
   })
+
+  // GraphCanvas's `!graph` guard only catches a run whose fetch failed —
+  // graphOf itself always emits the anchor node, so a run that kept zero
+  // entities and decomposed zero markets still returns a graph, just a
+  // one-node one. This is the shape B4's "one-node graph" empty state
+  // guards against; see GraphCanvas.tsx's `graph.nodes.length <= 1` check.
+  it("still returns a one-node graph — the anchor alone — when a run kept nothing", () => {
+    const g = graphOf(run([]))
+    expect(g.nodes).toHaveLength(1)
+    expect(g.nodes[0].kind).toBe("anchor")
+  })
 })
 
 describe("graphOf, prominence — the search's own count, apart from placement", () => {
@@ -492,6 +503,56 @@ describe("roads and spans, an entity's own receipts", () => {
   it("leaves spans absent on a row whose page was never read", () => {
     const r = fixtureRun({ entities: [entity("a.com", "competitor")] })
     expect(noteOf(r, "players/a.com.md")?.spans).toBeUndefined()
+  })
+
+  /** `reasoning` is `.optional()` on the classify schema — most fixtures and
+   *  most stored runs answer without it — so the panel has to degrade to
+   *  nothing on an absent value, the same as `roads` and `spans` above. */
+  it("carries the decisive fact onto the whole entity", () => {
+    const r = fixtureRun({
+      entities: [{ ...entity("a.com", "competitor"), reasoning: "Its pricing page lists Postmark by name as the switch target." }],
+    })
+    expect(noteOf(r, "players/a.com.md")?.reasoning).toBe(
+      "Its pricing page lists Postmark by name as the switch target.",
+    )
+  })
+
+  it("leaves reasoning absent on a run recorded before the field existed", () => {
+    const r = fixtureRun({ entities: [entity("a.com", "competitor")] })
+    expect(noteOf(r, "players/a.com.md")?.reasoning).toBeUndefined()
+  })
+
+  /** `relationSpan`/`relationGrounded` are `spans`'s counterpart for
+   *  `relation` — same optional shape, carried through the same way. */
+  it("carries the relation quote and its grounding onto the whole entity", () => {
+    const r = fixtureRun({
+      entities: [
+        {
+          ...entity("a.com", "competitor"),
+          relationSpan: "positions itself as a direct alternative to Postmark",
+          relationGrounded: true,
+        },
+      ],
+    })
+    const note = noteOf(r, "players/a.com.md")
+    expect(note?.relationSpan).toBe("positions itself as a direct alternative to Postmark")
+    expect(note?.relationGrounded).toBe(true)
+  })
+
+  /** `relationGrounded` is a measurement, not a gate — an ungrounded quote
+   *  still rides through rather than being dropped. */
+  it("carries an ungrounded relation quote through too", () => {
+    const r = fixtureRun({
+      entities: [{ ...entity("a.com", "competitor"), relationSpan: "a paraphrase, not a quote", relationGrounded: false }],
+    })
+    const note = noteOf(r, "players/a.com.md")
+    expect(note?.relationSpan).toBe("a paraphrase, not a quote")
+    expect(note?.relationGrounded).toBe(false)
+  })
+
+  it("leaves relationSpan absent on a run recorded before the field existed", () => {
+    const r = fixtureRun({ entities: [entity("a.com", "competitor")] })
+    expect(noteOf(r, "players/a.com.md")?.relationSpan).toBeUndefined()
   })
 })
 

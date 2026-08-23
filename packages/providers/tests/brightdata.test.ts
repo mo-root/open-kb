@@ -796,6 +796,82 @@ describe("serp zone rotation", () => {
     const [r] = await s.search(["a"])
     expect(r!.ok).toBe(true)
   })
+
+  /**
+   * The retry used to call `nextZone()` again, which is the round-robin's NEXT
+   * pick — not the other zone. With twenty workers advancing one cursor, a
+   * worker's second pick is whatever the cursor happens to be at, the zone
+   * that just refused it included. Probed on a live pair of zones: one query,
+   * refused on A, retried on A. Two pages of one query reproduce it without
+   * workers: page 1 draws zone one, page 2 draws zone two, and page 1's retry
+   * then drew zone one again.
+   */
+  it("retries a refusal on the OTHER zone, not the round-robin's next pick", async () => {
+    const sent: string[] = []
+    const fetchImpl = vi.fn(async (_u: unknown, init: unknown) => {
+      const body = JSON.parse((init as RequestInit).body as string) as { zone: string; url: string }
+      sent.push(body.zone)
+      // Page 1 (no `start=`) is refused once; page 2 and every retry succeed.
+      const refuse = !/start=/.test(body.url) && sent.filter((z) => z).length === 1
+      return refuse
+        ? new Response("", { status: 200, headers: { "x-brd-error": "response body was rejected", "x-brd-status-code": "502" } })
+        : new Response(JSON.stringify({ organic: [] }), { status: 200 })
+    })
+    const s = brightDataSearch(
+      { ...creds, serpZone: "one, two" },
+      { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 2, retryMs: 0 },
+    )
+    await s.search(["a"])
+    // page 1 on one, page 2 on two, page 1's retry on two — never one again.
+    expect(sent).toEqual(["one", "two", "two"])
+  })
+})
+
+describe("a suspended account", () => {
+  const suspendedResponse = () =>
+    new Response("", {
+      status: 200,
+      headers: {
+        "x-brd-error": "Account is suspended. Login to brightdata.com/cp/setting/billing to activate your account",
+        "x-brd-status-code": "407",
+      },
+    })
+
+  /**
+   * Measured on runs/sweep-cursor-com-20260823064255.json: suspended at query
+   * 137 of 156, and the 19 queries after it were each sent, refused, and
+   * refused again. A suspension is not a refusal the next request can
+   * outlive, so after the first one this port stops asking.
+   */
+  it("is asked once — every later search is refused locally for $0 and no wire", async () => {
+    const fetchImpl = vi.fn(async (..._: FetchArgs) => suspendedResponse())
+    const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 1, retryMs: 0 })
+    const [first] = await s.search(["a"])
+    expect(first!.ok).toBe(false)
+    expect(first!.error).toMatch(/suspended/i)
+    const wire = fetchImpl.mock.calls.length
+    expect(wire).toBe(1) // not retried: a suspension is not RETRYABLE
+
+    const [second, third] = await s.search(["b", "c"])
+    expect(fetchImpl.mock.calls.length).toBe(wire)
+    for (const r of [second, third]) {
+      expect(r!.ok).toBe(false)
+      expect(r!.error).toMatch(/suspended/i)
+      expect(r!.usd).toBe(0)
+      expect(r!.requests).toBe(0)
+    }
+  })
+
+  it("does not trip on an ordinary refusal", async () => {
+    const fetchImpl = vi.fn(
+      async () => new Response("", { status: 200, headers: { "x-brd-error": "response body was rejected" } }),
+    )
+    const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 1, retryMs: 0 })
+    await s.search(["a"])
+    await s.search(["b"])
+    // Both asked, both retried: four requests on the wire, nothing short-circuited.
+    expect(fetchImpl).toHaveBeenCalledTimes(4)
+  })
 })
 
 describe("brightDataSearch obeys a stated rate limit", () => {
@@ -894,5 +970,54 @@ describe("brightDataSearch obeys a stated rate limit", () => {
     const [r] = await s.search(["x"])
     expect(r!.ok).toBe(false)
     expect(r!.error).toContain("throttled")
+  })
+
+  /**
+   * Measured: the "auto-throttled" sentence never opens a bad stretch, it
+   * only confirms one already in progress — the stored runs show a run of
+   * plain rejections before the account ever names a rate. Proactively
+   * narrowing the pace on that trend, rather than waiting for the message,
+   * is what this proves: a sagging success rate over a real window of
+   * requests paces new work even though `x-brd-error` never once fired.
+   */
+  it("narrows the pace on a sagging success rate, before any throttle message", async () => {
+    let n = 0
+    const fetchImpl = vi.fn(async (..._: FetchArgs) => {
+      n += 1
+      // 5 plain failures (no x-brd-error at all) in a window of 20 — a 75%
+      // success rate, under the 85% floor, with nothing for THROTTLED or
+      // RETRYABLE to match so none of them retries.
+      return n <= 5
+        ? new Response("", { status: 404 })
+        : new Response(JSON.stringify({ organic: [] }), { status: 200 })
+    })
+    const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 1, retryMs: 0 })
+
+    // Fills the rolling window: 20 distinct queries, one request each.
+    await s.search(Array.from({ length: 20 }, (_, i) => `q${i}`))
+    expect(fetchImpl).toHaveBeenCalledTimes(20)
+
+    // No x-brd-error was ever sent, so this is the proactive signal alone.
+    const pacedStart = Date.now()
+    await s.search(["y", "z"])
+    expect(Date.now() - pacedStart).toBeGreaterThan(500)
+  })
+
+  it("stays concurrent on an equally mixed run that never crosses the floor", async () => {
+    let n = 0
+    const fetchImpl = vi.fn(async (..._: FetchArgs) => {
+      n += 1
+      // 3 failures in 20 — an 85% success rate, exactly at the floor and not
+      // below it.
+      return n <= 3
+        ? new Response("", { status: 404 })
+        : new Response(JSON.stringify({ organic: [] }), { status: 200 })
+    })
+    const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 1, retryMs: 0 })
+    await s.search(Array.from({ length: 20 }, (_, i) => `q${i}`))
+
+    const t0 = Date.now()
+    await s.search(["y", "z"])
+    expect(Date.now() - t0).toBeLessThan(300)
   })
 })

@@ -2,8 +2,8 @@
 
 ## Two shapes of host
 
-A sweep takes anywhere from two minutes to over an hour, depending on how broad
-the market is, and runs **detached** after its HTTP response returns:
+A sweep takes anywhere from under three minutes to over an hour, depending on
+how broad the market is, and runs **detached** after its HTTP response returns:
 `POST /api/map` answers immediately with a run id and the work carries on in the
 background.
 
@@ -275,8 +275,8 @@ With the flag on:
 - Every read route is untouched. The gallery, the graph, the notes, the search
   and the zip export all work.
 - The runs directory defaults to `demo/maps/` — six real sweeps, committed,
-  8.4MB, from stripe.com's 2,551 entities down to clerk.com's 449. They are
-  the product: instant, already paid for, and nobody waits four minutes.
+  10.4MB, from stripe.com's 1,440 entities down to neon.tech's 1,014. They
+  are the product: instant, already paid for, and nobody waits four minutes.
 
 What it does **not** do: it is not auth. Anyone can read the maps, which is the
 point. If some of them should not be public, keep `KB_USER`/`KB_PASSWORD` on as

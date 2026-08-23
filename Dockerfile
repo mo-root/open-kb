@@ -1,6 +1,6 @@
 # A long-running Node process, not a serverless function.
 #
-# A sweep takes from four minutes to over an hour depending on the market, and
+# A sweep takes from under three minutes to over an hour depending on the market, and
 # runs DETACHED after its HTTP
 # response returns: `POST /api/map` answers in a millisecond with a run id and
 # the work carries on in the background. Serverless kills the instance when the

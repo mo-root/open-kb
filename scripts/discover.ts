@@ -37,6 +37,9 @@ spans.close()
 console.log(`\n${anchor}`)
 console.log(`  sells   ${out.sells}`)
 console.log(`  buyer   ${out.buyer}\n`)
+if (!out.finished) {
+  console.log(`  did not call finish — ran out of turns; the list below may be incomplete\n`)
+}
 console.log(`${out.products.length} products, from ${out.pagesRead} pages read, ${out.steps} agent turns:\n`)
 for (const p of out.products) {
   console.log(`  ${p.name}`)

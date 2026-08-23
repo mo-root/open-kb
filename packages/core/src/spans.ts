@@ -11,6 +11,11 @@ export interface Span {
   name: string
   /** the real query or URL, the only place a viewer sees which question was bought */
   argsDigest: string
+  /** For a model call, the upstream host that actually served it, when the
+   *  gateway names one. A gateway routes one model id across many hosts of
+   *  very different discipline; this is how a run can say which host refused
+   *  its answers, and the tally `report.model.servedBy` is built from it. */
+  servedBy?: string
   ms: number
   ok: boolean
   error?: string

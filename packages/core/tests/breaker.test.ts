@@ -87,4 +87,14 @@ describe("BreakerTable", () => {
     const r = t.open("stripe.com", "unlock")
     expect(r.because).toBe("stripe.com refuses the unlock tier this run: 3 strikes, most recently thin-render")
   })
+
+  it("falls back to a digit once the count word list runs out", () => {
+    // COUNT_WORDS only spells zero..six; nothing in this run bounds how many
+    // times one {host, mode} pair can strike, so the seventh has to fall back
+    // to a plain number rather than reading `undefined` into the sentence.
+    const t = new BreakerTable()
+    for (let i = 0; i < 7; i++) t.strike("stripe.com", "unlock", "empty-200")
+    const r = t.open("stripe.com", "unlock")
+    expect(r.because).toBe("stripe.com refuses the unlock tier this run: 7 empty-200 responses")
+  })
 })

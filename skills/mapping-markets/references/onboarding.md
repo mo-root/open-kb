@@ -56,12 +56,29 @@ Real environment variables win over the file, which is what you want for anythin
 
 | Variable | Default | What it does |
 |---|---|---|
-| `OPENKB_MODEL` | `google/gemini-3.5-flash` | any OpenRouter model id |
-| `OPENKB_PAGES` | `4` | result pages read per query |
+| `OPENKB_MODEL` | `deepseek/deepseek-v4-flash-0731` | any OpenRouter model id |
+| `OPENKB_PAGES` | `4` (CLI) / `2` (library) | result pages read per query |
+| `OPENKB_TRIAGE` | on (`0` disables) | skip hosts from search metadata, before a fetch is spent |
+| `OPENKB_SECOND_LOOK` | on (`0` disables) | re-ask classify against a deeper page for `unknown` hosts |
+| `OPENKB_DROP_CONFIRM` | off (`1` enables) | one more batched opinion on every settled `none` |
+| `OPENKB_LISTICLE_HARVEST` | on (`0` disables) | mine the vendor names a roundup already printed |
+
+`OPENKB_MODEL` is worth leaving alone. The bake-off ran five configs over one company: the DeepSeek
+flash row returned 449 entities for $0.29, where `google/gemini-3.5-flash` returned 315 for $1.93. A
+big model is not the upgrade it looks like here, and the run cap is sized for the cheap one.
 
 `OPENKB_PAGES` is the quiet lever on breadth. One query read to five pages returned 37 distinct
 hosts against 7 from the first page alone, and a page costs exactly what a query costs — so depth on
-a good query beats breadth onto a worse one. Lower it to 1 or 2 when you want a cheap look.
+a good query beats breadth onto a worse one. Lower it to 1 or 2 when you want a cheap look — and
+note that `2` is what unlocks variable depth: the library opens every query at two pages and lets
+the widening judge promote a product to four on real page-2 yield, but the deep depth is floored at
+the shallow one, so the CLI's `4` reads four pages everywhere and leaves that promotion nothing to
+buy.
+
+The four stage flags are off by default and each is set with `1`. Each adds a model stage, each
+fails open, and each reports its own counters. On the newest stored run, triage skipped 123 of 926
+hosts before any fetch, second-look asked 22 and rescued 13, and drop-confirm confirmed all 27 of
+the drops it was given.
 
 ## Checking it works
 

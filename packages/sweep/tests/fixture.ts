@@ -40,6 +40,8 @@ import { sweep, type SweepOptions, type SweepResult } from "../src/sweep.js"
 
 /** The anchor. `.example` is reserved by RFC 2606: nothing here resolves even
  *  if something did try to leave the process. */
+/** What the fixture model says served every answer — see `report.model.servedBy`. */
+export const FIXTURE_HOST = "fixture-host"
 export const ANCHOR = "pellucid.example"
 /** What `banned()` is given: the anchor's own first label. */
 export const ANCHOR_NAME = "pellucid"
@@ -217,7 +219,17 @@ export const SERP: Record<string, SearchHit[]> = {
  * UI rail: `plan` issues both the catalog and the assess calls, and `write`
  * issues none at all. These are model calls, not stages.
  */
-export type CallPhase = "understand" | "catalog" | "assess" | "classify" | "link" | "orphan" | "discovery" | "triage"
+export type CallPhase =
+  | "understand"
+  | "catalog"
+  | "assess"
+  | "classify"
+  | "link"
+  | "orphan"
+  | "discovery"
+  | "triage"
+  | "drop-confirm"
+  | "listicle"
 
 const PHASE_BY_KEY: Array<[CallPhase, string]> = [
   ["understand", "capabilities"],
@@ -231,6 +243,13 @@ const PHASE_BY_KEY: Array<[CallPhase, string]> = [
   // The metadata triage: batched keep/skip verdicts before any fetch. Its
   // schema's distinctive key is `verdicts`.
   ["triage", "verdicts"],
+  // Drop-confirm: a second opinion on model-settled `relation: "none"`
+  // hosts, from stored evidence alone. Its schema's distinctive key is
+  // `placements` — deliberately not `verdicts`, which triage already owns.
+  ["drop-confirm", "placements"],
+  // Listicle harvest: vendor names pulled out of a roundup-shaped row's own
+  // title/description. Its schema's distinctive key is `vendors`.
+  ["listicle", "vendors"],
 ]
 
 function phaseOf(schema: unknown): CallPhase {
@@ -248,6 +267,14 @@ const hostOf = (prompt: string): string => /^(\S+) — how this run found it, \d
 /** `grepstack.example — seen in 3 queries — "…" — …` — the triage prompt's batch lines. */
 const hostsOfTriage = (prompt: string): string[] =>
   [...prompt.matchAll(/^(\S+) — seen in \d+ quer/gm)].map((m) => m[1]!)
+/** `grepstack.example` on its own line followed by an indented `what:` — the
+ *  drop-confirm prompt's per-host block header. */
+const hostsOfDropConfirm = (prompt: string): string[] =>
+  [...prompt.matchAll(/^(\S+)\n {2}what:/gm)].map((m) => m[1]!)
+/** `"a title" — a description` — the listicle-harvest prompt's per-row line,
+ *  read back as the titles it carried. */
+const titlesOfListicle = (prompt: string): string[] =>
+  [...prompt.matchAll(/^"(.*)" — /gm)].map((m) => m[1]!)
 
 export interface LinkPair {
   a: string
@@ -287,6 +314,17 @@ export interface Script {
    *  reached when the run sets `triage: true`; the default keeps every host,
    *  so a test that flips the flag without a script changes nothing. */
   triage?: (hosts: string[], prompt: string) => unknown
+  /** The drop-confirm ask, handed the hosts its prompt asked about — every
+   *  model-settled `relation: "none"` entity, up to DROP_CONFIRM_CAP. Only
+   *  reached when the run sets `dropConfirm: true`; the default confirms
+   *  every host unrelated, so a test that flips the flag without a script
+   *  changes nothing. */
+  dropConfirm?: (hosts: string[], prompt: string) => unknown
+  /** The listicle-harvest ask, handed the titles of the roundup-shaped rows
+   *  its prompt carried. Only reached when the run sets `listicleHarvest:
+   *  true` AND at least one row matched `ROUNDUP_SHAPE`; the default finds no
+   *  vendor, so a test that flips the flag without a script changes nothing. */
+  listicle?: (titles: string[], prompt: string) => unknown
 }
 
 /** Every model call the run made, in order. */
@@ -295,6 +333,13 @@ export interface ModelCall {
   prompt: string
   /** The product for a catalog call, the host for a classify call, "" elsewhere. */
   subject: string
+  /** The generateObject schema's own property order for this call — undefined
+   *  for the text-only discovery turns, which carry no schema at all. Field
+   *  order here is the order a structured-output provider fills the object
+   *  in, which is not necessarily the order the prompt mentions fields in;
+   *  P1-6 (docs/overnight-backlog.md) found `reasoning` and its prompt at
+   *  odds about that order and this is what would have caught it. */
+  schemaKeys?: string[]
 }
 
 /** Fixed, so the bill is arithmetic a test can do independently. With the
@@ -340,7 +385,18 @@ export interface FixtureOptions {
    *  surface this company does not publish — a sitemap, say. Merged rather than
    *  replacing, so a test adds one url without restating the whole company, and
    *  a run that passes nothing here fetches exactly what it always did. */
-  fetchTable?: Record<string, { httpStatus: number; body: string; contentType?: string }>
+  fetchTable?: Record<
+    string,
+    {
+      httpStatus: number
+      body: string
+      contentType?: string
+      /** The DIFFERENT answer an `unlocked` fetch gets for this same URL — the
+       *  one way a test tells a blocked page's two modes apart. Omit to answer
+       *  both modes identically, the table's behaviour before this field existed. */
+      unlocked?: { httpStatus: number; body: string; contentType?: string }
+    }
+  >
   sweepOptions?: Partial<SweepOptions>
 }
 
@@ -401,6 +457,17 @@ export function defaultScript(): Required<Script> {
     assess: () => ({ enough: true, missing: "", draw: [], queries: [] }),
     orphan: () => ({ stands: [] }),
     triage: (hosts) => ({ verdicts: hosts.map((h) => ({ host: h, keep: true, why: "kept" })) }),
+    dropConfirm: (hosts) => ({
+      placements: hosts.map((h) => ({
+        host: h,
+        kind: "noise",
+        relation: "none",
+        what: "",
+        why: "confirmed unrelated",
+        spans: [],
+      })),
+    }),
+    listicle: () => ({ vendors: [] }),
     discovery: (turn) =>
       turn === 0
         ? {
@@ -605,7 +672,10 @@ export async function runFixture(opts: FixtureOptions = {}): Promise<Harness> {
 
       const phase = phaseOf(responseFormat)
       const subject = phase === "catalog" ? productOf(text) : phase === "classify" ? hostOf(text) : ""
-      calls.push({ phase, prompt: text, subject })
+      const schemaKeys = Object.keys(
+        ((responseFormat as { schema?: { properties?: Record<string, unknown> } })?.schema?.properties) ?? {},
+      )
+      calls.push({ phase, prompt: text, subject, schemaKeys })
       const object =
         phase === "understand"
           ? script.understand(text)
@@ -619,12 +689,20 @@ export async function runFixture(opts: FixtureOptions = {}): Promise<Harness> {
                   ? script.orphan(text)
                   : phase === "triage"
                     ? script.triage(hostsOfTriage(text), text)
-                    : script.link(pairsOf(text), text)
+                    : phase === "drop-confirm"
+                      ? script.dropConfirm(hostsOfDropConfirm(text), text)
+                      : phase === "listicle"
+                        ? script.listicle(titlesOfListicle(text), text)
+                        : script.link(pairsOf(text), text)
       return {
         content: [{ type: "text" as const, text: JSON.stringify(object) }],
         finishReason: { unified: "stop" as const, raw: undefined },
         usage: USAGE,
         warnings: [],
+        // The gateway names the upstream host that served a call; the engine
+        // tallies calls and refusals per host into `report.model.servedBy`.
+        // One name for every fixture answer, so a test can read the tally.
+        providerMetadata: { openrouter: { provider: FIXTURE_HOST } },
       }
     },
   })

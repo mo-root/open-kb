@@ -190,80 +190,17 @@ export async function countRunsSince(sinceIso: string): Promise<number | null> {
 /** One row as the budget reads it: when it started, whether it is still going,
  *  what it cost, and whose it was. Nothing else — a day's worth of `select=*`
  *  would drag every finished map's whole `result` blob across the wire to
- *  answer an arithmetic question. */
+ *  answer an arithmetic question.
+ *
+ *  Kept as a type though its Supabase reader is gone: `lib/spend-limits.ts`'s
+ *  in-memory fallback (`ledgerSince`, for a deployment with no store
+ *  configured) still returns this shape, so `count()` there can stay one
+ *  function for both paths. */
 export interface UsageRow {
   started_at: string
   status: RunStatus
   usd: number
   visitor: string | null
-}
-
-/**
- * Every run this deployment started since an instant, as the four fields a
- * budget needs.
- *
- * THREE OUTCOMES, NOT TWO, and the third is why this does not use `quiet`.
- * `lib/spend-limits.ts` is the one caller in this file whose fallback would
- * SPEND: a store that is down answering "no runs today" reads as a full
- * day's budget and hands a stranger's script the account. So "could not read"
- * has to be distinguishable from "read, and there were none", and a store that
- * was never configured has to be distinguishable from both — the first two are
- * a fault, and the third is a laptop.
- *
- * ONE REQUEST FOR THREE QUESTIONS. Today's spend, today's runs by this visitor,
- * and how many are in flight are all answered from the same rows, so they are
- * fetched once and counted in memory. The row count is bounded by the day cap
- * divided by what a map costs — about two dozen — so this is a smaller response
- * than a single finished map.
- *
- * `limit` is a guard, not a page. If a deployment ever starts more runs in a
- * day than this, the count is short and the budget reads LOW, which spends. It
- * is set far above any number the day cap can produce so that cannot happen;
- * a deployment that reaches it has bigger problems than an inexact total.
- */
-export async function usageSince(
-  sinceIso: string,
-  limit = 5000,
-): Promise<
-  | { kind: "counted"; rows: UsageRow[] }
-  | { kind: "unconfigured" }
-  | { kind: "unavailable"; why: string }
-> {
-  if (!configured()) return { kind: "unconfigured" }
-  try {
-    const res = await rest(
-      `runs?select=started_at,status,usd,visitor&started_at=gte.${encodeURIComponent(sinceIso)}` +
-        `&order=started_at.asc&limit=${limit}`,
-    )
-    if (!res) return { kind: "unconfigured" }
-    if (!res.ok) {
-      // The body is PostgREST's own words and stays out of anything a browser
-      // reads; the status is enough to tell a missing column (400/404) from a
-      // key that stopped working (401) in a log line.
-      const detail = await res.text().catch(() => "")
-      console.error(`[supabase] usageSince ${res.status}: ${detail}`)
-      return { kind: "unavailable", why: `the store answered ${res.status}` }
-    }
-    const rows = (await res.json()) as Partial<UsageRow>[]
-    return {
-      kind: "counted",
-      rows: rows.map((r) => ({
-        started_at: String(r.started_at ?? ""),
-        status: (r.status ?? "running") as RunStatus,
-        // A null column — every row written before the schema gained it — is
-        // read as zero rather than as a fault. It is a run whose cost was never
-        // recorded, and the budget undercounts it by exactly what it cost. The
-        // alternative is a deployment that refuses every run until yesterday's
-        // rows age out of the window, which is a worse answer to a migration
-        // that has already been applied.
-        usd: Number(r.usd ?? 0) || 0,
-        visitor: r.visitor ?? null,
-      })),
-    }
-  } catch (e) {
-    console.error("[supabase] usageSince:", e)
-    return { kind: "unavailable", why: "the store could not be reached" }
-  }
 }
 
 /** Which limit stopped a claim, and the three counts behind the decision. The
@@ -284,16 +221,18 @@ export type ClaimResult =
  * Ask Postgres whether a run may start, and have it write the row if so.
  *
  * ONE ROUND TRIP, because the decision and the record are the same act. The
- * shape this replaces — `usageSince`, decide in TypeScript, insert later — is
- * correct for every request taken alone and worthless against a burst: fifty
- * requests fired together all read the same empty day. `claim_run` in
- * scripts/supabase-schema.sql takes a transaction-scoped advisory lock, counts,
- * and inserts, so the fifty-first sees the first fifty.
+ * shape this replaces — a since-select-all reader, decide in TypeScript,
+ * insert later — was correct for every request taken alone and worthless
+ * against a burst: fifty requests fired together all read the same empty
+ * day. That reader is gone now (nothing called it once this landed);
+ * `claim_run` in scripts/supabase-schema.sql takes a transaction-scoped
+ * advisory lock, counts, and inserts instead, so the fifty-first sees the
+ * first fifty.
  *
- * NOT `quiet`, for `usageSince`'s reason: the fallback here would SPEND. A
- * store that is down, a migration that has not been run, a function PostgREST
- * has not noticed yet — every one of those has to come back as "could not
- * decide" and be refused, never as "nothing today".
+ * NOT `quiet`: the fallback here would SPEND. A store that is down, a
+ * migration that has not been run, a function PostgREST has not noticed yet —
+ * every one of those has to come back as "could not decide" and be refused,
+ * never as "nothing today".
  */
 export async function claimRun(args: {
   id: string

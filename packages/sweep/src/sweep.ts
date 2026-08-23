@@ -77,6 +77,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { composePrompt, render } from "@open-kb/core";
 import { judgeHosts, type HostCandidate, type Judged } from "./rank.js";
+import { heldDeadline } from "./deadline.js";
 
 /** The walk itself: from `start`, upwards, for a directory holding
  *  `prompts/doctrine`. `null` rather than a throw, because a miss is only fatal
@@ -367,9 +368,12 @@ export const CLASSIFY_KINDS = ENTITY_KINDS.filter(
  */
 export const CLASSIFY_MAX_OUTPUT_TOKENS = 450;
 
-/** Hosts per triage call. Sixty lines of host—title—description is ~4k input
- *  tokens, and the verdict rows come back well inside the same call's floor. */
-export const TRIAGE_BATCH = 60;
+/** Hosts per triage call. Was 60: ~4k input tokens and ~1.5k of verdict rows,
+ *  which runs/sweep-cursor-com-20260823064255.json showed timing out at the
+ *  120s call ceiling four times in fourteen calls, each timeout costing its
+ *  whole wave (see the dispatch below). Thirty halves the rows a slow answer
+ *  has to stream before the ceiling, and halves what one failure fails open. */
+export const TRIAGE_BATCH = 30;
 /** A host this many distinct queries returned cannot be skipped by triage:
  *  that many roads in is the search itself vouching for it, and a title and
  *  description do not outrank the search. */
@@ -384,17 +388,105 @@ export const TRIAGE_MAX_OUTPUT_TOKENS = 2_000;
  *  bounds the stage to roughly what one triage pass costs. */
 export const SECOND_LOOK_CAP = 60;
 
+/** How many second-look fetches may escalate to the unlocker in one run. About
+ *  half of a real run's second looks landed on a page that was ALSO walled —
+ *  the direct fetch the stage already spends is not a different door than the
+ *  one the judge's front page hit. Only a host that earned its first look
+ *  twice over (`seenIn>=2` or `bestRank<=5` — the rank phase's own corroboration
+ *  bar, not a new one) gets the unlocker's ~$0.008; ten of them is roughly what
+ *  the rank phase's own `OPENKB_RANK_UNLOCK` bar spends on one fresh map. */
+export const SECOND_LOOK_UNLOCK_BUDGET = 10;
+
+/** How many model-settled `relation: "none"` hosts the drop-confirm stage may
+ *  re-ask about, on the same precedent SECOND_LOOK_CAP sets: bounds the stage
+ *  to roughly what one triage pass costs, rather than re-litigating every
+ *  refusal a large map produced. Batched at the link phase's own batch size
+ *  (`BATCH`, `SweepOptions.batchSize`) rather than a constant of its own —
+ *  that number already matches the "40 per call" this stage was measured
+ *  against, and reusing it keeps the two in sync instead of drifting apart. */
+export const DROP_CONFIRM_CAP = 60;
+
+/** Gateway hosts never to route a model call to, by the gateway's own slug.
+ *  Measured, not guessed — see `openrouterOpts` in `call()` for the bench.
+ *  `OPENKB_MODEL_HOST_IGNORE` (comma-separated) replaces the list. */
+export const MODEL_HOST_IGNORE: string[] = (
+  process.env.OPENKB_MODEL_HOST_IGNORE ?? "baidu"
+)
+  .split(",")
+  .map((h) => h.trim().toLowerCase())
+  .filter(Boolean);
+
 /** How long one model call may take before it is abandoned. Argued at
- *  `withDeadline` in `call()`; overridable for a slow model or a slow host. */
+ *  `withDeadline` in `call()`; overridable for a slow model or a slow host.
+ *
+ *  Was 120s, sized against "classify retries at 56 to 62 seconds" — and those
+ *  were measured on the pinned provider that `openrouterOpts` has since
+ *  stopped pinning. On the throughput-sorted route a one-host classify is
+ *  2-3s and a 30-row triage ~6s, so 60s still clears the slowest legitimate
+ *  call (the 51s single catalog call) while halving what one hung socket
+ *  costs a run. (An earlier version of this comment blamed the 6.3-minute
+ *  judge tail on runs/sweep-cursor-com-20260823064255.json on two chained
+ *  120s timeouts; the log shows no timeout fired at all — see `withDeadline`
+ *  for what actually happened. The per-host calls have their own, shorter
+ *  ceiling in `RANK_CALL_TIMEOUT_MS` below.) */
 export const CALL_TIMEOUT_MS = Math.max(
   1_000,
-  Number(process.env.OPENKB_CALL_TIMEOUT_MS ?? 120_000) || 120_000,
+  Number(process.env.OPENKB_CALL_TIMEOUT_MS ?? 60_000) || 60_000,
 );
+
+/** The link and orphan calls' own deadline — was tighter than `CALL_TIMEOUT_MS`
+ *  when that stood at 120s; the two now meet at 60s and this one is kept as
+ *  its own knob. `docs/overnight-backlog.md`'s P0-4 finding: on the measured
+ *  cursor.com run (runs/sweep-cursor-com-20260821105321.json) two timed-out
+ *  link batches cost about 4 minutes of the 12.3-minute link phase — the same
+ *  run that motivated `LINK_CONC` above. Unlike a one-off classify call, link
+ *  and orphan calls are batched, uniform, and already retried once on the
+ *  same original ceiling, so a hung call does not need 120s of runway before
+ *  that retry fires. 60s halves the cost of a hang against the 120s default;
+ *  the backlog's own suggested range was 45-60s and this takes the upper,
+ *  safer end of it. */
+export const LINK_CALL_TIMEOUT_MS = Math.max(
+  1_000,
+  Number(process.env.OPENKB_LINK_CALL_TIMEOUT_MS ?? 60_000) || 60_000,
+);
+
+/** The per-host calls' own deadline — classify, triage, the second look and
+ *  drop-confirm. These are the calls a run makes by the thousand (1,531 rank
+ *  calls on runs/sweep-cursor-com-20260823064255.json), each a one-host
+ *  question the throughput-sorted route answers in 2-3s (a 30-row triage in
+ *  ~6s). A call of thirty seconds there is a sick host, not a hard question,
+ *  and the retry goes out unrouted to a different one. Half the general
+ *  ceiling: the pool's tail — the last few hosts, with nothing left to hide
+ *  them behind — is bounded by one ceiling plus one retry, so this is the
+ *  number that decides how long a run waits on its stragglers. */
+export const RANK_CALL_TIMEOUT_MS = Math.max(
+  1_000,
+  Number(process.env.OPENKB_RANK_CALL_TIMEOUT_MS ?? 30_000) || 30_000,
+);
+
+/** Roundup-shaped: the row's own title or description reads like a page that
+ *  names several vendors rather than one. Cheap and deliberately loose — a
+ *  false match costs nothing but a wasted line in one batched model call, a
+ *  false miss costs a vendor this run never asks about at all. */
+export const ROUNDUP_SHAPE = /alternatives|top \d+|best|vs\.?|comparison/i;
+
+/** How many roundup-shaped rows the listicle-harvest call may read at once.
+ *  One model call reads all of them, so this bounds that call's input rather
+ *  than batching it — TRIAGE_BATCH's precedent, sixty rows of title and
+ *  description is comfortably inside one call's input floor. */
+export const LISTICLE_MAX_ROWS = 60;
+
+/** How many fresh queries the listicle-harvest stage may fire in total. A
+ *  small hand per name (`rivalHand`'s own two-thirds/one-third split) times
+ *  a handful of names is already single digits on a normal run; this is the
+ *  backstop for the run where the extraction call names an unreasonable
+ *  number of vendors. */
+export const LISTICLE_MAX_QUERIES = 20;
 
 /**
  * How an entity stands to the anchor.
  *
- * Seven are commercial stances. Three cover hosts that have no commercial
+ * Eight are commercial stances. Three cover hosts that have no commercial
  * stance but still relate: publications, directories, forums. `unknown` is
  * the downgrade for a claim the evidence refused — the host stays, wearing
  * the refusal. With only commercial words, 144 of 438 hosts on one run came
@@ -404,6 +496,7 @@ export const CALL_TIMEOUT_MS = Math.max(
 export const RELATIONS = [
   "competitor",
   "substitute",
+  "adjacent",
   "dependency",
   "integration",
   "shaper",
@@ -481,9 +574,35 @@ const EntityEdge = z.object({
     .describe(
       "measured = a retrieved page named both; inferred = reasoned from what each does",
     ),
+  /**
+   * The paid link pass's counterpart to classify's `relationSpan`: link.md
+   * already tells the model "'Both in web scraping' is worth nothing", but
+   * that instruction was never checked against anything — a model free to
+   * assert a mechanism is a model free to assert a generic one, and nothing
+   * downstream could tell the two apart. Optional, and only the paid pass
+   * fills it: the free naming pass above proves `why` a different way (it
+   * quotes the naming row directly, in code, before an edge is ever pushed),
+   * and every existing fixture answering the link schema without this field
+   * must keep parsing.
+   */
+  whySpan: z
+    .string()
+    .min(8)
+    .optional()
+    .describe(
+      "one quote copied character-for-character from either entity's description above, backing WHY specifically",
+    ),
 });
 
-export type EntityEdge = z.infer<typeof EntityEdge>;
+export type EntityEdge = z.infer<typeof EntityEdge> & {
+  /** Whether `whySpan` verified as a literal substring of the two entities'
+   *  own descriptions (the exact text `describe()` showed the model) — the
+   *  same `checkQuote` containment check `relationGrounded` runs for the
+   *  classify pass's `relationSpan`. Measured, never a gate: an edge with
+   *  `whyGrounded: false` still ships, the same rule `descGrounded` and
+   *  `relationGrounded` already live by. */
+  whyGrounded?: boolean;
+};
 
 const Decomposition = z.object({
   sells: z
@@ -690,6 +809,18 @@ export type Entity = z.infer<typeof Entity> & {
   descSpans?: { verified: number; claimed: number };
   /** The verified quotes — the receipts, capped at 360 chars total. */
   spans?: string[];
+  /** Model-judged entities only: one sentence, the single decisive fact that
+   *  settled `kind` and `relation` — not the `why` restated, the fact that
+   *  made the `why` true. */
+  reasoning?: string;
+  /** Model-judged entities only: `spans`'s counterpart for `relation` — one
+   *  verbatim quote backing the RELATION specifically, not the `what`. */
+  relationSpan?: string;
+  /** Whether `relationSpan` verified as a literal substring of the page it
+   *  was quoted from (the same `checkQuote` containment `spans` gets) — a
+   *  measure, never a gate: this codebase's own rule for `descGrounded` is
+   *  it is never used to reject, and `relationSpan` gets the same rule. */
+  relationGrounded?: boolean;
 };
 
 export interface SweepStats {
@@ -818,11 +949,20 @@ export interface SweepOptions {
    *  from `@open-kb/providers`; pass it only to price a model that table has
    *  not met. */
   pricing?: ModelPricing;
-  /** Result pages read per query. Measured: one query across five pages returned
-   *  37 distinct hosts against 7 from the first page alone, and had not
-   *  saturated. A page costs exactly what a query costs, so depth here buys more
-   *  of a market than breadth does. */
+  /** Result pages read per query the FIRST time it is asked. Measured: one query
+   *  across five pages returned 37 distinct hosts against 7 from the first page
+   *  alone, and had not saturated. A page costs exactly what a query costs, so
+   *  depth here buys more of a market than breadth does — but paying that depth
+   *  on every query, including the ones whose second page only repeats the
+   *  first, buys corroboration nobody asked for. See `deepPages`: every product
+   *  opens at this depth, and only the ones `assess` names from a real page-2
+   *  yield go deeper. */
   pages?: number;
+  /** Result pages read per query for a product `assess` has asked to deepen —
+   *  see `SweepOptions.pages`. Left at its default, this roughly doubles the
+   *  read for a product whose second page kept finding hosts the first page
+   *  did not; a product nobody names stays at `pages` for the whole run. */
+  deepPages?: number;
   /** Ceiling on how many times the run may look at its own map and ask for more
    *  queries. It usually stops before this because the model says it has enough. */
   maxWaves?: number;
@@ -898,11 +1038,11 @@ export interface SweepOptions {
    * Ask a model, in batches of sixty and from search metadata alone, which
    * hosts are worth a fetch and a judgement at all — before either is spent.
    *
-   * A FLAG, NOT A MIGRATION, on the `discovery` precedent: the measured case
-   * for it is that 12-43% of every stored run's entities were judged and then
-   * dropped by `onMap`, so the fetch and the judgement that bought them were
-   * spent on hosts a title and description already condemned. The case has to
-   * survive an A/B on the same anchor before this defaults on.
+   * A FLAG, NOT A MIGRATION, on the `discovery` precedent — and the A/B it was
+   * gated on has now run and survived: 123 of 926 hosts skipped unfetched on
+   * the cursor.com run, for ~$0.02 of triage calls, roughly time-neutral once
+   * the fetches and classify calls it buys back are counted. DEFAULT ON since
+   * 2026-08-22; `false` (or `OPENKB_TRIAGE=0` at the CLI) still turns it off.
    *
    * Triage may only SKIP, never place: a skipped host becomes a `noise`/`none`
    * entity carrying `settledBy: "triage"` and the model's one-line reason, so
@@ -920,19 +1060,85 @@ export interface SweepOptions {
    * URL — often a docs, pricing or comparison page deeper than the front
    * page the judge read), and re-ask the SAME classify question against it.
    *
-   * A FLAG, NOT A MIGRATION, on the `discovery`/`triage` precedent: the
-   * measured case for it is that the stored runs carry 23-260 `unknown` rows
-   * each — hosts the map keeps, wearing a refusal a deeper page might have
-   * answered — and the case has to survive an A/B on the same anchor before
-   * this defaults on.
+   * A FLAG, NOT A MIGRATION, on the `discovery`/`triage` precedent — and the
+   * A/B it was gated on has now run and survived: it rescued 12 of 23 and 13
+   * of 22 unplaced hosts across two runs, for ~$0.005. DEFAULT ON since
+   * 2026-08-22; `false` (or `OPENKB_SECOND_LOOK=0` at the CLI) still turns it
+   * off.
    *
    * Rescue is the only power this stage has, and every failure fails OPEN: a
    * fetch that cannot be read, a call that fails or times out, a verdict that
    * still says `unknown`/`none`, or one whose quotes do not verify against
    * the page it read — all of it changes nothing, and the first judgement
    * stands. Capped at SECOND_LOOK_CAP hosts.
+   *
+   * A direct fetch that comes back blocked earns ONE unlocker retry — the
+   * rank phase's own escalation (`unlockSeenIn`/`OPENKB_RANK_UNLOCK` in
+   * judge.ts), re-asked here rather than reinvented — but only for a host
+   * that already earned its place twice over: `seenIn>=2` or `bestRank<=5`.
+   * About half of a real run's second looks landed on a page that was ALSO
+   * walled, the same door the judge's front page already hit, and paying to
+   * knock on it again is only worth it for a host the search corroborated.
+   * Bounded at SECOND_LOOK_UNLOCK_BUDGET escalations per run.
    */
   secondLook?: boolean;
+  /**
+   * Ask a model, batched and from stored evidence alone, whether a host the
+   * first pass judged `relation: "none"` really has no place on the map —
+   * before the entity ships dropped for good.
+   *
+   * A FLAG, NOT A MIGRATION, on the `triage`/`secondLook` precedent: the case
+   * for it is the same shape as theirs — a single model, one pass, one page,
+   * decided a host has nothing to do with this market, and that verdict never
+   * gets a second opinion. Unlike `secondLook`, this stage does not re-fetch:
+   * the candidate's own `what`/`why`/`roads` — everything the first pass
+   * already established from the page — is what it is asked to reconsider,
+   * because that IS the page's content, already read once and paid for.
+   *
+   * UNLIKE `triage`/`secondLook`/`listicleHarvest`, THIS ONE STAYS OFF BY
+   * DEFAULT. Its own A/B ran alongside theirs and did not survive it: 0 of
+   * 12, 0 of 27 and 5 of 29 rescued across three runs — it rarely changes
+   * anything, so the case to default it on is not made yet. `true` (or
+   * `OPENKB_DROP_CONFIRM=1` at the CLI) still turns it on.
+   *
+   * Only model-settled `none` verdicts qualify (`settledBy === "model"`) —
+   * never a predicate settlement (an unreadable host has no `what`/`why` to
+   * reconsider) and never a triage skip (that host's page was never read at
+   * all, so there is nothing here to give a second look). Sequenced AFTER
+   * `secondLook`, deliberately: a rescue there can already move a host off
+   * `none`, and asking about a host twice in the same run is two calls
+   * answering one question.
+   *
+   * FAIL OPEN, the same three ways `secondLook` does: an unanswered batch, a
+   * thrown call, or a host the model's answer never mentions all leave the
+   * original verdict standing — the entity ships exactly as the first pass
+   * left it. Capped at DROP_CONFIRM_CAP hosts, batched like the link phase.
+   */
+  dropConfirm?: boolean;
+  /**
+   * After the search phase, scan every hit's title and description for a
+   * roundup-shaped row — "10 best X", "X alternatives", "X vs Y", a
+   * comparison post — and ask a model, once, to pull out the vendor names
+   * those rows mention that this run never searched for. Each fresh name is
+   * dealt a small hand through `rivalHand` (`@open-kb/core/families`) — the
+   * SAME machinery a name the anchor's own sitemap publishes already gets —
+   * and those queries fire through the run's ordinary search path.
+   *
+   * A FLAG, NOT A MIGRATION, on the `triage`/`secondLook`/`dropConfirm`
+   * precedent — and the A/B it was gated on has now run and survived: a real
+   * cursor.com run found Windsurf, Zed, Tabnine, Codeium, Aider and Continue
+   * with ZERO direct SERP hits — every one of them existed only inside
+   * another hit's title or description, unextracted, because the search
+   * phase follows `hit.url` and reads no further — and grundfos.com surfaced
+   * 18 real pump vendors the same way, for one model call at ~4s and
+   * ~$0.0003. DEFAULT ON since 2026-08-22; `false` (or
+   * `OPENKB_LISTICLE_HARVEST=0` at the CLI) still turns it off.
+   *
+   * ADDITIVE ONLY: this stage only ever ADDS queries on top of what the plan
+   * already bought, and every failure fails open — a call that throws or
+   * finds nothing leaves the map exactly as the search phase built it.
+   */
+  listicleHarvest?: boolean;
   /** Bounds the model's per-product debranded ask (clamped to 2-3 regardless of
    *  a larger value here; the floor of 2 is not configurable). Templates cover
    *  plain and branded and are not affected — this only trims how many
@@ -1043,6 +1249,39 @@ export function rankThinkLine(e: Judged): string | null {
   return `${head} — ${e.kind}/${e.relation}${reason ? `: ${reason}` : ""}`;
 }
 
+/**
+ * A pool, not a barrier — the same fix the SEARCH phase already made (see the
+ * "topping up as it goes" comment above `runOne`), now applied to the LINK
+ * phase's two dispatch sites (pair batches and orphan batches).
+ *
+ * Both used to chunk their batches into groups of `LINK_CONC` and
+ * `await Promise.all` each group before starting the next — a barrier per
+ * group, costing that group its slowest member while finished workers idled.
+ * Link is 43% of a measured run's wall time (12.3 of 28.5 minutes on
+ * runs/sweep-cursor-com-20260821105321.json), the largest single phase, which
+ * is exactly the shape the search phase's own chunked-dispatch fix was
+ * written to describe. This is that fix, generalised: each worker takes the
+ * next item the moment it frees up, so one slow batch delays only itself.
+ * Same concurrency, same batch size, no barrier.
+ */
+export async function runPool<T>(
+  items: T[],
+  conc: number,
+  fn: (item: T, i: number) => Promise<void>,
+): Promise<void> {
+  let next = 0;
+  const worker = async () => {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) return;
+      await fn(items[i]!, i);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(conc, items.length) }, worker),
+  );
+}
+
 export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   const {
     domain: rawDomain,
@@ -1081,7 +1320,21 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   const CONC = Math.max(1, Math.floor(opts.concurrency ?? 20));
   const BATCH = Math.max(1, Math.floor(opts.batchSize ?? 40));
 
-  const PAGES = Math.max(1, Math.floor(opts.pages ?? 3));
+  /** Every query's opening depth — see `SweepOptions.pages`. A flat depth
+   *  bought a fixed number of pages for every query in a market regardless of
+   *  whether the second page was still finding new hosts or just repeating
+   *  the first — the same page count for a thin market and a crowded one.
+   *  Lowered from 3 so a query opens cheap by default; `DEEP_PAGES` below is
+   *  where the third-and-fourth page goes instead, spent only on the products
+   *  `assess` has real per-page-yield evidence for (see the `deepen` field on
+   *  its verdict and `depthByProduct` further down). */
+  const SHALLOW_PAGES = Math.max(1, Math.floor(opts.pages ?? 2));
+  /** The depth a product earns once `assess` names it — see
+   *  `SweepOptions.deepPages`. */
+  const DEEP_PAGES = Math.max(
+    SHALLOW_PAGES,
+    Math.floor(opts.deepPages ?? 4),
+  );
   /** How many times the run may look at what it has and ask for more. A ceiling,
    *  not a target, most runs stop earlier because the model says enough. */
   // 8, raised from 4: on the measured run the wave ceiling was the binding
@@ -1136,12 +1389,24 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    *  and the write. Reserved out of the clock rather than discovered at the end
    *  of it — a map that is not written down is a map nobody has. */
   const TAIL_SECONDS = MEASURED_PHASE_COSTS.tailSeconds;
-  // Unset is the production path, and it is the same two expressions with the
-  // same arguments it has always been — see `SweepOptions.ports` for why the
-  // override is a pair and not two independent fields.
-  const search =
-    opts.ports?.search ?? brightDataSearch(creds, { pages: PAGES });
+  // Unset is the production path, and it is the same expression it has always
+  // been — see `SweepOptions.ports` for why the override is a pair and not
+  // two independent fields. Two port instances now instead of one, because a
+  // query fired for a deepened product must read four pages and every other
+  // query must still read two: when `opts.ports` IS set (every test in this
+  // package) both branches short-circuit to the SAME injected port, so which
+  // one `runOne` picks changes nothing a fixture can see — only a real,
+  // uninjected caller ever builds two distinct Bright Data ports here.
+  const searchAt = {
+    shallow: opts.ports?.search ?? brightDataSearch(creds, { pages: SHALLOW_PAGES }),
+    deep: opts.ports?.search ?? brightDataSearch(creds, { pages: DEEP_PAGES }),
+  };
   const fetcher = opts.ports?.fetch ?? brightDataFetch(creds);
+  /** Which depth a product's queries fire at, updated only by `assess`'s
+   *  `deepen` verdict (see the widening loop below). Absent means shallow —
+   *  every product opens here, and only ones named from real page-2 yield
+   *  move to `"deep"`, never back. */
+  const depthByProduct = new Map<string, "shallow" | "deep">();
 
   const t0 = Date.now();
   const sec = () => Math.round((Date.now() - t0) / 1000);
@@ -1149,6 +1414,27 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   let tokIn = 0;
   let tokOut = 0;
   let tokReasoning = 0;
+  /** Model calls by the upstream host that served them, with the refusals
+   *  among them — an answer that was empty, unparseable or off-schema. The
+   *  gateway routes one model id across ~30 hosts of very different
+   *  discipline (see `openrouterOpts`), and this is the only way a run can
+   *  say which one kept refusing. `report.model.servedBy`. */
+  const servedBy: Record<string, { calls: number; refused: number }> = {};
+  const hostOf = (x: unknown): string | undefined => {
+    const meta = (x as { providerMetadata?: { openrouter?: { provider?: unknown } } })
+      ?.providerMetadata?.openrouter?.provider;
+    if (typeof meta === "string" && meta) return meta;
+    // A refused call still names its host: the AI SDK keeps the gateway's
+    // response body on the error, and the gateway puts `provider` in it.
+    const body = (x as { response?: { body?: { provider?: unknown } } })?.response?.body;
+    return typeof body?.provider === "string" && body.provider ? body.provider : undefined;
+  };
+  const noteServed = (host: string | undefined, refused: boolean) => {
+    const key = host ?? "(unnamed)";
+    const row = (servedBy[key] ??= { calls: 0, refused: 0 });
+    row.calls += 1;
+    if (refused) row.refused += 1;
+  };
   let serpCalls = 0;
   let unlockerCalls = 0;
 
@@ -1253,11 +1539,12 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    * zero tokens rather than as a non-finite price the stream flags as a failure.
    */
   async function call<T extends z.ZodType>(
-    // `"triage"` and `"second-look"` ride beside the rail's five: billing/span
-    // labels, not stages — their narration goes out as `say("rank", …)` so the
-    // rail never sees a name it does not know, while the bill's byAgent line
-    // and the span log still say which calls were whose.
-    agent: Phase | "triage" | "second-look",
+    // `"triage"`, `"second-look"`, `"drop-confirm"` and `"listicle"` ride
+    // beside the rail's five: billing/span labels, not stages — their
+    // narration goes out as `say("sweep"/"rank", …)` so the rail never sees a
+    // name it does not know, while the bill's byAgent line and the span log
+    // still say which calls were whose.
+    agent: Phase | "triage" | "second-look" | "drop-confirm" | "listicle",
     label: string,
     schema: T,
     prompt: string,
@@ -1301,20 +1588,48 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           : { enabled: false }
         : { effort: think === "none" ? "minimal" : (think ?? "low") };
 
-    /* DeepSeek routes across 23 providers of very different speeds — measured
-     * 6.3s on the default pick against 3.5s sorted by throughput, same call.
+    /* DeepSeek routes across 23 providers of very different speeds. This
+     * used to PIN an order — parasail, novita, siliconflow — measured once at
+     * 1.3s on Parasail against 6.3s on the default pick. The fast host then is
+     * the slow host now: re-measured 2026-08-23 on a 60-row triage call,
+     * Parasail took 28.6 / 34.7 / 31.3s where OpenRouter's own throughput
+     * sort (Reka that day) took 10.0 / 9.5 / 13.0s, and 3.4 / 2.8s against
+     * 1.9 / 2.8s on a one-host classify. A pinned order is a measurement
+     * that goes stale; the sort is the provider re-measuring at every call.
+     * runs/sweep-cursor-com-20260823064255.json is what the stale pin cost:
+     * triage at 66s a call, and an 8% empty-answer rate on the judge.
      * Single-provider families are unaffected by the sort, so it only rides
      * where it was measured to matter. */
-    const openrouterOpts = (think: string | undefined) => ({
+    const openrouterOpts = (
+      think: string | undefined,
+      // The retry changes the sort. A host that answered nothing, or answered
+      // with a body that would not parse, is the wrong host to ask the same
+      // question twice; sorting by latency instead of throughput lands on a
+      // different leader, which is the cheapest way to make the second ask a
+      // different ask. Everything else below holds for both attempts.
+      routed = true,
+    ) => ({
       reasoning: reasoningFor(think),
-      // Measured spread across DeepSeek's hosts: 1.3s on Parasail to 6.3s on
-      // the default pick, same call. Preference order with fallbacks open —
-      // a preferred host going down degrades to the next, never to a failure.
       ...(modelId.startsWith("deepseek/")
         ? {
             provider: {
-              order: ["parasail", "novita", "siliconflow"],
-              allow_fallbacks: true,
+              sort: routed ? "throughput" : "latency",
+              // Only hosts that support every parameter this request carries
+              // — `response_format: json_schema` above all. The run on
+              // 2026-08-23 (run D) had its catalog retry answered by a host
+              // without it: the JSON came back inside a markdown fence.
+              require_parameters: true,
+              // Hosts MEASURED to stray from the schema they were handed.
+              // Benched on the real catalog call, six asks each, same day:
+              // Baidu 3 of 6 valid (truncated text, enum strays) while Reka,
+              // SiliconFlow, Morph, DeepInfra, Parasail, AkashML and Decart
+              // were 6 of 6. Baidu was the throughput leader that day, which
+              // is what turned the sort into 25 refused classify calls and
+              // 18 of 23 refused link batches on run C. An ignore list goes
+              // stale like the old pinned order did — `report.model.servedBy`
+              // now tallies calls and refusals per host on every run, so the
+              // next bad host is read off the run file, not re-benched.
+              ignore: MODEL_HOST_IGNORE,
             },
           }
         : {}),
@@ -1348,20 +1663,78 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
      *
      * A timeout leaves `signal.aborted` false, so the caller's own check still
      * tells a host that stopped answering apart from a visitor who left.
+     *
+     * `link` alone gets the shorter `LINK_CALL_TIMEOUT_MS` — argued at its own
+     * declaration above — because its calls are batched, uniform, and already
+     * retried once; every other agent keeps the full two minutes this comment
+     * measures against.
      */
-    const withDeadline = () => {
-      const timeout = AbortSignal.timeout(CALL_TIMEOUT_MS);
-      return signal ? AbortSignal.any([signal, timeout]) : timeout;
+    const timeoutMs =
+      agent === "link"
+        ? LINK_CALL_TIMEOUT_MS
+        : agent === "rank" ||
+            agent === "triage" ||
+            agent === "second-look" ||
+            agent === "drop-confirm"
+          ? RANK_CALL_TIMEOUT_MS
+          : CALL_TIMEOUT_MS;
+    /**
+     * THE DEADLINE HAS TO BE HELD, OR THE RUNTIME DROPS IT — `heldDeadline`
+     * (deadline.ts) is the pin and carries the argument. MEASURED in the wild
+     * before it was understood: runs/sweep-cursor-com-20260823064255.json
+     * judged 750 of 754 hosts by 1553s and the last four by 1933s, with NOT
+     * ONE "no answer in 120s" line between — a ceiling that fired would have
+     * written one. The 6.3 minutes were a deadline that had been collected,
+     * not one that was too long. (e2e7ba3's commit message read that tail as
+     * two chained timeouts; it was wrong, and the 60s ceiling it shipped
+     * would have changed nothing here on its own.)
+     */
+    const withDeadline = () => heldDeadline(timeoutMs, signal);
+
+    /**
+     * What went wrong, in the model's own answer — the part `e.message`
+     * leaves out. "No object generated: response did not match schema" says
+     * a schema was missed and not which field; the AI SDK keeps the zod
+     * issues on `cause.cause.issues` and the raw text on `text`, and before
+     * this both were dropped on the floor. Measured: assess failed twice on
+     * each of two cursor.com runs on 2026-08-23 with that one sentence and
+     * nothing to act on. The first three issues, or the head of the text
+     * when there are none (an empty or truncated answer).
+     */
+    const detailOf = (e: unknown): string => {
+      const err = e as {
+        text?: unknown;
+        cause?: { cause?: { issues?: Array<{ path?: Array<string | number>; message?: string }> } };
+      };
+      const issues = err?.cause?.cause?.issues;
+      if (Array.isArray(issues) && issues.length) {
+        return issues
+          .slice(0, 3)
+          .map((i) => `${(i.path ?? []).join(".") || "<root>"}: ${i.message ?? "invalid"}`)
+          .join("; ");
+      }
+      if (typeof err?.text === "string" && err.text.trim()) {
+        return `text: ${err.text.trim().replace(/\s+/g, " ").slice(0, 160)}`;
+      }
+      return "";
     };
 
-    const attempt = async (maxOut: number, think: string | undefined) =>
+    const attempt = async (maxOut: number, think: string | undefined, rejected?: string) =>
       generateObject({
         model,
         schema,
-        prompt,
+        // A retry that knows why the first answer was refused is a different
+        // ask. The schema's enums are where a model strays under a long
+        // prompt — an `intent` or `platform` it invented — and re-asking the
+        // identical prompt strays the same way. The issue is appended, not
+        // woven in, so the prompt-size budget (`prompts.test.ts`) is untouched.
+        prompt: rejected
+          ? `${prompt}\n\nYour previous answer was rejected: ${rejected}. Answer again, keeping every field to the values the schema allows.`
+          : prompt,
         abortSignal: withDeadline(),
         maxOutputTokens: maxOut,
-        providerOptions: { openrouter: openrouterOpts(think) },
+        // `attempt` is only ever the retry: unrouted, see `openrouterOpts`.
+        providerOptions: { openrouter: openrouterOpts(think, false) },
       });
 
     const ceiling = Math.max(6_000, opts.maxOutputTokens ?? 8_192);
@@ -1393,6 +1766,8 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       tokIn += inTok;
       tokOut += outTok;
       bill("llm", agent, usdFor(inTok, outTok), Date.now() - started, true, { in: inTok, out: outTok, reasoning });
+      const host = hostOf(out);
+      noteServed(host, false);
       spans.emit({
         runId,
         agentId: agent,
@@ -1400,6 +1775,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         kind: "model",
         name: modelId,
         argsDigest: label,
+        servedBy: host,
         ms: Date.now() - started,
         ok: true,
         tokensIn: inTok,
@@ -1408,6 +1784,10 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       });
       return out.object as z.infer<T>;
     } catch (e) {
+      // The first answer was refused or never came: charged to its host
+      // before anything else happens, so the tally counts the refusal even
+      // when the retry below goes on to succeed.
+      noteServed(hostOf(e), true);
       const empty = (e as Error).name === "AI_NoObjectGeneratedError";
       /**
        * A DEADLINE THAT KILLS THE RUN IS WORSE THAN THE HANG IT REPLACED.
@@ -1437,18 +1817,28 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           /aborted due to timeout/i.test(String((e as Error).message ?? "")));
       if (empty || timedOut) {
         say(
-          // Triage and the second look narrate on the rank rail — the rail's
-          // five names are a closed set, and both are billing labels, not
-          // stages.
-          agent === "triage" || agent === "second-look" ? "rank" : agent,
+          // Triage, the second look and drop-confirm narrate on the rank
+          // rail; listicle harvest narrates on the sweep rail (it runs
+          // before the host fold, still inside the search phase) — the
+          // rail's five names are a closed set, and all four are billing
+          // labels, not stages.
+          agent === "triage" || agent === "second-look" || agent === "drop-confirm"
+            ? "rank"
+            : agent === "listicle"
+              ? "sweep"
+              : agent,
           timedOut
-            ? `  ${label}: no answer in ${Math.round(CALL_TIMEOUT_MS / 1000)}s, retrying once`
-            : `  ${label}: the model returned nothing, retrying with more room`,
+            ? `  ${label}: no answer in ${Math.round(timeoutMs / 1000)}s, retrying once`
+            : `  ${label}: the model's answer was refused${detailOf(e) ? ` (${detailOf(e)})` : ""}, retrying with more room`,
         );
         try {
+          const firstDetail = empty ? detailOf(e) : "";
           const out = await attempt(
             timedOut ? ceiling : ceiling * 2,
             opts.think,
+            // Only a schema miss carries a hint worth sending; a timeout or an
+            // empty body has nothing to quote.
+            firstDetail && !firstDetail.startsWith("text:") ? firstDetail : undefined,
           );
           const inTok = out.usage?.inputTokens ?? 0;
           const outTok = out.usage?.outputTokens ?? 0;
@@ -1459,6 +1849,8 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           tokIn += inTok;
           tokOut += outTok;
           bill("llm", agent, usdFor(inTok, outTok), Date.now() - started, true, { in: inTok, out: outTok, reasoning });
+          const retryHost = hostOf(out);
+          noteServed(retryHost, false);
           spans.emit({
             runId,
             agentId: agent,
@@ -1466,6 +1858,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
             kind: "model",
             name: modelId,
             argsDigest: `${label} (retried)`,
+            servedBy: retryHost,
             ms: Date.now() - started,
             ok: true,
             tokensIn: inTok,
@@ -1473,11 +1866,18 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
             usd: usdFor(inTok, outTok),
           });
           return out.object as z.infer<T>;
-        } catch {
-          // fall through and report the original
+        } catch (second) {
+          // Fall through and report the original — with the second failure's
+          // detail beside it when it has one, since that is the answer that
+          // had the hint and still missed.
+          noteServed(hostOf(second), true);
+          const d = detailOf(second);
+          const h = hostOf(second);
+          if (d && e instanceof Error) e.message = `${e.message} — retry${h ? ` (${h})` : ""}: ${d}`;
         }
       }
       bill("llm", agent, 0, Date.now() - started, false);
+      const firstDetail = detailOf(e);
       spans.emit({
         runId,
         agentId: agent,
@@ -1485,9 +1885,12 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         kind: "model",
         name: modelId,
         argsDigest: label,
+        servedBy: hostOf(e),
         ms: Date.now() - started,
         ok: false,
-        error: e instanceof Error ? e.message : String(e),
+        error:
+          (e instanceof Error ? e.message : String(e)) +
+          (firstDetail && !(e instanceof Error && e.message.includes(firstDetail)) ? ` — ${firstDetail}` : ""),
         usd: 0,
       });
       throw e;
@@ -2546,7 +2949,9 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     // the reader a run was capped at 40 when nothing capped it at all.
     requested: opts.queries,
     written: planned.length,
-    estimatedUsd: queries.length * PAGES * 0.0015,
+    // The pre-run estimate: nothing has been asked yet, so no product has
+    // earned `DEEP_PAGES` — every query is priced at its opening depth.
+    estimatedUsd: queries.length * SHALLOW_PAGES * 0.0015,
     budgetUsd: 0,
     uncapped: opts.queries === undefined && QUERY_CEILING === null,
     // The whole run's ceiling and the clock it was derived from, so the reader
@@ -2587,6 +2992,10 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   let serpRequests = 0;
   let serpRetries = 0;
   const serpBlocks: Record<string, number> = {};
+  /** Queries that failed outright, by reason — the non-retryable half of the
+   *  story `serpBlocks` tells for retries. See the tally beside it. */
+  const serpFailures: Record<string, number> = {};
+  let serpSuspendedSaid = false;
   /** Queries whose search was actually bought, counted where the money moves.
    *  `asked` is the QUEUE — seeded with the whole opening hand and grown at
    *  plan time — and the host-ceiling seal makes workers abandon its tail, so
@@ -2682,7 +3091,15 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         tooLongToScope += 1;
       }
     }
-    const [r] = await search.search([fired]);
+    // Untagged queries (the model's own free-form widening proposals carry no
+    // `product`, only a `market`) have never been named by `assess`, so they
+    // stay shallow — `depthByProduct` only ever holds product names, and a
+    // lookup that finds nothing defaults exactly like one that finds "shallow".
+    const depth = planned.product
+      ? (depthByProduct.get(planned.product) ?? "shallow")
+      : "shallow";
+    const port = depth === "deep" ? searchAt.deep : searchAt.shallow;
+    const [r] = await port.search([fired]);
     if (!r) return;
     // What the wire actually cost, beside what was asked for. A refusal bills
     // like an answer, so a throttled run pays for the throttling: measured at
@@ -2693,17 +3110,40 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       const key = b.replace(/\d{3,}/g, "N").slice(0, 60);
       serpBlocks[key] = (serpBlocks[key] ?? 0) + 1;
     }
+    // A query that FAILED, tallied by the provider's own reason. `blocked`
+    // above only ever carries the retry path's refusals, so a failure the
+    // port does not retry — an account suspension is the measured case —
+    // never reached the summary: runs/sweep-cursor-com-20260823064255.json
+    // lost 18 of its last 19 queries to "Account is suspended" and the
+    // terminal printed six retry reasons and not that one. The first sighting
+    // of a suspension is said aloud at once, because every query after it
+    // is known to fail and the reader is the only one who can fix it.
+    if (!r.ok && r.error) {
+      const reason = r.error.replace(/^\d+\/\d+ pages failed: /, "");
+      const key = reason.replace(/\d{3,}/g, "N").slice(0, 60);
+      serpFailures[key] = (serpFailures[key] ?? 0) + 1;
+      if (/suspended/i.test(reason) && !serpSuspendedSaid) {
+        serpSuspendedSaid = true;
+        say(
+          "sweep",
+          `SEARCH PROVIDER REFUSED: ${reason} — every search from here will fail the same way`,
+        );
+      }
+    }
     {
       const batch = [planned];
       const j = 0;
       {
         // Guarded on the same condition the port uses to decide whether to
         // dispatch at all. A blank query used to buy a full wave of `q=` pages,
-        // so adding PAGES unconditionally was true; the port now refuses it
-        // locally for $0 and issues nothing, which would leave this counter
-        // describing requests that were never made. `usd` was already honest
-        // either way — this is the count catching up with it.
-        if (fired.trim()) serpCalls += PAGES;
+        // so adding a page count unconditionally was true; the port now
+        // refuses it locally for $0 and issues nothing, which would leave this
+        // counter describing requests that were never made. `usd` was already
+        // honest either way — this is the count catching up with it. The
+        // depth billed is the SAME `depth` the port choice above already
+        // decided — never re-derived, so this can never disagree with what was
+        // actually fired.
+        if (fired.trim()) serpCalls += depth === "deep" ? DEEP_PAGES : SHALLOW_PAGES;
         bill("serp", "sweep", r.usd, r.ms, r.ok);
         // One span per SERP call, carrying the query text, the only place a
         // reader can see which question the run just paid for.
@@ -2803,7 +3243,8 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
 
   say(
     "sweep",
-    `${queries.length} queries × ${PAGES} pages, ${CONC} at a time, topping up as it goes`,
+    `${queries.length} queries × ${SHALLOW_PAGES} pages, ${CONC} at a time, topping up as it goes ` +
+      `(a product assess names for its page-2 yield reads ${DEEP_PAGES} instead)`,
   );
 
   /** Said once, by whichever worker gets there first. Twenty workers reaching
@@ -3006,6 +3447,61 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           products: prodLines.join("\n"),
         };
       })();
+      /**
+       * PAGE-2 YIELD, PER PRODUCT — the evidence `assess`'s `deepen` verdict is
+       * asked to act on, not a guess.
+       *
+       * Every query opens at SHALLOW_PAGES, so by the time this runs a
+       * product's queries already hold both of its first two pages: ranks 1-10
+       * and 11-20. `rank` can be trusted as genuinely global across pages here
+       * — `brightdata.ts` builds it from each page's own offset rather than
+       * the wire's own `global_rank`, which restarts every page and was
+       * measured to disagree (max observed `bestRank` was 16 across 10,218
+       * stored entities from 4-page runs, impossible if page 3/4 hits carried
+       * ranks 21-40 under the old field). A product whose second page kept
+       * finding hosts the first did not is a market this run has not finished
+       * reading at this depth; one whose second page mostly repeated the first
+       * is already saturated here, and DEEP_PAGES on it would buy
+       * corroboration, not coverage.
+       *
+       * Untagged queries (the model's own free-form `queries`, which carry no
+       * `product` — see the `depth` lookup in `runOne`) are excluded the same
+       * way `famTable`'s per-product rows are: there is no product to credit
+       * the yield to.
+       */
+      const pageYield = (() => {
+        const byQ = new Map(asked.map((x) => [x.q, x]));
+        const byProd = new Map<
+          string,
+          { page1: Set<string>; page2: Set<string> }
+        >();
+        for (const h of hits) {
+          const q = byQ.get(h.q);
+          if (!q?.product || h.rank === undefined) continue;
+          const host = hostOfHit(h.url);
+          if (!host) continue;
+          const b = byProd.get(q.product) ?? {
+            page1: new Set<string>(),
+            page2: new Set<string>(),
+          };
+          if (h.rank <= 10) b.page1.add(host);
+          else if (h.rank <= SHALLOW_PAGES * 10) b.page2.add(host);
+          byProd.set(q.product, b);
+        }
+        const lines = [...byProd.entries()].map(([p, b]) => {
+          const fresh = [...b.page2].filter((h) => !b.page1.has(h)).length;
+          return `  ${p} — page 1: ${b.page1.size} hosts, page 2 added ${fresh} not already on page 1`;
+        });
+        return {
+          text:
+            lines.join("\n") || "  (no product has two full pages of ranked results yet)",
+          // The only product names `deepen` may act on — a name the model
+          // invents that never asked a ranked query is silently ignored where
+          // the verdict is applied, exactly like `draw` ignores an unknown
+          // product against `reserve`.
+          known: new Set(byProd.keys()),
+        };
+      })();
       const reserveLines =
         [...reserve.entries()]
           .filter(([, v]) => v.length)
@@ -3015,10 +3511,21 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           )
           .join("\n") || "  (all reserves released)";
 
-      const verdict = await call(
-        "plan",
-        "assess",
-        z.object({
+      /**
+       * AN OPINION ABOUT WHETHER TO BUY MORE MUST NOT BE ABLE TO END THE RUN.
+       *
+       * `call` retries once and then throws, and this planner runs inside the
+       * same `Promise.all` as the search workers — so an assess call that
+       * failed twice rejected the whole search phase and `sweep()` with it.
+       * Measured: the cursor.com run on 2026-08-23 died at 796s with 618
+       * hosts bought and $0.41 spent, on "No object generated: could not
+       * parse the response" from its sixth assess call. Everything paid for
+       * was discarded over a question whose worst honest answer is "stop
+       * widening" — which is exactly what a failure now means. Sealed, the
+       * workers drain what is queued and the run moves on to judge, the same
+       * fail-open shape triage has for its own calls.
+       */
+      const AssessVerdict = z.object({
           enough: z
             .boolean()
             .describe(
@@ -3037,8 +3544,22 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
             .describe(
               "fresh debranded queries aimed at what no template can reach. Empty if enough.",
             ),
-        }),
-        prompt("assess", {
+          // Optional, unlike its three siblings above: this field is younger
+          // than they are, and every existing assess fixture in this repo's
+          // tests was written before it existed. Required would make every
+          // one of those a validation failure over a field the test has no
+          // opinion on; optional lets an absent answer mean exactly what a
+          // model saying nothing about depth should mean — stay shallow.
+          deepen: z
+            .array(z.string())
+            .optional()
+            .describe(
+              "products (name exactly as listed under page-2 yield) whose second page kept " +
+                "finding hosts the first did not — read four pages instead of two for these " +
+                "next wave. Empty or omitted if none earned it.",
+            ),
+      });
+      const assessPrompt = prompt("assess", {
           anchor,
           sells: decomp.sells,
           buyer: decomp.buyer,
@@ -3053,19 +3574,46 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
             .join("\n"),
           sample: [...distinctHosts()].slice(0, 60).join(", "),
           families: `${famTable.families}\n${famTable.products}`,
+          pageYield: pageYield.text,
           reserve: reserveLines,
           saturation: !lastRound.fired
             ? "(no widening round has fired yet)"
             : lastRound.hits === 0
               ? "the last round's queries returned no results at all — a different shape, not more of that one"
               : `${Math.round((100 * (lastRound.hits - lastRound.gained)) / lastRound.hits)}% of the last round's ${lastRound.hits} results were hosts already on the map (${lastRound.gained} new)`,
-        }),
-        // A judgement about whether to spend more money. Cheap, and rare.
-        // 20,000 because 8,000 was not enough: medium effort against a prompt
-        // carrying sixty host names and every query already asked spent the
-        // whole budget thinking and returned nothing.
-        { think: "medium", maxOutputTokens: 20_000 },
-      );
+      });
+      let verdict: z.infer<typeof AssessVerdict>;
+      try {
+        verdict = await call(
+          "plan",
+          "assess",
+          AssessVerdict,
+          assessPrompt,
+          // A judgement about whether to spend more money. Cheap, and rare.
+          // 20,000 because 8,000 was not enough: medium effort against a prompt
+          // carrying sixty host names and every query already asked spent the
+          // whole budget thinking and returned nothing.
+          { think: "medium", maxOutputTokens: 20_000 },
+        );
+      } catch (e) {
+        // `call` has already retried once; a second failure surfaces here.
+        // This planner runs inside the same `Promise.all` as the search
+        // workers, so letting it throw rejected the whole search phase and
+        // `sweep()` with it. Measured: the cursor.com run on 2026-08-23 died
+        // at 796s with 618 hosts bought and $0.41 spent, on "No object
+        // generated: could not parse the response" from its sixth assess
+        // call — everything paid for discarded over a question whose worst
+        // honest answer is "stop widening". That is what a failure now means:
+        // sealed, the workers drain what is queued and the run moves on to
+        // judge, the same fail-open shape triage has for its own calls.
+        say(
+          "plan",
+          `assess failed twice (${(e as Error).message.split("\n")[0]}) — not widening further; ` +
+            `judging the ${distinctHosts().size} hosts already found`,
+        );
+        sealed = true;
+        return;
+      }
 
       // The world moved while this call was in flight — 15-25 seconds of it.
       // A worker that ran out of clock (or the run being cancelled) seals the
@@ -3073,6 +3621,24 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       // to `asked` that nothing will ever buy: `report.queries` counts what was
       // FIRED, and a plan nobody executed must not inflate it.
       if (sealed || signal?.aborted) return;
+
+      // Recorded before any of the stop rules below: a round that goes on to
+      // seal this run should still keep what `assess` learned, and a round
+      // that proceeds via the MIN_WAVES override a few lines down needs
+      // `depthByProduct` already updated when it fires its own queries.
+      // `pageYield.known` is the same guard `draws` below applies against
+      // `reserve` — a product name the model invents that never asked a
+      // ranked query is ignored rather than trusted. Deepening never reverts:
+      // a product already `"deep"` just gets named again, which is a no-op.
+      for (const p of verdict.deepen ?? []) {
+        if (!pageYield.known.has(p) || depthByProduct.get(p) === "deep")
+          continue;
+        depthByProduct.set(p, "deep");
+        say(
+          "plan",
+          `${p}: page 2 kept finding hosts page 1 did not — reading ${DEEP_PAGES} pages for it from here`,
+        );
+      }
 
       // queries.length === 0 alone no longer means "enough": the prompt now
       // tells the model to release reserve instead of inventing when a
@@ -3257,6 +3823,100 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
 
   await Promise.all([...Array.from({ length: CONC }, worker), planner()]);
 
+  // ── 3¼. listicle harvest: vendors a roundup named but this run never asked
+  // about ──────────────────────────────────────────────────────────────────
+  //
+  // See `SweepOptions.listicleHarvest` for the contract. DEFAULT ON since
+  // 2026-08-22: the A/B this flag was gated on found Windsurf, Zed, Tabnine,
+  // Codeium, Aider and Continue on cursor.com with zero direct SERP hits
+  // across 66 queries, and 18 real vendors on grundfos.com, for one model
+  // call at ~4s and ~$0.0003 — a clear win kept opt-OUT-able for
+  // `OPENKB_LISTICLE_HARVEST=0`. Additive only, and every failure fails
+  // open — a call that throws, or a scan that finds nothing worth asking
+  // about, leaves the map exactly as the search phase already built it. Run
+  // here, before the host fold below, so whatever it buys folds and judges
+  // exactly like everything else the search phase found — no second path
+  // through the pipeline for what it surfaces.
+  const LISTICLE_HARVEST = opts.listicleHarvest !== false;
+  let listicleRowsScanned = 0;
+  let listicleVendorsFound = 0;
+  let listicleQueriesFired = 0;
+  if (LISTICLE_HARVEST) {
+    const roundupRows = hits
+      .filter((h) => ROUNDUP_SHAPE.test(h.title) || ROUNDUP_SHAPE.test(h.description ?? ""))
+      .slice(0, LISTICLE_MAX_ROWS);
+    listicleRowsScanned = roundupRows.length;
+    if (roundupRows.length > 0) {
+      say(
+        "sweep",
+        `listicle harvest: ${roundupRows.length} roundup-shaped rows may carry vendor names this run never searched for`,
+      );
+      try {
+        const rows = roundupRows
+          .map((h) => `"${h.title}" — ${(h.description ?? "").slice(0, 200)}`)
+          .join("\n");
+        const out = await call(
+          "listicle",
+          `listicle harvest: ${roundupRows.length} rows`,
+          z.object({
+            vendors: z
+              .array(z.string())
+              .describe("distinct vendor/company names the rows mention, each written once"),
+          }),
+          prompt("listicle", { anchor, rows }),
+          { think: "none", maxOutputTokens: 1_500 },
+        );
+        // A name already IN this run's own hand buys nothing: `hostsSeen`
+        // holds every host the search phase has found so far, and a vendor
+        // whose normalized label already shows up inside one of those hosts
+        // already has a query running for it somewhere in this run.
+        const knownLabel = (name: string): boolean => {
+          const norm = name.toLowerCase().replace(/[^a-z0-9]/g, "");
+          if (!norm) return true;
+          for (const host of hostsSeen)
+            if (host.toLowerCase().replace(/[^a-z0-9]/g, "").includes(norm)) return true;
+          return false;
+        };
+        const fresh = [...new Set(out.vendors.map((v) => v.trim()).filter(Boolean))].filter(
+          (v) => !knownLabel(v) && !banned(v, "rival", anchorBanName, banCoinages),
+        );
+        listicleVendorsFound = fresh.length;
+        if (fresh.length > 0) {
+          // The SAME machinery a name the anchor's own sitemap publishes
+          // already gets — see `rivalHand` — not a second query-shape
+          // generator for a second kind of third-party name.
+          const harvested: SweptQuery[] = rivalHand(fresh, LISTICLE_MAX_QUERIES).map((fq) => ({
+            q: fq.q,
+            intent: fq.q.includes(" vs ") ? "evaluation" : "switching",
+            platform: "web",
+            why: fq.why,
+            market: "",
+            family: fq.family,
+            product: undefined,
+            term: fq.term,
+          }));
+          const room =
+            QUERY_CEILING === null ? harvested.length : Math.max(0, QUERY_CEILING - asked.length);
+          const toFire = harvested.slice(0, room);
+          listicleQueriesFired = toFire.length;
+          if (toFire.length > 0) {
+            asked.push(...toFire);
+            await Promise.all(toFire.map((q) => runOne(q)));
+          }
+          say(
+            "sweep",
+            `listicle harvest: ${fresh.length} unsurfaced vendor${fresh.length === 1 ? "" : "s"} named ` +
+              `(${fresh.join(", ")}), ${toFire.length} fresh quer${toFire.length === 1 ? "y" : "ies"} fired`,
+          );
+        } else {
+          say("sweep", "listicle harvest: no vendor named in those rows was new to this run");
+        }
+      } catch (e) {
+        say("sweep", `listicle harvest call failed (${(e as Error).message}); no vendors added`);
+      }
+    }
+  }
+
   /**
    * One entry per COMPANY, not per hostname.
    *
@@ -3332,7 +3992,23 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    *  that arrived through "mailchimp alternatives" (rival family) and one that
    *  arrived through a reddit thread are different claims about the same page. */
   const qMeta = new Map(asked.map((q) => [q.q, q]));
-  const hostList = [...byHost.entries()].map(([host, hs]) => {
+  /**
+   * THE ANCHOR CANNOT COMPETE WITH ITSELF. MEASURED on a live cursor.com run:
+   * the anchor's own host reached the judge and came back `kind: company,
+   * relation: competitor` — the model arguing Cursor competes with Cursor.
+   * Excluded HERE, before triage or `judgeHosts` ever sees the row, so the
+   * fetch and the classify call are both saved rather than paid for and then
+   * filtered from the verdict.
+   *
+   * Folded the same way the triage stage's own anchor exemption is (a few
+   * dozen lines below): `hostList`'s keys are already `parentOf`-folded, so
+   * comparing against `parentOf(anchor)` keeps an anchor given as
+   * docs.foo.com excluding the foo.com row it folds into.
+   */
+  const anchorFolded = parentOf(anchor);
+  const hostList = [...byHost.entries()]
+    .filter(([host]) => host !== anchorFolded)
+    .map(([host, hs]) => {
     const qs = [...new Set(hs.map((h) => h.q))];
     const foundBy =
       qs
@@ -3367,8 +4043,11 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   // the search engine's own title and description, before any fetch is spent.
   // Skip is the only power this stage has, and every failure fails open — see
   // `SweepOptions.triage` for the contract, and the guard below for the one
-  // code-side exemption.
-  const TRIAGE = opts.triage === true;
+  // code-side exemption. DEFAULT ON since 2026-08-22: the A/B this flag was
+  // gated on skipped 123 of 926 hosts on the cursor.com run, buying back
+  // their fetch and classify calls for ~$0.02 of triage calls — roughly
+  // time-neutral, and kept opt-OUT-able for `OPENKB_TRIAGE=0`.
+  const TRIAGE = opts.triage !== false;
   const triagedOut: Array<{ host: string; seenIn: number; why: string }> = [];
   /** Batches ATTEMPTED — incremented before the call, so this reconciles with
    *  the bill's byAgent line instead of publishing a second, smaller count
@@ -3398,78 +4077,78 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       batches.push(hostList.slice(i, i + TRIAGE_BATCH));
     // Six in flight, the catalog stage's width: wide enough that twenty-odd
     // batches cost the slowest few, narrow enough that a rate-limited model
-    // answers with pacing rather than a failed wave.
+    // answers with pacing rather than a failed wave. A POOL, not chunked
+    // waves — the same fix `runPool` documents for the link phase. Chunked,
+    // this stage took 8.5 minutes on runs/sweep-cursor-com-20260823064255.json:
+    // fourteen calls in three waves, and every wave waited out its slowest
+    // member's 120s timeout plus retry while the other five workers idled.
     const TRIAGE_CONC = 6;
-    for (let i = 0; i < batches.length; i += TRIAGE_CONC) {
-      await Promise.all(
-        batches.slice(i, i + TRIAGE_CONC).map(async (batch) => {
-          const lines = batch
-            .map(
-              (h) =>
-                `${h.host} — seen in ${h.seenIn} queries — "${(h.titles[0] ?? "").slice(0, 90)}" — ${h.desc.slice(0, 160)}`,
-            )
-            .join("\n");
-          try {
-            triageCalls += 1;
-            const out = await call(
-              "triage",
-              `triage ${batch.length} hosts`,
-              z.object({
-                verdicts: z
-                  .array(
-                    z.object({
-                      host: z.string().describe("the host, exactly as given"),
-                      keep: z.boolean(),
-                      why: z
-                        .string()
-                        .describe(
-                          'one line making a skip plain; "kept" is enough for a keep',
-                        ),
-                    }),
-                  )
-                  .describe("one row per host, every host answered"),
-              }),
-              prompt("triage", {
-                anchor,
-                sells: decomp.sells,
-                buyer: decomp.buyer,
-                hosts: lines,
-              }),
-              { think: "none", maxOutputTokens: TRIAGE_MAX_OUTPUT_TOKENS },
-            );
-            const askedHosts = new Set(batch.map((b) => b.host));
-            for (const v of out.verdicts) {
-              // A verdict for a host this batch never asked about is noise
-              // from the model, not a decision about the map.
-              if (askedHosts.has(v.host)) verdictByHost.set(v.host, v);
-            }
-          } catch (e) {
-            triageFailures += 1;
-            // Fail open: an unanswered batch is judged in full. The judge is
-            // the stage that must not be skippable by an outage.
-            say(
-              "rank",
-              `  a triage call failed (${(e as Error).message}); its ${batch.length} hosts go to the judge unfiltered`,
-            );
-          }
-        }),
-      );
-    }
+    await runPool(batches, TRIAGE_CONC, async (batch) => {
+      const lines = batch
+        .map(
+          (h) =>
+            `${h.host} — seen in ${h.seenIn} queries — "${(h.titles[0] ?? "").slice(0, 90)}" — ${h.desc.slice(0, 160)}`,
+        )
+        .join("\n");
+      try {
+        triageCalls += 1;
+        const out = await call(
+          "triage",
+          `triage ${batch.length} hosts`,
+          z.object({
+            verdicts: z
+              .array(
+                z.object({
+                  host: z.string().describe("the host, exactly as given"),
+                  keep: z.boolean(),
+                  why: z
+                    .string()
+                    .describe(
+                      'one line making a skip plain; "kept" is enough for a keep',
+                    ),
+                }),
+              )
+              .describe("one row per host, every host answered"),
+          }),
+          prompt("triage", {
+            anchor,
+            sells: decomp.sells,
+            buyer: decomp.buyer,
+            hosts: lines,
+          }),
+          { think: "none", maxOutputTokens: TRIAGE_MAX_OUTPUT_TOKENS },
+        );
+        const askedHosts = new Set(batch.map((b) => b.host));
+        for (const v of out.verdicts) {
+          // A verdict for a host this batch never asked about is noise
+          // from the model, not a decision about the map.
+          if (askedHosts.has(v.host)) verdictByHost.set(v.host, v);
+        }
+      } catch (e) {
+        triageFailures += 1;
+        // Fail open: an unanswered batch is judged in full. The judge is
+        // the stage that must not be skippable by an outage.
+        say(
+          "rank",
+          `  a triage call failed (${(e as Error).message}); its ${batch.length} hosts go to the judge unfiltered`,
+        );
+      }
+    });
     judgeList = [];
     for (const h of hostList) {
       const v = verdictByHost.get(h.host);
-      // The exemptions are code, not prompt. A host the market kept returning
+      // The exemption is code, not prompt: a host the market kept returning
       // is not skippable on a snippet, whatever the model thought of its
-      // title. Neither is the ANCHOR's own host: its entity exists only by
-      // being judged from its own front page, so a snippet vote against it
-      // would remove the map's subject from the map — the one hole nothing
-      // downstream can repair.
+      // title. The anchor's own host needs no exemption of its own here any
+      // more — hostList's construction (above) already excludes it before
+      // triage or judgeHosts ever sees the row, so `h.host` can never equal
+      // `parentOf(anchor)` at this point. The comparison stays as a second,
+      // free line of defense: if that exclusion ever moved or narrowed,
+      // triage would still refuse to be the reason the anchor disappears.
       if (
         v &&
         v.keep === false &&
         h.seenIn < TRIAGE_KEEP_SEENIN &&
-        // Folded, because hostList keys are parentOf-folded: an anchor given
-        // as docs.foo.com must still shield the foo.com row it folds into.
         h.host !== parentOf(anchor)
       ) {
         triagedOut.push({ host: h.host, seenIn: h.seenIn, why: v.why });
@@ -3551,6 +4230,31 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
             .string()
             .describe("what it is, one line, from the page itself"),
           relation: z.enum(RELATIONS),
+          // Declared here, right after `relation` and before `why`/`spans`,
+          // because classify.md:65-66 has always told the model to answer in
+          // exactly this order — state the decisive fact, THEN back it with
+          // evidence — but the schema used to declare `reasoning` after
+          // `spans`, contradicting its own prompt. Structured-output decoding
+          // fills fields in schema-declaration order, not prompt-mention
+          // order: a model asked for the mechanism only after it had already
+          // spent its output on two required fields (`why`, `spans`) had
+          // every incentive to treat this trailing optional field as done.
+          // Measured on the cursor.com run (docs/overnight-backlog.md,
+          // P1-6): 202 of 776 entities (26%) carried a `reasoning`, against
+          // 85% for `relationSpan` — the other optional field, which sits
+          // right after its own required counterpart (`spans`) rather than
+          // after an unrelated one. Not `.min(1)`, and still optional: every
+          // existing fixture and test script across this suite answers the
+          // classify schema without it, and a required field the mock model
+          // never supplies fails `generateObject`'s own zod parse before the
+          // engine sees a response — the same failure a real provider that
+          // dropped a field would cause.
+          reasoning: z
+            .string()
+            .optional()
+            .describe(
+              "one sentence: the single decisive fact that settled kind and relation",
+            ),
           why: z
             .string()
             .describe("why it belongs on this map, stated against the anchor"),
@@ -3560,6 +4264,13 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
             .max(3)
             .describe(
               "1-3 short quotes copied character-for-character from the page, together backing the what",
+            ),
+          relationSpan: z
+            .string()
+            .min(8)
+            .optional()
+            .describe(
+              "one quote copied character-for-character from the page, backing the RELATION specifically, not the what",
             ),
         }),
         prompt("classify", {
@@ -3573,7 +4284,18 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         }),
         { think: "none", maxOutputTokens: CLASSIFY_MAX_OUTPUT_TOKENS },
       );
-      return out;
+      // `relationSpan` gets the same containment check `spans` gets inside
+      // judgeHosts (checkQuote: a literal substring of this exact page text,
+      // whitespace-squashed, case-folded) — done here, not there, because this
+      // closure is the one place that still holds `pageText` once judgeHosts'
+      // rigid `JudgeDeps.classify` return type has narrowed it away. Measured,
+      // never gating: `relationGrounded` records the fact and nothing below
+      // ever reads it to reject a verdict, the same rule `descGrounded` lives
+      // by two calls downstream of this one.
+      return {
+        ...out,
+        relationGrounded: checkQuote(pageText, out.relationSpan ?? "") === "ok",
+      };
     };
 
   const judged = await judgeHosts(judgeList, {
@@ -3686,7 +4408,10 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   // direct fetch each, the SAME classify call, and only a verdict that places
   // the host with quotes verified against the page it read may replace the
   // first judgement — see `SweepOptions.secondLook` for the contract.
-  const SECOND_LOOK = opts.secondLook === true;
+  // DEFAULT ON since 2026-08-22: the A/B this flag was gated on rescued 12
+  // of 23 and 13 of 22 unplaced hosts across two runs, for ~$0.005 — kept
+  // opt-OUT-able for `OPENKB_SECOND_LOOK=0`.
+  const SECOND_LOOK = opts.secondLook !== false;
   /** Attempts, counted before the fetch — the same convention as
    *  `triageCalls`, so the report reconciles with the bill when a look fails
    *  open partway through. `secondLookRescued` is the replaced subset. */
@@ -3695,6 +4420,10 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   /** Looks that failed OPEN — an unreadable page or a thrown call. Counted so
    *  the census can say so, the triage stage's own convention. */
   let secondLookFailed = 0;
+  /** Unlocker escalations spent on a second-look fetch that came back blocked.
+   *  Bounded by SECOND_LOOK_UNLOCK_BUDGET, checked before every escalation so
+   *  the count never runs past it. */
+  let secondLookUnlocked = 0;
   // The same clock rule as the paid link pass: a deadline-bound run that is
   // down to its write reserve ships what it judged rather than spending the
   // reserve on second chances. Null DEADLINE — every CLI run — never gates.
@@ -3726,6 +4455,25 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         return true; // an unparseable URL is not worth a fetch either
       }
     };
+    /** The same `bestRank` the report section computes on entities later —
+     *  earlier here, because the unlock ladder below needs it before that
+     *  section runs. `byHost` is the one source both read; a second field
+     *  restated on `Entity` would just be this, cached. */
+    const bestRankOf = (domain: string): number | undefined => {
+      const rows = byHost.get(domain) ?? [];
+      const ranks = rows
+        .map((h) => h.rank)
+        .filter((n): n is number => typeof n === "number");
+      return ranks.length ? Math.min(...ranks) : undefined;
+    };
+    /** Earned a second knock on a page that came back blocked: corroborated
+     *  by more than one query, or ranked well by at least one — the same
+     *  read `unlockSeenIn` gives the rank phase, applied here because a
+     *  second-look fetch is a fresh door, not a retry of the judge's own.
+     *  Reads `row.seenIn`, not `e.seenIn`: the entity's own `seenIn` is not
+     *  filled in until the report section below this stage runs. */
+    const earnedUnlock = (row: HostCandidate, domain: string): boolean =>
+      row.seenIn >= 2 || (bestRankOf(domain) ?? Infinity) <= 5;
     const lookAt: Array<{ e: Entity; row: HostCandidate; url: string }> = [];
     for (const e of unplaced) {
       if (lookAt.length >= SECOND_LOOK_CAP) break;
@@ -3741,104 +4489,146 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       // Six in flight — the triage stage's width, for the same reason: wide
       // enough that sixty hosts cost the slowest few, narrow enough that a
       // rate-limited model answers with pacing rather than a failed wave.
+      // A POOL, the last chunked-wave site in this file to become one:
+      // measured on runs/sweep-cursor-com-20260823064255.json, 414s of billed
+      // second-look work took 191s of wall at six wide — 2.2 in flight, the
+      // other four waiting on each wave's slowest fetch.
       const SECOND_LOOK_CONC = 6;
-      for (let i = 0; i < lookAt.length; i += SECOND_LOOK_CONC) {
-        await Promise.all(
-          lookAt.slice(i, i + SECOND_LOOK_CONC).map(async ({ e, row, url }) => {
-            secondLookAsked += 1;
-            try {
-              const raw = await fetcher.get(url, "direct", { signal });
-              const s = sniff(raw);
-              bill("fetch", "second-look", 0, raw.ms, s.status === "found");
-              spans.emit({
-                runId,
-                agentId: "second-look",
-                parentId: null,
-                kind: "fetch",
-                name: "fetch",
-                argsDigest: url,
-                ms: raw.ms,
-                ok: s.status === "found",
-                usd: 0,
-              });
-              if (s.status !== "found") {
-                secondLookFailed += 1;
-                return;
-              }
-              const pageText = condense(s.text, 6_000).slice(0, 4_000);
-              // The {{page}} var carries a one-line header naming the URL and
-              // saying the front page left this host unplaced — the template
-              // frames the var as "its front page, condensed", and a model
-              // told it is reading the front door again would judge the wrong
-              // claim.
-              const out = await classifyHost("second-look")(
-                row,
-                `second look at ${url} — the front page left this host unplaced; this is a page the search itself surfaced for it.\n${pageText}`,
-              );
-              // Rescue is the stage's only power: an answer that still
-              // refuses to place the host changes nothing.
-              if (out.relation === "unknown" || out.relation === "none")
-                return;
-              // THE JUDGE'S WITHDRAWALS HOLD HERE TOO. judgeHosts withdraws a
-              // verdict whole when the model answers with the anchor's own
-              // identity, or with a brand whose home is another registrable
-              // domain — and it emits exactly the relation:"unknown" rows this
-              // stage targets. A second look that skipped these guards was
-              // re-admitting the withdrawn verdicts on a second page; the
-              // guards are the judge's own exports, one implementation.
-              if (
-                anchorIdentityTheft(out.name ?? "", row.host, anchor) ||
-                wrongDoorName(out.name ?? "", row.host)
-              )
-                return;
-              // The judgeHosts path re-checks spans in code; this call went
-              // around it, so the same check happens here — quotes verified
-              // against the fetched page's own condensed text (never the
-              // header), or the rescue does not stand.
-              const verified = out.spans.filter(
-                (sp) => checkQuote(pageText, sp) === "ok",
-              );
-              if (verified.length === 0) return;
-              secondLookRescued += 1;
-              e.name = out.name || e.name;
-              e.kind = out.kind;
-              e.relation = out.relation;
-              e.what = out.what;
-              e.why = out.why;
-              // Stored receipts obey the judge's own budget, and the
-              // grounding meter is re-measured against the page this
-              // description was actually written from — a rescued row
-              // carrying the front page's meter would grade new prose
-              // against text that no longer backs it.
-              e.spans = capReceipts(verified);
-              e.descGrounded =
-                Math.round(descriptionGrounding(out.what, pageText).score * 100) / 100;
-              e.descSpans = {
-                verified: verified.length,
-                claimed: out.spans.length,
-              };
-              // The trail, appended rather than replaced: the first
-              // judgement's refusal is part of how this entity was settled.
-              e.because = [e.because, `second look at ${url}`]
-                .filter(Boolean)
-                .join("; ");
-            } catch (err) {
-              // An abort must stay an abort — the same rule as the judge
-              // pool: settling on through a cancel would hand back a run
-              // nobody is waiting for.
-              if (signal?.aborted) throw err;
-              // Fail open: a fetch or model failure leaves the first
-              // judgement standing, exactly as if this look never happened —
-              // but counted, so the closing line and the census can say so.
-              secondLookFailed += 1;
+      await runPool(lookAt, SECOND_LOOK_CONC, async ({ e, row, url }) => {
+        secondLookAsked += 1;
+        try {
+          let raw = await fetcher.get(url, "direct", { signal });
+          let s = sniff(raw);
+          bill("fetch", "second-look", 0, raw.ms, s.status === "found");
+          spans.emit({
+            runId,
+            agentId: "second-look",
+            parentId: null,
+            kind: "fetch",
+            name: "fetch",
+            argsDigest: url,
+            ms: raw.ms,
+            ok: s.status === "found",
+            usd: 0,
+          });
+          // The search-surfaced page can be walled the same as the front
+          // door was — about half of one real run's second looks were —
+          // so a corroborated host earns one unlocker retry before the
+          // look fails open, the same bar (not a new one) and the same
+          // blocked-shape check (`unlockSeenIn`) the rank phase applies
+          // to the judge's own front-page fetch.
+          if (
+            s.status !== "found" &&
+            (s.reason === "thin-render" || /^http-4/.test(s.reason)) &&
+            secondLookUnlocked < SECOND_LOOK_UNLOCK_BUDGET &&
+            earnedUnlock(row, e.domain)
+          ) {
+            secondLookUnlocked += 1;
+            const retried = await fetcher.get(url, "unlocked", { signal });
+            const s2 = sniff(retried);
+            bill("unlocker", "second-look", retried.usd, retried.ms, s2.status === "found");
+            spans.emit({
+              runId,
+              agentId: "second-look",
+              parentId: null,
+              kind: "fetch",
+              name: "unlocker",
+              argsDigest: url,
+              ms: retried.ms,
+              ok: s2.status === "found",
+              usd: retried.usd,
+            });
+            if (s2.status === "found") {
+              raw = retried;
+              s = s2;
             }
-          }),
-        );
-      }
+          }
+          if (s.status !== "found") {
+            secondLookFailed += 1;
+            return;
+          }
+          const pageText = condense(s.text, 6_000).slice(0, 4_000);
+          // The {{page}} var carries a one-line header naming the URL and
+          // saying the front page left this host unplaced — the template
+          // frames the var as "its front page, condensed", and a model
+          // told it is reading the front door again would judge the wrong
+          // claim.
+          const out = await classifyHost("second-look")(
+            row,
+            `second look at ${url} — the front page left this host unplaced; this is a page the search itself surfaced for it.\n${pageText}`,
+          );
+          // Rescue is the stage's only power: an answer that still
+          // refuses to place the host changes nothing.
+          if (out.relation === "unknown" || out.relation === "none")
+            return;
+          // THE JUDGE'S WITHDRAWALS HOLD HERE TOO. judgeHosts withdraws a
+          // verdict whole when the model answers with the anchor's own
+          // identity, or with a brand whose home is another registrable
+          // domain — and it emits exactly the relation:"unknown" rows this
+          // stage targets. A second look that skipped these guards was
+          // re-admitting the withdrawn verdicts on a second page; the
+          // guards are the judge's own exports, one implementation.
+          if (
+            anchorIdentityTheft(out.name ?? "", row.host, anchor) ||
+            wrongDoorName(out.name ?? "", row.host)
+          )
+            return;
+          // The judgeHosts path re-checks spans in code; this call went
+          // around it, so the same check happens here — quotes verified
+          // against the fetched page's own condensed text (never the
+          // header), or the rescue does not stand.
+          const verified = out.spans.filter(
+            (sp) => checkQuote(pageText, sp) === "ok",
+          );
+          if (verified.length === 0) return;
+          secondLookRescued += 1;
+          e.name = out.name || e.name;
+          e.kind = out.kind;
+          e.relation = out.relation;
+          e.what = out.what;
+          e.why = out.why;
+          // Stored receipts obey the judge's own budget, and the
+          // grounding meter is re-measured against the page this
+          // description was actually written from — a rescued row
+          // carrying the front page's meter would grade new prose
+          // against text that no longer backs it.
+          e.spans = capReceipts(verified);
+          e.descGrounded =
+            Math.round(descriptionGrounding(out.what, pageText).score * 100) / 100;
+          e.descSpans = {
+            verified: verified.length,
+            claimed: out.spans.length,
+          };
+          // reasoning/relationSpan/relationGrounded are per-VERDICT, not
+          // per-entity: they describe why THIS relation holds, so a
+          // rescue that overwrites the relation must overwrite them too,
+          // or the stored reasoning goes on describing a verdict this
+          // entity no longer carries. classifyHost already computed them
+          // against this call's own page — carry what it returned.
+          e.reasoning = out.reasoning;
+          e.relationSpan = out.relationSpan;
+          e.relationGrounded = out.relationGrounded;
+          // The trail, appended rather than replaced: the first
+          // judgement's refusal is part of how this entity was settled.
+          e.because = [e.because, `second look at ${url}`]
+            .filter(Boolean)
+            .join("; ");
+        } catch (err) {
+          // An abort must stay an abort — the same rule as the judge
+          // pool: settling on through a cancel would hand back a run
+          // nobody is waiting for.
+          if (signal?.aborted) throw err;
+          // Fail open: a fetch or model failure leaves the first
+          // judgement standing, exactly as if this look never happened —
+          // but counted, so the closing line and the census can say so.
+          secondLookFailed += 1;
+        }
+      });
       say(
         "rank",
         `second look rescued ${secondLookRescued} of ${secondLookAsked} unplaced hosts` +
-          (secondLookFailed ? ` (${secondLookFailed} looks failed open)` : ""),
+          (secondLookFailed ? ` (${secondLookFailed} looks failed open)` : "") +
+          (secondLookUnlocked ? ` (${secondLookUnlocked} escalated through the unlocker)` : ""),
       );
     }
   }
@@ -3920,6 +4710,171 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         const ranks = rows.map((h) => h.rank).filter((n): n is number => typeof n === "number");
         if (ranks.length) e.bestRank = Math.min(...ranks);
       }
+    }
+  }
+
+  // ── 4¾. drop-confirm: a second opinion on every host the first pass dropped ──
+  //
+  // The judge's `relation: "none"` is a real verdict — model-settled, page in
+  // hand — and also the one verdict this run never gets a second look at: it
+  // costs the entity its place on the map entirely (`onMap`, above), and
+  // nothing downstream ever revisits it. This stage asks, once more and
+  // batched, whether that verdict holds — from the SAME evidence the first
+  // pass already paid for (the entity's own `what`/`why`/`roads`), never a
+  // re-fetch: that stored summary IS the page's content, already read once.
+  // Sequenced last, after the second look, on purpose — a rescue there can
+  // already move a host off `none`, and asking about a host twice in one run
+  // is two calls answering the same question. See `SweepOptions.dropConfirm`
+  // for the contract; the shape below repeats triage's and the second look's:
+  // off unless asked for, and every failure fails open.
+  const DROP_CONFIRM = opts.dropConfirm === true;
+  let dropConfirmAsked = 0;
+  let dropConfirmRescued = 0;
+  let dropConfirmConfirmed = 0;
+  // The same clock rule as triage and the second look: a deadline-bound run
+  // down to its write reserve ships what it has rather than spending the
+  // reserve on one more opinion. Null DEADLINE — every CLI run — never gates.
+  const dropConfirmAffordable =
+    DEADLINE === null || secondsLeft() > TAIL_SECONDS;
+  if (DROP_CONFIRM && !dropConfirmAffordable) {
+    say(
+      "rank",
+      `drop-confirm withheld: only the write reserve is left on the clock, so the first refusals stand`,
+    );
+  }
+  if (DROP_CONFIRM && dropConfirmAffordable) {
+    // Model-settled only: a predicate settlement (an unreadable host) has no
+    // `what`/`why` worth reconsidering, and a triage skip never had its page
+    // read at all — see `SweepOptions.dropConfirm`.
+    const dropped = entities.filter(
+      (e) => e.settledBy === "model" && e.relation === "none",
+    );
+    const candidates = dropped.slice(0, DROP_CONFIRM_CAP);
+    if (candidates.length > 0) {
+      say(
+        "rank",
+        `drop-confirm: asking whether ${candidates.length} hosts truly have no place on this market's map at all`,
+      );
+      const byDomain = new Map(candidates.map((e) => [e.domain, e]));
+      const blockFor = (e: Entity) =>
+        `${e.domain}\n` +
+        `  what: ${e.what || "(nothing said)"}\n` +
+        `  why: ${e.why || "(nothing said)"}\n` +
+        `  roads: ${(e.roads ?? []).join("; ") || "(none recorded)"}`;
+      // The rendered per-host block is the only text this call hands the
+      // model — there is no page to re-read — so it is also the only text a
+      // returned `spans` quote can be checked against. Built FROM blockFor,
+      // not reconstructed alongside it: a separately-joined string here once
+      // omitted the "what:"/"why:"/"roads:" labels blockFor renders, so a
+      // quote that legitimately included label text the model was shown
+      // would fail a check against text it was never shown.
+      const contextOf = new Map(
+        candidates.map((e) => [e.domain, blockFor(e)]),
+      );
+      const batches: Array<typeof candidates> = [];
+      for (let i = 0; i < candidates.length; i += BATCH)
+        batches.push(candidates.slice(i, i + BATCH));
+      await Promise.all(
+        batches.map(async (batch) => {
+          dropConfirmAsked += batch.length;
+          try {
+            const out = await call(
+              "drop-confirm",
+              `drop-confirm ${batch.length} hosts`,
+              z.object({
+                placements: z
+                  .array(
+                    z.object({
+                      host: z.string().describe("the host, exactly as given"),
+                      kind: z.enum(CLASSIFY_KINDS),
+                      relation: z.enum(RELATIONS),
+                      what: z
+                        .string()
+                        .describe(
+                          "what it is, one line — empty when relation is none",
+                        ),
+                      why: z
+                        .string()
+                        .describe(
+                          "the evidence for the placement, or the one line confirming nothing fits",
+                        ),
+                      spans: z
+                        .array(z.string())
+                        .max(3)
+                        .describe(
+                          "1-3 quotes copied from this host's what/why/roads below, backing a real placement; empty when relation is none",
+                        ),
+                    }),
+                  )
+                  .describe("one row per host, every host answered"),
+              }),
+              prompt("drop-confirm", {
+                anchor,
+                sells: decomp.sells,
+                buyer: decomp.buyer,
+                hosts: batch.map(blockFor).join("\n\n"),
+              }),
+              { think: "none", maxOutputTokens: TRIAGE_MAX_OUTPUT_TOKENS },
+            );
+            const askedHosts = new Set(batch.map((e) => e.domain));
+            for (const v of out.placements) {
+              // A verdict for a host this batch never asked about is noise
+              // from the model, not a decision about the map — the same
+              // guard triage's verdict loop applies.
+              if (!askedHosts.has(v.host)) continue;
+              const e = byDomain.get(v.host);
+              if (!e) continue;
+              if (v.relation === "none") {
+                dropConfirmConfirmed += 1;
+                e.because = [e.because, `drop-confirmed: ${v.why}`]
+                  .filter(Boolean)
+                  .join("; ");
+                continue;
+              }
+              // Same discipline `spans` gets in the main classify path: a
+              // literal substring of the exact text this call handed the
+              // model, or the rescue does not stand — the second look's own
+              // rule (`if (verified.length === 0) return`), repeated here.
+              const ctx = contextOf.get(v.host) ?? "";
+              const verified = v.spans.filter(
+                (sp) => checkQuote(ctx, sp) === "ok",
+              );
+              if (verified.length === 0) continue;
+              dropConfirmRescued += 1;
+              e.kind = v.kind;
+              e.relation = v.relation;
+              e.what = v.what;
+              e.why = v.why;
+              e.spans = capReceipts(verified);
+              // The first pass's reasoning/relationSpan described the "none"
+              // verdict this rescue just overwrote — left standing, they
+              // would go on explaining a relation this entity no longer
+              // carries, which is worse than carrying nothing. This call's
+              // schema asks for no fresh relationSpan (there is no page to
+              // draw one from — see the stage's own doc comment), so the
+              // honest move is to clear rather than leave a stale one.
+              e.reasoning = undefined;
+              e.relationSpan = undefined;
+              e.relationGrounded = undefined;
+              e.because = [e.because, `drop-confirmed: ${v.why}`]
+                .filter(Boolean)
+                .join("; ");
+            }
+          } catch (err) {
+            // Fail open: an unanswered batch leaves every first verdict in it
+            // standing, exactly as if this stage never ran — but the attempt
+            // is still counted, so the closing line and the census can say so.
+            say(
+              "rank",
+              `  a drop-confirm call failed (${(err as Error).message}); its ${batch.length} hosts keep their first verdict`,
+            );
+          }
+        }),
+      );
+      say(
+        "rank",
+        `drop-confirm rescued ${dropConfirmRescued} of ${dropConfirmAsked}; ${dropConfirmConfirmed} confirmed unrelated`,
+      );
     }
   }
 
@@ -4199,10 +5154,21 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     let ambiguous = 0;
     let demoted = 0;
     for (const [host, rows] of byHost) {
-      const src = keep.find(
-        (e) => e.domain.toLowerCase().replace(/^www\./, "") === host,
-      );
-      if (!src) continue;
+      // THE ANCHOR'S OWN HOST HAS NO ROW IN `keep`, since the hostList guard
+      // above excludes it before judgeHosts ever runs (never fetched, never
+      // judged, never a node on the map — see the anchor-exclusion comment
+      // there). `isRival` already treats the anchor as a rival of itself BY
+      // DOMAIN, independent of anything a `src` entity would carry, so the
+      // naming pass still lets it be the FROM side of an edge: `srcKind` is
+      // fixed to "company" for it — the anchor sells, by construction — which
+      // `sells()` and the `mention` ladder below read exactly the way they
+      // would have read a real, judged anchor row.
+      const isAnchorHost = host === anchorHost;
+      const src = isAnchorHost
+        ? undefined
+        : keep.find((e) => e.domain.toLowerCase().replace(/^www\./, "") === host);
+      if (!isAnchorHost && !src) continue;
+      const srcKind = isAnchorHost ? "company" : src!.kind;
       // Only what this host's own results said, which is text the run retrieved.
       const blob = rows
         .map((r) => `${r.title} ${r.description ?? ""}`)
@@ -4264,22 +5230,60 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         // (g2.com and gartner.com really are rivals). It sees both descriptions
         // before it answers. The string match is where the leap was.
         const mention =
-          src.kind === "community"
+          srcKind === "community"
             ? "discusses"
-            : src.kind === "directory"
+            : srcKind === "directory"
               ? "lists"
-              : src.kind === "publisher"
+              : srcKind === "publisher"
                 ? "covers"
-                : sells(src.kind)
+                : sells(srcKind)
                   ? "discusses"
                   : "unknown";
-        const rivals = isRival(src) && isRival(entity);
-        if (sells(src.kind) && !rivals) demoted += 1;
+        // `isAnchorHost` short-circuits the same way `isRival` itself would
+        // have on a real anchor row: the anchor's identity is a fact about
+        // its domain, not a judgement any `src` entity could carry.
+        const rivals = (isAnchorHost || isRival(src!)) && isRival(entity);
+        if (sells(srcKind) && !rivals) demoted += 1;
+        // GROUNDED IN THE ROW THAT ACTUALLY NAMED IT, not only the fact that
+        // one did. "a page on X names Y" proves discovery — it is true of
+        // every edge this pass writes and says nothing about HOW the two
+        // relate, so a reader has nothing to act on or correct (the same bar
+        // `why` is held to at the paid link pass, prompts/agents/link.md).
+        // The row `blob` folded this hit out of is real text the run
+        // retrieved; when it says more than the bare name, quoting it turns
+        // `why` into a one-sentence mechanism instead of a discovery receipt.
+        // Never invented: a row with nothing beyond the name keeps the
+        // discovery sentence exactly as before, prefix and all, so a reader
+        // (and `edges-need-more-than-a-mention.test.ts`, which matches on
+        // that exact prefix) still finds the fact it always found.
+        //
+        // EVERY ROW THIS HOST HAS, not just the first that matched. A host
+        // turns up in `rows` once per query that surfaced it, and the naming
+        // pass used to take `.find()`'s first hit — so a target named once
+        // in passing (an empty-description listing page) and once with real
+        // context (a comparison page from a different query) fell to the
+        // bare fallback whenever the thin row happened to sort first. Taking
+        // the richest of every row that names it costs nothing this pass
+        // wasn't already paying for — the same `rows` it already had in
+        // hand — and only ever adds a mechanism, never removes one: a host
+        // with exactly one naming row keeps behaving exactly as before,
+        // which is what the two existing tests above lock in.
+        let mechanism = "";
+        for (const r of rows) {
+          if (!namesIt(`${r.title} ${r.description ?? ""}`, hit)) continue;
+          const candidate = (r.description || r.title || "").trim();
+          if (candidate.toLowerCase() === hit.toLowerCase()) continue;
+          if (candidate.length > mechanism.length) mechanism = candidate;
+        }
+        const why =
+          mechanism && mechanism.toLowerCase() !== hit.toLowerCase()
+            ? `a page on ${host} names "${hit}": "${mechanism.slice(0, 200)}"`
+            : `a page on ${host} names "${hit}"`;
         edges.push({
           from: host,
           to: target,
           relation: rivals ? "competitor" : mention,
-          why: `a page on ${host} names "${hit}"`,
+          why,
           confidence: "measured",
         });
         matched += 1;
@@ -4374,9 +5378,16 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    * but every throttled batch IS edges the map does not get, bought and paid
    * for. Wall clock: the batches were already concurrent with each other, so
    * this caps the burst's width rather than serializing anything — chunks of
-   * eight, not one 110-wide spike.
+   * (now a pool's width, since P0-2) sixteen, not one 110-wide spike. Raised
+   * from 8: link is 43% of a measured run's wall time (12.3 of 28.5 minutes,
+   * runs/sweep-cursor-com-20260821105321.json), the largest single phase, and
+   * — like RANK_CONC above — a deployment with rate-limit headroom can widen
+   * it past the old hardcoded default.
    */
-  const LINK_CONC = 8;
+  const LINK_CONC = Math.max(
+    1,
+    Math.floor(Number(process.env.OPENKB_LINK_CONCURRENCY ?? 16) || 16),
+  );
   if (!canAffordLinking && unresolved.length && !opts.skipModelLinking) {
     say(
       "link",
@@ -4471,19 +5482,26 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           const to = e.to.toLowerCase().replace(/^www\./, "");
           if (from === to) continue;
           if (!byDomain.has(from) || !byDomain.has(to)) continue;
-          edges.push({ ...e, from, to });
+          // `whySpan` checked against exactly the text `describe()` showed the
+          // model for this pair — the same containment check `relationSpan`
+          // gets against the classify pass's page text, applied to what this
+          // pass actually had in hand instead: no fetched page survives to
+          // link time, only the `what` each entity was already judged from.
+          edges.push({
+            ...e,
+            from,
+            to,
+            whyGrounded:
+              checkQuote(`${describe(from)}\n${describe(to)}`, e.whySpan ?? "") ===
+              "ok",
+          });
         }
         linked += batch.length;
         say("link", `  ${linked}/${unresolved.length} pairs`);
     };
-    // LINK_CONC at a time, argued at its declaration above.
-    for (let i = 0; i < pairBatches.length; i += LINK_CONC) {
-      await Promise.all(
-        pairBatches
-          .slice(i, i + LINK_CONC)
-          .map((batch, j) => runPairBatch(batch, i + j)),
-      );
-    }
+    // LINK_CONC at a time, a pool rather than a barrier — argued at `runPool`'s
+    // own declaration above.
+    await runPool(pairBatches, LINK_CONC, (batch, i) => runPairBatch(batch, i));
     say("link", `${edges.length} edges between entities`);
   }
 
@@ -4607,14 +5625,9 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
               stats.linked += 1;
             }
       };
-      // LINK_CONC at a time, argued at its declaration above.
-      for (let i = 0; i < batches.length; i += LINK_CONC) {
-        await Promise.all(
-          batches
-            .slice(i, i + LINK_CONC)
-            .map((batch, j) => runOrphanBatch(batch, i + j)),
-        );
-      }
+      // LINK_CONC at a time, a pool rather than a barrier — argued at
+      // `runPool`'s own declaration above.
+      await runPool(batches, LINK_CONC, (batch, i) => runOrphanBatch(batch, i));
       say(
         "link",
         `${stats.linked} of ${stats.orphans} orphans found a footing; ${stats.orphans - stats.linked} honestly stand alone`,
@@ -4790,8 +5803,19 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     serp: {
       requests: serpRequests,
       retries: serpRetries,
-      pagesPerQuery: PAGES,
+      // The depth every query opens at. No longer the whole story once a
+      // product earns `deepPagesPerQuery` instead — `deepenedProducts` names
+      // which ones did, so a reader is not left assuming this ran flat.
+      pagesPerQuery: SHALLOW_PAGES,
+      deepPagesPerQuery: DEEP_PAGES,
+      deepenedProducts: [...depthByProduct.entries()]
+        .filter(([, d]) => d === "deep")
+        .map(([p]) => p),
       blocked: serpBlocks,
+      /** Queries that failed outright, by reason. `blocked` is the retry
+       *  path's refusals only; a refusal the port does not retry — an account
+       *  suspension — lands here and nowhere else. */
+      failed: serpFailures,
     },
     /** Agent-mode phase one's own account: turns, pages, and the integrations
      *  the docs stated. Null on the default path, which reads nothing an agent
@@ -4888,12 +5912,36 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       : null,
     /** Null when the flag was off — "not run" must not read as "rescued
      *  nothing". When on: how many unplaced hosts were given a second page,
-     *  and how many first judgements that replaced. */
+     *  how many first judgements that replaced, and how many of those looks
+     *  spent an unlocker escalation on a page that came back blocked. */
     secondLook: SECOND_LOOK
       ? {
           asked: secondLookAsked,
           rescued: secondLookRescued,
           failed: secondLookFailed,
+          unlocked: secondLookUnlocked,
+        }
+      : null,
+    /** Null when the flag was off — "not run" must not read as "nothing was
+     *  unrelated". When on: how many `relation: "none"` hosts got a second
+     *  opinion, how many it rescued onto the map, and how many it confirmed
+     *  genuinely unrelated (a checked fact now, not one model's first read). */
+    dropConfirm: DROP_CONFIRM
+      ? {
+          asked: dropConfirmAsked,
+          rescued: dropConfirmRescued,
+          confirmed: dropConfirmConfirmed,
+        }
+      : null,
+    /** Null when the flag was off — "not run" must not read as "found
+     *  nothing". When on: how many roundup-shaped rows were scanned, how
+     *  many unsurfaced vendors the call named, and how many fresh queries
+     *  those vendors were dealt. */
+    listicleHarvest: LISTICLE_HARVEST
+      ? {
+          rowsScanned: listicleRowsScanned,
+          vendorsFound: listicleVendorsFound,
+          queriesFired: listicleQueriesFired,
         }
       : null,
     recall,
@@ -4939,6 +5987,15 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
              *  on 21 of the 28 runs on disk. */
             truncatedPairs,
           },
+    /** The model id this run was given, and which upstream hosts actually
+     *  answered for it — calls and refusals per host. Read this before
+     *  blaming the model: on 2026-08-23 one host refused half its answers
+     *  while seven others refused none, same model id, same day. */
+    model: {
+      id: modelId,
+      ignored: MODEL_HOST_IGNORE,
+      servedBy,
+    },
     cost: {
       usd,
       elapsedMs: Date.now() - t0,

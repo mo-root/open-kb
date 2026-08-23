@@ -3,14 +3,21 @@ import { runFixture, HOSTS } from "./fixture.js"
 
 /**
  * The triage stage: batched keep/skip verdicts from search metadata, before
- * any fetch. Its whole contract is three sentences — it is off unless asked
- * for, its only power is to skip, and every failure fails open — and each
- * sentence gets its suite below.
+ * any fetch. Its whole contract is three sentences — it defaults ON (its A/B
+ * survived, see `SweepOptions.triage`), its only power is to skip, and every
+ * failure fails open — and each sentence gets its suite below.
  */
 
 describe("triage", () => {
-  it("does not exist unless asked for", async () => {
+  it("runs by default, with no flag needed", async () => {
     const h = await runFixture()
+    expect(h.calls.filter((c) => c.phase === "triage").length).toBeGreaterThan(0)
+    const triage = (h.result.report as { triage: { calls: number } }).triage
+    expect(triage.calls).toBeGreaterThan(0)
+  })
+
+  it("does not exist when explicitly disabled", async () => {
+    const h = await runFixture({ sweepOptions: { triage: false } })
     expect(h.calls.filter((c) => c.phase === "triage")).toEqual([])
     // And no entity claims the provenance of a stage that never ran.
     expect(h.result.entities.filter((e) => e.settledBy === "triage")).toEqual([])
