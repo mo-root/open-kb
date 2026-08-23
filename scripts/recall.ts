@@ -47,6 +47,29 @@
  * run that stopped at 651 entities, and 55% on a re-run that reached 1,194.
  * The classifier had not changed. Check the map column before believing a row.
  *
+ * HOW MANY RUNS AN A/B NEEDS, which is not one. Recall moves between runs of
+ * the same anchor, and how much depends entirely on the anchor:
+ *
+ *   stripe.com     3 runs    93%  93%  93%                        0 pts
+ *   figma.com      2 runs    92%  92%                             0 pts
+ *   shopify.com    3 runs    71%  86%  79%                       15 pts
+ *   openai.com     2 runs    36%  55%                            19 pts
+ *   cursor.com     9 runs    50 42 42 75 50 67 92 83 83          50 pts
+ *
+ * Where the map reliably finds the field it finds exactly the same field every
+ * time; where it half-finds it, the marginal names are coin flips and the
+ * number wanders. So the anchors with headroom to improve are precisely the
+ * ones whose measurement is noisiest, and a single run cannot judge a change
+ * on them. MEASURED the hard way: the strip-term fix (bd2d69e) took shopify
+ * from three terms to four on all fifty products and put `headless commerce`
+ * in the core product's strip exactly as intended — and recall read 79%
+ * against 86% for the run before it, which had three terms. The mechanism
+ * worked and the outcome was inside the noise.
+ *
+ * cursor.com's nine runs are the one place a trend outruns the noise: 50, 42,
+ * 42 early in the day against 92, 83, 83 after the engine work, which is a
+ * real move rather than a wander.
+ *
  * GROUND TRUTH IS HAND-WRITTEN and deliberately conservative — only names
  * whose rivalry a practitioner would not argue about. It is a floor on the
  * real field, never a census of it, so `found` is an optimistic bound: the
