@@ -3059,6 +3059,8 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    *  story `serpBlocks` tells for retries. See the tally beside it. */
   const serpFailures: Record<string, number> = {};
   let serpSuspendedSaid = false;
+  /** Rows bought and unusable — see `SearchResult.redirects`. */
+  let serpRedirects = 0;
   /** Queries whose search was actually bought, counted where the money moves.
    *  `asked` is the QUEUE — seeded with the whole opening hand and grown at
    *  plan time — and the host-ceiling seal makes workers abandon its tail, so
@@ -3169,6 +3171,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     // 28% on one map, visible nowhere but in the total.
     serpRequests += r.requests ?? 0;
     serpRetries += r.retries ?? 0;
+    serpRedirects += r.redirects ?? 0;
     for (const b of r.blocked ?? []) {
       const key = b.replace(/\d{3,}/g, "N").slice(0, 60);
       serpBlocks[key] = (serpBlocks[key] ?? 0) + 1;
@@ -5913,6 +5916,9 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
        *  path's refusals only; a refusal the port does not retry — an account
        *  suspension — lands here and nowhere else. */
       failed: serpFailures,
+      /** Result rows paid for that carried an opaque redirect instead of a
+       *  destination, and so could never be read. */
+      redirects: serpRedirects,
     },
     /** Agent-mode phase one's own account: turns, pages, and the integrations
      *  the docs stated. Null on the default path, which reads nothing an agent

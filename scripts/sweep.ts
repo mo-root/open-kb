@@ -366,7 +366,7 @@ console.log(`$${stats.usd.toFixed(4)} · ${stats.seconds.toFixed(0)}s`)
   const report = out!.report as Record<string, unknown>
   const cost = report.cost as { usd: number; byKind: { label: string; calls: number; failures: number; usd: number; ms: number }[] }
   const serp = report.serp as
-    | { requests: number; retries: number; pagesPerQuery: number; blocked: Record<string, number>; failed?: Record<string, number> }
+    | { requests: number; retries: number; pagesPerQuery: number; blocked: Record<string, number>; failed?: Record<string, number>; redirects?: number }
     | undefined
   const kernel = report.kernel as { fetched: number; unreadable: number; unreadableByReason: Record<string, number>; unlocked?: number; serpJudged?: number } | undefined
   const pct = (n: number) => `${((100 * n) / (cost.usd || 1)).toFixed(1)}%`
@@ -389,6 +389,10 @@ console.log(`$${stats.usd.toFixed(4)} · ${stats.seconds.toFixed(0)}s`)
         ` (${Math.round(asked / serp.pagesPerQuery)} queries × ${serp.pagesPerQuery})` +
         (serp.retries ? ` — ${serp.retries} retries, ${((100 * serp.retries) / (serp.requests || 1)).toFixed(0)}% overhead` : ""),
     )
+    // Bought and unreadable: the engine answered with an opaque redirect
+    // token instead of a destination. Not an error and not a retry — just
+    // rows that were billed and can never be read.
+    if (serp.redirects) console.log(`  ${serp.redirects} result rows came back as opaque redirects and were dropped`)
     const blocks = Object.entries(serp.blocked).sort((a, b) => b[1] - a[1]).slice(0, 6)
     for (const [reason, n] of blocks) console.log(`  ${String(n).padStart(4)} × ${reason}`)
     // Retries are the provider letting a query in on the second ask; these

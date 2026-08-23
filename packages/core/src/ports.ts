@@ -41,6 +41,20 @@ export interface SearchResult {
   /** Refusals whose reason names a block or a throttle, as the provider
    *  worded it, so a run can say WHY it paid twice. */
   blocked?: string[]
+  /**
+   * Rows the engine paid for and cannot use: results whose link came back as
+   * a relative redirect rather than a destination.
+   *
+   * The search engine sometimes answers with `/goto?url=CAES...` — an opaque
+   * token, not an encoded url. MEASURED across 26 runs: 990 of 67,375 stored
+   * hits (1.5%) were this shape, and the token does not decode to anything
+   * (base64 of the payload contains no url; it is protobuf the engine alone
+   * can read). So they cannot be recovered, only counted — and counted they
+   * must be, because every one was billed and then silently dropped much
+   * later, where `new URL(...)` threw and the row vanished without a number
+   * anywhere saying it had.
+   */
+  redirects?: number
 }
 
 /**

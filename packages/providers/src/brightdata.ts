@@ -411,17 +411,34 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
                   description: h.description ?? "",
                   rank: start + i + 1,
                 }))
-              // A page whose every link is a relative /goto?url= redirect is
-              // the SERP declining to say where its results point. It parsed,
-              // so it was marked ok and every row was silently dropped
-              // downstream. 'try again' matches RETRYABLE above, so the
-              // existing retry re-buys the page on the other zone for free.
-              if (hits.length && hits.every((h) => h.url.startsWith("/"))) {
+              /**
+               * A relative `/goto?url=CAES...` link is the SERP declining to
+               * say where a result points, and the token is opaque — decoded,
+               * it carries no url, so the destination cannot be recovered
+               * without following the redirect.
+               *
+               * They are dropped HERE rather than left in `hits`. They used
+               * to travel the whole way down and vanish where `new URL()`
+               * threw on them, which made `hits.length`, the run's `results`
+               * total and every per-query yield count rows that no longer
+               * existed by the time anything read them. MEASURED across 26
+               * runs: 990 of 67,375 stored hits, 1.5%, all paid for.
+               *
+               * The all-relative case stays a retry — 'try again' matches
+               * RETRYABLE above, so the existing retry re-buys the page on
+               * the other zone. What changed is the MIXED page, which is the
+               * common one: 96 query rows carried some relative links against
+               * 1 that was entirely relative, so the old guard almost never
+               * fired and the loss was invisible.
+               */
+              const usable = hits.filter((h) => !h.url.startsWith("/"))
+              const redirects = hits.length - usable.length
+              if (hits.length && usable.length === 0) {
                 noteOutcome(false)
-                return { query, hits: [], ok: false, error: "serp returned redirect-encoded links — try again", usd: price, ms, requests: 1 }
+                return { query, hits: [], ok: false, error: "serp returned redirect-encoded links — try again", usd: price, ms, requests: 1, redirects }
               }
               noteOutcome(true)
-              return { query, hits, ok: true, usd: price, ms, requests: 1 }
+              return { query, hits: usable, ok: true, usd: price, ms, requests: 1, redirects }
             } catch (e) {
               noteOutcome(false)
               const timedOut = (e as Error).name === "TimeoutError" || (e as Error).name === "AbortError"
@@ -471,6 +488,7 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
               usd: second.usd + first.usd,
               requests: (second.requests ?? 0) + (first.requests ?? 0),
               retries: (second.requests ?? 0),
+              redirects: (second.redirects ?? 0) + (first.redirects ?? 0),
               blocked: [...(first.error ? [first.error] : []), ...(second.ok ? [] : second.error ? [second.error] : [])],
             }
           }
@@ -530,6 +548,7 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
           requests: mine.reduce((n, r) => n + (r.requests ?? 0), 0),
           retries: mine.reduce((n, r) => n + (r.retries ?? 0), 0),
           blocked: mine.flatMap((r) => r.blocked ?? []),
+          redirects: mine.reduce((n, r) => n + (r.redirects ?? 0), 0),
         }
       })
     },
