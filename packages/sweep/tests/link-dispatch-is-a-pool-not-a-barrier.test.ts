@@ -55,4 +55,26 @@ describe("runPool", () => {
     })
     expect(peak).toBe(4)
   })
+
+  it("a worker writing to results[i] stays aligned with item i, even when items finish out of order", async () => {
+    // The catalog stage (sweep.ts, "A POOL, not chunked waves") depends on
+    // exactly this: `coreHands`/`restHands` filter `catalogs` by
+    // `funded[i]`'s own centrality, which only holds if `catalogs[i]` is
+    // always the hand `funded[i]` bought. A chunked `Promise.all` got that
+    // for free — one chunk's own order survives its internal race — but a
+    // continuous pool has no chunk boundary, so a worker that PUSHED its
+    // result in completion order would scramble it the first time two items
+    // finished out of sequence. Writing to `results[i]` from the worker
+    // handed index `i`, as the catalog stage now does, cannot scramble:
+    // every worker owns one slot regardless of finish order. Item 0 is the
+    // slowest here on purpose, so it resolves last and would land at the
+    // wrong end of a completion-ordered array.
+    const items = ["a", "b", "c", "d", "e", "f"]
+    const results: string[] = new Array(items.length)
+    await runPool(items, 3, async (item, i) => {
+      await new Promise((r) => setTimeout(r, i === 0 ? 30 : 1))
+      results[i] = item
+    })
+    expect(results).toEqual(items)
+  })
 })

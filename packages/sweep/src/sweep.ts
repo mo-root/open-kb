@@ -2638,107 +2638,116 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   // elsewhere in this file: a small pool, not a wide one.
   const CATALOG_CONC = 6;
 
-  const catalogs: SweptQuery[][] = [];
-  for (let i = 0; i < funded.length; i += CATALOG_CONC) {
-    const chunk = await Promise.all(
-      funded.slice(i, i + CATALOG_CONC).map(({ market, product }) =>
-        call(
-          "plan",
-          `catalog: ${product}`,
-          z.object({
-            terms: z
-              .array(z.string())
-              .describe(
-                "2-4 terms a buyer types for this job, ordered, closest first — each a different door into the market, not a rephrasing",
-              ),
-            generic: z
-              .boolean()
-              .describe(
-                "true if this product's NAME alone reads as a common noun rather than this product — 'Datasets' is generic, 'Web Scraper API' is not",
-              ),
-            queries: z.array(PlannedQuery),
-          }),
-          prompt("catalog", {
-            anchor,
-            target: debrandedAsk,
-            product,
-            // THIS PRODUCT'S JOB, not its market's.
-            //
-            // `understand` is asked for `products[].does` — "what this product
-            // does, stripped of the company's own naming" — which is exactly
-            // the debranded sentence this call turns into search terms. It was
-            // computed, paid for and then thrown away: every sibling in a group
-            // was handed `market.does`, one capability one-liner, identical for
-            // all of them, so three products sharing a capability were stripped
-            // from the same description and asked to differ anyway.
-            //
-            // Falls back to the capability's line when the product carries
-            // none — including the case where `covers` was empty and the
-            // capability was funded under its own name, where there is no
-            // product row to find.
-            productDoes: productNamed(product)?.does.trim() || market.does,
-            market: market.name,
-            centrality: market.centrality,
-            sells: decomp.sells,
-            buyer: decomp.buyer,
-            siblings:
-              market.covers.filter((c) => c !== product).join(", ") ||
-              "(nothing else in this market)",
-            coinages: decomp.coinages.join(", "),
-            knownPlayers,
-          }),
-          { think: "low", maxOutputTokens: 180 * debrandedAsk + 6_000 },
-        ).then((out) => {
-          const terms = out.terms
-            .map((t) => t.trim())
-            .filter(Boolean)
-            // FOUR, raised from three. The old cap was binding, not
-            // generous: 436 of the 486 products stripped across `runs/`
-            // returned exactly three terms, so the distribution was censored
-            // at the ceiling and nobody could see what a fourth would have
-            // been. And a fourth is worth having — measured over 5,381 pairs
-            // of terms this agent wrote, two terms return the same host only
-            // 11% of the time, so each one is close to a whole extra search
-            // rather than a rephrasing of the last.
-            .slice(0, 4);
-          strips.push({
-            product,
-            terms,
-            generic: out.generic,
-            foundAt: productNamed(product)?.foundAt ?? "",
-          });
-          const hand = openingHand(product, terms, {
-            branded: !out.generic,
-            // A core market's second strip term opens with the hand — the
-            // cursor.com lesson, argued at openingHand itself.
-            core: market.centrality === "core",
-          });
-          reserve.set(product, hand.reserve);
-          const asFired = (fq: FamilyQuery): SweptQuery => ({
-            q: fq.q,
-            intent: fq.family === "plain" ? "evaluation" : "switching",
-            platform: "web",
-            why: fq.why,
-            market: market.name,
-            family: fq.family,
-            product: fq.product,
-            term: fq.term,
-          });
-          const debranded: SweptQuery[] = out.queries.map((q) => ({
-            ...q,
-            market: market.name,
-            family: "debranded" as const,
-            product,
-          }));
-          return [
-            ...hand.open.map(asFired),
-            ...debranded.slice(0, debrandedAsk),
-          ];
-        }),
-      ),
+  // A POOL, not chunked waves — the same fix `runPool` documents for the link
+  // phase, and TRIAGE_CONC's comment below it, applied here too: this used to
+  // `await Promise.all` a slice of CATALOG_CONC products before starting the
+  // next slice, a barrier per group that pays for its slowest member while
+  // idle workers wait. `runPool` fixes that: each worker pulls the next
+  // product the instant it frees up.
+  //
+  // WHY AN INDEXED ARRAY AND NOT A PUSH, unlike the link/orphan sites this
+  // mirrors. `coreHands`/`restHands` below (search "pushed in `funded`
+  // order") filter `catalogs` by `funded[i]`'s own centrality, which only
+  // works if `catalogs[i]` is that same product's hand — a guarantee the old
+  // code got for free by pushing whole chunks in slice order, since a single
+  // chunk's `Promise.all` preserves its own input order even though the
+  // calls inside it race. A continuous pool has no such chunk boundary, so
+  // pushing in COMPLETION order would silently scramble that alignment.
+  // Writing to `catalogs[i]` from the worker that was handed index `i` keeps
+  // the guarantee by construction instead: every worker owns exactly one
+  // slot, however the calls actually finish.
+  const catalogs: SweptQuery[][] = new Array(funded.length);
+  await runPool(funded, CATALOG_CONC, async ({ market, product }, i) => {
+    const out = await call(
+      "plan",
+      `catalog: ${product}`,
+      z.object({
+        terms: z
+          .array(z.string())
+          .describe(
+            "2-4 terms a buyer types for this job, ordered, closest first — each a different door into the market, not a rephrasing",
+          ),
+        generic: z
+          .boolean()
+          .describe(
+            "true if this product's NAME alone reads as a common noun rather than this product — 'Datasets' is generic, 'Web Scraper API' is not",
+          ),
+        queries: z.array(PlannedQuery),
+      }),
+      prompt("catalog", {
+        anchor,
+        target: debrandedAsk,
+        product,
+        // THIS PRODUCT'S JOB, not its market's.
+        //
+        // `understand` is asked for `products[].does` — "what this product
+        // does, stripped of the company's own naming" — which is exactly
+        // the debranded sentence this call turns into search terms. It was
+        // computed, paid for and then thrown away: every sibling in a group
+        // was handed `market.does`, one capability one-liner, identical for
+        // all of them, so three products sharing a capability were stripped
+        // from the same description and asked to differ anyway.
+        //
+        // Falls back to the capability's line when the product carries
+        // none — including the case where `covers` was empty and the
+        // capability was funded under its own name, where there is no
+        // product row to find.
+        productDoes: productNamed(product)?.does.trim() || market.does,
+        market: market.name,
+        centrality: market.centrality,
+        sells: decomp.sells,
+        buyer: decomp.buyer,
+        siblings:
+          market.covers.filter((c) => c !== product).join(", ") ||
+          "(nothing else in this market)",
+        coinages: decomp.coinages.join(", "),
+        knownPlayers,
+      }),
+      { think: "low", maxOutputTokens: 180 * debrandedAsk + 6_000 },
     );
-    catalogs.push(...chunk);
-  }
+    const terms = out.terms
+      .map((t) => t.trim())
+      .filter(Boolean)
+      // FOUR, raised from three. The old cap was binding, not
+      // generous: 436 of the 486 products stripped across `runs/`
+      // returned exactly three terms, so the distribution was censored
+      // at the ceiling and nobody could see what a fourth would have
+      // been. And a fourth is worth having — measured over 5,381 pairs
+      // of terms this agent wrote, two terms return the same host only
+      // 11% of the time, so each one is close to a whole extra search
+      // rather than a rephrasing of the last.
+      .slice(0, 4);
+    strips.push({
+      product,
+      terms,
+      generic: out.generic,
+      foundAt: productNamed(product)?.foundAt ?? "",
+    });
+    const hand = openingHand(product, terms, {
+      branded: !out.generic,
+      // A core market's second strip term opens with the hand — the
+      // cursor.com lesson, argued at openingHand itself.
+      core: market.centrality === "core",
+    });
+    reserve.set(product, hand.reserve);
+    const asFired = (fq: FamilyQuery): SweptQuery => ({
+      q: fq.q,
+      intent: fq.family === "plain" ? "evaluation" : "switching",
+      platform: "web",
+      why: fq.why,
+      market: market.name,
+      family: fq.family,
+      product: fq.product,
+      term: fq.term,
+    });
+    const debranded: SweptQuery[] = out.queries.map((q) => ({
+      ...q,
+      market: market.name,
+      family: "debranded" as const,
+      product,
+    }));
+    catalogs[i] = [...hand.open.map(asFired), ...debranded.slice(0, debrandedAsk)];
+  });
 
   // Deal the company-level hand once — the owner decision, and the densest
   // comparison pages a map has. Fired outside the per-product calls because it
@@ -2950,7 +2959,8 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       out.push(...row);
     }
   };
-  // `catalogs` is pushed in `funded` order, chunk by chunk, so the two line up
+  // `catalogs[i]` is written by the worker that was handed `funded[i]` (see
+  // the indexed-array note above the pool that fills it), so the two line up
   // index for index and the centrality of hand i is funded[i]'s market.
   const coreHands = catalogs.filter((_, i) => funded[i]?.market.centrality === "core");
   const restHands = catalogs.filter((_, i) => funded[i]?.market.centrality !== "core");
