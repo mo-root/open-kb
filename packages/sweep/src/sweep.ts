@@ -2916,6 +2916,31 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    * The order WITHIN a product's hand is untouched, so the openingHand
    * argument about which term leads still holds; only the order between
    * products of equal centrality changes.
+   *
+   * WHAT IT ACTUALLY BOUGHT, measured on the wire rather than on the plan,
+   * shopify.com against three runs of the same anchor before it:
+   *
+   *              products   searched   queries   kept   recall
+   *   before           50    25 (50%)       154   1226      71%
+   *   before           43    19 (44%)       152   1220      86%
+   *   before           50    22 (44%)       152   1236      79%
+   *   after            45    41 (91%)       144   1100      79%
+   *
+   * The coverage is real and it is bought with FEWER queries, not more. The
+   * map is 11% smaller, because spreading a fixed budget across every product
+   * takes depth away from the first few — and recall did not move, though
+   * shopify's own run-to-run recall spread is 15 points, so this run could not
+   * have shown a small change either way.
+   *
+   * So this is not a win on shopify.com, and it is worth being plain about
+   * why it stays. Its tail is Barcode generator and Image resizer, and
+   * spending queries there costs a real map to reach nothing. datadoghq.com's
+   * tail was Network Monitoring, Static Code Analysis, Observability
+   * Pipelines and Product Analytics — 56 products dropped, whole markets
+   * absent. A map missing 11% of its rows is smaller; a map missing entire
+   * markets is wrong in the way a reader notices first. What decides which
+   * case a run is in is `understand`, and nothing downstream can tell them
+   * apart, so the ordering has to be safe for the bad case.
    */
   const interleave = (hands: SweptQuery[][]): SweptQuery[] => {
     const out: SweptQuery[] = [];
