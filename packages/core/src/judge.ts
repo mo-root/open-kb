@@ -467,6 +467,19 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
            * unknown, and cannot correct an invention". It ships 2checkout.com
            * on the stripe map as a publisher writing educational articles;
            * unknown would have been true.
+           *
+           * UNLOCKING THESE HOSTS INSTEAD was the other candidate and it was
+           * costed and dropped. The gate above admits `seenIn >= 3`, which is
+           * 10 of shopify.com's 124 block-shaped unreadable hosts — 94 of them
+           * have seenIn 1 — so unlocking the rest is roughly $0.99 against a
+           * $0.90 run. Widening the gate needs a signal for WHICH ones are
+           * worth it, and there isn't one in the data: over 25,000
+           * page-judged hosts, the share that turn out to be market entities
+           * runs 65%, 63%, 58%, 72% across rank bands 1-3, 4-6, 7-10 and 11+,
+           * which is no gradient at all, and seenIn lifts it only from 63% at
+           * one query to about 70% at two or more. Nothing here says which
+           * blocked host is worth a dollar per hundred, so the money is not
+           * spent and the claim is withheld instead.
            */
           const CHANNEL_FROM_SNIPPET = ["covers", "lists", "discusses"]
           const overreach = CHANNEL_FROM_SNIPPET.includes(out.relation)
