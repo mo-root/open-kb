@@ -181,7 +181,7 @@ above stay first; these follow.
   panel) — read how `what`/`why`/`spans` already render and follow that shape.
   Optional on the type, so absent renders as nothing, never an empty row.
 
-- [ ] **B2. `relationSpan` and `relationGrounded` are surfaced NOWHERE.**
+- [x] **B2. `relationSpan` and `relationGrounded` are surfaced NOWHERE.**
   `relationSpan` is the verbatim quote backing the RELATION, as `spans` backs
   the description; `relationGrounded` records whether it verified as a literal
   substring (85% present, 83% of those verified on the cursor run). Surface the

@@ -738,6 +738,8 @@ export function noteOf(run: CompletedRun, path: string): NoteView | null {
     // is worth much less than the evidence.
     spans: textsOf(hit.entity.spans),
     reasoning: hit.entity.reasoning,
+    relationSpan: hit.entity.relationSpan,
+    relationGrounded: hit.entity.relationGrounded,
     because: (hit.entity as { because?: string }).because,
     tier: tierOf(hit.entity),
     descGrounded: descGroundedOf(hit.entity),

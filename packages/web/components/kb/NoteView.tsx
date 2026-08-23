@@ -243,6 +243,23 @@ export function NoteView({
             {note.reasoning}
           </div>
         )}
+        {/* `relationSpan`'s counterpart to `spans` below, but for `relation`
+            specifically: one verbatim quote, checked the same way
+            (`relationGrounded`, `checkQuote` in code). Never gated on the
+            check — an unverified quote still shows what the model based the
+            relation on, so it renders with an honest label instead of being
+            dropped. Model-judged entities only, same optional shape as
+            `reasoning` above it. */}
+        {note.relationSpan && (
+          <div className="mt-2 text-xs text-slate-500">
+            <span className="mr-2 uppercase tracking-wide text-slate-600">
+              {note.relationGrounded
+                ? "relation quoted, checked word for word"
+                : "relation quoted, not verified on the page"}
+            </span>
+            &ldquo;{note.relationSpan}&rdquo;
+          </div>
+        )}
         {note.because && (
           /* amber-* is remapped to the brand-pink ramp in globals.css, and only
              steps 200–500 are re-keyed per theme (see GraphCanvas's advisory

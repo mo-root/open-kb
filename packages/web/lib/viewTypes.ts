@@ -486,6 +486,16 @@ export interface NoteView {
    *  measured on the cursor run: absent renders as nothing, never an empty
    *  row. */
   reasoning?: string
+  /** `spans`'s counterpart for `relation`: one verbatim quote backing the
+   *  RELATION specifically, not `what`. Optional on the wire, same as
+   *  `reasoning` — model-judged entities only. */
+  relationSpan?: string
+  /** Whether `relationSpan` verified as a literal substring of the page it
+   *  was quoted from (`checkQuote`, in code — the same check `spans` gets).
+   *  A measurement, never a gate: an ungrounded quote still renders, labelled
+   *  honestly, rather than being hidden — receipts-on-everything is the
+   *  point, including the receipts that didn't check out. */
+  relationGrounded?: boolean
   /** the kernel's refusal, when this claim was downgraded — rendered so a
    *  reader sees why the map does not trust it. */
   because?: string

@@ -510,6 +510,39 @@ describe("roads and spans, an entity's own receipts", () => {
     const r = fixtureRun({ entities: [entity("a.com", "competitor")] })
     expect(noteOf(r, "players/a.com.md")?.reasoning).toBeUndefined()
   })
+
+  /** `relationSpan`/`relationGrounded` are `spans`'s counterpart for
+   *  `relation` — same optional shape, carried through the same way. */
+  it("carries the relation quote and its grounding onto the whole entity", () => {
+    const r = fixtureRun({
+      entities: [
+        {
+          ...entity("a.com", "competitor"),
+          relationSpan: "positions itself as a direct alternative to Postmark",
+          relationGrounded: true,
+        },
+      ],
+    })
+    const note = noteOf(r, "players/a.com.md")
+    expect(note?.relationSpan).toBe("positions itself as a direct alternative to Postmark")
+    expect(note?.relationGrounded).toBe(true)
+  })
+
+  /** `relationGrounded` is a measurement, not a gate — an ungrounded quote
+   *  still rides through rather than being dropped. */
+  it("carries an ungrounded relation quote through too", () => {
+    const r = fixtureRun({
+      entities: [{ ...entity("a.com", "competitor"), relationSpan: "a paraphrase, not a quote", relationGrounded: false }],
+    })
+    const note = noteOf(r, "players/a.com.md")
+    expect(note?.relationSpan).toBe("a paraphrase, not a quote")
+    expect(note?.relationGrounded).toBe(false)
+  })
+
+  it("leaves relationSpan absent on a run recorded before the field existed", () => {
+    const r = fixtureRun({ entities: [entity("a.com", "competitor")] })
+    expect(noteOf(r, "players/a.com.md")?.relationSpan).toBeUndefined()
+  })
 })
 
 /**
