@@ -366,7 +366,7 @@ console.log(`$${stats.usd.toFixed(4)} · ${stats.seconds.toFixed(0)}s`)
   const report = out!.report as Record<string, unknown>
   const cost = report.cost as { usd: number; byKind: { label: string; calls: number; failures: number; usd: number; ms: number }[] }
   const serp = report.serp as
-    | { requests: number; retries: number; pagesPerQuery: number; blocked: Record<string, number>; failed?: Record<string, number>; redirects?: number }
+    | { requests: number; retries: number; pagesPerQuery: number; blocked: Record<string, number>; failed?: Record<string, number>; redirects?: number; partial?: number }
     | undefined
   const kernel = report.kernel as { fetched: number; unreadable: number; unreadableByReason: Record<string, number>; unlocked?: number; serpJudged?: number } | undefined
   const pct = (n: number) => `${((100 * n) / (cost.usd || 1)).toFixed(1)}%`
@@ -393,6 +393,10 @@ console.log(`$${stats.usd.toFixed(4)} · ${stats.seconds.toFixed(0)}s`)
     // token instead of a destination. Not an error and not a retry — just
     // rows that were billed and can never be read.
     if (serp.redirects) console.log(`  ${serp.redirects} result rows came back as opaque redirects and were dropped`)
+    // A query whose first page answered is a success, and one that lost a
+    // later page still returns about half the rows it was bought for. Said
+    // out loud because every per-query yield is computed over those rows.
+    if (serp.partial) console.log(`  ${serp.partial} queries answered on one page and lost another`)
     const blocks = Object.entries(serp.blocked).sort((a, b) => b[1] - a[1]).slice(0, 6)
     for (const [reason, n] of blocks) console.log(`  ${String(n).padStart(4)} × ${reason}`)
     // Retries are the provider letting a query in on the second ask; these

@@ -3149,6 +3149,20 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   let serpSuspendedSaid = false;
   /** Rows bought and unusable — see `SearchResult.redirects`. */
   let serpRedirects = 0;
+  /**
+   * Queries the port called a success while losing one of their pages.
+   *
+   * `ok` is `failures.length < mine.length` — a query whose first page
+   * answered has produced results even if a later page did not, which is the
+   * right call because the rows page one returned are real. What was missing
+   * is any count of it: a two-page query that loses a page comes back with
+   * roughly half its rows and says nothing. MEASURED across 3,771 queries on
+   * disk: 939 of them, 24.9%, and 73% on the worst run. It is not even across
+   * families either — debranded loses a page on 33% of its queries against
+   * plain's 19% — so a per-query yield compared between families is compared
+   * over different numbers of pages unless this is known.
+   */
+  let serpPartial = 0;
   /** Queries whose search was actually bought, counted where the money moves.
    *  `asked` is the QUEUE — seeded with the whole opening hand and grown at
    *  plan time — and the host-ceiling seal makes workers abandon its tail, so
@@ -3260,6 +3274,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     serpRequests += r.requests ?? 0;
     serpRetries += r.retries ?? 0;
     serpRedirects += r.redirects ?? 0;
+    if (r.ok && /pages failed/.test(r.error ?? "")) serpPartial += 1;
     for (const b of r.blocked ?? []) {
       const key = b.replace(/\d{3,}/g, "N").slice(0, 60);
       serpBlocks[key] = (serpBlocks[key] ?? 0) + 1;
@@ -6007,6 +6022,9 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       /** Result rows paid for that carried an opaque redirect instead of a
        *  destination, and so could never be read. */
       redirects: serpRedirects,
+      /** Queries that answered on one page and lost another — counted, because
+       *  they return half their rows and report success. */
+      partial: serpPartial,
     },
     /** Agent-mode phase one's own account: turns, pages, and the integrations
      *  the docs stated. Null on the default path, which reads nothing an agent

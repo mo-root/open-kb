@@ -101,6 +101,12 @@
  *   debranded       1037      59        5.7    $0.083
  *   rival            286      11        3.8    $0.107
  *
+ * Checked against the page-loss confound that skews the yield tables in
+ * query-yield.ts — 24.9% of queries answer on one page and lose another, and
+ * debranded loses one on 33% of its queries against plain's 19%. Over clean
+ * queries only it is plain 12.4 per 100 against debranded 6.1, the same 2x, so
+ * unlike the fresh-hosts comparison this one is not an artifact of the loss.
+ *
  * The templates find the known field about twice as often as the model's own
  * queries and for half the price — the same ordering `scripts/query-yield.ts`
  * found for market share, arrived at from the opposite direction. `debranded`

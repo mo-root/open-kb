@@ -76,6 +76,35 @@
  * purpose. It is a reason to be deliberate about the MIX, and to measure a
  * change to it here rather than argue about it.
  *
+ * A QUARTER OF THESE QUERIES LOST A PAGE, and it is not even across families.
+ * A query is `pages` requests; the port calls it a success when the first page
+ * answered, which is right — those rows are real — but a two-page query that
+ * loses a page comes back with roughly half its rows and says nothing. Counted
+ * over 3,771 queries on disk: 939, 24.9%, and 73% on the worst run. By family:
+ *
+ *   debranded  33%      branded  21%      plain  19%      rival  14%
+ *
+ * So a per-query yield compared BETWEEN families is compared over different
+ * numbers of pages, and the family that loses most pages is penalised twice.
+ * Re-measured over clean queries only, averaged within each run before pooling
+ * so no anchor mix can shift between the arms:
+ *
+ *   family       fresh/query   market share
+ *   plain               11.4            56%
+ *   debranded           11.6            46%
+ *   branded             10.5            46%
+ *   rival                8.2            51%
+ *
+ * That REVERSES the fresh-hosts column above — plain reads 10.2 against
+ * debranded's 10.1 uncontrolled, and 11.4 against 11.6 controlled, which is a
+ * tie either way and not the win the top table implies. The market-share gap
+ * survives at ten points, and `scripts/recall.ts` reports the same for finding
+ * known rivals: plain 12.4 per 100 against debranded 6.1 on clean queries,
+ * the identical 2x it shows uncontrolled.
+ *
+ * `report.serp.partial` now carries the count per run, so this stops being
+ * something a reader has to know to look for.
+ *
  * ONE EXPERIMENT THIS CORPUS CANNOT SETTLE, written down so it is run rather
  * than argued. `rival` is dealt LAST — `queries: [...catalogs.flat(),
  * ...company, ...rivals]` — so with forty products ahead of it a rival query
