@@ -411,6 +411,22 @@ console.log(`$${stats.usd.toFixed(4)} · ${stats.seconds.toFixed(0)}s`)
     }
   }
 
+  // Did the plan reach the wire? A product stripped and never asked about is
+  // a catalog call bought for nothing, and a strip term written and never
+  // fired is a door that was opened into a queue nobody reads. Both have
+  // happened on real runs; neither was visible without a script until now.
+  const wire = report.wire as { products: number; productsSearched: number; termsWritten: number; termsFired: number } | undefined
+  if (wire && wire.products) {
+    const pct = (a: number, b: number) => `${Math.round((100 * a) / (b || 1))}%`
+    console.log(
+      `\nplan    ${wire.productsSearched} of ${wire.products} products reached the wire (${pct(wire.productsSearched, wire.products)})` +
+        `, ${wire.termsFired} of ${wire.termsWritten} strip terms fired (${pct(wire.termsFired, wire.termsWritten)})`,
+    )
+    if (wire.productsSearched < wire.products) {
+      console.log(`  ${wire.products - wire.productsSearched} products were stripped and planned but never searched`)
+    }
+  }
+
   // Which upstream hosts answered for the model id, and how often each
   // refused. One model id, ~30 hosts of very different discipline: the
   // host is the first thing to read when refusals climb.

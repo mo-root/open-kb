@@ -144,3 +144,46 @@ describe("the opening catalog", () => {
     expect(by("tailwatch.example")!.families).toEqual(["plain", "branded", "debranded"])
   })
 })
+
+/**
+ * DID THE PLAN REACH THE WIRE?
+ *
+ * A plan and a purchase are different things, and this repo confused them
+ * three times in one night: a fourth strip term written into `report.strips`
+ * and searched on none of fifty products, a reserve the widening loop never
+ * draws from, a 258-query plan sealed at 100. Each time the mechanism was
+ * verified and the wire was not, and each time it took a hand-written script
+ * over `searched[]` to find out. `report.wire` is that script, kept.
+ */
+describe("report.wire — the plan against the purchase", () => {
+  it("counts the products and strip terms that actually reached the wire", async () => {
+    const h = await runFixture()
+    const w = h.result.report.wire as {
+      products: number; productsSearched: number; termsWritten: number; termsFired: number
+    }
+    // The fixture fires its whole hand, so the plan and the purchase agree.
+    expect(w.products).toBeGreaterThan(0)
+    expect(w.productsSearched).toBe(w.products)
+    expect(w.termsFired).toBeGreaterThan(0)
+    expect(w.termsFired).toBeLessThanOrEqual(w.termsWritten)
+  }, 30_000)
+
+  it("shows a term written and never fired, which is the failure it exists to catch", async () => {
+    // A third strip term goes to the reserve, and a run the model calls
+    // finished never draws it — so it is planned, recorded in `strips`, and
+    // never bought. Before `wire` that was invisible in the report.
+    const h = await runFixture({
+      script: {
+        catalog: (product: string) => ({
+          terms: [`${product} term one`, `${product} term two`, `${product} term three`],
+          generic: true,
+          queries: [],
+        }),
+      },
+    })
+    const w = h.result.report.wire as { termsWritten: number; termsFired: number }
+    expect(w.termsWritten).toBeGreaterThan(w.termsFired)
+    // And the terms that DID fire are real, so this is not simply an empty run.
+    expect(w.termsFired).toBeGreaterThan(0)
+  }, 30_000)
+})

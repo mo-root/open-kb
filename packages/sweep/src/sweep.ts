@@ -3195,6 +3195,19 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    *  `asked` claimed 137, the wire saw 83. `report.queries` reads this;
    *  `report.queued` keeps the old number under its honest name. */
   let firedCount = 0;
+  /**
+   * EVERY QUERY THAT ACTUALLY REACHED THE WIRE, lowercased.
+   *
+   * A plan and a purchase are different things and this branch confused them
+   * three times in one night: a fourth strip term written into
+   * `report.strips` and searched on none of fifty products; a reserve the
+   * widening loop never draws from; a 258-query plan sealed at 100. Each time
+   * the mechanism was verified and the wire was not, and each time it took a
+   * hand-written script over `searched[]` to find out.
+   *
+   * `report.wire` is that script, kept. See where it is built.
+   */
+  const firedQueries = new Set<string>();
   let scopedQueries = 0;
   let scopeWithheld = 0;
   let tooLongToScope = 0;
@@ -3378,6 +3391,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         // and the `searched` frame below are one event, so `report.queries`
         // always equals the number of `searched` frames a browser replayed.
         firedCount += 1;
+        firedQueries.add(r.query.trim().toLowerCase());
         // The results themselves, not just the count. Everything downstream, the
         // hosts, the classifications, the map, is derived from these rows, and
         // without them a reader is asked to trust an aggregate: "580 results, 88
@@ -6078,6 +6092,37 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     relations: count(keep.map((e) => e.relation)),
     families: count(asked.map((q) => q.family)),
     strips,
+    /**
+     * DID THE PLAN REACH THE WIRE?
+     *
+     * The counts either side of the question every query-side change has to
+     * answer, so answering it stops needing a one-off script over
+     * `searched[]`. `queued` and `queries` above already say how many rows
+     * were planned and fired; these say whether the plan's SHAPE survived —
+     * whether each product and each strip term got a query bought for it, or
+     * was written down and abandoned.
+     *
+     * MEASURED on the runs that motivated it. shopify.com dealt 50 products
+     * and searched 22 of them, so 28 were stripped, given a catalog model
+     * call, and never asked about; datadoghq.com searched 25 of 81 and the 56
+     * it dropped included Network Monitoring and Static Code Analysis, whole
+     * markets absent from a map claiming 1,077 entities. Dealing the hand
+     * round-robin took shopify to 41 of 45. And every fourth strip term this
+     * branch added went unfired on all fifty products, which `termsFired`
+     * against `termsWritten` says in one line.
+     */
+    wire: {
+      products: strips.length,
+      productsSearched: strips.filter((st) =>
+        st.terms.some((t) => firedQueries.has(t.trim().toLowerCase())),
+      ).length,
+      termsWritten: strips.reduce((n, st) => n + st.terms.length, 0),
+      termsFired: strips.reduce(
+        (n, st) =>
+          n + st.terms.filter((t) => firedQueries.has(t.trim().toLowerCase())).length,
+        0,
+      ),
+    },
     /**
      * The free channel's yield, so it is measurable rather than assumed.
      *
