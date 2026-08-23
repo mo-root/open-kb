@@ -2851,9 +2851,61 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   // Deduplicated across lenses: they were told to stay in their own lane, but
   // "best X alternatives" is reachable from two of the three, and a repeat is a
   // query bought twice.
+  /**
+   * ROUND-ROBIN ACROSS PRODUCTS, not product by product.
+   *
+   * `catalogs` is one hand per product and this used to be `catalogs.flat()`,
+   * which lays product 1's whole hand down before product 2 gets a single
+   * query. That is fine while a run fires everything it planned and silently
+   * catastrophic when it does not — and it usually does not, because the
+   * widening loop seals on `HOST_CEILING` and the workers abandon the queue's
+   * tail.
+   *
+   * MEASURED on the six gallery runs: 130 of 245 products (53%) were stripped,
+   * planned, given their own catalog model call, and then never searched at
+   * all. It is entirely the large decompositions — 0% of products went unsearched
+   * on the runs with 10 and 13 products, against 56%, 63% and 69% on those with
+   * 50, 67 and 81. And the cut is not harmless. datadoghq.com searched 25 of
+   * its 81 products and the 56 it dropped included Network Monitoring, Static
+   * Code Analysis, Observability Pipelines, Product Analytics, Code Security
+   * and Workload Protection — whole markets missing from the map, not spare
+   * framings of ones it already had.
+   *
+   * Interleaved, the ceiling still cuts the same NUMBER of queries; it cuts
+   * them from every product's tail rather than from the last thirty products
+   * entirely. Every product gets its first strip term before any product gets
+   * its second, so a run that can only afford a third of its plan spends that
+   * third on a third of each market instead of all of one.
+   *
+   * WITHIN CENTRALITY, not across it. A run whose budget only stretches to
+   * four queries must still spend them on the core market rather than
+   * sampling the company's side lines — that is what `funded` deals for and
+   * what `sweep-fits-the-clock-it-was-given` pins. So core products
+   * round-robin among themselves first and adjacent ones after, which leaves
+   * a tiny hand exactly where it was and only changes what happens once
+   * there are more products than the run can afford.
+   *
+   * The order WITHIN a product's hand is untouched, so the openingHand
+   * argument about which term leads still holds; only the order between
+   * products of equal centrality changes.
+   */
+  const interleave = (hands: SweptQuery[][]): SweptQuery[] => {
+    const out: SweptQuery[] = [];
+    for (let i = 0; ; i++) {
+      const row = hands.filter((h) => i < h.length).map((h) => h[i]!);
+      if (row.length === 0) return out;
+      out.push(...row);
+    }
+  };
+  // `catalogs` is pushed in `funded` order, chunk by chunk, so the two line up
+  // index for index and the centrality of hand i is funded[i]'s market.
+  const coreHands = catalogs.filter((_, i) => funded[i]?.market.centrality === "core");
+  const restHands = catalogs.filter((_, i) => funded[i]?.market.centrality !== "core");
+  const interleaved = [...interleave(coreHands), ...interleave(restHands)];
+
   const seenQ = new Set<string>();
   const cat = {
-    queries: [...catalogs.flat(), ...company, ...rivals].filter((q) => {
+    queries: [...interleaved, ...company, ...rivals].filter((q) => {
       const k = q.q.trim().toLowerCase();
       if (seenQ.has(k)) return false;
       seenQ.add(k);
