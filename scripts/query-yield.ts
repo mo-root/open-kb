@@ -104,8 +104,8 @@
  *
  * `HOST_CEILING` is a run's sizing — 900 distinct hosts by default — and the
  * widening planner refuses another round once `distinctHosts()` passes it. It
- * does not hold. Measured over the 30 runs on disk, 22 of them finished past
- * it, between 977 and 1,981 hosts; clerk.com reached 1,981 from 143 queries
+ * does not hold. Measured over the 32 runs on disk, 23 of them finished past
+ * it, between 919 and 1,981 hosts; clerk.com reached 1,981 from 143 queries
  * and brightdata.com 1,705 from 192, and those two are the most expensive
  * runs on disk at $2.06 and $2.24. Hosts are what the rank phase is charged
  * for, so overshoot is most of what separates a $0.95 run from a $2.24 one.

@@ -35,9 +35,9 @@ walk, with `llms.txt` at the door.
 
 ## [→ Open the demo](https://open-kb-demo.vercel.app)
 
-[vercel.com](https://open-kb-demo.vercel.app/kb/vercel-com-20260818212925) ·
-[stripe.com](https://open-kb-demo.vercel.app/kb/stripe-com-20260818214527) ·
-[brightdata.com](https://open-kb-demo.vercel.app/kb/brightdata-com-20260818131026)
+[stripe.com](https://open-kb-demo.vercel.app/kb/stripe-com-20260823130137) ·
+[shopify.com](https://open-kb-demo.vercel.app/kb/shopify-com-20260823201634) ·
+[datadoghq.com](https://open-kb-demo.vercel.app/kb/datadoghq-com-20260823193440)
 — or [read a map as markdown](./examples/kb-clerk-com/README.md)
 
 </div>

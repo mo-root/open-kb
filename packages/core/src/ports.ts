@@ -54,8 +54,10 @@ export interface SearchResult {
    * anywhere saying it had.
    *
    * THE RATE IS NOT STABLE, which is the reason to keep counting rather than
-   * to assume a figure. Across the 26 runs stored before this field existed it
-   * was 999 of 67,375 hits, 1.5%, and no single run went past 9.3%. On the day
+   * to assume a figure. Across the runs stored before this field existed it
+   * was 990 of 67,375 hits, 1.5%; re-counted over the 32 runs on disk once
+   * tonight's were added it is 999 of 82,978, 1.2%, and no single run has
+   * gone past 9.3%. On the day
    * it was added the same measurement read 4.0% and 5.5% on two shopify.com
    * runs three hours apart, against 0.3-0.5% on runs from that morning, and a
    * direct probe of 236 live links came back 8%. A reader comparing this

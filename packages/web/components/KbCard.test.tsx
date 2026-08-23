@@ -196,7 +196,7 @@ describe("stripe.com, as it is committed", () => {
     result: JSON.parse(readFileSync(MAP, "utf8")) as SweepResult,
   }
 
-  it("shows 769 companies — the union minus what the run placed outside this market", () => {
+  it("shows 858 companies — the union minus what the run placed outside this market", () => {
     const summary = summaryOf(run)
     // The reading layer's own numbers, pinned so a change to `place` or
     // `KIND_GROUP` has to come past this test rather than quietly re-scoring
@@ -225,7 +225,9 @@ describe("stripe.com, as it is committed", () => {
 
     const html = renderToStaticMarkup(<KbCard kb={summary} showcase />)
     expect(html).toContain("858</span>")
-    expect(html).not.toContain("1,065</span>")
+    // The UNION, which the headline must never print in place of the placed
+    // count. 864 on this map; the old 1,065 could no longer fail here.
+    expect(html).not.toContain("864</span>")
     expect(html).toContain("companies in this market")
     expect(html).toContain("1,134</span> entities")
     expect(html).toContain("2,726</span> links")

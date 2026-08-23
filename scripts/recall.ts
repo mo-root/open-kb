@@ -60,11 +60,23 @@
  * time; where it half-finds it, the marginal names are coin flips and the
  * number wanders. So the anchors with headroom to improve are precisely the
  * ones whose measurement is noisiest, and a single run cannot judge a change
- * on them. MEASURED the hard way: the strip-term fix (bd2d69e) took shopify
- * from three terms to four on all fifty products and put `headless commerce`
- * in the core product's strip exactly as intended — and recall read 79%
- * against 86% for the run before it, which had three terms. The mechanism
- * worked and the outcome was inside the noise.
+ * on them.
+ *
+ * BUT THAT IS NOT WHY THE STRIP-TERM FIX SHOWED NOTHING, and the first version
+ * of this paragraph said it was. 05caea9 took shopify from three terms to four
+ * on all fifty products and put `headless commerce` in the core product's
+ * strip exactly as intended, so the mechanism was checked and it passed. The
+ * WIRE was not checked. `openingHand` opens t0 — and t1 as well for a core
+ * product — and sends everything after that to a reserve the widening loop
+ * draws from only when it asks for it. Counted on that run: fifty products
+ * carried a fourth term and NOT ONE was ever fired as a query. Corpus-wide the
+ * reserve's own "next strip term" queries are 47 of 1,455 plain queries.
+ *
+ * So the fix writes fifty doors and opens none, and reading 79% against 86%
+ * measured nothing about it either way. The lesson is narrower than "recall is
+ * noisy": a term in `report.strips` and a term on the wire are different
+ * things, and only the second one buys anything. Check `searched[]` rather
+ * than the decomposition before believing a query-side change landed.
  *
  * cursor.com's nine runs are the one place a trend outruns the noise: 50, 42,
  * 42 early in the day against 92, 83, 83 after the engine work, which is a

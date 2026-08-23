@@ -297,7 +297,10 @@ export function condense(text: string, budget = 24_000): string {
       used += l.length + 1
     }
     const dropped = lines.length - kept.length
-    if (dropped > 0) kept.push(`  +${dropped.toLocaleString()} more`)
+    // "en-US" pinned, not the box's locale: this string goes into the
+    // understand prompt, and a de_DE machine would write "+1.892 more"
+    // — a thousands separator a reader takes for a decimal point.
+    if (dropped > 0) kept.push(`  +${dropped.toLocaleString("en-US")} more`)
     return kept
   }
 

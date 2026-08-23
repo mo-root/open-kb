@@ -827,6 +827,68 @@ describe("serp zone rotation", () => {
   })
 })
 
+describe("redirect-encoded rows", () => {
+  /** One organic row whose link is a relative `/goto?url=` redirect — the
+   *  engine declining to say where a result points. The token is opaque, so
+   *  the row can never be read; it can only be dropped and counted. */
+  const page = (links: string[]) =>
+    new Response(JSON.stringify({ organic: links.map((l, i) => ({ link: l, title: `t${i}`, description: "" })) }), { status: 200 })
+
+  it("drops them from hits and counts them, on a page that also carries real links", async () => {
+    // THE COMMON CASE, and the one the pre-existing guard missed: it only
+    // fired when EVERY link was relative, which across 32 runs happened to
+    // one query row while 96 carried a mix. The relative rows used to travel
+    // the whole pipeline and vanish where `new URL()` threw on them.
+    const fetchImpl = vi.fn(async (..._: FetchArgs) =>
+      page(["https://a.com/x", "/goto?url=CAESaaa", "https://b.com/y", "/goto?url=CAESbbb"]),
+    )
+    const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 1, retryMs: 0 })
+    const [r] = await s.search(["x"])
+    expect(r!.ok).toBe(true)
+    expect(r!.hits.map((h) => h.url)).toEqual(["https://a.com/x", "https://b.com/y"])
+    expect(r!.redirects).toBe(2)
+    // Dropping rows must not change what the provider is owed.
+    expect(r!.requests).toBe(1)
+    expect(r!.usd).toBeCloseTo(0.0015)
+  })
+
+  it("sums them across the pages of one query", async () => {
+    let n = 0
+    const fetchImpl = vi.fn(async (..._: FetchArgs) =>
+      ++n === 1 ? page(["/goto?url=CAES1", "https://a.com/x"]) : page(["https://b.com/y", "/goto?url=CAES2", "/goto?url=CAES3"]),
+    )
+    const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 2, retryMs: 0 })
+    const [r] = await s.search(["x"])
+    expect(r!.redirects).toBe(3)
+    expect(r!.hits).toHaveLength(2)
+  })
+
+  /** The older guard, which must survive the filter that now runs before it:
+   *  a page with NOTHING but redirects is a page that said nothing, and
+   *  "try again" is RETRYABLE, so the query is re-bought on the other zone. */
+  it("still retries a page whose every row is a redirect, and keeps the clean answer", async () => {
+    let n = 0
+    const fetchImpl = vi.fn(async (..._: FetchArgs) =>
+      ++n === 1 ? page(["/goto?url=CAES1", "/goto?url=CAES2"]) : page(["https://a.com/x"]),
+    )
+    const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 1, retryMs: 0 })
+    const [r] = await s.search(["x"])
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+    expect(r!.ok).toBe(true)
+    expect(r!.hits.map((h) => h.url)).toEqual(["https://a.com/x"])
+    // Both asks are billed, and the refused one's rows are still counted.
+    expect(r!.redirects).toBe(2)
+    expect(r!.retries).toBe(1)
+  })
+
+  it("reports zero rather than undefined when a page is clean", async () => {
+    const fetchImpl = vi.fn(async (..._: FetchArgs) => page(["https://a.com/x"]))
+    const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 1, retryMs: 0 })
+    const [r] = await s.search(["x"])
+    expect(r!.redirects).toBe(0)
+  })
+})
+
 describe("a suspended account", () => {
   const suspendedResponse = () =>
     new Response("", {
