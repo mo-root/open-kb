@@ -87,6 +87,34 @@
  *   2. "`branded` finds rivals 2.7x better than `plain`, so fire more of it."
  *      That was 18 queries on 6 anchors. Widened to 115 queries on 9, the gap
  *      is 11.3 against 10.8 — noise.
+ *
+ *   3. "The field is on page 3 and 4; the run only buys two pages, and
+ *      `deepenedProducts` is empty on 21 of 25 runs, so depth is the lever."
+ *      Bought directly: `ecommerce platform` returns 17 hosts at two pages and
+ *      34 at four, and NONE of shopify's four missing rivals at either depth.
+ *      `LLM API` likewise, 15 against 31 hosts and none of openai's five.
+ *      Depth doubles the rows and does not reach the field.
+ *
+ * WHAT DID REACH IT, bought the same way: a different FRAMING of the market,
+ * not more of the same one.
+ *
+ *   ecommerce platform               none of the four
+ *   best ecommerce platform          none
+ *   open source ecommerce platform   none
+ *   headless commerce platform       commercetools.com
+ *   self hosted ecommerce platform   saleor.io
+ *
+ * So recall is bounded by the STRIP TERMS, which is where a market's framings
+ * come from — `catalog` returns one to three per product and the code keeps
+ * three. Shopify's core product stripped to `ecommerce platform`, `online
+ * store builder`, `point of sale`; none of the three ranks magento,
+ * prestashop or vtex, and no template over them ever will. The framing that
+ * would have was `headless commerce` — which this run DID hold, under a
+ * different product, and which duly found commercetools.
+ *
+ * That is the shape of the next change, and it is not "buy more" — it is
+ * "strip wider". Left unmade here because it needs an A/B run rather than an
+ * argument: `--by family` is how it should be judged.
  */
 import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
