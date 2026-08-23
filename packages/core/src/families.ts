@@ -67,9 +67,36 @@ export function openingHand(
         plain(p, `${t1} alternatives`, t1, "the comparison field behind that door"),
       )
     } else if (t1) {
-      reserve.push(plain(p, t1, t1, "the next strip term — a different door into the same market"))
+      open.push(plain(p, t1, t1, "the next strip term — a different door into the same market"))
     }
-    for (const t of rest) reserve.push(plain(p, t, t, "the next strip term — a different door into the same market"))
+    /**
+     * THE REMAINING DOORS OPEN WITH THE HAND, at the back of it.
+     *
+     * These used to go to `reserve`, which a widening round draws from only
+     * when `assess` asks — and it almost never asks: 47 of 1,455 plain
+     * queries across `runs/` came from a reserve draw, and the fourth strip
+     * term this file learned to write was searched on NONE of one run's fifty
+     * products. A door in the reserve is a door nobody opens.
+     *
+     * They are worth opening. Measured over clean queries against a
+     * hand-written field of known rivals, a bare strip term finds one every
+     * 18.4 queries where `<term> alternatives` finds one every 6.2 — three
+     * times the rate — and there is no decay between the first two slots
+     * (18.7 and 17.6 per 100 on 257 and 216 queries). Two terms return the
+     * same host only 11% of the time, so each is close to a whole extra
+     * search rather than a rephrasing.
+     *
+     * `<term> alternatives` STAYS, and is not displaced by them, because it
+     * feeds something these do not: 60% of the rows it returns are
+     * roundup-shaped against 14% for a bare term, and roundup rows are what
+     * the listicle harvest reads to name vendors no query surfaced.
+     *
+     * Placed last so the ordering is safe under a cut. The opening hand is
+     * dealt round-robin across products (sweep.ts), so what a ceiling
+     * truncates is the last PASS rather than the last products — every
+     * product gets its first door before any product gets its fourth.
+     */
+    for (const t of rest) open.push(plain(p, t, t, "the next strip term — a different door into the same market"))
   }
 
   // A generic-named product skips branded (owner decision, 2026-08-04):

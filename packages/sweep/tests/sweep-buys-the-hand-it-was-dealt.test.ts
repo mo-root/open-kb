@@ -169,10 +169,13 @@ describe("report.wire — the plan against the purchase", () => {
   }, 30_000)
 
   it("shows a term written and never fired, which is the failure it exists to catch", async () => {
-    // A third strip term goes to the reserve, and a run the model calls
-    // finished never draws it — so it is planned, recorded in `strips`, and
-    // never bought. Before `wire` that was invisible in the report.
+    // A hand cut by the clock is the honest way to produce one now. Every
+    // strip term opens with the hand since the reserve stopped being where
+    // doors go to be forgotten, so a term goes unfired when the budget ends
+    // before its pass — which is exactly the case `wire` has to make visible,
+    // and exactly what a large decomposition does on a real run.
     const h = await runFixture({
+      sweepOptions: { maxQueries: 3 },
       script: {
         catalog: (product: string) => ({
           terms: [`${product} term one`, `${product} term two`, `${product} term three`],
