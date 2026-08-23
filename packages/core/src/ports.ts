@@ -46,13 +46,20 @@ export interface SearchResult {
    * a relative redirect rather than a destination.
    *
    * The search engine sometimes answers with `/goto?url=CAES...` — an opaque
-   * token, not an encoded url. MEASURED across 26 runs: 990 of 67,375 stored
-   * hits (1.5%) were this shape, and the token does not decode to anything
-   * (base64 of the payload contains no url; it is protobuf the engine alone
-   * can read). So they cannot be recovered, only counted — and counted they
-   * must be, because every one was billed and then silently dropped much
+   * token, not an encoded url. It does not decode to anything: base64 of the
+   * payload is protobuf with no url in it, readable only by the engine that
+   * minted it. So these rows cannot be recovered, only counted — and counted
+   * they must be, because every one was billed and then silently dropped much
    * later, where `new URL(...)` threw and the row vanished without a number
    * anywhere saying it had.
+   *
+   * THE RATE IS NOT STABLE, which is the reason to keep counting rather than
+   * to assume a figure. Across the 26 runs stored before this field existed it
+   * was 999 of 67,375 hits, 1.5%, and no single run went past 9.3%. On the day
+   * it was added the same measurement read 4.0% and 5.5% on two shopify.com
+   * runs three hours apart, against 0.3-0.5% on runs from that morning, and a
+   * direct probe of 236 live links came back 8%. A reader comparing this
+   * comment to a fresh run should expect them to disagree.
    */
   redirects?: number
 }
