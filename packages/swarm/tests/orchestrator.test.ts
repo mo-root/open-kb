@@ -149,6 +149,40 @@ const mission = (dedupeKey: string, priority: number, tier: string) => ({
   dedupeKey,
 })
 
+// ── the seed ────────────────────────────────────────────────────────────────
+
+describe("seedMission: the harness's own first question", () => {
+  it("asks the orient question at priority 100, tier dig, seeded from the domain", () => {
+    const m = seedMission("anchor.com")
+    expect(m.lens).toBe("orientation")
+    expect(m.priority).toBe(100)
+    expect(m.tier).toBe("dig")
+    expect(m.dedupeKey).toBe("orient:anchor.com")
+    expect(m.seeds).toEqual(["https://anchor.com"])
+    expect(m.brief).toContain("anchor.com")
+    expect(m.why.length).toBeGreaterThan(0)
+  })
+
+  it("keys on the registrable host, not the raw domain it is handed", () => {
+    // registrableHost has its own tests for the general case (url.test.ts); what
+    // matters here is that seedMission actually routes the domain through it
+    // rather than keying the mission on whatever string the caller passed.
+    const m = seedMission("www.docs.apify.com")
+    expect(m.dedupeKey).toBe("orient:apify.com")
+    expect(m.seeds).toEqual(["https://apify.com"])
+    expect(m.brief).toContain("apify.com")
+    expect(m.brief).not.toContain("docs.apify.com")
+  })
+
+  it("falls back to the raw domain when registrableHost has nothing to give back", () => {
+    // registrableHost("") is "", which is falsy — the `|| domain` fallback is
+    // what keeps seedMission from keying a mission on an empty string.
+    const m = seedMission("")
+    expect(m.dedupeKey).toBe("orient:")
+    expect(m.seeds).toEqual(["https://"])
+  })
+})
+
 // ── the loop ────────────────────────────────────────────────────────────────
 
 describe("runSwarm: fill/think/wake", () => {
