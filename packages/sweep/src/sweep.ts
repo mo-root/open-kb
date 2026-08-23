@@ -1640,11 +1640,46 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
      */
     const withDeadline = () => heldDeadline(timeoutMs, signal);
 
-    const attempt = async (maxOut: number, think: string | undefined) =>
+    /**
+     * What went wrong, in the model's own answer — the part `e.message`
+     * leaves out. "No object generated: response did not match schema" says
+     * a schema was missed and not which field; the AI SDK keeps the zod
+     * issues on `cause.cause.issues` and the raw text on `text`, and before
+     * this both were dropped on the floor. Measured: assess failed twice on
+     * each of two cursor.com runs on 2026-08-23 with that one sentence and
+     * nothing to act on. The first three issues, or the head of the text
+     * when there are none (an empty or truncated answer).
+     */
+    const detailOf = (e: unknown): string => {
+      const err = e as {
+        text?: unknown;
+        cause?: { cause?: { issues?: Array<{ path?: Array<string | number>; message?: string }> } };
+      };
+      const issues = err?.cause?.cause?.issues;
+      if (Array.isArray(issues) && issues.length) {
+        return issues
+          .slice(0, 3)
+          .map((i) => `${(i.path ?? []).join(".") || "<root>"}: ${i.message ?? "invalid"}`)
+          .join("; ");
+      }
+      if (typeof err?.text === "string" && err.text.trim()) {
+        return `text: ${err.text.trim().replace(/\s+/g, " ").slice(0, 160)}`;
+      }
+      return "";
+    };
+
+    const attempt = async (maxOut: number, think: string | undefined, rejected?: string) =>
       generateObject({
         model,
         schema,
-        prompt,
+        // A retry that knows why the first answer was refused is a different
+        // ask. The schema's enums are where a model strays under a long
+        // prompt — an `intent` or `platform` it invented — and re-asking the
+        // identical prompt strays the same way. The issue is appended, not
+        // woven in, so the prompt-size budget (`prompts.test.ts`) is untouched.
+        prompt: rejected
+          ? `${prompt}\n\nYour previous answer was rejected: ${rejected}. Answer again, keeping every field to the values the schema allows.`
+          : prompt,
         abortSignal: withDeadline(),
         maxOutputTokens: maxOut,
         // `attempt` is only ever the retry: unrouted, see `openrouterOpts`.
@@ -1736,12 +1771,16 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
               : agent,
           timedOut
             ? `  ${label}: no answer in ${Math.round(timeoutMs / 1000)}s, retrying once`
-            : `  ${label}: the model returned nothing, retrying with more room`,
+            : `  ${label}: the model's answer was refused${detailOf(e) ? ` (${detailOf(e)})` : ""}, retrying with more room`,
         );
         try {
+          const firstDetail = empty ? detailOf(e) : "";
           const out = await attempt(
             timedOut ? ceiling : ceiling * 2,
             opts.think,
+            // Only a schema miss carries a hint worth sending; a timeout or an
+            // empty body has nothing to quote.
+            firstDetail && !firstDetail.startsWith("text:") ? firstDetail : undefined,
           );
           const inTok = out.usage?.inputTokens ?? 0;
           const outTok = out.usage?.outputTokens ?? 0;
@@ -1766,11 +1805,16 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
             usd: usdFor(inTok, outTok),
           });
           return out.object as z.infer<T>;
-        } catch {
-          // fall through and report the original
+        } catch (second) {
+          // Fall through and report the original — with the second failure's
+          // detail beside it when it has one, since that is the answer that
+          // had the hint and still missed.
+          const d = detailOf(second);
+          if (d && e instanceof Error) e.message = `${e.message} — retry: ${d}`;
         }
       }
       bill("llm", agent, 0, Date.now() - started, false);
+      const firstDetail = detailOf(e);
       spans.emit({
         runId,
         agentId: agent,
@@ -1780,7 +1824,9 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         argsDigest: label,
         ms: Date.now() - started,
         ok: false,
-        error: e instanceof Error ? e.message : String(e),
+        error:
+          (e instanceof Error ? e.message : String(e)) +
+          (firstDetail && !(e instanceof Error && e.message.includes(firstDetail)) ? ` — ${firstDetail}` : ""),
         usd: 0,
       });
       throw e;
