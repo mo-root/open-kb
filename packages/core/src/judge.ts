@@ -494,6 +494,17 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
            * `why` and its `because` carries both halves: the claim withheld
            * and the page that finally answered. So the two stages compose:
            * this refuses to guess, and the next one goes and looks.
+           *
+           * IT ALSO HANDS THE SECOND LOOK A MUCH BIGGER JOB, which is worth
+           * knowing before reading its numbers. The same run went from ~8
+           * unplaced hosts to 98, so the stage was asked about 60 of them —
+           * its cap — and reported 42 failures where earlier runs reported 1
+           * or 2. That is not a regression and it is already anticipated at
+           * `SECOND_LOOK_CAP`: the population it now sees is precisely the
+           * hosts whose page would not open, and "about half of a real run's
+           * second looks landed on a page that was ALSO walled". When it does
+           * get a page it places the host every time — 11 of 11 on that run —
+           * so the failures are the fetch, not the judgement.
            */
           const CHANNEL_FROM_SNIPPET = ["covers", "lists", "discusses"]
           const overreach = CHANNEL_FROM_SNIPPET.includes(out.relation)
