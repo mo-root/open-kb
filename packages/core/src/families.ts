@@ -28,9 +28,16 @@ export interface FamilyQuery {
 }
 
 /**
- * Deal one product's hand: a small opening across the families, and a reserve
- * of the remaining templates for the widening loop to draw from. The opening
- * is an opening, not a cap — a run widens on yield, and nothing here seals it.
+ * Deal one product's hand: an opening across the families, and a reserve for
+ * the widening loop to draw from. The opening is an opening, not a cap — a
+ * run widens on yield, and nothing here seals it.
+ *
+ * What is in each has moved. Every STRIP TERM now opens, because a term left
+ * in the reserve was a term nobody searched (47 of 1,455 plain queries across
+ * `runs/` came from a draw). What stays in the reserve is the four roundup
+ * SHAPES over the first term and `<product> vs` — templates, not doors, and
+ * measured at one known rival per 96 clean queries against 18.4 for a bare
+ * term.
  */
 export function openingHand(
   product: string,
@@ -54,13 +61,18 @@ export function openingHand(
       plain(p, `top ${t0} companies`, t0, "the vendor field by name"),
       plain(p, `open source ${t0}`, t0, "the DIY route and who outgrows it"),
     )
-    // A CORE product's second door opens with the hand instead of waiting in
-    // reserve. MEASURED: cursor.com stripped to [AI coding agent | AI code
-    // editor | AI pair programmer], the second term sat in reserve, no
-    // widening round drew it, and the map of the company that makes an AI
-    // code editor never fired "ai code editor" — windsurf, its head-on rival,
-    // ranked for exactly that term and never surfaced. Two queries per core
-    // product is the price; a core market's missing front door was the cost.
+    // A CORE product's second door gets its COMPARISON FIELD as well, which
+    // is the only thing left of a split that used to be about the door
+    // itself: every bare term now opens with the hand (see below), so the
+    // question here is no longer whether `t1` is searched but whether
+    // `t1 alternatives` is bought beside it.
+    //
+    // MEASURED, and still the reason the second term is not left to chance:
+    // cursor.com stripped to [AI coding agent | AI code editor | AI pair
+    // programmer], the second term sat in reserve, no widening round drew
+    // it, and the map of the company that makes an AI code editor never
+    // fired "ai code editor" — windsurf, its head-on rival, ranked for
+    // exactly that term and never surfaced.
     if (t1 && opts?.core) {
       open.push(
         plain(p, t1, t1, "the second strip term — the core market's other front door"),
