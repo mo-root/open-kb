@@ -26,7 +26,7 @@
  *   npx tsx scripts/query-yield.ts               # by family
  *   npx tsx scripts/query-yield.ts --by position # family x position band
  *   npx tsx scripts/query-yield.ts --by intent
- *   npx tsx scripts/query-yield.ts --by platform
+ *   npx tsx scripts/query-yield.ts --by platform   # what was ASKED for, see below
  *
  * WHAT IT SAID THE FIRST TIME, over the 26 runs on disk (2026-08-23):
  *
@@ -50,14 +50,26 @@
  * 35% channel). But not all of it: head to head on the SAME intent,
  * plain/evaluation buys 50% market where debranded/evaluation buys 35%.
  *
- * The platform field is the other lever. Scoped social queries are barren far
- * more often than web ones and cost about twice as much per market host:
+ * The platform column needs reading carefully, and the first draft of this
+ * comment got it wrong. `platform` is what the catalog agent ASKED for, not
+ * what went on the wire: `platformScope` defaults to 0, so no query is ever
+ * rendered with its `site:` prefix (SweepOptions.platformScope carries the
+ * measurement behind that default). Every row below is an ordinary web search
+ * whose TEXT was written in a community register — a support-forum symptom, a
+ * thread title — and that text is what these numbers are about:
  *
- *   platform         barren   market   $/market
- *   web                  3%      46%    $0.0013
- *   reddit              20%      40%    $0.0020
- *   hackernews          21%      37%    $0.0026
- *   stackoverflow       10%      33%    $0.0020
+ *   asked-for platform   barren   market   $/market
+ *   web                      3%      46%    $0.0013
+ *   reddit                  20%      40%    $0.0020
+ *   hackernews              21%      37%    $0.0026
+ *   stackoverflow           10%      33%    $0.0020
+ *
+ * So: not "site: scoping is expensive" — it is already off. The finding is
+ * that the community-shaped queries catalog.md's fourth shape asks for
+ * ("where this product's buyers argue") go barren four to seven times more
+ * often than a plain web query and buy market hosts at about twice the price.
+ * Sampled, those queries read like `ipad POS offline mode not syncing` — narrow
+ * enough that they land on the same handful of support hosts run after run.
  *
  * None of this is a reason to delete a family — every one of them buys market
  * hosts nothing else found, and the two weakest are aimed at the tail on
