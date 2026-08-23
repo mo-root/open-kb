@@ -1552,9 +1552,17 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
      * triage at 66s a call, and an 8% empty-answer rate on the judge.
      * Single-provider families are unaffected by the sort, so it only rides
      * where it was measured to matter. */
-    const openrouterOpts = (think: string | undefined) => ({
+    const openrouterOpts = (
+      think: string | undefined,
+      // The retry drops the route preference. A host that answered nothing,
+      // or answered with a body that would not parse, is the wrong host to
+      // ask the same question twice; with no preference OpenRouter picks
+      // again from the whole pool, which is the cheapest way to make the
+      // second ask a different ask. The first ask keeps the throughput sort.
+      routed = true,
+    ) => ({
       reasoning: reasoningFor(think),
-      ...(modelId.startsWith("deepseek/")
+      ...(routed && modelId.startsWith("deepseek/")
         ? { provider: { sort: "throughput" } }
         : {}),
     });
@@ -1606,7 +1614,8 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         prompt,
         abortSignal: withDeadline(),
         maxOutputTokens: maxOut,
-        providerOptions: { openrouter: openrouterOpts(think) },
+        // `attempt` is only ever the retry: unrouted, see `openrouterOpts`.
+        providerOptions: { openrouter: openrouterOpts(think, false) },
       });
 
     const ceiling = Math.max(6_000, opts.maxOutputTokens ?? 8_192);
@@ -3359,10 +3368,21 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           )
           .join("\n") || "  (all reserves released)";
 
-      const verdict = await call(
-        "plan",
-        "assess",
-        z.object({
+      /**
+       * AN OPINION ABOUT WHETHER TO BUY MORE MUST NOT BE ABLE TO END THE RUN.
+       *
+       * `call` retries once and then throws, and this planner runs inside the
+       * same `Promise.all` as the search workers — so an assess call that
+       * failed twice rejected the whole search phase and `sweep()` with it.
+       * Measured: the cursor.com run on 2026-08-23 died at 796s with 618
+       * hosts bought and $0.41 spent, on "No object generated: could not
+       * parse the response" from its sixth assess call. Everything paid for
+       * was discarded over a question whose worst honest answer is "stop
+       * widening" — which is exactly what a failure now means. Sealed, the
+       * workers drain what is queued and the run moves on to judge, the same
+       * fail-open shape triage has for its own calls.
+       */
+      const AssessVerdict = z.object({
           enough: z
             .boolean()
             .describe(
@@ -3395,8 +3415,8 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
                 "finding hosts the first did not — read four pages instead of two for these " +
                 "next wave. Empty or omitted if none earned it.",
             ),
-        }),
-        prompt("assess", {
+      });
+      const assessPrompt = prompt("assess", {
           anchor,
           sells: decomp.sells,
           buyer: decomp.buyer,
@@ -3418,13 +3438,39 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
             : lastRound.hits === 0
               ? "the last round's queries returned no results at all — a different shape, not more of that one"
               : `${Math.round((100 * (lastRound.hits - lastRound.gained)) / lastRound.hits)}% of the last round's ${lastRound.hits} results were hosts already on the map (${lastRound.gained} new)`,
-        }),
-        // A judgement about whether to spend more money. Cheap, and rare.
-        // 20,000 because 8,000 was not enough: medium effort against a prompt
-        // carrying sixty host names and every query already asked spent the
-        // whole budget thinking and returned nothing.
-        { think: "medium", maxOutputTokens: 20_000 },
-      );
+      });
+      let verdict: z.infer<typeof AssessVerdict>;
+      try {
+        verdict = await call(
+          "plan",
+          "assess",
+          AssessVerdict,
+          assessPrompt,
+          // A judgement about whether to spend more money. Cheap, and rare.
+          // 20,000 because 8,000 was not enough: medium effort against a prompt
+          // carrying sixty host names and every query already asked spent the
+          // whole budget thinking and returned nothing.
+          { think: "medium", maxOutputTokens: 20_000 },
+        );
+      } catch (e) {
+        // `call` has already retried once; a second failure surfaces here.
+        // This planner runs inside the same `Promise.all` as the search
+        // workers, so letting it throw rejected the whole search phase and
+        // `sweep()` with it. Measured: the cursor.com run on 2026-08-23 died
+        // at 796s with 618 hosts bought and $0.41 spent, on "No object
+        // generated: could not parse the response" from its sixth assess
+        // call — everything paid for discarded over a question whose worst
+        // honest answer is "stop widening". That is what a failure now means:
+        // sealed, the workers drain what is queued and the run moves on to
+        // judge, the same fail-open shape triage has for its own calls.
+        say(
+          "plan",
+          `assess failed twice (${(e as Error).message.split("\n")[0]}) — not widening further; ` +
+            `judging the ${distinctHosts().size} hosts already found`,
+        );
+        sealed = true;
+        return;
+      }
 
       // The world moved while this call was in flight — 15-25 seconds of it.
       // A worker that ran out of clock (or the run being cancelled) seals the
