@@ -76,6 +76,29 @@
  * purpose. It is a reason to be deliberate about the MIX, and to measure a
  * change to it here rather than argue about it.
  *
+ * ONE EXPERIMENT THIS CORPUS CANNOT SETTLE, written down so it is run rather
+ * than argued. `rival` is dealt LAST — `queries: [...catalogs.flat(),
+ * ...company, ...rivals]` — so with forty products ahead of it a rival query
+ * lands around position 150. Fresh hosts per query, rival against plain, at
+ * matched position:
+ *
+ *   early 0-49    plain 11.2 (n=743)    rival 15.3 (n=21)
+ *   mid   50-99   plain  8.1 (n=467)    rival  7.3 (n=120)
+ *   late  100+    plain  6.5 (n=245)    rival  5.6 (n=242)
+ *
+ * Read that carefully. The one cell where rival wins is the one with
+ * twenty-one queries in it, precisely BECAUSE rivals almost never fire early —
+ * so "rival is starved of position" and "rival is simply weaker" both fit, and
+ * the two well-powered cells favour the second. The corpus cannot separate
+ * them: it contains no run that dealt rival names early.
+ *
+ * The change that would separate them is one line, moving `...rivals` ahead of
+ * `...catalogs.flat()`, and it is NOT made here — rival names come from the
+ * anchor's own comparison pages, so dealing them first would also mean the
+ * opening hand leads with someone else's market rather than the anchor's, and
+ * `opening.slice(0, QUERY_CEILING)` would start cutting catalog queries
+ * instead of rival ones. Worth one deliberate run, not a guess.
+ *
  * A SEPARATE FINDING, about size rather than mix, left here because this is
  * where a reader comes to ask what a run bought.
  *
