@@ -365,7 +365,9 @@ console.log(`$${stats.usd.toFixed(4)} · ${stats.seconds.toFixed(0)}s`)
 {
   const report = out!.report as Record<string, unknown>
   const cost = report.cost as { usd: number; byKind: { label: string; calls: number; failures: number; usd: number; ms: number }[] }
-  const serp = report.serp as { requests: number; retries: number; pagesPerQuery: number; blocked: Record<string, number> } | undefined
+  const serp = report.serp as
+    | { requests: number; retries: number; pagesPerQuery: number; blocked: Record<string, number>; failed?: Record<string, number> }
+    | undefined
   const kernel = report.kernel as { fetched: number; unreadable: number; unreadableByReason: Record<string, number>; unlocked?: number; serpJudged?: number } | undefined
   const pct = (n: number) => `${((100 * n) / (cost.usd || 1)).toFixed(1)}%`
 
@@ -389,6 +391,16 @@ console.log(`$${stats.usd.toFixed(4)} · ${stats.seconds.toFixed(0)}s`)
     )
     const blocks = Object.entries(serp.blocked).sort((a, b) => b[1] - a[1]).slice(0, 6)
     for (const [reason, n] of blocks) console.log(`  ${String(n).padStart(4)} × ${reason}`)
+    // Retries are the provider letting a query in on the second ask; these
+    // are the queries it never let in at all. Printed apart so an account
+    // suspension — which is not retried, and so never appears above — is
+    // the first line a reader sees rather than a number in the JSON.
+    const failed = Object.entries(serp.failed ?? {}).sort((a, b) => b[1] - a[1]).slice(0, 6)
+    if (failed.length) {
+      const total = failed.reduce((n, [, c]) => n + c, 0)
+      console.log(`  ${total} queries failed outright:`)
+      for (const [reason, n] of failed) console.log(`  ${String(n).padStart(4)} × ${reason}`)
+    }
   }
 
   if (kernel) {

@@ -16,17 +16,25 @@ import { CALL_TIMEOUT_MS, LINK_CALL_TIMEOUT_MS } from "../src/sweep.js"
  */
 describe("every model call carries a deadline", () => {
   it("has one, and it clears the slowest measured real call", () => {
-    // The slowest legitimate calls in runs/ are classify retries at 56-62s.
-    expect(CALL_TIMEOUT_MS).toBeGreaterThan(62_000)
+    // The slowest legitimate single call in runs/ is the catalog call at 51s
+    // when it ran as one call instead of three. The old floor here was 62s,
+    // from classify retries measured on the pinned OpenRouter host that
+    // `openrouterOpts` has since stopped pinning — on the throughput-sorted
+    // route a classify is 2-3s, and a ceiling sized to the slow host's
+    // retries cost runs/sweep-cursor-com-20260823064255.json 6.3 minutes on
+    // its last four judge hosts.
+    expect(CALL_TIMEOUT_MS).toBeGreaterThan(51_000)
     expect(CALL_TIMEOUT_MS).toBeLessThanOrEqual(600_000)
   })
 
-  it("gives link a shorter deadline than every other agent, within the backlog's 45-60s range", () => {
+  it("gives link no longer a deadline than any other agent, within the backlog's 45-60s range", () => {
     // P0-4: link and orphan calls are batched, uniform, and already retried
-    // once, so a hang there does not need the full CALL_TIMEOUT_MS runway.
+    // once, so a hang there does not need more runway than CALL_TIMEOUT_MS.
+    // The two met at 60s when the global ceiling came down; link keeps its
+    // own knob, and must never be the LONGER of the two.
     expect(LINK_CALL_TIMEOUT_MS).toBeGreaterThanOrEqual(45_000)
     expect(LINK_CALL_TIMEOUT_MS).toBeLessThanOrEqual(60_000)
-    expect(LINK_CALL_TIMEOUT_MS).toBeLessThan(CALL_TIMEOUT_MS)
+    expect(LINK_CALL_TIMEOUT_MS).toBeLessThanOrEqual(CALL_TIMEOUT_MS)
   })
 
   it("composes with the run's cancel without replacing it", async () => {

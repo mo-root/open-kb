@@ -367,9 +367,12 @@ export const CLASSIFY_KINDS = ENTITY_KINDS.filter(
  */
 export const CLASSIFY_MAX_OUTPUT_TOKENS = 450;
 
-/** Hosts per triage call. Sixty lines of host—title—description is ~4k input
- *  tokens, and the verdict rows come back well inside the same call's floor. */
-export const TRIAGE_BATCH = 60;
+/** Hosts per triage call. Was 60: ~4k input tokens and ~1.5k of verdict rows,
+ *  which runs/sweep-cursor-com-20260823064255.json showed timing out at the
+ *  120s call ceiling four times in fourteen calls, each timeout costing its
+ *  whole wave (see the dispatch below). Thirty halves the rows a slow answer
+ *  has to stream before the ceiling, and halves what one failure fails open. */
+export const TRIAGE_BATCH = 30;
 /** A host this many distinct queries returned cannot be skipped by triage:
  *  that many roads in is the search itself vouching for it, and a title and
  *  description do not outrank the search. */
@@ -403,14 +406,24 @@ export const SECOND_LOOK_UNLOCK_BUDGET = 10;
 export const DROP_CONFIRM_CAP = 60;
 
 /** How long one model call may take before it is abandoned. Argued at
- *  `withDeadline` in `call()`; overridable for a slow model or a slow host. */
+ *  `withDeadline` in `call()`; overridable for a slow model or a slow host.
+ *
+ *  Was 120s, sized against "classify retries at 56 to 62 seconds" — and those
+ *  were measured on the pinned provider that `openrouterOpts` has since
+ *  stopped pinning. On the throughput-sorted route a one-host classify is
+ *  2-3s and a 30-row triage ~6s, so 60s still clears the slowest legitimate
+ *  call (the 51s single catalog call) while halving what one hung socket
+ *  costs a run: runs/sweep-cursor-com-20260823064255.json spent 6.3 minutes
+ *  on its last four judge hosts, each a 120s timeout chained into a 120s
+ *  retry, with the rest of the pool already empty. */
 export const CALL_TIMEOUT_MS = Math.max(
   1_000,
-  Number(process.env.OPENKB_CALL_TIMEOUT_MS ?? 120_000) || 120_000,
+  Number(process.env.OPENKB_CALL_TIMEOUT_MS ?? 60_000) || 60_000,
 );
 
-/** The link and orphan calls' own deadline — tighter than `CALL_TIMEOUT_MS`'s
- *  global 120s. `docs/overnight-backlog.md`'s P0-4 finding: on the measured
+/** The link and orphan calls' own deadline — was tighter than `CALL_TIMEOUT_MS`
+ *  when that stood at 120s; the two now meet at 60s and this one is kept as
+ *  its own knob. `docs/overnight-backlog.md`'s P0-4 finding: on the measured
  *  cursor.com run (runs/sweep-cursor-com-20260821105321.json) two timed-out
  *  link batches cost about 4 minutes of the 12.3-minute link phase — the same
  *  run that motivated `LINK_CONC` above. Unlike a one-off classify call, link
@@ -1527,22 +1540,22 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           : { enabled: false }
         : { effort: think === "none" ? "minimal" : (think ?? "low") };
 
-    /* DeepSeek routes across 23 providers of very different speeds — measured
-     * 6.3s on the default pick against 3.5s sorted by throughput, same call.
+    /* DeepSeek routes across 23 providers of very different speeds. This
+     * used to PIN an order — parasail, novita, siliconflow — measured once at
+     * 1.3s on Parasail against 6.3s on the default pick. The fast host then is
+     * the slow host now: re-measured 2026-08-23 on a 60-row triage call,
+     * Parasail took 28.6 / 34.7 / 31.3s where OpenRouter's own throughput
+     * sort (Reka that day) took 10.0 / 9.5 / 13.0s, and 3.4 / 2.8s against
+     * 1.9 / 2.8s on a one-host classify. A pinned order is a measurement
+     * that goes stale; the sort is the provider re-measuring at every call.
+     * runs/sweep-cursor-com-20260823064255.json is what the stale pin cost:
+     * triage at 66s a call, and an 8% empty-answer rate on the judge.
      * Single-provider families are unaffected by the sort, so it only rides
      * where it was measured to matter. */
     const openrouterOpts = (think: string | undefined) => ({
       reasoning: reasoningFor(think),
-      // Measured spread across DeepSeek's hosts: 1.3s on Parasail to 6.3s on
-      // the default pick, same call. Preference order with fallbacks open —
-      // a preferred host going down degrades to the next, never to a failure.
       ...(modelId.startsWith("deepseek/")
-        ? {
-            provider: {
-              order: ["parasail", "novita", "siliconflow"],
-              allow_fallbacks: true,
-            },
-          }
+        ? { provider: { sort: "throughput" } }
         : {}),
     });
 
@@ -2827,6 +2840,10 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   let serpRequests = 0;
   let serpRetries = 0;
   const serpBlocks: Record<string, number> = {};
+  /** Queries that failed outright, by reason — the non-retryable half of the
+   *  story `serpBlocks` tells for retries. See the tally beside it. */
+  const serpFailures: Record<string, number> = {};
+  let serpSuspendedSaid = false;
   /** Queries whose search was actually bought, counted where the money moves.
    *  `asked` is the QUEUE — seeded with the whole opening hand and grown at
    *  plan time — and the host-ceiling seal makes workers abandon its tail, so
@@ -2940,6 +2957,26 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     for (const b of r.blocked ?? []) {
       const key = b.replace(/\d{3,}/g, "N").slice(0, 60);
       serpBlocks[key] = (serpBlocks[key] ?? 0) + 1;
+    }
+    // A query that FAILED, tallied by the provider's own reason. `blocked`
+    // above only ever carries the retry path's refusals, so a failure the
+    // port does not retry — an account suspension is the measured case —
+    // never reached the summary: runs/sweep-cursor-com-20260823064255.json
+    // lost 18 of its last 19 queries to "Account is suspended" and the
+    // terminal printed six retry reasons and not that one. The first sighting
+    // of a suspension is said aloud at once, because every query after it
+    // is known to fail and the reader is the only one who can fix it.
+    if (!r.ok && r.error) {
+      const reason = r.error.replace(/^\d+\/\d+ pages failed: /, "");
+      const key = reason.replace(/\d{3,}/g, "N").slice(0, 60);
+      serpFailures[key] = (serpFailures[key] ?? 0) + 1;
+      if (/suspended/i.test(reason) && !serpSuspendedSaid) {
+        serpSuspendedSaid = true;
+        say(
+          "sweep",
+          `SEARCH PROVIDER REFUSED: ${reason} — every search from here will fail the same way`,
+        );
+      }
     }
     {
       const batch = [planned];
@@ -3851,11 +3888,13 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       batches.push(hostList.slice(i, i + TRIAGE_BATCH));
     // Six in flight, the catalog stage's width: wide enough that twenty-odd
     // batches cost the slowest few, narrow enough that a rate-limited model
-    // answers with pacing rather than a failed wave.
+    // answers with pacing rather than a failed wave. A POOL, not chunked
+    // waves — the same fix `runPool` documents for the link phase. Chunked,
+    // this stage took 8.5 minutes on runs/sweep-cursor-com-20260823064255.json:
+    // fourteen calls in three waves, and every wave waited out its slowest
+    // member's 120s timeout plus retry while the other five workers idled.
     const TRIAGE_CONC = 6;
-    for (let i = 0; i < batches.length; i += TRIAGE_CONC) {
-      await Promise.all(
-        batches.slice(i, i + TRIAGE_CONC).map(async (batch) => {
+    await runPool(batches, TRIAGE_CONC, async (batch) => {
           const lines = batch
             .map(
               (h) =>
@@ -3905,9 +3944,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
               `  a triage call failed (${(e as Error).message}); its ${batch.length} hosts go to the judge unfiltered`,
             );
           }
-        }),
-      );
-    }
+    });
     judgeList = [];
     for (const h of hostList) {
       const v = verdictByHost.get(h.host);
@@ -5586,6 +5623,10 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         .filter(([, d]) => d === "deep")
         .map(([p]) => p),
       blocked: serpBlocks,
+      /** Queries that failed outright, by reason. `blocked` is the retry
+       *  path's refusals only; a refusal the port does not retry — an account
+       *  suspension — lands here and nowhere else. */
+      failed: serpFailures,
     },
     /** Agent-mode phase one's own account: turns, pages, and the integrations
      *  the docs stated. Null on the default path, which reads nothing an agent
