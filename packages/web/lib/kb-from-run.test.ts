@@ -493,6 +493,23 @@ describe("roads and spans, an entity's own receipts", () => {
     const r = fixtureRun({ entities: [entity("a.com", "competitor")] })
     expect(noteOf(r, "players/a.com.md")?.spans).toBeUndefined()
   })
+
+  /** `reasoning` is `.optional()` on the classify schema — most fixtures and
+   *  most stored runs answer without it — so the panel has to degrade to
+   *  nothing on an absent value, the same as `roads` and `spans` above. */
+  it("carries the decisive fact onto the whole entity", () => {
+    const r = fixtureRun({
+      entities: [{ ...entity("a.com", "competitor"), reasoning: "Its pricing page lists Postmark by name as the switch target." }],
+    })
+    expect(noteOf(r, "players/a.com.md")?.reasoning).toBe(
+      "Its pricing page lists Postmark by name as the switch target.",
+    )
+  })
+
+  it("leaves reasoning absent on a run recorded before the field existed", () => {
+    const r = fixtureRun({ entities: [entity("a.com", "competitor")] })
+    expect(noteOf(r, "players/a.com.md")?.reasoning).toBeUndefined()
+  })
 })
 
 /**

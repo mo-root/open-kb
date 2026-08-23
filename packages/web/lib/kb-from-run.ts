@@ -737,6 +737,7 @@ export function noteOf(run: CompletedRun, path: string): NoteView | null {
     // The panel prints `descGrounded` beside them, and a number about evidence
     // is worth much less than the evidence.
     spans: textsOf(hit.entity.spans),
+    reasoning: hit.entity.reasoning,
     because: (hit.entity as { because?: string }).because,
     tier: tierOf(hit.entity),
     descGrounded: descGroundedOf(hit.entity),

@@ -479,6 +479,13 @@ export interface NoteView {
    *  mostly hosts whose front page it could not read at all — and on runs
    *  recorded before the kernel kept them. */
   spans?: string[]
+  /** Model-judged entities only: one sentence, the single decisive fact that
+   *  settled `kind` and `relation` — not `evidence` restated, the fact that
+   *  made it true. Optional on the wire (`.optional()` in the classify
+   *  schema, kept for pre-existing fixtures), and present on 26% of entities
+   *  measured on the cursor run: absent renders as nothing, never an empty
+   *  row. */
+  reasoning?: string
   /** the kernel's refusal, when this claim was downgraded — rendered so a
    *  reader sees why the map does not trust it. */
   because?: string

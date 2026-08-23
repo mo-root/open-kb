@@ -229,6 +229,20 @@ export function NoteView({
             {note.evidence}
           </div>
         )}
+        {/* The single fact that settled `kind` and `relation` — not `evidence`
+            restated, the fact that made it true. Model-judged entities only
+            (`.optional()` on the classify schema), so most rows render
+            nothing here rather than an empty line. A plain caption under the
+            evidence box, not a box of its own: it is a footnote to the claim
+            above it, not a second claim. */}
+        {note.reasoning && (
+          <div className="mt-2 text-xs text-slate-500">
+            <span className="mr-2 uppercase tracking-wide text-slate-600">
+              the decisive fact
+            </span>
+            {note.reasoning}
+          </div>
+        )}
         {note.because && (
           /* amber-* is remapped to the brand-pink ramp in globals.css, and only
              steps 200–500 are re-keyed per theme (see GraphCanvas's advisory

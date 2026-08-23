@@ -174,7 +174,7 @@ above stay first; these follow.
 
 ## B. Web app — the judgements are invisible
 
-- [ ] **B1. `reasoning` is surfaced NOWHERE in the UI.** It is the one-sentence
+- [x] **B1. `reasoning` is surfaced NOWHERE in the UI.** It is the one-sentence
   "why this call was made" on every classified entity, and 26% of entities
   carry one. Surface it on the entity detail card
   (`packages/web/components/kb/NoteView.tsx` and/or the GraphCanvas detail
