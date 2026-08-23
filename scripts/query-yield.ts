@@ -75,6 +75,33 @@
  * hosts nothing else found, and the two weakest are aimed at the tail on
  * purpose. It is a reason to be deliberate about the MIX, and to measure a
  * change to it here rather than argue about it.
+ *
+ * A SEPARATE FINDING, about size rather than mix, left here because this is
+ * where a reader comes to ask what a run bought.
+ *
+ * `HOST_CEILING` is a run's sizing — 900 distinct hosts by default — and the
+ * widening planner refuses another round once `distinctHosts()` passes it. It
+ * does not hold. Measured over the 30 runs on disk, 22 of them finished past
+ * it, between 977 and 1,981 hosts; clerk.com reached 1,981 from 143 queries
+ * and brightdata.com 1,705 from 192, and those two are the most expensive
+ * runs on disk at $2.06 and $2.24. Hosts are what the rank phase is charged
+ * for, so overshoot is most of what separates a $0.95 run from a $2.24 one.
+ *
+ * The overshoot is structural, not a bug in the check: the planner seals when
+ * it notices, and a wave already in flight — 32 workers, two pages each —
+ * keeps landing hosts afterwards. Watched live on a shopify.com run: it sealed
+ * at 907 hosts having fired 100 of the 258 queries its own catalog had
+ * planned. The other 158 were written, costed and abandoned.
+ *
+ * Two things follow, and neither is a change this file should make on its own,
+ * because both trade map size against spend and that is the owner's call:
+ *   - the plan and the ceiling are not coordinated. A 258-query plan under a
+ *     900-host ceiling was never going to fire more than a third of itself.
+ *   - a bigger decomposition does not buy a bigger map. Correlation between
+ *     product count and entities kept is 0.44, against 0.69 for query count,
+ *     and the per-query yield runs the wrong way: stripe.com took 1,102
+ *     entities from 78 queries (14.1 each) where datadoghq.com took 1,077
+ *     from 177 (6.1 each).
  */
 import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
