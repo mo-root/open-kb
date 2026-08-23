@@ -1325,6 +1325,22 @@ export function GraphCanvas({
     );
   }
 
+  // `graphOf` always emits the anchor (plus one node per decomposed market),
+  // so a run that kept zero entities still returns a non-empty `graph` — the
+  // `!graph` guard above never catches it. A fixture run with no entities and
+  // no capabilities (kb-from-run.test.ts, "graphOf on a run that kept
+  // nothing") measures `nodes.length === 1`: the force simulation would then
+  // render one dot alone in the pane with "1 nodes · 0 links" as the only
+  // signal, the same missing-copy gap every other panel here already covers
+  // (KbOverview's "nothing on the map" / "nothing placed yet").
+  if (graph.nodes.length <= 1) {
+    return (
+      <p className="py-6 text-center font-mono text-[11px] text-slate-500">
+        nothing on the map — run a sweep to fill this panel.
+      </p>
+    );
+  }
+
   const visibleNodeCount = graph.nodes.filter(
     (n) => visibleTypes[nodeTypeOf(n.group)] && (showUnplaced || n.relation !== "none"),
   ).length;

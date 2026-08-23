@@ -217,10 +217,33 @@ above stay first; these follow.
   `pnpm check && pnpm test` both green, 1819 tests passing (12 gated/live
   skipped, same census as before).
 
-- [ ] **B4. Audit error and empty states end to end**: a failed run, a map with
+- [x] **B4. Audit error and empty states end to end**: a failed run, a map with
   zero entities, a missing run id, a non-JSON fetch response, a one-node graph.
   Precedent: a prior fire found `KbOverview` swallowing a non-JSON error body
   as "unreachable".
+  DONE (2026-08-23 overnight fire). Read `KbOverview.tsx` (non-JSON guard
+  already present, every zero-count panel already has copy), `NoteView.tsx`,
+  `BuildWorkflow.tsx` (`.json()` calls already `.catch(() => null)`-guarded),
+  `lib/kb-lookup.ts`'s `findKb` (missing run id → 404; a failed run → its own
+  404 pointing at `/api/run/[id]`) and `app/runs/[id]/page.tsx` (`notFound()`
+  for a missing id, a dedicated `FailedReport` for a failed run) — all
+  already solid, no gap. One real gap found: `GraphCanvas.tsx`'s `!graph`
+  guard only catches a fetch failure. `graphOf` (`kb-from-run.ts:773`) always
+  emits the anchor node (plus one per decomposed market) even when a run
+  kept zero entities, so a zero-entity run still returns a truthy `graph` and
+  fell through into the full force-directed canvas, toolbar and search box
+  around a single dot reading "1 nodes · 0 links" — the one concrete
+  "one-node graph" case the item names, and the only panel in the app
+  without empty-state copy (`KbOverview.tsx`'s `CompositionPanel` /
+  `EcosystemPanel` both have it). Added an early return in `GraphCanvas.tsx`
+  for `graph.nodes.length <= 1`, same copy and styling as `KbOverview`'s
+  "nothing on the map" panel. Backed by a new `kb-from-run.test.ts` fixture
+  test measuring `graphOf(run([])).nodes` has length 1 (anchor only, no
+  capabilities) — the shape the component now guards against; no
+  jsdom/RTL harness exists in this repo to test `GraphCanvas.tsx` itself
+  (confirmed — only pure-function/SSR tests), same limitation noted on B1-B3.
+  `pnpm check && pnpm test` both green, 1820 tests passing (12 gated/live
+  skipped, one more than B3's census for the new fixture test).
 
 ## C. GitHub — the repo a stranger lands on
 

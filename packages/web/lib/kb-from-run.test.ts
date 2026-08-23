@@ -122,6 +122,17 @@ describe("graphOf, entity-to-entity edges", () => {
     expect(() => graphOf(r)).not.toThrow()
     expect(graphOf(r).edges).toHaveLength(1)
   })
+
+  // GraphCanvas's `!graph` guard only catches a run whose fetch failed —
+  // graphOf itself always emits the anchor node, so a run that kept zero
+  // entities and decomposed zero markets still returns a graph, just a
+  // one-node one. This is the shape B4's "one-node graph" empty state
+  // guards against; see GraphCanvas.tsx's `graph.nodes.length <= 1` check.
+  it("still returns a one-node graph — the anchor alone — when a run kept nothing", () => {
+    const g = graphOf(run([]))
+    expect(g.nodes).toHaveLength(1)
+    expect(g.nodes[0].kind).toBe("anchor")
+  })
 })
 
 describe("graphOf, prominence — the search's own count, apart from placement", () => {
