@@ -56,6 +56,35 @@ const TO = join(ROOT, "demo", "maps")
  * classify.md gates `competitor` behind. It is the most honest illustration in
  * the set of where the classifier still fails, which is why it is kept rather
  * than quietly swapped for an easier anchor.
+ *
+ * WHAT WAS TRIED AGAINST IT, since the next reader will have the same two
+ * ideas. Both were bought and run rather than argued about.
+ *
+ * The mechanism is real and reproducible. Re-classifying six of those rows off
+ * their live pages, changing NOTHING but the anchor's own description:
+ *
+ *   sells/buyer as the run had them   akamai=competitor  todyl=competitor
+ *   sells/buyer narrowed to the core  akamai=adjacent    todyl=adjacent
+ *
+ * with blackfire.io — a real observability rival — staying `competitor` in
+ * both. So the inflation enters at `understand`, not at the gate: a `sells`
+ * spanning "observability and security" and a `buyer` listing "security
+ * analysts" hand every security vendor a pass through disqualifiers 2 and 3.
+ *
+ * The obvious fix does not follow, and was dropped for two measured reasons.
+ * Telling understand.md that core is at most three capabilities DOES hold —
+ * datadog came back 3 of 6 and 3 of 7 with the line against 5 of 12 and 3 of 4
+ * without it — but "Security and Threat Management" survives as core either
+ * way, so akamai and todyl would still pass. And `centrality: "core"` is not
+ * only a label: `openingHand` deals a core product's second strip term into
+ * the opening hand instead of the reserve, so demoting markets buys fewer
+ * queries. A change that narrows the map to fix a precision bug it does not
+ * actually fix is the wrong trade.
+ *
+ * What would work is giving classify.md the core capability NAMES rather than
+ * the `sells` sentence, so disqualifier 3 tests against the market list the
+ * decomposition already computed. Left unbuilt: it needs an A/B, and
+ * `scripts/recall.ts --by family` shows a single run cannot judge one.
  */
 const PICKS: { file: string; because: string }[] = [
   { file: "sweep-shopify-com-20260823201634.json", because: "1,236 entities — commerce, and the first map built off four strip terms" },
