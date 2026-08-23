@@ -406,6 +406,15 @@ export const SECOND_LOOK_UNLOCK_BUDGET = 10;
  *  against, and reusing it keeps the two in sync instead of drifting apart. */
 export const DROP_CONFIRM_CAP = 60;
 
+/** How long the planner will wait for in-flight searches to land before it
+ *  assesses the map. One SERP round trip is ~5s and the port's own ceiling is
+ *  30s; past this the planner proceeds on what it has rather than hanging.
+ *  Argued where it is used, in `planner`. */
+export const LANDING_GRACE_MS = Math.max(
+  0,
+  Number(process.env.OPENKB_LANDING_GRACE_MS ?? 45_000) || 45_000,
+);
+
 /** Gateway hosts never to route a model call to, by the gateway's own slug.
  *  Measured, not guessed — see `openrouterOpts` in `call()` for the bench.
  *  `OPENKB_MODEL_HOST_IGNORE` (comma-separated) replaces the list. */
@@ -3333,6 +3342,40 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       // Wait for the queue to run low rather than empty: a refill that lands
       // while workers are still busy is a refill nobody waited for.
       while (!sealed && pending() > Math.floor(CONC / 2)) {
+        if (signal?.aborted) return;
+        await idle(250);
+      }
+      if (sealed || signal?.aborted) return;
+
+      /**
+       * AND THEN FOR WHAT IS STILL IN THE AIR TO LAND.
+       *
+       * `taken` advances when a worker PULLS a query (`take()`), not when the
+       * search returns, so the wait above is satisfied while the whole round
+       * is still in flight. Everything below reads `distinctHosts()` — the
+       * host count handed to `assess`, the ceiling checks, the clock estimate
+       * — and all of it was being read off a map whose results had not
+       * arrived. MEASURED on runs/sweep-cursor-com-20260823082435.json: the
+       * opening hand of 22 queries was dealt to 32 workers, every one was
+       * taken within a second, and the first assess fired at 22s against
+       * ZERO hosts. The model was told the map was empty and answered "No
+       * hosts, no companies, no communities — all prior queries appear to
+       * have returned nothing or failed to record any results", then widened
+       * on that. Its next line, eight seconds later, was round 1 adding 72
+       * hosts.
+       *
+       * `ran` is the landed counter — incremented after `runOne` returns, and
+       * every `return` in the worker sits ABOVE `take()`, so a query that was
+       * taken always reaches it. The queue is already drained to half here, so
+       * the workers are mostly idle and this costs about one SERP round trip
+       * rather than a round; it is emphatically NOT a wait for the round to
+       * finish, which would serialise assess against searching and cost
+       * minutes. Bounded, because a wait with no ceiling is a hang: past
+       * LANDING_GRACE_MS the planner proceeds on what it has, which is the
+       * old behaviour and still better than nothing.
+       */
+      const landingBy = Date.now() + LANDING_GRACE_MS;
+      while (!sealed && ran < taken && Date.now() < landingBy) {
         if (signal?.aborted) return;
         await idle(250);
       }
