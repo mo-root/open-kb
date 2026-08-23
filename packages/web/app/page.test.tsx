@@ -77,21 +77,21 @@ vi.mock("@/lib/runs", async (importOriginal) => {
  *  lib/demo-maps.test.ts, which owns the directory's contents; here they are
  *  the six cards this page has to put on screen. */
 const MAPS = [
-  "brightdata-com-20260818131026",
-  "neon-tech-20260818225808",
-  "sentry-io-20260818232602",
-  "stripe-com-20260818214527",
-  "supabase-com-20260818210215",
-  "vercel-com-20260818212925",
+  "cloudflare-com-20260823162255",
+  "datadoghq-com-20260823193440",
+  "figma-com-20260823125953",
+  "openai-com-20260823191503",
+  "shopify-com-20260823201634",
+  "stripe-com-20260823130137",
 ] as const
 
 const ANCHORS = [
-  "brightdata.com",
-  "neon.tech",
-  "sentry.io",
+  "cloudflare.com",
+  "datadoghq.com",
+  "figma.com",
+  "openai.com",
+  "shopify.com",
   "stripe.com",
-  "supabase.com",
-  "vercel.com",
 ] as const
 
 /**
@@ -104,10 +104,10 @@ const ANCHORS = [
  * regenerated `demo/maps/` is supposed to fail here and be looked at.
  */
 const LEDGER = {
-  entities: "6,940",
-  edges: "21,027",
-  usd: "$5.9158",
-  clock: "103m 59s",
+  entities: "6,747",
+  edges: "18,160",
+  usd: "$5.7538",
+  clock: "103m 27s",
 }
 
 /** Three per-card numbers, as the card SPELLS them — thousands separators and
@@ -131,14 +131,14 @@ const LEDGER = {
  *  opposite of what the run concluded. 20.1% of every company-like row in the
  *  stored corpus is such a row, and 38.5% on figma.com, so it cannot be
  *  rounded away. See `KbSummary.companies`. */
-const STRIPE_ENTITIES = "1,427"
+const STRIPE_ENTITIES = "1,134"
 /** One lower than the 1,008 this pinned before: `exalate.com` was filed as
  *  "Stripe", `product`, `shaper`, and a row wearing a name the run never
  *  settled is not a company in this market. It is still on the map. */
-const STRIPE_COMPANIES = "769"
+const STRIPE_COMPANIES = "858"
 /** 6,283 before. 2,203 of vercel's links were minted by seven strangers
  *  wearing the name "Vercel" — `aws.amazon.com` alone held 331 of them. */
-const DENSEST_LINKS = "4,337" // sentry.io, the densest of the set
+const DENSEST_LINKS = "3,754" // datadoghq.com, the densest of the set
 
 const KEYS = [
   "OPENKB_DEMO",
@@ -276,11 +276,11 @@ describe("with OPENKB_DEMO on — the maps are the page", () => {
     const html = await home()
     const at = (id: string) => html.indexOf(`href="/kb/${id}"`)
 
-    // stripe (1,427 on the map) first, neon (941) last. Newest-first — the
+    // shopify (1,284 on the map) first, figma (976) last. Newest-first — the
     // gallery's default — would have opened on whichever ran latest.
-    expect(at("stripe-com-20260818214527")).toBeGreaterThan(-1)
-    expect(at("stripe-com-20260818214527")).toBeLessThan(at("vercel-com-20260818212925"))
-    expect(at("neon-tech-20260818225808")).toBeGreaterThan(at("supabase-com-20260818210215"))
+    expect(at("shopify-com-20260823201634")).toBeGreaterThan(-1)
+    expect(at("shopify-com-20260823201634")).toBeLessThan(at("openai-com-20260823191503"))
+    expect(at("figma-com-20260823125953")).toBeGreaterThan(at("cloudflare-com-20260823162255"))
   })
 
   it("gives each card what makes it worth opening: a headline, its markets, its evidence", async () => {
@@ -294,8 +294,8 @@ describe("with OPENKB_DEMO on — the maps are the page", () => {
     expect(html).toContain(`${STRIPE_ENTITIES}</span> entities`)
     expect(html).toContain(`${DENSEST_LINKS}</span> links`)
     // The markets provenance drew, in the decomposition's own spelling.
-    expect(html).toContain("Online payment processing")
-    expect(html).toContain("Proxy infrastructure")
+    expect(html).toContain("Payment processing")
+    expect(html).toContain("Infrastructure Monitoring")
     // …and never the remainder bucket dressed as one of them.
     expect(html).not.toContain(">unattributed<")
   })

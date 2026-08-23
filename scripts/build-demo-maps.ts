@@ -29,22 +29,41 @@ const TO = join(ROOT, "demo", "maps")
 /**
  * The six, and why each one is here rather than any of the other files.
  *
- * All rebuilt 2026-08-18/19 on one engine generation — agent discovery, the
- * orphan ask (36% unlinked fell to 3-8%), docs-cited integration edges,
- * prominence counts and per-entity roads — replacing a set that spanned two
- * generations and predates every one of those. Each cost $0.83-$1.24 and its
- * numbers below are its own report's. cursor.com is deliberately absent: its
- * market's head-on rival (windsurf) is named in 101 SERP snippets and appears
- * in zero organic rows, so until mentions-to-leads lands that map would be
- * wrong in the one way its audience would spot instantly.
+ * All rebuilt 2026-08-23 on one engine generation, replacing a set from
+ * 2026-08-18/19. What changed between them is not size — the old set was
+ * 741-1,107 entities and this one is 919-1,236 — but whether a reader can
+ * check any of it:
+ *
+ *              old set        this set
+ *   competitor share      35-56%         13-36%
+ *   `reasoning` written        0%         83-87%
+ *   relation quoted from a page 0%        76-79%
+ *
+ * The old maps carried no reasoning and no relation quote at all, and called
+ * between a third and a half of every market a competitor — 619 of stripe's
+ * 1,102 rows. `adjacent` did not exist when they were built, so a partner, a
+ * vendor and a neighbour had nowhere to go but `competitor` or off the map.
+ *
+ * Six markets rather than six dev-tools companies, because a gallery that is
+ * all one shape reads as a tool that only works on one shape — payments,
+ * design, commerce, AI, edge infrastructure, observability.
+ *
+ * ONE CAVEAT WORTH READING BEFORE THE DATADOG MAP: at 36% it has the highest
+ * competitor share of the six, and a sample of eighteen of those rows found
+ * roughly five defensible. Its decomposition declared eleven of twelve markets
+ * `core` — including Cloud Security and SIEM — and listed `security analysts`
+ * among its buyers, which between them defeat all three of the disqualifiers
+ * classify.md gates `competitor` behind. It is the most honest illustration in
+ * the set of where the classifier still fails, which is why it is kept rather
+ * than quietly swapped for an easier anchor.
  */
 const PICKS: { file: string; because: string }[] = [
-  { file: "sweep-stripe-com-20260818214527.json", because: "1,102 entities — payments, mapped for $0.96" },
-  { file: "sweep-vercel-com-20260818212925.json", because: "1,107 entities and the densest edges of the set" },
-  { file: "sweep-supabase-com-20260818210215.json", because: "899 entities — 12 of its 14 known rivals surfaced" },
-  { file: "sweep-sentry-io-20260818232602.json", because: "892 entities — a perfect 10/10 against the field its owners know" },
-  { file: "sweep-neon-tech-20260818225808.json", because: "741 entities, and the docs' own integrations drawn as edges" },
-  { file: "sweep-brightdata-com-20260818131026.json", because: "882 entities — 19 of 20 known players, ranked by prominence" },
+  { file: "sweep-shopify-com-20260823201634.json", because: "1,236 entities — commerce, and the first map built off four strip terms" },
+  { file: "sweep-openai-com-20260823191503.json", because: "1,194 entities — the AI field, 3,201 edges" },
+  { file: "sweep-stripe-com-20260823130137.json", because: "1,123 entities — payments, 22% competitor against the old map's 56%" },
+  { file: "sweep-cloudflare-com-20260823162255.json", because: "1,122 entities — edge and CDN, 8 of its 10 known rivals surfaced" },
+  { file: "sweep-datadoghq-com-20260823193440.json", because: "1,077 entities — observability, the densest edges of the set at 3,754" },
+  { file: "sweep-figma-com-20260823125953.json", because: "919 entities — design, 92% of its known field found" },
 ]
 
 /**

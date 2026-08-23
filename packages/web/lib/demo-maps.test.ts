@@ -30,12 +30,12 @@ const MAPS = path.join(REPO, "demo", "maps")
  *  what the directory should contain proves only that reading it twice gives
  *  the same answer. */
 const EXPECTED = [
-  "brightdata-com-20260818131026",
-  "neon-tech-20260818225808",
-  "sentry-io-20260818232602",
-  "stripe-com-20260818214527",
-  "supabase-com-20260818210215",
-  "vercel-com-20260818212925",
+  "cloudflare-com-20260823162255",
+  "datadoghq-com-20260823193440",
+  "figma-com-20260823125953",
+  "openai-com-20260823191503",
+  "shopify-com-20260823201634",
+  "stripe-com-20260823130137",
 ] as const
 
 /** Every variable these tests touch, restored afterwards. `SUPABASE_*` is in
@@ -163,10 +163,10 @@ describe("the gallery, in demo mode", () => {
     const runs = await listStoredRuns()
     const ended = runs.map((r) => r.endedAt ?? 0)
     expect(ended).toEqual([...ended].sort((a, b) => b - a))
-    // 2026-08-18 through 2026-08-19 — the rebuild's window, before this test could run.
+    // 2026-08-23 — the rebuild's window, before this test could run.
     for (const [i, at] of ended.entries()) {
-      expect(at, runs[i]!.id).toBeLessThan(Date.parse("2026-08-20T00:00:00Z"))
-      expect(at, runs[i]!.id).toBeGreaterThan(Date.parse("2026-08-18T00:00:00Z"))
+      expect(at, runs[i]!.id).toBeLessThan(Date.parse("2026-08-24T00:00:00Z"))
+      expect(at, runs[i]!.id).toBeGreaterThan(Date.parse("2026-08-23T00:00:00Z"))
     }
   })
 
@@ -216,7 +216,7 @@ describe("the gallery, in demo mode", () => {
       expect(await getStoredRun("583cb0eb-f4e1-44b4-a46c-7b8249329203")).toBeNull()
       expect(forbidden).not.toHaveBeenCalled()
       // And the six it does serve still open.
-      const one = await getStoredRun(EXPECTED[3])
+      const one = await getStoredRun(EXPECTED[5])
       expect(one?.domain).toBe("stripe.com")
     } finally {
       vi.unstubAllGlobals()
@@ -281,7 +281,7 @@ describe("the gallery, in demo mode", () => {
       expect(await getStoredRun(id)).toBeNull()
       expect(asked.some((u) => u.includes(`runs?id=eq.${id}`))).toBe(true)
       // And the committed six still open, from the directory, as they always did.
-      expect((await getStoredRun(EXPECTED[3]))?.domain).toBe("stripe.com")
+      expect((await getStoredRun(EXPECTED[5]))?.domain).toBe("stripe.com")
     } finally {
       vi.unstubAllGlobals()
     }

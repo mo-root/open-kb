@@ -671,18 +671,20 @@ describe("the receipts inside a committed gallery map", () => {
       readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../..", "demo", sub, file), "utf8"),
     ),
   })
-  const supabase = () => gallery("sweep-supabase-com-20260818210215.json")
+  // Was supabase.com/appwrite.io until the 2026-08-23 gallery retired that
+  // map. Same property, read off a map that is actually shipped.
+  const cloudflare = () => gallery("sweep-cloudflare-com-20260823162255.json")
 
   it("hands the panel the quotes the kernel checked word for word", () => {
-    const note = noteOf(supabase(), "players/appwrite.io.md")
+    const note = noteOf(cloudflare(), "players/encse.com.md")
     expect(note?.spans).toEqual([
-      "Appwrite is an open-source platform for building and scaling applications faster, offering Auth, Databases, Storage, Functions, Messaging, Realtime, and web hosting - all in one place.",
+      "Security Threat detection, encryption, monitoring and access control for your network and systems.",
     ])
     // The number the panel already printed, now standing beside the evidence
     // it was measured from rather than in place of it.
-    expect(note?.descGrounded).toBe(0.61)
+    expect(note?.descGrounded).toBe(0.62)
     // And the map is new enough to know how the host was found.
-    expect(note?.roads).toContain("auth alternatives")
+    expect(note?.roads).toContain("KubeWAF vs Diamwall")
   })
 
   it("says nothing about roads or first-party claims on a map recorded before them", () => {
@@ -920,18 +922,18 @@ describe("the gallery's own stolen names", () => {
     }
   })
 
-  /** The headline each card prints, before and after. On the 2026-08-18
+  /** The headline each card prints, before and after. On the 2026-08-23
    *  gallery the two columns are equal on every file — the engine withdraws a
    *  stolen name before the map is stored, so the reader's repair finds
    *  nothing to move. A future map where they differ is a map some guard
    *  missed, and exactly what this table exists to catch. */
   it.each([
-    ["sweep-vercel-com-20260818212925.json", 627, 627, 3465, 3465],
-    ["sweep-supabase-com-20260818210215.json", 501, 501, 3078, 3078],
-    ["sweep-stripe-com-20260818214527.json", 769, 769, 3067, 3067],
-    ["sweep-sentry-io-20260818232602.json", 491, 491, 4337, 4337],
-    ["sweep-brightdata-com-20260818131026.json", 528, 528, 3786, 3786],
-    ["sweep-neon-tech-20260818225808.json", 378, 378, 3294, 3294],
+    ["sweep-shopify-com-20260823201634.json", 958, 958, 2788, 2788],
+    ["sweep-openai-com-20260823191503.json", 797, 797, 3201, 3201],
+    ["sweep-cloudflare-com-20260823162255.json", 765, 765, 3343, 3343],
+    ["sweep-stripe-com-20260823130137.json", 858, 858, 2726, 2726],
+    ["sweep-datadoghq-com-20260823193440.json", 757, 757, 3754, 3754],
+    ["sweep-figma-com-20260823125953.json", 582, 582, 2348, 2348],
   ])("%s: %i companies -> %i, %i links -> %i", (file, _was, companies, _hadLinks, links) => {
     const s = summaryOf(stored(file))
     expect(s.companies).toBe(companies)
@@ -939,8 +941,8 @@ describe("the gallery's own stolen names", () => {
   })
 
   it("leaves the anchor's own row alone", () => {
-    const g = graphOf(stored("sweep-vercel-com-20260818212925.json"))
-    expect(g.nodes.find((n) => n.id === "company.md")!.title).toBe("vercel.com")
+    const g = graphOf(stored("sweep-stripe-com-20260823130137.json"))
+    expect(g.nodes.find((n) => n.id === "company.md")!.title).toBe("stripe.com")
   })
 })
 

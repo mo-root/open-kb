@@ -183,7 +183,7 @@ describe("the headline count", () => {
 describe("stripe.com, as it is committed", () => {
   const MAP = path.resolve(
     import.meta.dirname,
-    "../../../demo/maps/sweep-stripe-com-20260818214527.json",
+    "../../../demo/maps/sweep-stripe-com-20260823130137.json",
   )
 
   const run: CompletedRun = {
@@ -200,31 +200,36 @@ describe("stripe.com, as it is committed", () => {
     const summary = summaryOf(run)
     // The reading layer's own numbers, pinned so a change to `place` or
     // `KIND_GROUP` has to come past this test rather than quietly re-scoring
-    // the front page. The 2026-08-18 rebuild replaced the map behind this
-    // test: one engine generation, the company/product coin flip gone at the
-    // classifier (product: 0 — the merge is now upstream of the store), the
-    // orphan ask and integration edges live.
-    expect(summary.counts).toEqual({ core: 19, product: 0, player: 1065, community: 343 })
-    expect(summary.notes).toBe(1427)
-    expect(summary.edges).toBe(3067)
-    //   1,065  every company-like row, including the 296 this run judged to
-    //          sell into a DIFFERENT market.
-    //   769    the union minus those, which is what "in this market" means.
-    expect(summary.companies).toBe(769)
-    expect(summary.counts.product + summary.counts.player - summary.companies).toBe(296)
-    // `unplaced` is the WHOLE map's `relation: "none"` count — 485 — because it
-    // includes the publishers and communities placed nowhere too. The 265 above
-    // is its company-like subset, and the two are not interchangeable: a card
-    // subtracting `unplaced` from the union would under-count by 220.
-    expect(summary.unplaced).toBe(325)
+    // the front page. The 2026-08-23 rebuild replaced the map behind this
+    // test again: `adjacent` exists now, so the 619 rows this map's
+    // predecessor called `competitor` are 249 here and the rest are placed
+    // rather than inflated, and every relation carries a quote (79% grounded
+    // against 0% on the map before it).
+    expect(summary.counts).toEqual({ core: 15, product: 0, player: 864, community: 255 })
+    expect(summary.notes).toBe(1134)
+    expect(summary.edges).toBe(2726)
+    //   864  every company-like row, including the 6 this run judged to
+    //        sell into a DIFFERENT market. That number was 296 on the map
+    //        this replaced: the gate that used to send a neighbour off the
+    //        map now places it as `adjacent` instead.
+    //   858  the union minus those, which is what "in this market" means.
+    expect(summary.companies).toBe(858)
+    expect(summary.counts.product + summary.counts.player - summary.companies).toBe(6)
+    // `unplaced` is the WHOLE map's `relation: "none"` count — 10 — because it
+    // includes the publishers and communities placed nowhere too. The 6 above
+    // is its company-like subset, and the two are still not interchangeable.
+    // Both collapsed with the 2026-08-23 rebuild: 325 and 296 on the map this
+    // replaced, because `none` was where a neighbour went before `adjacent`
+    // existed to hold it.
+    expect(summary.unplaced).toBe(10)
 
     const html = renderToStaticMarkup(<KbCard kb={summary} showcase />)
-    expect(html).toContain("769</span>")
+    expect(html).toContain("858</span>")
     expect(html).not.toContain("1,065</span>")
     expect(html).toContain("companies in this market")
-    expect(html).toContain("1,427</span> entities")
-    expect(html).toContain("3,067</span> links")
-    expect(html).toContain("Online payment processing")
+    expect(html).toContain("1,134</span> entities")
+    expect(html).toContain("2,726</span> links")
+    expect(html).toContain("Payment processing")
     expect(html).toContain("stripe.com")
   })
 })

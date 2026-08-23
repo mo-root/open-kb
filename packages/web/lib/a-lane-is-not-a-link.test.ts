@@ -185,17 +185,18 @@ describe("the anchor is an endpoint too", () => {
   })
 
   /** The committed gallery, measured off the files being served — the
-   *  2026-08-18 rebuild, one engine generation, orphan-ask and integration
-   *  edges live. `measured` is every edge the run asserted between two hosts
-   *  and this reader drew: 20,065 over the six, against 10,901 for the set
-   *  this replaced. */
+   *  2026-08-23 rebuild, one engine generation. `measured` is every edge the
+   *  run asserted between two hosts and this reader drew: 18,108 over the six,
+   *  against 20,065 for the set this replaced — fewer edges over a comparable
+   *  number of entities, because `adjacent` now takes rows that used to be
+   *  minted as competitor and the discovery-shaped bulk came down with it. */
   it.each([
-    ["sweep-brightdata-com-20260818131026.json", 3554],
-    ["sweep-neon-tech-20260818225808.json", 3115],
-    ["sweep-sentry-io-20260818232602.json", 4178],
-    ["sweep-stripe-com-20260818214527.json", 2870],
-    ["sweep-supabase-com-20260818210215.json", 2920],
-    ["sweep-vercel-com-20260818212925.json", 3428],
+    ["sweep-cloudflare-com-20260823162255.json", 3333],
+    ["sweep-datadoghq-com-20260823193440.json", 3744],
+    ["sweep-figma-com-20260823125953.json", 2340],
+    ["sweep-openai-com-20260823191503.json", 3198],
+    ["sweep-shopify-com-20260823201634.json", 2773],
+    ["sweep-stripe-com-20260823130137.json", 2720],
   ])("%s draws %i measured edges", (file, measured) => {
     const g = graphOf(stored(file))
     expect(g.edges.filter((e) => e.provenance !== true)).toHaveLength(measured)
@@ -287,17 +288,16 @@ describe("a lane is not a link", () => {
   })
 
   /** The gallery again, and the whole reason `unlinked` exists — updated for
-   *  the 2026-08-18 rebuild: `unlinked` fell from 4,472 of 8,563 (52.2%) on
-   *  the previous set to 2,252 of 6,981 (32.3%) here, most of the drop bought
-   *  by the orphan ask. Both numbers are true and only `unlinked` answers "is
-   *  this map linking". */
+   *  the 2026-08-23 rebuild: `unlinked` is 173 of 6,747 (2.6%), against 2,252
+   *  of 6,981 (32.3%) on the set this replaced. Both numbers are true and only
+   *  `unlinked` answers "is this map linking". */
   it.each([
-    ["sweep-brightdata-com-20260818131026.json", 4, 606],
-    ["sweep-neon-tech-20260818225808.json", 13, 247],
-    ["sweep-sentry-io-20260818232602.json", 8, 271],
-    ["sweep-stripe-com-20260818214527.json", 0, 486],
-    ["sweep-supabase-com-20260818210215.json", 6, 406],
-    ["sweep-vercel-com-20260818212925.json", 0, 236],
+    ["sweep-cloudflare-com-20260823162255.json", 0, 36],
+    ["sweep-datadoghq-com-20260823193440.json", 0, 11],
+    ["sweep-figma-com-20260823125953.json", 1, 40],
+    ["sweep-openai-com-20260823191503.json", 0, 14],
+    ["sweep-shopify-com-20260823201634.json", 2, 28],
+    ["sweep-stripe-com-20260823130137.json", 0, 44],
   ])("%s reports %i orphans and %i unlinked", (file, orphans, unlinked) => {
     const g = graphOf(stored(file))
     expect(g.orphans).toHaveLength(orphans)
