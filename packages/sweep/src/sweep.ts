@@ -77,6 +77,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { composePrompt, render } from "@open-kb/core";
 import { judgeHosts, type HostCandidate, type Judged } from "./rank.js";
+import { heldDeadline } from "./deadline.js";
 
 /** The walk itself: from `start`, upwards, for a directory holding
  *  `prompts/doctrine`. `null` rather than a throw, because a miss is only fatal
@@ -413,9 +414,11 @@ export const DROP_CONFIRM_CAP = 60;
  *  stopped pinning. On the throughput-sorted route a one-host classify is
  *  2-3s and a 30-row triage ~6s, so 60s still clears the slowest legitimate
  *  call (the 51s single catalog call) while halving what one hung socket
- *  costs a run: runs/sweep-cursor-com-20260823064255.json spent 6.3 minutes
- *  on its last four judge hosts, each a 120s timeout chained into a 120s
- *  retry, with the rest of the pool already empty. */
+ *  costs a run. (An earlier version of this comment blamed the 6.3-minute
+ *  judge tail on runs/sweep-cursor-com-20260823064255.json on two chained
+ *  120s timeouts; the log shows no timeout fired at all — see `withDeadline`
+ *  for what actually happened. The per-host calls have their own, shorter
+ *  ceiling in `RANK_CALL_TIMEOUT_MS` below.) */
 export const CALL_TIMEOUT_MS = Math.max(
   1_000,
   Number(process.env.OPENKB_CALL_TIMEOUT_MS ?? 60_000) || 60_000,
@@ -435,6 +438,20 @@ export const CALL_TIMEOUT_MS = Math.max(
 export const LINK_CALL_TIMEOUT_MS = Math.max(
   1_000,
   Number(process.env.OPENKB_LINK_CALL_TIMEOUT_MS ?? 60_000) || 60_000,
+);
+
+/** The per-host calls' own deadline — classify, triage, the second look and
+ *  drop-confirm. These are the calls a run makes by the thousand (1,531 rank
+ *  calls on runs/sweep-cursor-com-20260823064255.json), each a one-host
+ *  question the throughput-sorted route answers in 2-3s (a 30-row triage in
+ *  ~6s). A call of thirty seconds there is a sick host, not a hard question,
+ *  and the retry goes out unrouted to a different one. Half the general
+ *  ceiling: the pool's tail — the last few hosts, with nothing left to hide
+ *  them behind — is bounded by one ceiling plus one retry, so this is the
+ *  number that decides how long a run waits on its stragglers. */
+export const RANK_CALL_TIMEOUT_MS = Math.max(
+  1_000,
+  Number(process.env.OPENKB_RANK_CALL_TIMEOUT_MS ?? 30_000) || 30_000,
 );
 
 /** Roundup-shaped: the row's own title or description reads like a page that
@@ -1601,11 +1618,27 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
      * retried once; every other agent keeps the full two minutes this comment
      * measures against.
      */
-    const timeoutMs = agent === "link" ? LINK_CALL_TIMEOUT_MS : CALL_TIMEOUT_MS;
-    const withDeadline = () => {
-      const timeout = AbortSignal.timeout(timeoutMs);
-      return signal ? AbortSignal.any([signal, timeout]) : timeout;
-    };
+    const timeoutMs =
+      agent === "link"
+        ? LINK_CALL_TIMEOUT_MS
+        : agent === "rank" ||
+            agent === "triage" ||
+            agent === "second-look" ||
+            agent === "drop-confirm"
+          ? RANK_CALL_TIMEOUT_MS
+          : CALL_TIMEOUT_MS;
+    /**
+     * THE DEADLINE HAS TO BE HELD, OR THE RUNTIME DROPS IT — `heldDeadline`
+     * (deadline.ts) is the pin and carries the argument. MEASURED in the wild
+     * before it was understood: runs/sweep-cursor-com-20260823064255.json
+     * judged 750 of 754 hosts by 1553s and the last four by 1933s, with NOT
+     * ONE "no answer in 120s" line between — a ceiling that fired would have
+     * written one. The 6.3 minutes were a deadline that had been collected,
+     * not one that was too long. (e2e7ba3's commit message read that tail as
+     * two chained timeouts; it was wrong, and the 60s ceiling it shipped
+     * would have changed nothing here on its own.)
+     */
+    const withDeadline = () => heldDeadline(timeoutMs, signal);
 
     const attempt = async (maxOut: number, think: string | undefined) =>
       generateObject({
@@ -3941,55 +3974,55 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     // member's 120s timeout plus retry while the other five workers idled.
     const TRIAGE_CONC = 6;
     await runPool(batches, TRIAGE_CONC, async (batch) => {
-          const lines = batch
-            .map(
-              (h) =>
-                `${h.host} — seen in ${h.seenIn} queries — "${(h.titles[0] ?? "").slice(0, 90)}" — ${h.desc.slice(0, 160)}`,
-            )
-            .join("\n");
-          try {
-            triageCalls += 1;
-            const out = await call(
-              "triage",
-              `triage ${batch.length} hosts`,
-              z.object({
-                verdicts: z
-                  .array(
-                    z.object({
-                      host: z.string().describe("the host, exactly as given"),
-                      keep: z.boolean(),
-                      why: z
-                        .string()
-                        .describe(
-                          'one line making a skip plain; "kept" is enough for a keep',
-                        ),
-                    }),
-                  )
-                  .describe("one row per host, every host answered"),
-              }),
-              prompt("triage", {
-                anchor,
-                sells: decomp.sells,
-                buyer: decomp.buyer,
-                hosts: lines,
-              }),
-              { think: "none", maxOutputTokens: TRIAGE_MAX_OUTPUT_TOKENS },
-            );
-            const askedHosts = new Set(batch.map((b) => b.host));
-            for (const v of out.verdicts) {
-              // A verdict for a host this batch never asked about is noise
-              // from the model, not a decision about the map.
-              if (askedHosts.has(v.host)) verdictByHost.set(v.host, v);
-            }
-          } catch (e) {
-            triageFailures += 1;
-            // Fail open: an unanswered batch is judged in full. The judge is
-            // the stage that must not be skippable by an outage.
-            say(
-              "rank",
-              `  a triage call failed (${(e as Error).message}); its ${batch.length} hosts go to the judge unfiltered`,
-            );
-          }
+      const lines = batch
+        .map(
+          (h) =>
+            `${h.host} — seen in ${h.seenIn} queries — "${(h.titles[0] ?? "").slice(0, 90)}" — ${h.desc.slice(0, 160)}`,
+        )
+        .join("\n");
+      try {
+        triageCalls += 1;
+        const out = await call(
+          "triage",
+          `triage ${batch.length} hosts`,
+          z.object({
+            verdicts: z
+              .array(
+                z.object({
+                  host: z.string().describe("the host, exactly as given"),
+                  keep: z.boolean(),
+                  why: z
+                    .string()
+                    .describe(
+                      'one line making a skip plain; "kept" is enough for a keep',
+                    ),
+                }),
+              )
+              .describe("one row per host, every host answered"),
+          }),
+          prompt("triage", {
+            anchor,
+            sells: decomp.sells,
+            buyer: decomp.buyer,
+            hosts: lines,
+          }),
+          { think: "none", maxOutputTokens: TRIAGE_MAX_OUTPUT_TOKENS },
+        );
+        const askedHosts = new Set(batch.map((b) => b.host));
+        for (const v of out.verdicts) {
+          // A verdict for a host this batch never asked about is noise
+          // from the model, not a decision about the map.
+          if (askedHosts.has(v.host)) verdictByHost.set(v.host, v);
+        }
+      } catch (e) {
+        triageFailures += 1;
+        // Fail open: an unanswered batch is judged in full. The judge is
+        // the stage that must not be skippable by an outage.
+        say(
+          "rank",
+          `  a triage call failed (${(e as Error).message}); its ${batch.length} hosts go to the judge unfiltered`,
+        );
+      }
     });
     judgeList = [];
     for (const h of hostList) {
@@ -4346,141 +4379,141 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       // Six in flight — the triage stage's width, for the same reason: wide
       // enough that sixty hosts cost the slowest few, narrow enough that a
       // rate-limited model answers with pacing rather than a failed wave.
+      // A POOL, the last chunked-wave site in this file to become one:
+      // measured on runs/sweep-cursor-com-20260823064255.json, 414s of billed
+      // second-look work took 191s of wall at six wide — 2.2 in flight, the
+      // other four waiting on each wave's slowest fetch.
       const SECOND_LOOK_CONC = 6;
-      for (let i = 0; i < lookAt.length; i += SECOND_LOOK_CONC) {
-        await Promise.all(
-          lookAt.slice(i, i + SECOND_LOOK_CONC).map(async ({ e, row, url }) => {
-            secondLookAsked += 1;
-            try {
-              let raw = await fetcher.get(url, "direct", { signal });
-              let s = sniff(raw);
-              bill("fetch", "second-look", 0, raw.ms, s.status === "found");
-              spans.emit({
-                runId,
-                agentId: "second-look",
-                parentId: null,
-                kind: "fetch",
-                name: "fetch",
-                argsDigest: url,
-                ms: raw.ms,
-                ok: s.status === "found",
-                usd: 0,
-              });
-              // The search-surfaced page can be walled the same as the front
-              // door was — about half of one real run's second looks were —
-              // so a corroborated host earns one unlocker retry before the
-              // look fails open, the same bar (not a new one) and the same
-              // blocked-shape check (`unlockSeenIn`) the rank phase applies
-              // to the judge's own front-page fetch.
-              if (
-                s.status !== "found" &&
-                (s.reason === "thin-render" || /^http-4/.test(s.reason)) &&
-                secondLookUnlocked < SECOND_LOOK_UNLOCK_BUDGET &&
-                earnedUnlock(row, e.domain)
-              ) {
-                secondLookUnlocked += 1;
-                const retried = await fetcher.get(url, "unlocked", { signal });
-                const s2 = sniff(retried);
-                bill("unlocker", "second-look", retried.usd, retried.ms, s2.status === "found");
-                spans.emit({
-                  runId,
-                  agentId: "second-look",
-                  parentId: null,
-                  kind: "fetch",
-                  name: "unlocker",
-                  argsDigest: url,
-                  ms: retried.ms,
-                  ok: s2.status === "found",
-                  usd: retried.usd,
-                });
-                if (s2.status === "found") {
-                  raw = retried;
-                  s = s2;
-                }
-              }
-              if (s.status !== "found") {
-                secondLookFailed += 1;
-                return;
-              }
-              const pageText = condense(s.text, 6_000).slice(0, 4_000);
-              // The {{page}} var carries a one-line header naming the URL and
-              // saying the front page left this host unplaced — the template
-              // frames the var as "its front page, condensed", and a model
-              // told it is reading the front door again would judge the wrong
-              // claim.
-              const out = await classifyHost("second-look")(
-                row,
-                `second look at ${url} — the front page left this host unplaced; this is a page the search itself surfaced for it.\n${pageText}`,
-              );
-              // Rescue is the stage's only power: an answer that still
-              // refuses to place the host changes nothing.
-              if (out.relation === "unknown" || out.relation === "none")
-                return;
-              // THE JUDGE'S WITHDRAWALS HOLD HERE TOO. judgeHosts withdraws a
-              // verdict whole when the model answers with the anchor's own
-              // identity, or with a brand whose home is another registrable
-              // domain — and it emits exactly the relation:"unknown" rows this
-              // stage targets. A second look that skipped these guards was
-              // re-admitting the withdrawn verdicts on a second page; the
-              // guards are the judge's own exports, one implementation.
-              if (
-                anchorIdentityTheft(out.name ?? "", row.host, anchor) ||
-                wrongDoorName(out.name ?? "", row.host)
-              )
-                return;
-              // The judgeHosts path re-checks spans in code; this call went
-              // around it, so the same check happens here — quotes verified
-              // against the fetched page's own condensed text (never the
-              // header), or the rescue does not stand.
-              const verified = out.spans.filter(
-                (sp) => checkQuote(pageText, sp) === "ok",
-              );
-              if (verified.length === 0) return;
-              secondLookRescued += 1;
-              e.name = out.name || e.name;
-              e.kind = out.kind;
-              e.relation = out.relation;
-              e.what = out.what;
-              e.why = out.why;
-              // Stored receipts obey the judge's own budget, and the
-              // grounding meter is re-measured against the page this
-              // description was actually written from — a rescued row
-              // carrying the front page's meter would grade new prose
-              // against text that no longer backs it.
-              e.spans = capReceipts(verified);
-              e.descGrounded =
-                Math.round(descriptionGrounding(out.what, pageText).score * 100) / 100;
-              e.descSpans = {
-                verified: verified.length,
-                claimed: out.spans.length,
-              };
-              // reasoning/relationSpan/relationGrounded are per-VERDICT, not
-              // per-entity: they describe why THIS relation holds, so a
-              // rescue that overwrites the relation must overwrite them too,
-              // or the stored reasoning goes on describing a verdict this
-              // entity no longer carries. classifyHost already computed them
-              // against this call's own page — carry what it returned.
-              e.reasoning = out.reasoning;
-              e.relationSpan = out.relationSpan;
-              e.relationGrounded = out.relationGrounded;
-              // The trail, appended rather than replaced: the first
-              // judgement's refusal is part of how this entity was settled.
-              e.because = [e.because, `second look at ${url}`]
-                .filter(Boolean)
-                .join("; ");
-            } catch (err) {
-              // An abort must stay an abort — the same rule as the judge
-              // pool: settling on through a cancel would hand back a run
-              // nobody is waiting for.
-              if (signal?.aborted) throw err;
-              // Fail open: a fetch or model failure leaves the first
-              // judgement standing, exactly as if this look never happened —
-              // but counted, so the closing line and the census can say so.
-              secondLookFailed += 1;
+      await runPool(lookAt, SECOND_LOOK_CONC, async ({ e, row, url }) => {
+        secondLookAsked += 1;
+        try {
+          let raw = await fetcher.get(url, "direct", { signal });
+          let s = sniff(raw);
+          bill("fetch", "second-look", 0, raw.ms, s.status === "found");
+          spans.emit({
+            runId,
+            agentId: "second-look",
+            parentId: null,
+            kind: "fetch",
+            name: "fetch",
+            argsDigest: url,
+            ms: raw.ms,
+            ok: s.status === "found",
+            usd: 0,
+          });
+          // The search-surfaced page can be walled the same as the front
+          // door was — about half of one real run's second looks were —
+          // so a corroborated host earns one unlocker retry before the
+          // look fails open, the same bar (not a new one) and the same
+          // blocked-shape check (`unlockSeenIn`) the rank phase applies
+          // to the judge's own front-page fetch.
+          if (
+            s.status !== "found" &&
+            (s.reason === "thin-render" || /^http-4/.test(s.reason)) &&
+            secondLookUnlocked < SECOND_LOOK_UNLOCK_BUDGET &&
+            earnedUnlock(row, e.domain)
+          ) {
+            secondLookUnlocked += 1;
+            const retried = await fetcher.get(url, "unlocked", { signal });
+            const s2 = sniff(retried);
+            bill("unlocker", "second-look", retried.usd, retried.ms, s2.status === "found");
+            spans.emit({
+              runId,
+              agentId: "second-look",
+              parentId: null,
+              kind: "fetch",
+              name: "unlocker",
+              argsDigest: url,
+              ms: retried.ms,
+              ok: s2.status === "found",
+              usd: retried.usd,
+            });
+            if (s2.status === "found") {
+              raw = retried;
+              s = s2;
             }
-          }),
-        );
-      }
+          }
+          if (s.status !== "found") {
+            secondLookFailed += 1;
+            return;
+          }
+          const pageText = condense(s.text, 6_000).slice(0, 4_000);
+          // The {{page}} var carries a one-line header naming the URL and
+          // saying the front page left this host unplaced — the template
+          // frames the var as "its front page, condensed", and a model
+          // told it is reading the front door again would judge the wrong
+          // claim.
+          const out = await classifyHost("second-look")(
+            row,
+            `second look at ${url} — the front page left this host unplaced; this is a page the search itself surfaced for it.\n${pageText}`,
+          );
+          // Rescue is the stage's only power: an answer that still
+          // refuses to place the host changes nothing.
+          if (out.relation === "unknown" || out.relation === "none")
+            return;
+          // THE JUDGE'S WITHDRAWALS HOLD HERE TOO. judgeHosts withdraws a
+          // verdict whole when the model answers with the anchor's own
+          // identity, or with a brand whose home is another registrable
+          // domain — and it emits exactly the relation:"unknown" rows this
+          // stage targets. A second look that skipped these guards was
+          // re-admitting the withdrawn verdicts on a second page; the
+          // guards are the judge's own exports, one implementation.
+          if (
+            anchorIdentityTheft(out.name ?? "", row.host, anchor) ||
+            wrongDoorName(out.name ?? "", row.host)
+          )
+            return;
+          // The judgeHosts path re-checks spans in code; this call went
+          // around it, so the same check happens here — quotes verified
+          // against the fetched page's own condensed text (never the
+          // header), or the rescue does not stand.
+          const verified = out.spans.filter(
+            (sp) => checkQuote(pageText, sp) === "ok",
+          );
+          if (verified.length === 0) return;
+          secondLookRescued += 1;
+          e.name = out.name || e.name;
+          e.kind = out.kind;
+          e.relation = out.relation;
+          e.what = out.what;
+          e.why = out.why;
+          // Stored receipts obey the judge's own budget, and the
+          // grounding meter is re-measured against the page this
+          // description was actually written from — a rescued row
+          // carrying the front page's meter would grade new prose
+          // against text that no longer backs it.
+          e.spans = capReceipts(verified);
+          e.descGrounded =
+            Math.round(descriptionGrounding(out.what, pageText).score * 100) / 100;
+          e.descSpans = {
+            verified: verified.length,
+            claimed: out.spans.length,
+          };
+          // reasoning/relationSpan/relationGrounded are per-VERDICT, not
+          // per-entity: they describe why THIS relation holds, so a
+          // rescue that overwrites the relation must overwrite them too,
+          // or the stored reasoning goes on describing a verdict this
+          // entity no longer carries. classifyHost already computed them
+          // against this call's own page — carry what it returned.
+          e.reasoning = out.reasoning;
+          e.relationSpan = out.relationSpan;
+          e.relationGrounded = out.relationGrounded;
+          // The trail, appended rather than replaced: the first
+          // judgement's refusal is part of how this entity was settled.
+          e.because = [e.because, `second look at ${url}`]
+            .filter(Boolean)
+            .join("; ");
+        } catch (err) {
+          // An abort must stay an abort — the same rule as the judge
+          // pool: settling on through a cancel would hand back a run
+          // nobody is waiting for.
+          if (signal?.aborted) throw err;
+          // Fail open: a fetch or model failure leaves the first
+          // judgement standing, exactly as if this look never happened —
+          // but counted, so the closing line and the census can say so.
+          secondLookFailed += 1;
+        }
+      });
       say(
         "rank",
         `second look rescued ${secondLookRescued} of ${secondLookAsked} unplaced hosts` +

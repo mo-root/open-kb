@@ -248,6 +248,30 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
   // pick over a small number of zones is lumpy.
   let cursor = 0
   const nextZone = () => zones[cursor++ % zones.length]!
+  /** The zone AFTER the one a request just failed on — the retry's zone.
+   *  `nextZone()` twice is not that: twenty workers advance the same cursor
+   *  between one worker's two calls, so its second pick is whatever the
+   *  round-robin happens to be at, the failed zone included. Probed: one
+   *  query, two pages, refused on zone A, retried on zone A. */
+  const otherZone = (failed: string) =>
+    zones[(Math.max(0, zones.indexOf(failed)) + 1) % zones.length]!
+
+  /**
+   * A SUSPENDED ACCOUNT IS NOT A THING TO KEEP ASKING.
+   *
+   * Measured on runs/sweep-cursor-com-20260823064255.json: the account was
+   * suspended at query 137 of 156, and the 19 queries after it were each
+   * bought, refused, waited out and refused again — $0.09 booked against
+   * an account that could not answer, and the run's unlocker escalations
+   * lost the same way. Once the provider has said "suspended", every later
+   * request from this port instance is refused HERE, for $0 and no wire,
+   * until the instance is gone — a port lives for one run, and a run cannot
+   * reactivate a billing account from inside itself. The sweep says the
+   * refusal aloud the first time; this makes the rest of the run honest
+   * about it rather than busy.
+   */
+  let suspended: string | null = null
+  const SUSPENDED = /suspended/i
 
   /**
    * How many result pages to read per query.
@@ -414,10 +438,23 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
             }
           }
 
-          let out = await once(nextZone())
+          if (suspended) {
+            return {
+              query,
+              hits: [],
+              ok: false,
+              error: suspended,
+              usd: 0,
+              ms: 0,
+              requests: 0,
+            }
+          }
+          const firstZone = nextZone()
+          let out = await once(firstZone)
+          if (!out.ok && SUSPENDED.test(out.error ?? "")) suspended = out.error ?? "Account is suspended"
           // One retry, past the interval the provider names. Workers run
           // concurrently, so this costs one worker's time rather than the wave's.
-          if (!out.ok && (RETRYABLE.test(out.error ?? "") || THROTTLED.test(out.error ?? ""))) {
+          if (!out.ok && !suspended && (RETRYABLE.test(out.error ?? "") || THROTTLED.test(out.error ?? ""))) {
             // A throttled call waits a full pacing slot; anything else waits the
             // interval the provider named for a transient failure.
             const wait = THROTTLED.test(out.error ?? "") ? Math.max(retryMs, minGapMs) : retryMs
@@ -425,7 +462,7 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
             // A different zone on the retry where one exists: if the first is
             // throttling, waiting is only half the answer.
             const first = out
-            const second = await once(nextZone())
+            const second = await once(otherZone(firstZone))
             // Bill both: each was a request the provider serviced. The refusal
             // that caused the retry is kept as a counted, named fact — a run
             // that pays 28% extra to be let in should be able to say so.
