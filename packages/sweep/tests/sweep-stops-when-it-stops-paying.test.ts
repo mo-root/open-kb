@@ -130,14 +130,20 @@ describe("rule 4 — the round that landed added almost nothing", () => {
     // progress AND it is under the floor, which is the judgement being pinned:
     // more queries here would be buying corroboration, not coverage.
     //
-    // It takes two rounds to get there, and the reason is worth writing down.
-    // `before` is sampled when the planner WAKES, which on the first round is
-    // before any of the opening wave's results have landed (the planner is
-    // deliberately concurrent with the workers — "assessment overlaps searching
-    // instead of interrupting it"). So round 1 measures its own three hosts
-    // plus the whole opening wave's six and clears the floor easily. Round 2
-    // is measured against a settled map and trips it. A live run has the same
-    // shape at a larger scale: the floor cannot fire on round 1 there either.
+    // ONE round gets there, and the reason this test used to say two is worth
+    // writing down. `before` is sampled when the planner wakes; `taken`
+    // advances when a worker PULLS a query, not when the search returns, so
+    // the planner used to wake with the whole opening wave still in the air
+    // and sample `before` at zero. Round 1's yield was then its own three
+    // hosts PLUS the opening wave's six, which cleared the floor — the floor
+    // could not fire on round 1 at any scale, and this test pinned that as
+    // intended. The planner now waits for what it dispatched to land before
+    // it assesses (`LANDING_GRACE_MS`), so `before` is six, round 1's yield
+    // is the three it actually added, and the floor fires where it should.
+    // Measured harm of the old shape on a live run
+    // (runs/sweep-cursor-com-20260823082435.json): the first assess was told
+    // the map was empty and widened on that premise eight seconds before 72
+    // hosts landed.
     const h = await runFixture({
       serp: serpPlus({ [widening(1).q]: strangers(1, 3), [widening(2).q]: strangers(2, 3) }),
       script: {
@@ -151,15 +157,15 @@ describe("rule 4 — the round that landed added almost nothing", () => {
       // debug correct code. Depend on the number rather than inherit it.
       sweepOptions: { minNewHosts: 8, maxWaves: 4, concurrency: 20 },
     })
-    // Two rounds against a ceiling of four: the loop took its answer from the
+    // One round against a ceiling of four: the loop took its answer from the
     // yield rather than from the model or from the ceiling. Remove the floor
     // and this run goes to four.
-    expect(assessCalls(h)).toBe(2)
-    expect(h.asked).toContain(widening(2).q)
-    expect(h.asked).not.toContain(widening(3).q)
-    expect(h.asked).toHaveLength(16)
+    expect(assessCalls(h)).toBe(1)
+    expect(h.asked).toContain(widening(1).q)
+    expect(h.asked).not.toContain(widening(2).q)
+    expect(h.asked).toHaveLength(15)
     expect(h.result.report.opening).toBe(14)
-    expect(h.result.report.queries).toBe(16)
+    expect(h.result.report.queries).toBe(15)
   }, 30_000)
 
   it("keeps going while the yield clears the floor, and the ceiling is what finally stops it", async () => {

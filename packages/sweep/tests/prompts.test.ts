@@ -95,7 +95,30 @@ describe("the composed classify prompt", () => {
     // never told which market's door each walked in through. ~220 tokens,
     // ~$0.013 per 740-host run. The ceiling still cannot hide a doctrine
     // file: the smallest is 1,779 chars, so re-including one lands past 9,100.
-    expect(composed().length).toBeLessThan(7_500)
+    //
+    // Raised 7,500 -> 8,300 for the competitor gate (2026-08-23, ~750 chars;
+    // one of the two trims that paid for it had to be given back — the seller
+    // boundary below is pinned by its own test, and for a measured reason). A 28-row re-judge of finished stripe.com and
+    // figma.com maps found 19 of 27 competitor verdicts wrong, every one
+    // inflated and none under-called: things the anchor is an INPUT to
+    // (a Figma-to-code plugin), things bought by a different buyer (a
+    // consumer wallet beside Stripe), and things overlapping one add-on
+    // rather than the core. Moving `adjacent` to the bottom of the ladder a
+    // week earlier stopped it being the dumping ground and handed the job
+    // straight to `competitor` at rung one, so the remedy is a gate above
+    // rung one rather than another reorder. ~180 input tokens against a
+    // 1,300-call run at deepseek's $0.14/M is ~$0.033 — on runs that cost
+    // $0.44 to $1.06, against the map's most consequential relation.
+    //
+    // The last ~200 of those chars were bought back by a re-judge of the same
+    // 28 rows against the gated prompt and live pages: the first draft moved
+    // 13 of 27 off `competitor` but still called a Figma-to-code plugin one,
+    // stating the input relationship in its own reasoning while doing it. So
+    // disqualifier 1 now names that shape outright ("consumes the anchor's
+    // output"), and the competitor rung points back at the gate — the model
+    // was reaching the rung and matching "same capability, same buyer"
+    // without re-reading a block it had passed six lines earlier.
+    expect(composed().length).toBeLessThan(8_300)
   })
 
   it("still carries the whole relation vocabulary, every word the schema will accept", () => {

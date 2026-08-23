@@ -5,11 +5,9 @@ Classify this one host. It came back from searches about this market:
   the anchor: {{anchor}} — {{sells}}
   its buyer:  {{buyer}}
 
-You are reading the host's own front page, fetched this run. Judge from the page. The snippet era
-of this prompt produced an audit of 39 classified competitors with 15 wrong, every one the same
-mistake — a comparison site whose homepage ranks vendors, including the anchor, was called a
-competitor that "sells rotating proxies". It sells nothing. The page in front of you is the cure:
-say what it supports and nothing more.
+You are reading the host's own front page, fetched this run. Judge from the page: an audit of 39
+competitor verdicts from this prompt's snippet era found 15 wrong, every one a comparison site
+called a competitor for the vocabulary it ranked. Say what the page supports and nothing more.
 
 `kind` is what the host IS. Anything that sells into this market is a company; a host that merely
 writes about the market is a publisher; a host that enumerates vendors is a directory; a forum,
@@ -31,10 +29,23 @@ whether it belongs at all. Nothing this run surfaced is optional to place; the o
 
 Check in this order, first fit wins. `adjacent` sits last on purpose: its own test is the
 loosest here, true of almost anything nearby — checked first, it becomes the dumping ground
-`competitor` used to be.
+`competitor` used to be. But moving it last handed the job back to `competitor`, which sits
+first: an audit of 27 competitor verdicts across two finished maps found 19 wrong, every one
+inflated, so `competitor` is now gated before it is reached.
+
+THREE DISQUALIFIERS. Any one of them and this is NOT a competitor, however much vocabulary the
+page shares — carry on down the ladder:
+  1. the page treats the anchor as its INPUT, prerequisite, connector or host — "works on top of",
+     "imports from", "routes to", "<anchor> to <something else>", a listed connector. A tool that
+     CONSUMES the anchor's output is never its competitor, however much of the workflow it shares.
+  2. its buyer is not {{buyer}} — a consumer wallet beside a business platform is adjacent.
+  3. the overlap is with one named add-on of {{sells}}, not with the core of it.
+And the test that settles the rest: if a buyer who already has the anchor would plausibly buy this
+too, it is not a competitor.
 
 - **competitor** — sells the same capability to the same buyer, instead-of fact on the page: a
-  buyer would shortlist and pick one, not both. Shared vocabulary is not that fact.
+  buyer would shortlist and pick one, not both. Shared vocabulary is not that fact, and neither is
+  a shared workflow — re-read the three disqualifiers before you write this word.
 - **substitute** — does the anchor's SAME JOB a different way (managed service, ready-made
   dataset, agency, DIY) — the anchor becomes unnecessary if chosen. The job is the test: a tool
   that does a DIFFERENT job (reads code instead of writing it, say) is never a substitute.
@@ -85,13 +96,15 @@ is what the host gives the market: vendors indexed, coverage published, buyers w
 sentence — the reader has the `what` already.
 
 The `reasoning` is one sentence: the single fact that settled both `kind` and `relation`, not the
-`why` restated — e.g. "ranks vendors, including the anchor" or "same workflow as the anchor, but a
-buyer would never choose one instead of the other".
+`why` restated. For `competitor` it must name this host's own buyer, against {{buyer}} — e.g.
+"ranks vendors, including the anchor" or "same workflow as the anchor, but a buyer would never
+choose one instead of the other".
 
 The `relationSpan` is `spans`'s counterpart for `relation`: one quote, character-for-character,
-8-120 chars, backing `relation` rather than `what`. For competitor/substitute it shows the
-instead-of fact; for adjacent, the same-workflow fact with none; for a channel relation it may
-repeat a span from `spans` when nothing else fits.
+8-120 chars, backing `relation` rather than `what`. For competitor/substitute it shows THIS host's
+own product doing the anchor's job — a span naming some third party is not that fact, and a rival
+of a rival is not a competitor; for adjacent, the same-workflow fact with none; for a channel
+relation it may repeat a span from `spans` when nothing else fits.
 
 {{host}} — how this run found it, {{seenIn}} queries in all:
 {{foundBy}}
