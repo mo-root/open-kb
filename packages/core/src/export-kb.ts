@@ -367,19 +367,27 @@ export function exportKbFiles(run: ExportRunLike): ExportedFile[] {
   // Repaired, they carry no description, no reason and no receipt, so
   // `exportDrop`'s existing `silent` gate takes them without a new rule.
   const repaired = withoutStolenNames(run)
+  const slugifyRef = (host: string) => host.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
   const kept: ExportEntity[] = []
   const dropped = new Map<DropReason, number>()
+  // droppedEnd built in the same pass: exportDrop is pure, so a second loop
+  // recomputing it over the same entities (as this used to do) paid the cost
+  // of every regex test in exportDrop twice for no different answer.
+  const droppedEnd = new Map<string, DropReason>()
   for (const e of repaired.entities) {
     const why = exportDrop(e)
-    if (why) dropped.set(why, (dropped.get(why) ?? 0) + 1)
-    else kept.push(e)
+    if (why) {
+      dropped.set(why, (dropped.get(why) ?? 0) + 1)
+      droppedEnd.set(slugifyRef(e.domain ?? ""), why)
+    } else {
+      kept.push(e)
+    }
   }
   const bySlug = new Map<string, ExportEntity>()
   for (const e of kept) {
     const s = slugOf(e)
     if (!bySlug.has(s)) bySlug.set(s, e)
   }
-  const slugifyRef = (host: string) => host.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
   // An edge is a wikilink, and a wikilink to a gated entity is a dead link. The
   // LINKED graph is therefore the induced subgraph on what survived — but the
   // induced-subgraph cut, alone, silently deleted every edge with one dropped
@@ -389,11 +397,6 @@ export function exportKbFiles(run: ExportRunLike): ExportedFile[] {
   // an edge too weak to link is flagged, never deleted. One-sided edges render
   // on the surviving page as plain text wearing the other end's drop label.
   const edges = repaired.edges.filter((ed) => bySlug.has(slugifyRef(ed.from)) && bySlug.has(slugifyRef(ed.to)))
-  const droppedEnd = new Map<string, DropReason>()
-  for (const e of repaired.entities) {
-    const why = exportDrop(e)
-    if (why) droppedEnd.set(slugifyRef(e.domain ?? ""), why)
-  }
   /** Drop classes whose FINDING is invalid, not merely gated: a withdrawn
    *  end wore an identity that was never its own, so every edge bought with
    *  it is tainted; a personal end must not be named anywhere, which is the
