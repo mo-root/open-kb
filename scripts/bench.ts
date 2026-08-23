@@ -116,20 +116,20 @@ interface Envelope extends MapShape {
 /* ------------------------------------------------------------ era boundaries */
 
 /**
- * Two dates, both read off `git log`, both stated here because the runs do not
- * state them. Everything below only ever uses them to LABEL a row, never to
- * change a number — a benchmark that adjusts the figures it was given is a
- * benchmark nobody can check.
+ * One date, read off `git log`, stated here because the runs do not state it.
+ * Everything below only ever uses it to LABEL a row, never to change a
+ * number — a benchmark that adjusts the figures it was given is a benchmark
+ * nobody can check.
  *
- * `772a9e6 2026-08-06 15:40:09 +0300` made deepseek-v4-flash the default for
- * every entry point. `600442f 2026-08-06 16:11:20 +0300` taught the meter the
- * per-model price table; before it, `sweep()` billed EVERY model at
- * gemini-3.5-flash's $1.50/$9.00 per Mtok whatever was actually running. So a
- * run stamped before that second commit has a dollar figure that is one
- * model's price list applied to whichever model happened to run.
+ * `600442f 2026-08-06 16:11:20 +0300` taught the meter the per-model price
+ * table; before it, `sweep()` billed EVERY model at gemini-3.5-flash's
+ * $1.50/$9.00 per Mtok whatever was actually running — including
+ * `772a9e6 2026-08-06 15:40:09 +0300`'s deepseek-v4-flash, the default for
+ * every entry point by then. So a run stamped before that second commit has a
+ * dollar figure that is one model's price list applied to whichever model
+ * happened to run.
  */
 const METER_LEARNED_PRICES_AT = Date.parse("2026-08-06T13:11:20Z")
-const DEEPSEEK_BECAME_DEFAULT_AT = Date.parse("2026-08-06T12:40:09Z")
 
 /* ------------------------------------------------------------------- reading */
 
