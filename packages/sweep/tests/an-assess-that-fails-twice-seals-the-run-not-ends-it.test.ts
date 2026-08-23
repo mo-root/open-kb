@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { runFixture, type Harness } from "./fixture.js"
+import { runFixture, FIXTURE_HOST, type Harness } from "./fixture.js"
 
 /**
  * AN OPINION ABOUT WHETHER TO BUY MORE MUST NOT BE ABLE TO END THE RUN.
@@ -81,5 +81,46 @@ describe("a schema miss is named, and the retry is told about it", () => {
     expect(failed?.error).toMatch(/queries\.0\.intent/)
     // Still fail-open: the run judged what it had.
     expect(h.result.entities.length).toBeGreaterThan(0)
+  }, 30_000)
+})
+
+/**
+ * THE RUN SAYS WHICH HOST ANSWERED, AND WHICH ONE REFUSED.
+ *
+ * A gateway routes one model id across ~30 upstream hosts of very different
+ * discipline. Measured on 2026-08-23: one host refused half its answers on
+ * the real catalog call while seven others refused none — same model id,
+ * same day — and nothing in the run file could say so. `report.model.servedBy`
+ * is calls and refusals per host, read off every span.
+ */
+describe("report.model.servedBy", () => {
+  it("tallies every model call to the host that served it", async () => {
+    const h = await runFixture()
+    const model = h.result.report.model as { id: string; servedBy: Record<string, { calls: number; refused: number }> }
+    const modelCalls = h.calls.filter((c) => c.phase !== "discovery").length
+    expect(model.servedBy[FIXTURE_HOST]?.calls).toBe(modelCalls)
+    expect(model.servedBy[FIXTURE_HOST]?.refused ?? 0).toBe(0)
+    // Every successful model span names its host.
+    const modelSpans = h.spans.filter((sp) => sp.kind === "model" && sp.ok)
+    expect(modelSpans.length).toBeGreaterThan(0)
+    expect(modelSpans.every((sp) => sp.servedBy === FIXTURE_HOST)).toBe(true)
+  }, 30_000)
+
+  it("counts a refused answer against its host, even when the retry then succeeds", async () => {
+    let asks = 0
+    const h = await runFixture({
+      // First assess answer strays from the enum; the hinted retry is clean.
+      script: {
+        assess: () =>
+          ++asks === 1
+            ? { enough: true, missing: "", draw: [], queries: [{ q: "x", intent: "buy", platform: "web", why: "w", market: "log search" }] }
+            : { enough: true, missing: "", draw: [], queries: [] },
+      },
+    })
+    const model = h.result.report.model as { servedBy: Record<string, { calls: number; refused: number }> }
+    const refused = Object.values(model.servedBy).reduce((n, r) => n + r.refused, 0)
+    expect(refused).toBe(1)
+    // The retry's success is a call of its own, on the host that gave it.
+    expect(model.servedBy[FIXTURE_HOST]?.calls).toBe(h.calls.filter((c) => c.phase !== "discovery").length - 1)
   }, 30_000)
 })

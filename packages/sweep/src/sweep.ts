@@ -406,6 +406,16 @@ export const SECOND_LOOK_UNLOCK_BUDGET = 10;
  *  against, and reusing it keeps the two in sync instead of drifting apart. */
 export const DROP_CONFIRM_CAP = 60;
 
+/** Gateway hosts never to route a model call to, by the gateway's own slug.
+ *  Measured, not guessed — see `openrouterOpts` in `call()` for the bench.
+ *  `OPENKB_MODEL_HOST_IGNORE` (comma-separated) replaces the list. */
+export const MODEL_HOST_IGNORE: string[] = (
+  process.env.OPENKB_MODEL_HOST_IGNORE ?? "baidu"
+)
+  .split(",")
+  .map((h) => h.trim().toLowerCase())
+  .filter(Boolean);
+
 /** How long one model call may take before it is abandoned. Argued at
  *  `withDeadline` in `call()`; overridable for a slow model or a slow host.
  *
@@ -1404,6 +1414,27 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   let tokIn = 0;
   let tokOut = 0;
   let tokReasoning = 0;
+  /** Model calls by the upstream host that served them, with the refusals
+   *  among them — an answer that was empty, unparseable or off-schema. The
+   *  gateway routes one model id across ~30 hosts of very different
+   *  discipline (see `openrouterOpts`), and this is the only way a run can
+   *  say which one kept refusing. `report.model.servedBy`. */
+  const servedBy: Record<string, { calls: number; refused: number }> = {};
+  const hostOf = (x: unknown): string | undefined => {
+    const meta = (x as { providerMetadata?: { openrouter?: { provider?: unknown } } })
+      ?.providerMetadata?.openrouter?.provider;
+    if (typeof meta === "string" && meta) return meta;
+    // A refused call still names its host: the AI SDK keeps the gateway's
+    // response body on the error, and the gateway puts `provider` in it.
+    const body = (x as { response?: { body?: { provider?: unknown } } })?.response?.body;
+    return typeof body?.provider === "string" && body.provider ? body.provider : undefined;
+  };
+  const noteServed = (host: string | undefined, refused: boolean) => {
+    const key = host ?? "(unnamed)";
+    const row = (servedBy[key] ??= { calls: 0, refused: 0 });
+    row.calls += 1;
+    if (refused) row.refused += 1;
+  };
   let serpCalls = 0;
   let unlockerCalls = 0;
 
@@ -1571,16 +1602,36 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
      * where it was measured to matter. */
     const openrouterOpts = (
       think: string | undefined,
-      // The retry drops the route preference. A host that answered nothing,
-      // or answered with a body that would not parse, is the wrong host to
-      // ask the same question twice; with no preference OpenRouter picks
-      // again from the whole pool, which is the cheapest way to make the
-      // second ask a different ask. The first ask keeps the throughput sort.
+      // The retry changes the sort. A host that answered nothing, or answered
+      // with a body that would not parse, is the wrong host to ask the same
+      // question twice; sorting by latency instead of throughput lands on a
+      // different leader, which is the cheapest way to make the second ask a
+      // different ask. Everything else below holds for both attempts.
       routed = true,
     ) => ({
       reasoning: reasoningFor(think),
-      ...(routed && modelId.startsWith("deepseek/")
-        ? { provider: { sort: "throughput" } }
+      ...(modelId.startsWith("deepseek/")
+        ? {
+            provider: {
+              sort: routed ? "throughput" : "latency",
+              // Only hosts that support every parameter this request carries
+              // — `response_format: json_schema` above all. The run on
+              // 2026-08-23 (run D) had its catalog retry answered by a host
+              // without it: the JSON came back inside a markdown fence.
+              require_parameters: true,
+              // Hosts MEASURED to stray from the schema they were handed.
+              // Benched on the real catalog call, six asks each, same day:
+              // Baidu 3 of 6 valid (truncated text, enum strays) while Reka,
+              // SiliconFlow, Morph, DeepInfra, Parasail, AkashML and Decart
+              // were 6 of 6. Baidu was the throughput leader that day, which
+              // is what turned the sort into 25 refused classify calls and
+              // 18 of 23 refused link batches on run C. An ignore list goes
+              // stale like the old pinned order did — `report.model.servedBy`
+              // now tallies calls and refusals per host on every run, so the
+              // next bad host is read off the run file, not re-benched.
+              ignore: MODEL_HOST_IGNORE,
+            },
+          }
         : {}),
     });
 
@@ -1715,6 +1766,8 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       tokIn += inTok;
       tokOut += outTok;
       bill("llm", agent, usdFor(inTok, outTok), Date.now() - started, true, { in: inTok, out: outTok, reasoning });
+      const host = hostOf(out);
+      noteServed(host, false);
       spans.emit({
         runId,
         agentId: agent,
@@ -1722,6 +1775,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         kind: "model",
         name: modelId,
         argsDigest: label,
+        servedBy: host,
         ms: Date.now() - started,
         ok: true,
         tokensIn: inTok,
@@ -1730,6 +1784,10 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       });
       return out.object as z.infer<T>;
     } catch (e) {
+      // The first answer was refused or never came: charged to its host
+      // before anything else happens, so the tally counts the refusal even
+      // when the retry below goes on to succeed.
+      noteServed(hostOf(e), true);
       const empty = (e as Error).name === "AI_NoObjectGeneratedError";
       /**
        * A DEADLINE THAT KILLS THE RUN IS WORSE THAN THE HANG IT REPLACED.
@@ -1791,6 +1849,8 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           tokIn += inTok;
           tokOut += outTok;
           bill("llm", agent, usdFor(inTok, outTok), Date.now() - started, true, { in: inTok, out: outTok, reasoning });
+          const retryHost = hostOf(out);
+          noteServed(retryHost, false);
           spans.emit({
             runId,
             agentId: agent,
@@ -1798,6 +1858,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
             kind: "model",
             name: modelId,
             argsDigest: `${label} (retried)`,
+            servedBy: retryHost,
             ms: Date.now() - started,
             ok: true,
             tokensIn: inTok,
@@ -1809,8 +1870,10 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           // Fall through and report the original — with the second failure's
           // detail beside it when it has one, since that is the answer that
           // had the hint and still missed.
+          noteServed(hostOf(second), true);
           const d = detailOf(second);
-          if (d && e instanceof Error) e.message = `${e.message} — retry: ${d}`;
+          const h = hostOf(second);
+          if (d && e instanceof Error) e.message = `${e.message} — retry${h ? ` (${h})` : ""}: ${d}`;
         }
       }
       bill("llm", agent, 0, Date.now() - started, false);
@@ -1822,6 +1885,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         kind: "model",
         name: modelId,
         argsDigest: label,
+        servedBy: hostOf(e),
         ms: Date.now() - started,
         ok: false,
         error:
@@ -5923,6 +5987,15 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
              *  on 21 of the 28 runs on disk. */
             truncatedPairs,
           },
+    /** The model id this run was given, and which upstream hosts actually
+     *  answered for it — calls and refusals per host. Read this before
+     *  blaming the model: on 2026-08-23 one host refused half its answers
+     *  while seven others refused none, same model id, same day. */
+    model: {
+      id: modelId,
+      ignored: MODEL_HOST_IGNORE,
+      servedBy,
+    },
     cost: {
       usd,
       elapsedMs: Date.now() - t0,

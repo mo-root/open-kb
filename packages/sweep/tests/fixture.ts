@@ -40,6 +40,8 @@ import { sweep, type SweepOptions, type SweepResult } from "../src/sweep.js"
 
 /** The anchor. `.example` is reserved by RFC 2606: nothing here resolves even
  *  if something did try to leave the process. */
+/** What the fixture model says served every answer — see `report.model.servedBy`. */
+export const FIXTURE_HOST = "fixture-host"
 export const ANCHOR = "pellucid.example"
 /** What `banned()` is given: the anchor's own first label. */
 export const ANCHOR_NAME = "pellucid"
@@ -697,6 +699,10 @@ export async function runFixture(opts: FixtureOptions = {}): Promise<Harness> {
         finishReason: { unified: "stop" as const, raw: undefined },
         usage: USAGE,
         warnings: [],
+        // The gateway names the upstream host that served a call; the engine
+        // tallies calls and refusals per host into `report.model.servedBy`.
+        // One name for every fixture answer, so a test can read the tally.
+        providerMetadata: { openrouter: { provider: FIXTURE_HOST } },
       }
     },
   })

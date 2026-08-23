@@ -403,6 +403,21 @@ console.log(`$${stats.usd.toFixed(4)} · ${stats.seconds.toFixed(0)}s`)
     }
   }
 
+  // Which upstream hosts answered for the model id, and how often each
+  // refused. One model id, ~30 hosts of very different discipline: the
+  // host is the first thing to read when refusals climb.
+  const model = report.model as { id: string; ignored: string[]; servedBy: Record<string, { calls: number; refused: number }> } | undefined
+  if (model && Object.keys(model.servedBy).length) {
+    const rows = Object.entries(model.servedBy).sort((a, b) => b[1].calls - a[1].calls)
+    console.log(`\nmodel   ${model.id}` + (model.ignored.length ? ` — never routed to ${model.ignored.join(", ")}` : ""))
+    for (const [host, r] of rows) {
+      console.log(
+        `  ${host.padEnd(16)} ${String(r.calls).padStart(5)} calls` +
+          (r.refused ? `, ${r.refused} refused (${((100 * r.refused) / r.calls).toFixed(0)}%)` : ""),
+      )
+    }
+  }
+
   if (kernel) {
     console.log(
       `\nfetch   ${kernel.fetched} hosts read, ${kernel.unreadable} unreadable (${((100 * kernel.unreadable) / (kernel.fetched || 1)).toFixed(1)}%)` +
