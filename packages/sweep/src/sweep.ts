@@ -4475,6 +4475,16 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
          * all appears verbatim. It is a tie-break on an existing list, not a
          * gate — a name matched zero times keeps its place in the order the
          * model gave it, behind the ones that were corroborated.
+         *
+         * WHAT THE CUT ACTUALLY COST, on the two most recent shopify maps.
+         * Neither contains Magento. Both contain seven vendors from Magento's
+         * ECOSYSTEM — Meetanshi, Mageplaza, Amasty, Magestore, Webkul and
+         * others, the extension shops and agencies that exist only because
+         * Magento does — and no query on either run ever named the platform
+         * at the centre of them. A map that knows the ecosystem and not the
+         * thing it grew around is wrong in the way a reader notices first,
+         * and this cap is why: the harvest found the name, ranked it second
+         * for corroboration, and dropped it at list position 22.
          */
         const mentions = new Map<string, number>();
         for (const v of fresh) {
