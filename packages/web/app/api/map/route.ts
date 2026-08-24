@@ -157,6 +157,30 @@ const CLOCK_S = maxDuration - DEADLINE_MARGIN_S
 const RANK_WIDTH = Math.max(1, Math.floor(Number(process.env.OPENKB_RANK_CONCURRENCY ?? 8) || 8))
 const QUERY_BUDGET = queriesThatFit(CLOCK_S, undefined, RANK_WIDTH)
 
+/**
+ * WHAT THAT COMES TO, AND HOW FAR IT IS FROM EVERY MEASURED RUN.
+ *
+ * On this deployment's numbers — `maxDuration` 300s less a 30s margin, rank
+ * width 8 — `QUERY_BUDGET` is 18. Every sweep run on disk fired between 36 and
+ * 199 queries, median 144, and NOT ONE fired 18 or fewer. The gallery maps are
+ * built by the CLI at 147-165.
+ *
+ * So a visitor's map is roughly a ninth the size of the ones this product
+ * shows them, and every measurement on the 2026-08-24 branch — ranking
+ * stability, `--quick`'s yield, per-relation reproducibility — was taken on
+ * CLI runs an order of magnitude larger. None of those numbers describe what
+ * the web returns, and the ones about the TAIL of a list describe a tail a
+ * web run never reaches.
+ *
+ * This is not a bug in this file: the budget is honest arithmetic over a
+ * measured yield against a hard serverless clock, and the comment above
+ * records the bug it fixed. It is a product fact worth being explicit about
+ * where the number is computed, because two things follow that nothing states.
+ * A gallery map cannot be reproduced by the product that displays it. And a
+ * finding measured on a CLI run needs re-checking before it is believed about
+ * the web.
+ */
+
 interface Body {
   domain?: string
   queries?: number
