@@ -24,7 +24,9 @@ export const SWARM_NODE_KINDS = ["company", "product", "capability", "buyer", "c
  *  agent.ts) binds its schema to JUDGED_RELATIONS, so a value that vocabulary
  *  accepts but this one does not is money already spent on a verdict this
  *  map cannot record. "adjacent" landed in JUDGED_RELATIONS without landing
- *  here first; kept in sync now, and checked for the next relation too. */
+ *  here first; kept in sync now, and checked for the next relation too — by
+ *  tests/the-judge-and-the-map-teach-one-vocabulary.test.ts, which is where
+ *  that last clause finally became true rather than an intention. */
 export const SWARM_RELATIONS = [
   "competitor",
   "substitute",
