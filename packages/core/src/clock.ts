@@ -197,9 +197,35 @@ export const MEASURED_PHASE_COSTS: PhaseCosts = {
    * because the CLI passes no deadline and only the web route does. So the
    * behaviour of a clock-constrained run has never been observed here at all.
    *
-   * Confirming it needs a run with `deadlineAt` set, which today means the web
-   * route or a CLI that learns the flag. `report.clock` and `report.budget`
-   * together would answer it in one run.
+   * IT HAS NOW BEEN OBSERVED, AND THE PREDICTION IS REFUTED ON THE ANCHOR
+   * TESTED. The first deadline-bound run in this repository — resend.com under
+   * `OPENKB_DEADLINE_S=270`, the flag added to make this checkable:
+   *
+   *   report.budget   maxQueries 43, fired 43, hostsJudged 273, unjudged 0
+   *   report.clock    predicted 502s, actual 214s
+   *   phases          understand 57s · plan 157s · sweep 52s · rank 87s
+   *
+   * It did not seal early. It bought every query it was sized for, left no
+   * host unjudged, and finished 56 seconds inside its clock. `understand` took
+   * 57 seconds, so `fixedSeconds: 60` was accurate here — the 226 that
+   * motivated the alarm is cloudflare's, a far larger anchor.
+   *
+   * So the hazard is real but ANCHOR-DEPENDENT, not general. A slow-understand
+   * anchor can still eat a short clock and the failure would still be total;
+   * "a web run ships a map built from a couple of queries" was the wrong
+   * generalisation, drawn from the wrong anchor's number.
+   *
+   * TWO CORRECTIONS TRAVEL WITH IT.
+   *
+   * The 18 above is not what a deployment gets. It assumes the code's default
+   * rank width of 8; this repo's own `.env` sets `OPENKB_RANK_CONCURRENCY=24`,
+   * which yields 43 — the figure the run actually used. The web budget is a
+   * function of a variable neither this file nor the route hardcodes, so any
+   * statement of it has to name the width it assumed.
+   *
+   * And `report.clock` over-predicted by 2.3x on this run, which puts it in
+   * the conservative middle of the spread above rather than the tail this
+   * paragraph was worried about.
    *
    * That is also the likeliest source of the under-predicting tail above: the
    * runs where actual beat predicted are the runs whose fixed phase ran long.

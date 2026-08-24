@@ -196,6 +196,22 @@ const QUERY_BUDGET = queriesThatFit(CLOCK_S, undefined, RANK_WIDTH)
  * with this company" with the same names at the top. What it cannot reproduce
  * is the long tail the gallery advertises by entity count — which is worth
  * knowing if that count is what the product is sold on.
+ *
+ * TWO THINGS MEASURED AFTER THE ABOVE WAS WRITTEN, both of which soften it.
+ *
+ * THE 18 IS NOT A CONSTANT — it is `RANK_WIDTH`, and that reads an environment
+ * variable. At the code default of 8 it is 18; this repo's own `.env` sets
+ * `OPENKB_RANK_CONCURRENCY=24`, which makes it 43. Whichever number a
+ * deployment gets depends on what is set where it runs, so "a ninth the size"
+ * is the width-8 case and not a property of the route.
+ *
+ * AND A DEADLINE-BOUND RUN HAS NOW ACTUALLY BEEN OBSERVED, which none had
+ * been when this file was annotated. resend.com under a 270-second clock at
+ * width 24: sized for 43 queries, fired 43, judged all 273 hosts it found,
+ * finished in 214 seconds, 270 entities on the map. It did not run out of
+ * clock and it did not seal early — the failure this route's own comments
+ * anticipated. `packages/core/src/clock.ts` carries the detail and the reason
+ * it is anchor-dependent rather than general.
  */
 
 interface Body {
