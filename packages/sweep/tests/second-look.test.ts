@@ -124,7 +124,7 @@ describe("second look", () => {
 
     // The census, and the bill: the re-judgement is booked under its own
     // label, not smuggled into the rank line.
-    expect((h.result.report as { secondLook: unknown }).secondLook).toEqual({ asked: 1, rescued: 1, failed: 0, unlocked: 0 })
+    expect((h.result.report as { secondLook: unknown }).secondLook).toEqual({ unplaced: 1, asked: 1, rescued: 1, failed: 0, unlocked: 0 })
     expect(lineOf(costOf(h.result).byAgent, "second-look").usd).toBe(USD_PER_MODEL_CALL)
     expect(h.says.some((s) => s.includes("second look rescued 1 of 1"))).toBe(true)
   })
@@ -139,7 +139,7 @@ describe("second look", () => {
     expect(looks).toHaveLength(2)
     const e = h.result.entities.find((x) => x.domain === HOSTS.grepstack)!
     expect(e.kind).toBe("company")
-    expect((h.result.report as { secondLook: unknown }).secondLook).toEqual({ asked: 1, rescued: 1, failed: 0, unlocked: 0 })
+    expect((h.result.report as { secondLook: unknown }).secondLook).toEqual({ unplaced: 1, asked: 1, rescued: 1, failed: 0, unlocked: 0 })
   })
 
   it("does not exist when explicitly disabled", async () => {
@@ -175,7 +175,7 @@ describe("second look", () => {
     expect(e.relation).toBe("unknown")
     expect(e.because ?? "").not.toContain("second look")
     // The attempt is still counted — the report reconciles with the bill.
-    expect((h.result.report as { secondLook: unknown }).secondLook).toEqual({ asked: 1, rescued: 0, failed: 1, unlocked: 0 })
+    expect((h.result.report as { secondLook: unknown }).secondLook).toEqual({ unplaced: 1, asked: 1, rescued: 0, failed: 1, unlocked: 0 })
   })
 
   it("a second look that still says unknown changes nothing", async () => {
@@ -189,7 +189,7 @@ describe("second look", () => {
     expect(e.kind).toBe("unknown")
     expect(e.relation).toBe("unknown")
     expect(e.because ?? "").not.toContain("second look")
-    expect((h.result.report as { secondLook: unknown }).secondLook).toEqual({ asked: 1, rescued: 0, failed: 0, unlocked: 0 })
+    expect((h.result.report as { secondLook: unknown }).secondLook).toEqual({ unplaced: 1, asked: 1, rescued: 0, failed: 0, unlocked: 0 })
   })
 
   it("escalates through the unlocker when the search-surfaced page is also walled", async () => {
@@ -222,6 +222,7 @@ describe("second look", () => {
     expect(e.because).toContain(`second look at ${DEEP}`)
 
     expect((h.result.report as { secondLook: unknown }).secondLook).toEqual({
+      unplaced: 1,
       asked: 1,
       rescued: 1,
       failed: 0,
@@ -264,6 +265,7 @@ describe("second look", () => {
     const sparseFetches = h.fetch.calls.filter((c) => c.url === SPARSE_DEEP)
     expect(sparseFetches.map((c) => c.mode)).toEqual(["direct"])
     expect((h.result.report as { secondLook: unknown }).secondLook).toEqual({
+      unplaced: 1,
       asked: 1,
       rescued: 0,
       failed: 1,

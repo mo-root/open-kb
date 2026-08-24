@@ -5023,6 +5023,13 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   /** Attempts, counted before the fetch — the same convention as
    *  `triageCalls`, so the report reconciles with the bill when a look fails
    *  open partway through. `secondLookRescued` is the replaced subset. */
+  /** How many hosts the stage HAD to choose from, against the `asked` it could
+   *  afford. The cap binds on every run since the snippet gate — 151 unplaced
+   *  against 60 looks on one — and until now that only appeared in a `say()`
+   *  line, so a reader of the report alone could not tell a run that looked at
+   *  everything from one that looked at a third of it. Same reason `PAIR_CAP`
+   *  learned to report its own cut. */
+  let secondLookUnplaced = 0;
   let secondLookAsked = 0;
   let secondLookRescued = 0;
   /** Looks that failed OPEN — an unreadable page or a thrown call. Counted so
@@ -5122,6 +5129,10 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       })
       .map((c) => ({ ...c, seenIn: c.row.seenIn, bestRank: bestRankOf(c.e.domain) }));
     const lookAt = mostCorroboratedFirst(ranked).slice(0, SECOND_LOOK_CAP);
+    // Set whether or not any look is affordable below: the population is a
+    // fact about the run, and a stage that looked at none of it should say so
+    // with the same number as one that looked at all of it.
+    secondLookUnplaced = unplaced.length;
     if (lookAt.length > 0) {
       say(
         "rank",
@@ -6624,6 +6635,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
      *  spent an unlocker escalation on a page that came back blocked. */
     secondLook: SECOND_LOOK
       ? {
+          unplaced: secondLookUnplaced,
           asked: secondLookAsked,
           rescued: secondLookRescued,
           failed: secondLookFailed,
