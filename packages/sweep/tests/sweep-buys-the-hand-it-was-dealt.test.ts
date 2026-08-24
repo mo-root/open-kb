@@ -231,6 +231,25 @@ describe("reading the company more than once", () => {
     expect(h.says.some((s) => /read it 3 times/.test(s))).toBe(true)
   }, 30_000)
 
+  it("leans away from the collapse when an ask fails and there is no true middle", async () => {
+    // Two answers left, so `Math.floor(n / 2)` picks the upper. That is
+    // deliberate: a reading that collapses maps almost nothing and cannot be
+    // recovered downstream, while an inflated one is only expensive. Measured
+    // on three simulated runs, an ask failed on two of them, so this is the
+    // common case rather than a corner.
+    let ask = 0
+    const h = await runFixture({
+      script: {
+        understand: () => {
+          ask += 1
+          if (ask === 1) return { nonsense: true } // refused, then refused again
+          return decomp(ask === 2 ? 3 : 8)
+        },
+      },
+    })
+    expect(h.result.decomposition.products).toHaveLength(8)
+  }, 30_000)
+
   it("survives an ask that fails outright — the others answer for it", async () => {
     let ask = 0
     const h = await runFixture({

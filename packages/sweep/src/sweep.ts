@@ -2383,6 +2383,22 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    * `throughput` landed on Reka, `latency` on DeepInfra and `price` on
    * OpenInference — three distinct hosts, and each criterion stable across
    * repeat asks.
+   *
+   * MEASURED against the thing it is for, simulating three runs' worth of
+   * draws on shopify.com:
+   *
+   *   run 1   Reka 60   DeepInfra 55   Decart 56    -> 56
+   *   run 2   Reka 60   Ambient 65     (price failed) -> 65
+   *   run 3   Reka 60   Ambient 47     (price failed) -> 60
+   *
+   *   one host per run, as it was   47-65, spread 18 over 7 draws
+   *   median across three hosts     56-65, spread  9 over 3 runs
+   *
+   * Half the spread, on three runs — enough to show the direction and not
+   * enough to put a number on. Two caveats belong with it: `throughput`
+   * answered Reka=60 every time, so the steadiness is partly one dependable
+   * host, and `price` failed on two of three runs, which is why the even-count
+   * rule below had to be decided rather than inherited.
    */
   const UNDERSTAND_ROUTES = ["throughput", "latency", "price"] as const;
 
@@ -2402,6 +2418,19 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     const got = asks.filter((d): d is z.infer<typeof Decomposition> => d !== null);
     if (!got.length) return understandOnce();
     got.sort((a, b) => a.products.length - b.products.length);
+    /**
+     * `Math.floor(n / 2)` on an ODD count is the middle. On an EVEN one —
+     * which happens whenever an ask fails, and one did on two of three
+     * simulated runs — it is the UPPER of the two, and that should be a
+     * decision rather than an accident of the arithmetic.
+     *
+     * Upper is the right accident to keep. Both tails are failures but they
+     * are not equally bad: a reading that collapses to one product maps
+     * almost nothing and cannot be recovered downstream, while an inflated
+     * one is only expensive, and since a9be42a deals the hand round-robin
+     * even a hundred-product reading still searches every product's first
+     * door. So when there is no true middle, lean away from the collapse.
+     */
     const middle = got[Math.floor(got.length / 2)]!;
     if (got.length > 1) {
       const counts = got.map((d) => d.products.length);
