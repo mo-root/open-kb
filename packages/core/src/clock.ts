@@ -186,10 +186,20 @@ export const MEASURED_PHASE_COSTS: PhaseCosts = {
    *
    * On a long CLI run that is noise against 25 minutes. On the web's 270-second
    * clock it is most of the budget: `270 - 60 - 30` leaves 180 variable seconds
-   * and 18 queries, but `270 - 226 - 30` leaves FOURTEEN. A run that plans 18
-   * queries from the optimistic figure and then spends 226 seconds
-   * understanding the company will seal its search almost immediately on the
-   * deadline backstop, and ship a map built from a couple of queries.
+   * and 18 queries, but `270 - 226 - 30` leaves FOURTEEN.
+   *
+   * WHAT FOLLOWS FROM THAT IS A PREDICTION, NOT A MEASUREMENT, and the
+   * distinction is worth keeping because nothing here can currently check it.
+   * A run that plans 18 queries from the optimistic figure and then spends 226
+   * seconds understanding the company SHOULD seal its search almost at once on
+   * the deadline backstop and ship a map built from a couple of queries. All
+   * 41 runs on disk have `report.budget: null` — not one is deadline-bound,
+   * because the CLI passes no deadline and only the web route does. So the
+   * behaviour of a clock-constrained run has never been observed here at all.
+   *
+   * Confirming it needs a run with `deadlineAt` set, which today means the web
+   * route or a CLI that learns the flag. `report.clock` and `report.budget`
+   * together would answer it in one run.
    *
    * That is also the likeliest source of the under-predicting tail above: the
    * runs where actual beat predicted are the runs whose fixed phase ran long.
