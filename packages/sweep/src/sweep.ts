@@ -424,11 +424,40 @@ export const UNDERSTAND_ASKS = Math.max(
   Math.floor(Number(process.env.OPENKB_UNDERSTAND_ASKS ?? 3) || 3),
 );
 
-/** Gateway hosts never to route a model call to, by the gateway's own slug.
- *  Measured, not guessed — see `openrouterOpts` in `call()` for the bench.
- *  `OPENKB_MODEL_HOST_IGNORE` (comma-separated) replaces the list. */
+/**
+ * Gateway hosts never to route a model call to, by the gateway's own slug.
+ * Measured, not guessed, and each for its own reason.
+ *
+ * `baidu` returns answers that miss the schema — 3 of 6 valid on the real
+ * catalog call where seven other hosts were 6 of 6. See `openrouterOpts`.
+ *
+ * `wafer` answers, and answers differently every time. On the understand
+ * call — the largest prompt the pipeline sends, and the one everything
+ * downstream descends from — three IDENTICAL asks at temperature 0, pinned
+ * per host, returned:
+ *
+ *   Wafer         17, 37, 32     spread 20
+ *   DeepInfra     46, 54, 54     spread  8
+ *   Reka          60, 61, 60     spread  1
+ *   SiliconFlow   63, 63, 63     spread  0
+ *
+ * An earlier probe of the same prompt, served by Wafer throughout, returned
+ * 14, then 1, then 19 — a fifty-product company collapsed to one. So the
+ * instability that `understandByCall` reads three times to survive is not a
+ * property of the call, it is a property of that host.
+ *
+ * The spread BETWEEN hosts is its own problem and is not solved here: 17 to
+ * 63 products for one company, same prompt, same day. A run is internally
+ * consistent because the first answer's host serves the rest of it
+ * (`stickyHost`), but two runs that draw different hosts read the company
+ * differently, which is most of the 43-to-51 spread across real shopify.com
+ * runs. Pinning one host globally would fix it and is exactly what this file
+ * removed this morning for going stale.
+ *
+ * `OPENKB_MODEL_HOST_IGNORE` (comma-separated) replaces the list.
+ */
 export const MODEL_HOST_IGNORE: string[] = (
-  process.env.OPENKB_MODEL_HOST_IGNORE ?? "baidu"
+  process.env.OPENKB_MODEL_HOST_IGNORE ?? "baidu,wafer"
 )
   .split(",")
   .map((h) => h.trim().toLowerCase())
@@ -2281,8 +2310,17 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    *
    * `temperature: 0` and a pinned host already went in (9cef607) and fixed
    * the classifier, which asks a small question about one page. They do not
-   * fix this one: a 28k-character prompt answered with a large structured
-   * object is not stable at any temperature a gateway will honour.
+   * fix this one, and the reason turned out to be narrower than "a 28k prompt
+   * is unstable": it is unstable ON SOME HOSTS. Three identical asks pinned
+   * per host returned 17/37/32 on Wafer against 63/63/63 on SiliconFlow, and
+   * the 14/1/19 probe above was Wafer throughout. Wafer is now on
+   * MODEL_HOST_IGNORE, which carries the table.
+   *
+   * That does not retire this. The gateway serves this model from about
+   * thirty hosts, the ignore list names the two that have been measured, and
+   * the next one is found the same way — by a run coming back wrong. Reading
+   * three times costs a third of a cent and does not need to know which host
+   * answered.
    *
    * So it is asked UNDERSTAND_ASKS times, concurrently, and the answer with
    * the MEDIAN product count is kept. The median rather than the richest,
