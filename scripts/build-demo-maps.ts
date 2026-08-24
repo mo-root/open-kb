@@ -98,16 +98,28 @@ const TO = join(ROOT, "demo", "maps")
  *   2026-08-23 (picked)        1122         1111   3343              144
  *   2026-08-24                 1165         1056   2834               38
  *
- * The new map is more honest and visibly smaller. 106 rows that were guessed
- * from a search snippet are gone, 32 of them replaced by rows a real page
- * settled — but the net is 55 fewer placed entities and 509 fewer edges,
- * because a withheld row cannot be one end of a pair.
+ * The new map is more honest and smaller by 55 placed entities: 106 rows that
+ * were guessed from a search snippet are gone and 32 came back settled by a
+ * real page. THAT part is a consequence of the branch.
  *
- * Which of those a gallery should show is a product question. A visitor
- * counts nodes and edges; a buyer who checks ten rows finds fewer wrong ones.
- * The `because` lines here quote entity counts, so refreshing means those
- * numbers go DOWN while the maps get better, and someone has to want that
- * trade before it ships. The runs are on disk either way.
+ * THE 509 EDGES ARE NOT, and I first wrote here that they were — "a withheld
+ * row cannot be one end of a pair". That is false. A withheld row is still
+ * `onMap`, still in `keptHosts`, and still pairs: the new run carries 221
+ * edges touching an `unknown` host against the old one's 9.
+ *
+ * What the edge count tracks is `openPairs` — 1609 against 1289, with nothing
+ * truncated on either run — and that tracks the number of queries that fired,
+ * 179 against 163, because a pair has to co-occur in two distinct queries to
+ * qualify at all. shopify.com, where three runs span the same changes, shows
+ * edges flat at 2710, 2609 and 2598. So cloudflare's edge drop is the host
+ * ceiling arriving after fewer queries on one run, not something this branch
+ * does to maps.
+ *
+ * Which leaves a smaller trade than the one I first described, and still a
+ * real one. A visitor counts nodes; a buyer who checks ten rows finds fewer
+ * wrong ones. The `because` lines here quote entity counts, so refreshing
+ * makes those numbers go DOWN while the maps get better, and someone has to
+ * want that trade before it ships. The runs are on disk either way.
  */
 const PICKS: { file: string; because: string }[] = [
   { file: "sweep-shopify-com-20260823201634.json", because: "1,236 entities — commerce, and the first map built off four strip terms" },
