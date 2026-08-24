@@ -107,6 +107,27 @@ export function openingHand(
      * dealt round-robin across products (sweep.ts), so what a ceiling
      * truncates is the last PASS rather than the last products — every
      * product gets its first door before any product gets its fourth.
+     *
+     * WHAT THE WIRE SAID, and it is not a win. Two shopify.com runs either
+     * side of this change:
+     *
+     *          products  terms fired  queries   kept    min   recall
+     *   before       51   100 (49%)       145   1242   17.5      79%
+     *   after        43    93 (54%)       151   1034   28.8      71%
+     *
+     * The share moved 49% to 54% and nothing else can be read off it. The
+     * decomposition came back 43 products against 51 — the third A/B on this
+     * anchor that `understand`'s own variance has swallowed — the run took
+     * 65% longer on the search provider's pacing rather than anything here,
+     * and `kept` fell 17% inside a band whose other runs span 1,034 to 1,242.
+     * Recall read 71% against a 71-86% spread. None of that is attributable.
+     *
+     * It stays on the argument rather than the result, and the argument is
+     * about the floor. A term in the reserve is drawn on 3% of plain queries;
+     * a term at the back of the hand is cut only when the ceiling reaches it.
+     * The worst case is therefore the old behaviour and the best case is a
+     * door that opens, so the change cannot lose — which is a weaker claim
+     * than "it works", and the honest one.
      */
     for (const t of rest) open.push(plain(p, t, t, "the next strip term — a different door into the same market"))
   }
