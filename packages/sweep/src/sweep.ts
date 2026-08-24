@@ -3352,6 +3352,24 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    * shopify's own run-to-run recall spread is 15 points, so this run could not
    * have shown a small change either way.
    *
+   * BOTH HALVES OF THAT HAVE MOVED SINCE, and in opposite directions:
+   *
+   *   shopify     56 products   54 searched (96%)    147 queries   kept 1215
+   *   cloudflare  67 products   67 searched (100%)   165 queries   kept 1182
+   *
+   * The coverage went further, and that IS this ordering: 898c3fb found that
+   * "core first" was concatenating the bands, so every core product's whole
+   * hand preceded every adjacent product's first door and thirteen products
+   * sat past plan index 262 in a run that fires ~147.
+   *
+   * The 11% is a different matter. Those maps are no smaller — 1,215 and
+   * 1,182 against the 1,226/1,220/1,236 this table calls "before" — but the
+   * runs that produced them also carry the snippet gate and three second-look
+   * fixes, so nothing here says the ordering recovered it. What can be said is
+   * narrower and worth saying anyway: "the map is 11% smaller" was one run,
+   * later runs at higher coverage are not smaller, and it should not be quoted
+   * as a standing price of spreading the budget.
+   *
    * So this is not a win on shopify.com, and it is worth being plain about
    * why it stays. Its tail is Barcode generator and Image resizer, and
    * spending queries there costs a real map to reach nothing. datadoghq.com's
