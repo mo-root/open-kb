@@ -190,3 +190,60 @@ describe("report.wire — the plan against the purchase", () => {
     expect(w.termsFired).toBeGreaterThan(0)
   }, 30_000)
 })
+
+/**
+ * THE READING IS NOT REPRODUCIBLE, AND EVERYTHING DESCENDS FROM IT.
+ *
+ * Measured on shopify.com with an identical 28,634-character prompt,
+ * temperature 0, and the same upstream host answering all three asks: 14
+ * products, then 1, then 19. The middle ask collapsed a company with fifty
+ * products to a single one, which would have dealt a one-product opening
+ * hand. `temperature: 0` and a pinned host fixed the classifier, which asks a
+ * small question about one page; they do not fix a 28k prompt answered with a
+ * large structured object.
+ *
+ * So it is read three times and the MEDIAN product count is kept — the middle
+ * rather than the richest, because both tails are failures.
+ */
+describe("reading the company more than once", () => {
+  const decomp = (n: number) => ({
+    sells: "hosted log search for small platform teams",
+    buyer: "a platform team of five to fifty engineers",
+    brand: "Pellucid",
+    products: Array.from({ length: n }, (_, i) => ({
+      name: `Product ${i + 1}`, does: `does thing ${i + 1}`, foundAt: "",
+    })),
+    capabilities: [
+      { name: "log search", does: "answers a question about production", covers: ["Product 1"], centrality: "core" },
+    ],
+    coinages: [],
+  })
+
+  it("keeps the middle answer, not the collapsed one and not the richest", async () => {
+    // The measured shape: one ask collapses, one is rich, one is in between.
+    const sizes = [1, 9, 4]
+    let ask = 0
+    const h = await runFixture({ script: { understand: () => decomp(sizes[ask++ % sizes.length]!) } })
+    // Three asks, and the run kept the one with four products.
+    expect(h.calls.filter((c) => c.phase === "understand")).toHaveLength(3)
+    expect(h.result.decomposition.products).toHaveLength(4)
+    // And it says so, because a spread this wide is a fact about the run.
+    expect(h.says.some((s) => /read it 3 times/.test(s))).toBe(true)
+  }, 30_000)
+
+  it("survives an ask that fails outright — the others answer for it", async () => {
+    let ask = 0
+    const h = await runFixture({
+      script: {
+        understand: () => {
+          // One refusal of three. `call()` retries it once and it refuses
+          // again, so this ask is lost entirely.
+          if (++ask === 2) return { nonsense: true }
+          return decomp(6)
+        },
+      },
+    })
+    expect(h.result.decomposition.products).toHaveLength(6)
+    expect(h.result.report.kept).toBeGreaterThan(0)
+  }, 30_000)
+})

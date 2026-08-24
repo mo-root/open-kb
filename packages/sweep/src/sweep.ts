@@ -415,6 +415,15 @@ export const LANDING_GRACE_MS = Math.max(
   Number(process.env.OPENKB_LANDING_GRACE_MS ?? 45_000) || 45_000,
 );
 
+/** How many times to read the company before deciding what it sells. Argued
+ *  at `understandByCall`: the call is not reproducible, the whole run descends
+ *  from it, and three asks cost about a third of a cent and no wall clock
+ *  because they run concurrently. 1 restores the old single-ask behaviour. */
+export const UNDERSTAND_ASKS = Math.max(
+  1,
+  Math.floor(Number(process.env.OPENKB_UNDERSTAND_ASKS ?? 3) || 3),
+);
+
 /** Gateway hosts never to route a model call to, by the gateway's own slug.
  *  Measured, not guessed — see `openrouterOpts` in `call()` for the bench.
  *  `OPENKB_MODEL_HOST_IGNORE` (comma-separated) replaces the list. */
@@ -2257,9 +2266,38 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     );
   }
 
-  /** The single-call reading, unchanged — the default path, and agent mode's
-   *  fallback when the investigation comes back empty-handed. */
-  const understandByCall = () =>
+  /**
+   * The reading — asked more than once, and the middle answer kept.
+   *
+   * THIS CALL IS NOT REPRODUCIBLE AND EVERYTHING DESCENDS FROM IT. Measured
+   * on shopify.com with an IDENTICAL 28,634-character prompt, temperature 0,
+   * and the same upstream host answering all three: 14 products, then 1, then
+   * 19. Markets 8, 5, 8. The middle ask collapsed the whole company to a
+   * single product, which would have dealt a one-product opening hand and
+   * mapped a fraction of the market. Six real shopify.com runs on the same
+   * day spread 43 to 51 products and 2 to 8 markets, and three separate A/Bs
+   * this branch ran were swallowed by that spread rather than by anything
+   * they changed.
+   *
+   * `temperature: 0` and a pinned host already went in (9cef607) and fixed
+   * the classifier, which asks a small question about one page. They do not
+   * fix this one: a 28k-character prompt answered with a large structured
+   * object is not stable at any temperature a gateway will honour.
+   *
+   * So it is asked UNDERSTAND_ASKS times, concurrently, and the answer with
+   * the MEDIAN product count is kept. The median rather than the richest,
+   * because both tails are failures — one product is a collapse and a hundred
+   * and ten is a marketing-page inventory — and the middle of three is robust
+   * to either without inventing anything the model did not say. Concurrent,
+   * so the wall clock is one call rather than three; this is the largest
+   * prompt the pipeline sends but it is sent once per run, and three of them
+   * is about a third of a cent.
+   *
+   * A single ask is still available (`OPENKB_UNDERSTAND_ASKS=1`), and one
+   * failing ask no longer ends the run: the others answer for it, and only an
+   * empty set falls through to `call()`'s own retry.
+   */
+  const understandOnce = () =>
     call(
       "understand",
       `read ${anchor} — ${pages.length} page${pages.length === 1 ? "" : "s"}`,
@@ -2273,6 +2311,36 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       // Worth thinking about: everything downstream descends from these sentences.
       { think: "medium", maxOutputTokens: 8_000 },
     );
+
+  const understandByCall = async (): Promise<z.infer<typeof Decomposition>> => {
+    if (UNDERSTAND_ASKS <= 1) return understandOnce();
+    const asks = await Promise.all(
+      Array.from({ length: UNDERSTAND_ASKS }, () =>
+        understandOnce().then(
+          (d) => d,
+          // A refusal is one vote lost, not a dead run — unless every one of
+          // them refuses, which falls through to the single-ask path below so
+          // the failure surfaces the way it always did.
+          () => null,
+        ),
+      ),
+    );
+    const got = asks.filter((d): d is z.infer<typeof Decomposition> => d !== null);
+    if (!got.length) return understandOnce();
+    got.sort((a, b) => a.products.length - b.products.length);
+    const middle = got[Math.floor(got.length / 2)]!;
+    if (got.length > 1) {
+      const counts = got.map((d) => d.products.length);
+      say(
+        "understand",
+        `read it ${got.length} times — ${counts.join(", ")} products; keeping the middle answer` +
+          (counts[0] !== counts[counts.length - 1]
+            ? ` (this call is not reproducible, so the spread is the point)`
+            : ""),
+      );
+    }
+    return middle;
+  };
 
   /** How phase one actually read the company, for the report. Null on the
    *  call path — the packet above IS that story. Filled in agent mode, where
