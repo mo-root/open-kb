@@ -759,9 +759,28 @@ ${trustRules.join("\n")}
     relFile("competitor") && `- [${relFile("competitor")}](${relFile("competitor")}): the rivals${tiered ? ", by evidence tier" : ""}`,
     `- [manifest.json](manifest.json): programmatic index`,
   ].filter(Boolean)
+  /**
+   * "N entities with cited relations" COUNTED THE REFUSALS TOO.
+   *
+   * An `unknown` row is this export's word for "the run would not say" — the
+   * relation was withheld and the `why` deliberately blanked, which is why
+   * relations/unknown.md opens "these are refusals, not absences". On a real
+   * shopify export 103 of the 1,106 rows were that, and 115 of the 116
+   * `unknown` rows in the underlying run carry no `why` at all.
+   *
+   * So the summary line the agent reads first overstated the cited half by
+   * about 9%, using this file's own vocabulary against itself. Split, because
+   * both numbers are worth having and the second is the one this codebase
+   * keeps insisting on: a reader can finish an unknown and cannot correct an
+   * invention.
+   */
+  const refused = kept.filter((e) => e.relation === "unknown").length
+  const cited = kept.length - refused
   files.push({
     path: "llms.txt",
-    content: `# ${anchor} market map\n\n> ${kept.length} entities with cited${tiered ? ", evidence-tiered" : ""} relations to ${anchor}: ${countLine}.\n\n${llmsRows.join("\n")}\n`,
+    content:
+      `# ${anchor} market map\n\n> ${kept.length} entities: ${cited} with cited${tiered ? ", evidence-tiered" : ""} relations to ${anchor}` +
+      `${refused ? `, and ${refused} the run refused to place` : ""}. ${countLine}.\n\n${llmsRows.join("\n")}\n`,
   })
 
   // manifest.json

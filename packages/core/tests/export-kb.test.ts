@@ -275,6 +275,25 @@ describe("an untiered run says nothing about tiers", () => {
     expect(get("entities/auth0-com.md")).toContain("**Route:** surfaced by this run's queries → competitor to clerk.com.")
   })
 
+  it("does not count the refusals among the entities with cited relations", () => {
+    /**
+     * An `unknown` row is this export's word for "the run would not say" — the
+     * relation is withheld and the `why` blanked, which is why
+     * relations/unknown.md opens "refusals, not absences". llms.txt counted
+     * them anyway: on a real shopify export, 103 of 1,106 rows.
+     */
+    const files = exportKbFiles({
+      anchor: "clerk.com",
+      entities: [
+        { name: "Auth0", domain: "auth0.com", kind: "product", relation: "competitor", what: "An auth platform.", why: "Same buyer." },
+        { name: "Walled", domain: "walled.example", kind: "company", relation: "unknown", what: "A vendor of some kind.", because: "its front page could not be read this run (http-403)" },
+      ],
+    })
+    const llms = files.find((f) => f.path === "llms.txt")?.content ?? ""
+    expect(llms).toContain("2 entities: 1 with cited")
+    expect(llms).toContain("1 the run refused to place")
+  })
+
   it("says how an untiered list is ordered, and does not claim tiers it has none of", () => {
     expect(get("relations/competitor.md")).toContain("Ordered by how many distinct queries surfaced each host")
     expect(get("relations/competitor.md")).not.toContain("(untiered)")
