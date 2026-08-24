@@ -49,6 +49,35 @@ describe("the free naming pass", () => {
     )
   })
 
+  it("writes no edge between a subdomain and its own parent", async () => {
+    /**
+     * The fold keeps `play.google.com` apart from `google.com` on purpose, and
+     * that is right — they are different things. An edge between them is not:
+     * it says two companies relate when there is one company. Measured on the
+     * finished maps, 10 on shopify and 25 on cloudflare, including
+     * `umbrella.cisco.com [competitor] cisco.com`.
+     */
+    const sub = `shop.${HOSTS.loglens}`
+    const h = await runFixture({
+      serp: {
+        ...SERP,
+        "log search": [
+          { url: `https://${sub}/`, title: `Shop — ${HOSTS.loglens}`, description: `The ${HOSTS.loglens} store.` },
+          ...SERP["log search"]!.slice(1),
+        ],
+      },
+    })
+    // "One endpoint is a subdomain of the other", stated directly. A first
+    // attempt stripped one label off each side and compared the rest, which
+    // matches EVERY pair in a fixture whose hosts all end in `.example` — it
+    // failed with the guard in place and without it, which is how it was
+    // caught.
+    const selfish = (h.result.edges ?? []).filter(
+      (e) => e.from.endsWith(`.${e.to}`) || e.to.endsWith(`.${e.from}`),
+    )
+    expect(selfish).toEqual([])
+  }, 30_000)
+
   it("never quotes a sentence that does not contain the name it is evidence for", async () => {
     /**
      * `namesIt` was checked against title and description JOINED and then the

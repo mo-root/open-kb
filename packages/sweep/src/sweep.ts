@@ -6236,6 +6236,31 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           mechanism && mechanism.toLowerCase() !== hit.toLowerCase()
             ? `a page on ${host} names "${hit}": "${mechanism.slice(0, 200)}"`
             : `a page on ${host} names "${hit}"`;
+        /**
+         * A COMPANY HAS NO RELATIONSHIP WITH ITSELF.
+         *
+         * The host fold merges `docs.`, `blog.` and `api.` into the parent but
+         * deliberately leaves others standing — `play.google.com` really is a
+         * different thing from `google.com`, and the map is better for keeping
+         * both. An EDGE between them is a different matter: it says two
+         * companies relate when there is one company.
+         *
+         * MEASURED on the finished maps, 10 on shopify and 25 on cloudflare:
+         *
+         *   [discusses]  usa.visa.com          -> visa.com
+         *   [competitor] umbrella.cisco.com    -> cisco.com
+         *   [discusses]  github.com            -> pages.github.com
+         *   [lists]      splunkbase.splunk.com -> splunk.com
+         *
+         * Cisco is not a competitor of Cisco, and that row ships on a map
+         * whose whole job is naming who competes with whom. Under 1% of edges,
+         * and the kind a reader notices first because it is obviously wrong
+         * rather than subtly so.
+         *
+         * Checked at the edge rather than in the fold, because the fold's
+         * decision to keep these hosts apart is right and this one is separate.
+         */
+        if (registrableHost(host) === registrableHost(target)) continue;
         edges.push({
           from: host,
           to: target,
