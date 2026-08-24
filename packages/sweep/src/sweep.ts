@@ -5116,6 +5116,21 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
        *   earnedUnlock        the second look's escalation, at 2+
        *   mostCorroboratedFirst  the order both capped stages spend in
        *
+       * FOUR IS AN UNDERCOUNT, and the fifth is the one that decides whether
+       * any version of this can work. `seenIn` and `foundBy` are not only
+       * gates — they are ARGUMENTS TO THE JUDGEMENT. classify.md renders them
+       * as `{{host}} — how this run found it, {{seenIn}} queries in all:`
+       * over the road list, and then tells the model those roads are evidence
+       * with a direction, to be weighed with the page.
+       *
+       * So a host judged early is judged on a shorter road list and a smaller
+       * number, and the model is instructed to use both. No amount of
+       * deferring the GATES recovers that: the answer itself was formed on
+       * partial evidence. A design that judges early and re-gates at the end
+       * does not reproduce today's map, and cannot be argued into doing so —
+       * whether the difference matters is an empirical question nobody has
+       * measured.
+       *
        * Judge a host at seenIn 2 that the finished search would have put at 8
        * and all four misfire at once. The first is the one that cannot be
        * undone: triage's override exists precisely so a well-corroborated host
@@ -5257,12 +5272,21 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
      * irreversible — they are never judged and never reach the map. The
      * latency would be bought by silently deleting corroborated hosts.
      *
-     * The version that survives is to judge without this gate and apply it at
-     * the END against final `seenIn`. Triage only ever REMOVES hosts from the
-     * judge list, so the map is identical; the cost is the judge calls spent
-     * on hosts that get dropped anyway. That price is unmeasured on a large
-     * anchor — 3% on the one run reporting `hostsFound` against
-     * `hostsJudged`, which is resend and too small to build on.
+     * DEFERRING THIS GATE IS NECESSARY AND NOT SUFFICIENT, and an earlier
+     * version of this comment claimed otherwise. Judging without the gate and
+     * re-applying it at the end against final `seenIn` does hold THIS gate
+     * harmless — triage only ever removes hosts from the judge list. It does
+     * not hold the MAP harmless, because `seenIn` and the road list are
+     * arguments to the classify prompt (see the note on the `seenIn` field
+     * itself, above). Judging early judges on less evidence, whatever the
+     * gates do afterwards.
+     *
+     * What this gate would cost is at least measured, over the 28 runs on
+     * disk carrying `report.triage`: 1,283 of 28,182 hosts skipped, 4.6%
+     * overall, median 4.4% per run, 0.3% to 13.3% across eight anchors. So
+     * judging every host is a few percent more judge calls — cheap against
+     * 25-41% of wall clock. The unmeasured part is not the cost. It is
+     * whether the judgement survives the thinner evidence.
      */
     for (const h of hostList) {
       const v = verdictByHost.get(h.host);

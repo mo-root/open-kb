@@ -40,15 +40,26 @@
  * the exemption exists to protect — the change would buy 25-41% of wall clock
  * by silently deleting corroborated hosts from the map.
  *
- * WHAT SURVIVES THE MEASUREMENT. Triage is a COST optimisation, not a quality
- * gate: it only ever removes hosts from the judge list, so a run that judged
- * every host and applied triage's verdict at the END, against final `seenIn`,
- * produces the same map it does today. That version can overlap safely. Its
- * price is the judge calls spent on hosts triage would have skipped —
- * measured at 3% of hosts on the one run that reports the pair
- * (resend, 281 found / 273 judged), which is a single small anchor and NOT a
- * number to build on. Instrumenting `hostsFound` against `hostsJudged` on a
- * large anchor is what that design needs next, and it costs one run.
+ * WHAT SURVIVES THE MEASUREMENT, corrected. Triage is a COST optimisation
+ * rather than a quality gate — it only ever removes hosts from the judge list
+ * — so deferring it to the end, against final `seenIn`, holds THAT gate
+ * harmless. Its price is already measured, over the 28 runs carrying
+ * `report.triage`: 1,283 of 28,182 hosts skipped, 4.6% overall, median 4.4%,
+ * 0.3% to 13.3% across eight anchors. A few percent more judge calls against
+ * 25-41% of wall clock is a good trade.
+ *
+ * But deferring the gates is NOT sufficient, and the first version of this
+ * header said it was. `seenIn` and the road list are arguments to the
+ * classify prompt, not merely gates: classify.md renders them and tells the
+ * model to weigh the roads as evidence. A host judged early is judged on a
+ * shorter list and a smaller number, so the map differs no matter what the
+ * gates do afterwards.
+ *
+ * The open question is therefore not cost and not safety-by-construction. It
+ * is empirical: does a judgement made on partial evidence agree with one made
+ * on complete evidence? That is measurable — judge a run's hosts at the
+ * halfway point and again at the end, and compare — and it is what this
+ * design needs before anyone writes the concurrency.
  *
  * Rank is model-bound, not fetch-bound, so there is no cheaper version that
  * merely prefetches pages: cloudflare's 337-second rank made 0 unlocker calls
