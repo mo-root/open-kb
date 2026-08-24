@@ -349,7 +349,37 @@ console.log(
 )
 console.log(`kinds     `, count(keep.map((e) => e.kind)))
 console.log(`relations `, count(keep.map((e) => e.relation)))
-console.log(`\n${stats.queries} queries · ${stats.serpCalls} SERP calls · ${stats.results} results`)
+/**
+ * FIRED, not planned — the headline said the wrong one of the two.
+ *
+ * `stats.queries` is the opening hand as PLANNED, and the engine has said so
+ * carefully for a while: `report.queries` is what the wire actually bought,
+ * `report.queued` is the queue, `report.opening` is that plan under its own
+ * name, and the comment beside them says the three must not be mistaken for
+ * each other. This line was the one surface still mistaking them, and it is
+ * the one a person reads after every run.
+ *
+ * The gap is not cosmetic. The search stops at HOST_CEILING rather than at
+ * the end of the plan, so on shopify.com this printed "373 queries" over a
+ * run that fired 147 — off by 2.5x, in the optimistic direction, on the
+ * number every per-query yield in this file is divided by. On stripe.com it
+ * printed 158 over 155 and nothing looked wrong, which is why it survived:
+ * the counters only diverge on the anchors big enough to hit the ceiling.
+ */
+{
+  const r = out!.report as { queries?: number; queued?: number }
+  const fired = typeof r.queries === "number" ? r.queries : stats.queries
+  const queued = typeof r.queued === "number" ? r.queued : stats.queries
+  // Both numbers, always — a run that fired its whole plan should say so
+  // rather than leave a reader wondering whether the tail was cut. The gap is
+  // NOT attributed here: the host ceiling is the usual reason the queue's tail
+  // is abandoned, but a run can also queue more than it fires without ever
+  // reaching the ceiling, and the "stopping the search" line already says so
+  // in the anchor's own words when that is what happened.
+  console.log(
+    `\n${fired} queries fired of ${queued} queued · ${stats.serpCalls} SERP calls · ${stats.results} results`,
+  )
+}
 console.log(`tokens ${stats.tokIn.toLocaleString()} in / ${stats.tokOut.toLocaleString()} out`)
 console.log(`$${stats.usd.toFixed(4)} · ${stats.seconds.toFixed(0)}s`)
 
