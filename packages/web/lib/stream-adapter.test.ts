@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import type { Span } from "@open-kb/core"
-import { adapterFor } from "./stream-adapter"
+import { adapterFor, isNamespace, NAMESPACES } from "./stream-adapter"
 
 /* The identity that was being dropped.
    `emitUi` writes the agent name to `span.agentId`, `readUi` returns only
@@ -57,5 +57,29 @@ describe("adapterFor — narration", () => {
     // did; the `ui:` prefix is what prevents it and this pins that.
     expect(adapterFor("cost")(uiSpan("progress", "plan", { message: "x" }))).toBeNull()
     expect(adapterFor("trace")(uiSpan("agent", "plan", { text: "x" }))).toBeNull()
+  })
+})
+
+/* isNamespace had zero direct test anywhere — grepped every *.test.ts in the
+   repo. It is the one guard between a browser-supplied `?ns=` and `adapterFor`,
+   which switches on its argument as a Namespace with no runtime check of its
+   own: app/api/run/[id]/stream/route.ts calls `isNamespace(nsParam)` and
+   answers 400 on a miss, in both its live and replay paths, and neither path
+   has a route-level test covering that branch either. A regression here — a
+   typo in NAMESPACES, a case-sensitivity slip — would not 400 on a bad `ns`;
+   it would fall through to `adapterFor`'s `default` branch and silently stream
+   nothing, which is a much harder failure to notice than a rejected request. */
+describe("isNamespace", () => {
+  it("accepts exactly the five namespaces adapterFor knows", () => {
+    for (const ns of NAMESPACES) expect(isNamespace(ns)).toBe(true)
+    expect(NAMESPACES).toHaveLength(5)
+  })
+
+  it("rejects null, the empty string, and anything not in the list", () => {
+    expect(isNamespace(null)).toBe(false)
+    expect(isNamespace("")).toBe(false)
+    expect(isNamespace("Progress")).toBe(false) // case-sensitive
+    expect(isNamespace("results ")).toBe(false) // no trimming
+    expect(isNamespace("bogus")).toBe(false)
   })
 })
