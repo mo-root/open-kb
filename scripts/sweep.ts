@@ -18,6 +18,7 @@ import { SpanStream, withSpendCap, queriesThatFit, type Span, type SpendTrip } f
 import { priceForModel } from "../packages/providers/src/index.js"
 import { sweep, readUi, onMap } from "../packages/sweep/src/index.js"
 import { EXIT, fatal } from "./fatal.js"
+import { diagnose } from "./run-doctor.js"
 import {
   CLI_LIMIT_VARS,
   DEFAULT_RUN_CAP_USD,
@@ -615,6 +616,28 @@ const stampedPath = `runs/sweep-${anchor.replace(/\W+/g, "-")}-${stamp}.json`
 const path = freshStampedPath(stampedPath)
 writeFileSync(path, JSON.stringify({ ...out, searched }, null, 2))
 console.log(`\nwrote ${path} (${searched.length} queries logged)`)
+
+/**
+ * WHAT THIS RUN LEFT ON THE TABLE, said here rather than in a file nobody
+ * opens.
+ *
+ * Every check is `scripts/run-doctor.ts`, which carries the thresholds and
+ * what each was measured against. Only gaps and watches print — a clean run
+ * stays quiet — and `unchecked` is deliberately not summarised here, because
+ * a run this binary just wrote is never missing its own fields.
+ */
+if (out) {
+  const notes = diagnose(
+    out.report as unknown as Record<string, unknown>,
+    out.stats as unknown as Record<string, unknown>,
+  )
+  const loud = notes.filter((n) => n.level === "gap" || n.level === "watch")
+  if (loud.length) {
+    console.log("")
+    for (const n of loud) console.log(`  ${n.level === "gap" ? "GAP  " : "watch"} ${n.what.padEnd(20)}${n.detail}`)
+    console.log(`\n  npx tsx scripts/run-doctor.ts   for the norms these are judged against`)
+  }
+}
 
 // A MAP THAT WAS STILL STOPPED. Only reachable when the cap fired during the
 // link phase, which skips on an aborted signal rather than throwing, so the

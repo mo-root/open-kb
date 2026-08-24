@@ -53,12 +53,22 @@ const args = process.argv.slice(2).filter((a) => !a.startsWith("--"))
 const ALL = process.argv.includes("--all")
 
 /** A finding: `level` orders the output, `norm` cites what it is judged against. */
-interface Note { level: "gap" | "watch" | "ok" | "unknown"; what: string; detail: string; norm?: string }
+export interface Note { level: "gap" | "watch" | "ok" | "unknown"; what: string; detail: string; norm?: string }
 
 const pct = (n: number, d: number) => (d ? `${Math.round((100 * n) / d)}%` : "—")
 
-function diagnose(r: Record<string, any>, stats: Record<string, any>): Note[] {
+export function diagnose(r: Record<string, any>, stats: Record<string, any>): Note[] {
   const out: Note[] = []
+  /**
+   * Whether a ceiling was in force, because it changes what a zero MEANS.
+   *
+   * The rival family is dealt last, so under a ceiling its queries are the
+   * first cut — "5 names found, 0 queries fired" is then the budget working
+   * as designed, not a channel that failed. On an uncapped run the same two
+   * numbers would be a real gap. Reporting them the same way would cry wolf
+   * on every web run.
+   */
+  const capped = r.budget?.maxQueries != null
   const absent = (what: string, why: string) =>
     out.push({ level: "unknown", what, detail: `not recorded — ${why}` })
 
@@ -89,7 +99,11 @@ function diagnose(r: Record<string, any>, stats: Record<string, any>): Note[] {
     if (rv.urlsScanned === 0)
       out.push({ level: "gap", what: "rival harvest", detail: "sitemap never read (0 urls scanned) — not 'no comparison pages'" })
     else if (rv.found > 0 && rv.queries === 0)
-      out.push({ level: "gap", what: "rival harvest", detail: `${rv.found} names found from ${rv.urlsScanned} urls, 0 queries fired — the names bought nothing` })
+      out.push(
+        capped
+          ? { level: "watch", what: "rival harvest", detail: `${rv.found} names found from ${rv.urlsScanned} urls, 0 queries fired — the rival family is dealt last and the ${r.budget.maxQueries}-query ceiling reached it first` }
+          : { level: "gap", what: "rival harvest", detail: `${rv.found} names found from ${rv.urlsScanned} urls, 0 queries fired — the names bought nothing, and no ceiling explains it` },
+      )
     else
       out.push({ level: "ok", what: "rival harvest", detail: `${rv.found} names, ${rv.queries} queries, ${rv.reachedMap} reached the map` })
   } else absent("rival harvest", "run predates report.rivals")
@@ -174,6 +188,14 @@ function load(file: string) {
   return { j, notes: diagnose(j.report ?? {}, j.stats ?? {}) }
 }
 
+/**
+ * Only when run as a command. `scripts/sweep.ts` imports `diagnose` to print a
+ * run's findings the moment it finishes, and an import must not go reading the
+ * runs directory or calling process.exit.
+ */
+const invokedDirectly = process.argv[1] ? import.meta.url.endsWith(process.argv[1].split("/").pop() ?? "\0") : false
+if (!invokedDirectly) { /* imported for `diagnose` */ } else {
+
 const files = readdirSync(runsDir).filter((f) => f.startsWith("sweep-") && f.endsWith(".json"))
 if (!files.length) { console.log("no runs in runs/"); process.exit(0) }
 
@@ -219,3 +241,5 @@ for (const level of ["gap", "watch", "unknown", "ok"] as const) {
 }
 console.log(`\n  GAP = something planned did not reach the wire, or was cut short.`)
 console.log(`  —   = the field is absent, which is not the same as zero.\n`)
+
+}
