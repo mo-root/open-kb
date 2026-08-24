@@ -1566,8 +1566,28 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   const MAX_WAVES = Math.max(1, Math.floor(opts.maxWaves ?? 8));
   /** See SweepOptions.minWaves — 0 keeps the model's own judgement. */
   const MIN_WAVES = Math.max(0, Math.floor(opts.minWaves ?? 0));
-  /** A wave adding fewer new hosts than this is reaching ground already covered.
-   *  The harness's backstop for a model that keeps asking while learning nothing. */
+  /**
+   * A wave adding fewer new hosts than this is reaching ground already covered.
+   * The harness's backstop for a model that keeps asking while learning nothing.
+   *
+   * IT HAS NOT FIRED ON ANY RUN MEASURED, and the reason is worth knowing
+   * because MAX_WAVES was deliberately backed off to let it do this job (see
+   * the note above it). `HOST_CEILING` seals the search first, every time.
+   * Across nine run logs on disk, not one carries the "further queries are
+   * buying corroboration" line, and the only log that reaches a widening round
+   * at all shows round 1 adding 173 hosts and round 2 adding 54 — seven times
+   * this floor — before the ceiling sealed at 903.
+   *
+   * So the run stops on a BUDGET before the detector for natural exhaustion
+   * can speak, which means no run on disk has ever told us whether its market
+   * would have run dry. That is the same finding as `HOST_CEILING`'s own note
+   * from the other side: the ceiling is a sizing decision, not the point where
+   * returns die, and it preempts the mechanism that would have measured where
+   * that point is.
+   *
+   * Kept, because a run with a raised or absent ceiling would need it
+   * immediately, and because a floor that never fires costs nothing.
+   */
   const MIN_NEW_HOSTS = Math.max(1, Math.floor(opts.minNewHosts ?? 8));
   /** How many co-occurring pairs to ask a model about. Bounds the linking
    *  stage's cost, and is applied to what is left AFTER the free naming pass
