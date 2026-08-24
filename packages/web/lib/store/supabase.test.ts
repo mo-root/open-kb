@@ -121,6 +121,63 @@ describe("the supabase store", () => {
     expect(await (await load()).listRuns()).toEqual([])
   })
 
+  it("is null when no row matches the id, rather than throwing on the empty array", async () => {
+    vi.stubEnv("SUPABASE_URL", "https://x.supabase.co")
+    vi.stubEnv("SUPABASE_SECRET_KEY", "k")
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("[]", { status: 200 })))
+    expect(await (await load()).getRunRow("no-such-id")).toBeNull()
+  })
+
+  /**
+   * `upsertRun` and `appendSpans` had only the unconfigured path and the
+   * throw path under test — never the configured, 2xx-request-shape path,
+   * nor the branch that logs a non-2xx response instead of throwing (the
+   * write must never end the run over a store hiccup; see `quiet`'s own
+   * doc comment). Coverage gap found sweeping web/lib/store (D-scope:
+   * "areas nobody has swept"), same file SELF-12 already covered for
+   * countRunsSince/claimRun.
+   */
+  describe("upsertRun", () => {
+    it("posts a merge-duplicates upsert with an updated_at stamp", async () => {
+      vi.stubEnv("SUPABASE_URL", "https://x.supabase.co")
+      vi.stubEnv("SUPABASE_SECRET_KEY", "k")
+      const f = vi.fn(async () => new Response("", { status: 201 }))
+      vi.stubGlobal("fetch", f)
+      await (await load()).upsertRun({
+        id: "r1", domain: "a.com", queries: 4, status: "complete", started_at: "2026-08-03T00:00:00Z",
+      })
+
+      const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit]
+      expect(url).toContain("/rest/v1/runs")
+      expect((init.headers as Record<string, string>).Prefer).toContain("resolution=merge-duplicates")
+      const [body] = JSON.parse(init.body as string) as Record<string, unknown>[]
+      expect(body).toMatchObject({ id: "r1", domain: "a.com", status: "complete" })
+      expect(typeof body!.updated_at).toBe("string")
+    })
+
+    it("logs but does not throw when the store answers non-2xx", async () => {
+      vi.stubEnv("SUPABASE_URL", "https://x.supabase.co")
+      vi.stubEnv("SUPABASE_SECRET_KEY", "k")
+      const err = vi.spyOn(console, "error").mockImplementation(() => {})
+      vi.stubGlobal("fetch", vi.fn(async () => new Response("conflict", { status: 409 })))
+      await expect(
+        (await load()).upsertRun({ id: "r1", domain: "a.com", queries: 4, status: "complete", started_at: "x" }),
+      ).resolves.toBeUndefined()
+      expect(err).toHaveBeenCalledWith(expect.stringContaining("upsertRun 409"))
+    })
+  })
+
+  describe("appendSpans", () => {
+    it("logs but does not throw when the store answers non-2xx", async () => {
+      vi.stubEnv("SUPABASE_URL", "https://x.supabase.co")
+      vi.stubEnv("SUPABASE_SECRET_KEY", "k")
+      const err = vi.spyOn(console, "error").mockImplementation(() => {})
+      vi.stubGlobal("fetch", vi.fn(async () => new Response("nope", { status: 500 })))
+      await expect((await load()).appendSpans("r1", [span(0)])).resolves.toBeUndefined()
+      expect(err).toHaveBeenCalledWith(expect.stringContaining("appendSpans 500"))
+    })
+  })
+
   /* A FAILED RUN IS A RUN, and the rule above used to swallow it.
 
      `toStored` returned null for any row with no `result`, and `failRun` never
