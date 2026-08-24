@@ -6918,7 +6918,32 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
        * 366ms — an effective concurrency of 52. Node's fetch applies no
        * per-origin cap worth noticing.
        *
-       * That is the elimination complete, on four free measurements:
+       * MEASURED ON THE WIRE 2026-08-24, and it corrects the paragraph below.
+       * A `--quick` resend.com run, the first with these fields on it:
+       *
+       *   dispatch  { width: 32, peak: 32, mean: 19.6 }
+       *   paced     { queries: 28 of 59, ms: 1_063_363 }
+       *
+       * THE POOL FILLS on the real wire, exactly as the fixture said — peak is
+       * the full width and the mean is 19.6, so nothing in the worker loop
+       * throttles it.
+       *
+       * AND OUR OWN `pace()` FIRES HARD. 28 of 59 queries waited, 1,063
+       * seconds of cumulative wait inside a 139-second search phase. The
+       * elimination below concluded the ceiling was "applied without the
+       * `THROTTLED` message that would let the port see it". That is wrong:
+       * the port sees it and paces deliberately, which is the design working.
+       * What was true is narrower — no run ON DISK AT THE TIME tripped
+       * `THROTTLED`, and all of those predate `pacedMs`, so the conclusion was
+       * drawn from the only evidence available and the evidence was the gap.
+       *
+       * The ceiling is still the account's. What changed is that it is now
+       * visible, and `paced.queries` tells the two cases apart on any future
+       * run: high means the provider throttled us and this client obeyed; zero
+       * on a slow search means look somewhere else.
+       *
+       * The elimination below stands as written for the client-side
+       * candidates, on four free measurements:
        *
        *   the worker pool     fills to its width          (fixture, no network)
        *   our own pacing      never fired at all          (`pacedMs`, no
