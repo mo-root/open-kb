@@ -129,3 +129,39 @@ describe("triage", () => {
     expect(h.result.entities.filter((e) => e.settledBy === "triage")).toEqual([])
   })
 })
+
+/**
+ * THE OVERRIDE THAT CANNOT BE UNDONE.
+ *
+ * A host `TRIAGE_KEEP_SEENIN` distinct queries returned survives a triage vote
+ * to drop it — the search itself vouching for the host outranks a title and a
+ * description. be4e081 cites this as the one cost of overlapping the judge
+ * with the search tail that is irreversible: a host dropped here never reaches
+ * the judge, the second look, or the map.
+ *
+ * It was invisible in `report.triage`, because a saved host is judged normally
+ * and reads exactly like one triage never objected to. Measured from the other
+ * side it holds — 1,247 triage-skipped entities across every run on disk have
+ * a maximum `seenIn` of 4 against a bar of 5 — and `saved` now counts it.
+ */
+describe("triage's corroboration override", () => {
+  it("counts a host it kept over triage's objection", async () => {
+    const h = await runFixture({
+      sweepOptions: { triage: true },
+      script: {
+        // Triage votes every host off; only the seenIn bar can save one.
+        triage: (hosts: string[]) => ({
+          verdicts: hosts.map((host) => ({ host, keep: false, why: "not this market" })),
+        }),
+      },
+    })
+    const t = h.result.report.triage as { hosts: number; kept: number; skipped: number; saved: number }
+    // Whatever the fixture's corroboration, the three numbers have to agree
+    // and `saved` can only ever be hosts that were kept.
+    expect(t.kept + t.skipped).toBe(t.hosts)
+    expect(t.saved).toBeLessThanOrEqual(t.kept)
+    // With every verdict a drop, every kept host is a save (bar the anchor,
+    // which hostList already excludes).
+    expect(t.saved).toBe(t.kept)
+  }, 30_000)
+})

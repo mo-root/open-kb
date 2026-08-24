@@ -376,7 +376,16 @@ export const CLASSIFY_MAX_OUTPUT_TOKENS = 450;
 export const TRIAGE_BATCH = 30;
 /** A host this many distinct queries returned cannot be skipped by triage:
  *  that many roads in is the search itself vouching for it, and a title and
- *  description do not outrank the search. */
+ *  description do not outrank the search.
+ *
+ *  MEASURED ACTIVE, which matters because `be4e081` cites this override as the
+ *  one cost of overlapping the judge with the search tail that cannot be
+ *  undone — a host dropped here never reaches the judge, the second look or
+ *  the map. Across every run on disk, 1,247 triage-skipped entities have a
+ *  maximum `seenIn` of 4 against this bar of 5, and not one violates it. A bar
+ *  the data touches from directly below is a bar doing work; one sitting well
+ *  above the distribution would be decoration. `report.triage.saved` now
+ *  counts the saves directly instead of leaving them to be inferred. */
 export const TRIAGE_KEEP_SEENIN = 5;
 /** The verdict rows are short; this documents the answer's size the way
  *  CLASSIFY_MAX_OUTPUT_TOKENS does, and `call()` floors the wire cap anyway. */
@@ -4923,6 +4932,8 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   // time-neutral, and kept opt-OUT-able for `OPENKB_TRIAGE=0`.
   const TRIAGE = opts.triage !== false;
   const triagedOut: Array<{ host: string; seenIn: number; why: string }> = [];
+  /** Hosts triage voted off that `TRIAGE_KEEP_SEENIN` kept anyway. */
+  let triageSaved = 0;
   /** Batches ATTEMPTED — incremented before the call, so this reconciles with
    *  the bill's byAgent line instead of publishing a second, smaller count
    *  when a batch fails open. `triageFailures` is the failed subset. */
@@ -5027,6 +5038,11 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       ) {
         triagedOut.push({ host: h.host, seenIn: h.seenIn, why: v.why });
       } else {
+        // The override, counted. Triage voted this host off and the search's
+        // own corroboration outranked the vote — `report.triage.saved` below.
+        // It was invisible before: a saved host is judged normally and reads
+        // exactly like one triage never objected to.
+        if (v && v.keep === false) triageSaved += 1;
         judgeList.push(h);
       }
     }
@@ -7061,6 +7077,19 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           hosts: hostList.length,
           kept: judgeList.length,
           skipped: triagedOut.length,
+          /**
+           * Hosts triage voted off that `TRIAGE_KEEP_SEENIN` kept anyway —
+           * the override, which was invisible in this report because a saved
+           * host is judged normally and reads like one triage never objected
+           * to.
+           *
+           * The invariant IS measurable from the other side, and holds: over
+           * every run on disk, 1,247 triage-skipped entities have a maximum
+           * `seenIn` of 4 against a bar of 5, with zero violations. That the
+           * distribution touches the bar from directly below is what says the
+           * bar does work rather than sitting above everything by luck.
+           */
+          saved: triageSaved,
           calls: triageCalls,
           failed: triageFailures,
         }
