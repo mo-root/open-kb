@@ -45,6 +45,34 @@ export function outboundHosts(html: string, pageUrl: string): string[] {
 }
 
 /**
+ * ONE DIRECTORY, SEVEN ROWS — measured, unfixed, and the naive fix is unsafe.
+ *
+ * A map carries every registrable domain it finds, so a directory that runs
+ * per-country mirrors lands once per country. Grouping on-map rows by the
+ * brand label of their registrable domain, on two recent runs:
+ *
+ *   shopify     getapp x7   capterra x7   softwareadvice x4    18 rows
+ *   cloudflare  capterra x4                                     4 rows
+ *
+ * getapp.com.mx, getapp.com.au, getapp.ie, getapp.co.nz, getapp.ca … are one
+ * company. A reader who counts Capterra seven times reads that as sloppiness,
+ * and it is about 1.5% of the map.
+ *
+ * It connects to the unlock decision at judge.ts: this same population is what
+ * the 4xx-walled hosts turn out to BE, because per-country listing mirrors are
+ * the sites that wall a datacentre fetcher hardest.
+ *
+ * FOLDING ON THE BRAND LABEL WOULD BE WRONG, which is why nothing here does
+ * it. The same grouping puts `go.dev` with `go.jp` and `opensource.com` with
+ * `opensource.to` — different owners entirely — beside true mirrors like
+ * `amazon.co.uk`/`amazon.com` and `sourceforge.io`/`sourceforge.net`. A fold
+ * that cannot tell those apart trades seven honest duplicates for a merge that
+ * invents a relationship, which is the trade this file exists to refuse.
+ *
+ * Recorded so the count is known and the trap is known with it.
+ */
+
+/**
  * The gate on a classification. The model still says what a host is; this
  * refuses claims whose evidence does not support them. A refusal downgrades,
  * it never deletes — the caller keeps the node with `because` attached.
