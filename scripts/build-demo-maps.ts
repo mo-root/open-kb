@@ -86,6 +86,29 @@ const TO = join(ROOT, "demo", "maps")
  * decomposition already computed. Left unbuilt: it needs an A/B, and
  * `scripts/recall.ts --by family` shows a single run cannot judge one.
  */
+/**
+ * EVERY PICK BELOW PREDATES THE 2026-08-24 CHANGES, and refreshing them is a
+ * judgement call rather than an obvious win — which is why it has not been
+ * made here.
+ *
+ * cloudflare.com is the one anchor with a run on both sides of those changes,
+ * so it is the honest sample:
+ *
+ *                        stats.kept  placed rows  edges  snippet-guessed
+ *   2026-08-23 (picked)        1122         1111   3343              144
+ *   2026-08-24                 1165         1056   2834               38
+ *
+ * The new map is more honest and visibly smaller. 106 rows that were guessed
+ * from a search snippet are gone, 32 of them replaced by rows a real page
+ * settled — but the net is 55 fewer placed entities and 509 fewer edges,
+ * because a withheld row cannot be one end of a pair.
+ *
+ * Which of those a gallery should show is a product question. A visitor
+ * counts nodes and edges; a buyer who checks ten rows finds fewer wrong ones.
+ * The `because` lines here quote entity counts, so refreshing means those
+ * numbers go DOWN while the maps get better, and someone has to want that
+ * trade before it ships. The runs are on disk either way.
+ */
 const PICKS: { file: string; because: string }[] = [
   { file: "sweep-shopify-com-20260823201634.json", because: "1,236 entities — commerce, and the first map built off four strip terms" },
   { file: "sweep-openai-com-20260823191503.json", because: "1,194 entities — the AI field, 3,201 edges" },
