@@ -1734,6 +1734,28 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
        *  the run's host. Only `understand` uses it — see `understandByCall`,
        *  which deliberately spreads its asks across hosts that disagree. */
       sort?: "throughput" | "latency" | "price";
+      /**
+       * Let a TIMEOUT stand rather than buying a second one.
+       *
+       * The retry below is worth its price for a schema miss — that fails in
+       * seconds and usually succeeds on the second try with more room. A
+       * timeout is a different animal: it costs the FULL ceiling again, on
+       * the route that just proved too slow, and for `understand` that is
+       * 180 seconds twice.
+       *
+       * MEASURED on cloudflare.com, where the phase reported "no answer in
+       * 180s, retrying once" at 182s and finished at 362s — six minutes of a
+       * thirty-minute run, spent on one ask while the other two sat already
+       * answered behind `Promise.all`. shopify.com hit the same 182s line.
+       *
+       * Only a caller that can survive the loss should pass this, which is
+       * why it is opt-in rather than the default: `understandByCall` asks
+       * three times and keeps the middle, and its even-count rule was made
+       * deliberate for exactly the case where one ask is missing. If all
+       * three are lost it still falls back to a single retrying ask, so the
+       * safety net is one layer down rather than gone.
+       */
+      acceptTimeout?: boolean;
     } = {},
   ): Promise<z.infer<T>> {
     const started = Date.now();
@@ -2053,6 +2075,13 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         ((e as Error).name === "TimeoutError" ||
           (e as Error).name === "AbortError" ||
           /aborted due to timeout/i.test(String((e as Error).message ?? "")));
+      if (timedOut && opts.acceptTimeout) {
+        say(
+          agent === "understand" ? "understand" : agent === "link" ? "link" : "sweep",
+          `  ${label}: no answer in ${Math.round(timeoutMs / 1000)}s, and the other asks answer for it`,
+        );
+        throw e;
+      }
       if (empty || timedOut) {
         say(
           // Triage, the second look and drop-confirm narrate on the rank
@@ -2457,7 +2486,13 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    * failing ask no longer ends the run: the others answer for it, and only an
    * empty set falls through to `call()`'s own retry.
    */
-  const understandOnce = (sort?: "throughput" | "latency" | "price") =>
+  const understandOnce = (
+    sort?: "throughput" | "latency" | "price",
+    /** One of several concurrent asks, so a timeout can be let go — see
+     *  `acceptTimeout`. The lone fallback ask below passes nothing and keeps
+     *  the retry, because there is nothing else left to answer for it. */
+    oneOfSeveral = false,
+  ) =>
     call(
       "understand",
       `read ${anchor} — ${pages.length} page${pages.length === 1 ? "" : "s"}`,
@@ -2469,7 +2504,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           : "(none found: no sitemap or nav gave product urls, so work from the pages above)",
       }),
       // Worth thinking about: everything downstream descends from these sentences.
-      { think: "medium", maxOutputTokens: 8_000, sort },
+      { think: "medium", maxOutputTokens: 8_000, sort, acceptTimeout: oneOfSeveral },
     );
 
   /**
@@ -2509,7 +2544,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     if (UNDERSTAND_ASKS <= 1) return understandOnce();
     const asks = await Promise.all(
       Array.from({ length: UNDERSTAND_ASKS }, (_, i) =>
-        understandOnce(UNDERSTAND_ROUTES[i % UNDERSTAND_ROUTES.length]).then(
+        understandOnce(UNDERSTAND_ROUTES[i % UNDERSTAND_ROUTES.length], true).then(
           (d) => d,
           // A refusal is one vote lost, not a dead run — unless every one of
           // them refuses, which falls through to the single-ask path below so

@@ -267,6 +267,33 @@ describe("reading the company more than once", () => {
     expect(h.result.decomposition.products).toHaveLength(8)
   }, 30_000)
 
+  it("does not buy a second timeout — the other asks answer for the slow one", async () => {
+    /**
+     * A schema miss is worth retrying: it fails in seconds. A timeout costs
+     * the FULL ceiling again on the route that just proved too slow, and
+     * understand's ceiling is 180 seconds. Measured on cloudflare.com, the
+     * phase said "no answer in 180s, retrying once" at 182s and finished at
+     * 362s — six minutes of a thirty-minute run, spent on one ask while the
+     * other two sat already answered behind `Promise.all`.
+     */
+    let ask = 0
+    const h = await runFixture({
+      script: {
+        understand: () => {
+          if (++ask === 1) {
+            const e = new Error("aborted due to timeout")
+            e.name = "TimeoutError"
+            throw e
+          }
+          return decomp(5)
+        },
+      },
+    })
+    // Three asks, one of them lost. A retry of the timeout would make four.
+    expect(h.calls.filter((c) => c.phase === "understand")).toHaveLength(3)
+    expect(h.result.decomposition.products).toHaveLength(5)
+  }, 30_000)
+
   it("survives an ask that fails outright — the others answer for it", async () => {
     let ask = 0
     const h = await runFixture({
