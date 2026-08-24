@@ -249,6 +249,19 @@ function fm(pairs: Array<[string, unknown]>): string {
  * "the main integrations" would be reading noise. Worth a look on its own; not
  * a thing `tierSort` can fix, since the instability is in the input.
  *
+ * THE CAUSE is that the list has no head. 45 of shopify's 60 integration rows
+ * sit at `seenIn` 1 and the maximum is 4, so the top ten is drawn from a pool
+ * that mostly ties and the slug decides. `competitor` has the same median and
+ * reaches 23, which is why its head is steady while its tail is not.
+ *
+ * A HEADER WARNING FOR THIS WAS TRIED AND REVERTED. Two rules, neither of
+ * which discriminates: "most rows carry a single road" fires on `competitor`
+ * too — 156 of its 236 — whose head is genuinely ranked; and "the head itself
+ * is tied" fires on neither, because integration's top ten does vary, 4-3-2-2-1.
+ * What separates them is the RANGE, a top row of 23 against one of 4, and a
+ * threshold on that fitted to the two anchors this branch has run would be a
+ * guess wearing a number. The measurement ships; the rule needs more anchors.
+ *
  * EXERCISED ACROSS FIVE ANCHORS, because "the shopify list looks right" is one
  * list. The head of `relations/competitor.md` on each:
  *
