@@ -118,6 +118,12 @@ const GATES = [
     opens: "a non-root uid on a filesystem with mode bits — `chmod` has to actually bite",
     why: "builds EACCES with `chmod 000` rather than mocking fs, and root bypasses the permission check outright while Windows has no mode bits worth the name; on either the fixture is an ordinary readable directory and every assertion about a refusal passes for the wrong reason",
   },
+  {
+    file: "tests/run-doctor.test.ts",
+    suite: "survives every run file, across every engine version that wrote one",
+    opens: "runs/sweep-*.json — more than 20 real sweep outputs",
+    why: "diagnoses every run file on disk; `runs/` is gitignored, so a clean checkout has none and the >20 floor can never be met",
+  },
 ]
 
 /**
