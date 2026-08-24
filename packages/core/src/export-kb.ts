@@ -897,9 +897,31 @@ ${trustRules.join("\n")}
   // manifest.json
   const manifest = {
     anchor,
+    /**
+     * KEYED ORDER, RANKING CARRIED AS DATA.
+     *
+     * The rows stay sorted by key so a diff between two manifests is readable
+     * and a consumer can bisect. What was missing is the ranking itself:
+     * relation lists learned to sort by `seenIn` (see `tierSort`), SKILL.md
+     * now tells a reader "the head of each list is what this market points at
+     * hardest", and an agent following that same file to `manifest.json` for
+     * "programmatic access" had no way to reproduce it. Two documented paths
+     * into one map, giving different answers about which rivals matter.
+     *
+     * Emitted only where the run recorded it, so a map exported without
+     * `seenIn` keeps exactly the shape it had. `tier` stays even though every
+     * sweep row is null — it is the swarm's field and a swarm export means it.
+     */
     entities: [...bySlug.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([slug, e]) => ({ key: slug, path: `entities/${slug}.md`, name: e.name, relation: e.relation, tier: e.tier ?? null })),
+      .map(([slug, e]) => ({
+        key: slug,
+        path: `entities/${slug}.md`,
+        name: e.name,
+        relation: e.relation,
+        tier: e.tier ?? null,
+        ...(typeof e.seenIn === "number" ? { seenIn: e.seenIn } : {}),
+      })),
     files: [...files.map((f) => f.path), "manifest.json"].sort(),
   }
   files.push({ path: "manifest.json", content: JSON.stringify(manifest, null, 2) + "\n" })

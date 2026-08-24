@@ -375,6 +375,41 @@ describe("an untiered run says nothing about tiers", () => {
   })
 })
 
+describe("the manifest carries the ranking the relation lists use", () => {
+  it("emits seenIn where the run recorded it, so both access paths agree", () => {
+    /**
+     * SKILL.md sends a human to relations/competitor.md, now ordered by
+     * `seenIn`, and an agent to manifest.json for "programmatic access". The
+     * manifest carried no ranking at all, so the two paths into one map gave
+     * different answers about which rivals matter.
+     */
+    const files = exportKbFiles({
+      anchor: "clerk.com",
+      entities: [
+        { name: "Aardvark", domain: "aardvark.example", kind: "company", relation: "competitor", what: "A rival.", why: "Same buyer.", seenIn: 1 },
+        { name: "Zebra", domain: "zebra.example", kind: "company", relation: "competitor", what: "A rival.", why: "Same buyer.", seenIn: 19 },
+      ],
+    })
+    const manifest = JSON.parse(files.find((f) => f.path === "manifest.json")?.content ?? "{}")
+    const by = Object.fromEntries(manifest.entities.map((e: { key: string; seenIn?: number }) => [e.key, e.seenIn]))
+    expect(by["zebra-example"]).toBe(19)
+    expect(by["aardvark-example"]).toBe(1)
+    // The manifest itself stays key-sorted so a diff between two is readable;
+    // the ranking travels as data, not as row order.
+    const keys = manifest.entities.map((e: { key: string }) => e.key)
+    expect(keys).toEqual([...keys].sort())
+  })
+
+  it("omits seenIn entirely on a map that never recorded it", () => {
+    const files = exportKbFiles({
+      anchor: "clerk.com",
+      entities: [{ name: "A", domain: "a.example", kind: "company", relation: "competitor", what: "A rival." }],
+    })
+    const manifest = JSON.parse(files.find((f) => f.path === "manifest.json")?.content ?? "{}")
+    expect("seenIn" in manifest.entities[0]).toBe(false)
+  })
+})
+
 describe("unknown.md hoists a reason its rows all share", () => {
   const withheld = (slug: string, rel: string) => ({
     name: slug, domain: `${slug}.example`, kind: "company", relation: "unknown",
