@@ -139,8 +139,15 @@ export const MEASURED_PHASE_COSTS: PhaseCosts = {
    * 59 queries waited, 1,063s of cumulative pacing). Rank costs less, and
    * fewer hosts arrive per query than assumed. Net, `secondsPerQuery` reads
    * 9.59 here against roughly 4.3-6.3 measured, so the budget is something
-   * like 1.5-2x conservative — 18 queries on the web's 270s clock where the
-   * measurements suggest 30-40 would fit.
+   * like 1.5-2x conservative — 18 queries on the web's 270s clock at the
+   * default rank width where the measurements suggest 30-40 would fit.
+   *
+   * THAT ESTIMATE HELD. The first deadline-bound run, at the width this
+   * repo's .env actually sets, fit 43 queries into that 270-second clock in
+   * 214 seconds. The re-measured figures were the better guide and the
+   * shipped model was the conservative one, exactly as this paragraph
+   * guessed — which is a reason to trust the table above, not to retune on
+   * one run.
    *
    * NOT RETUNED, and the reason is the asymmetry rather than the sample size.
    * Too small a budget costs map size, which degrades gracefully and is the

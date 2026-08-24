@@ -7315,10 +7315,14 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
      * WHAT THE CLOCK MODEL PREDICTED, BESIDE WHAT IT COST.
      *
      * `queriesThatFit` sizes every deadline-bound run — the web route turns a
-     * 270-second budget into 18 queries with it — and nothing has ever checked
-     * the model against a finished run. Re-measured by hand on 2026-08-24 it
-     * is 1.5-2x conservative, every term off in both directions (see
-     * MEASURED_PHASE_COSTS in core/clock.ts for the table).
+     * 270-second budget into 18 or 43 queries with it, depending on the rank
+     * width the deployment sets — and when this field was added nothing had
+     * ever checked the model against a finished run. Re-measured by hand on
+     * 2026-08-24 it is 1.5-2x conservative, every term off in both directions
+     * (see MEASURED_PHASE_COSTS in core/clock.ts for the table).
+     *
+     * It has since been checked by the field itself: the first deadline-bound
+     * run predicted 502 seconds and took 214.
      *
      * That check should not need a person. `predictedSeconds` is
      * `runSeconds(queries)` under the shipped costs; `actualSeconds` is what

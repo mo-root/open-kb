@@ -579,7 +579,9 @@ describe("the per-run cap stops a run that is overspending, mid-run", () => {
       expect(cap - tripAtUsd(cap)).toBeGreaterThanOrEqual(0.05)
     }
     // And the trip still clears the worst run of its own size, or the cap would
-    // be stopping healthy maps. 18 queries is what a 300s host affords.
+    // be stopping healthy maps. 18 queries is what a 300s host affords at
+    // the DEFAULT rank width of 8; OPENKB_RANK_CONCURRENCY moves it (24
+    // yields 43, measured), so this figure is the floor, not the shape.
     expect(tripAtUsd(defaultRunCapUsd(18))).toBeGreaterThan(runUsd(18) * 1.25)
   })
 
