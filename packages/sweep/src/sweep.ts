@@ -2822,6 +2822,30 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           ? ` and ${d.integrations.length} integrations from the docs`
           : ""),
     );
+    /**
+     * THE ONLY AUTHORITATIVE INTEGRATION SOURCE THIS ENGINE HAS, and it stops
+     * here — narrated to the panel and stored on `discoveryFacts`, never turned
+     * into a query or an entity.
+     *
+     * The consequence is measured. On a default run these do not exist at all
+     * (`opts.discovery !== "agent"` returns two hundred lines above, and the
+     * CLI only sets it under OPENKB_DISCOVERY=agent), so every `integration`
+     * row on every map in `runs/` arrived by search accident. It shows: 45 of
+     * shopify's 60 integration rows sit at `seenIn` 1 with a maximum of 4, and
+     * their roads are generic — "commerce api", "mock storefront api",
+     * "XEPOS vs Venmo". Two full runs of that anchor share 1.8 of their top
+     * ten integrations, against 5.2 for competitors.
+     *
+     * So the relation with the worst reproducibility on the map is the one
+     * whose best evidence the engine already fetches and discards. The shape
+     * of the fix exists next door: `rivals` harvests names off the anchor's own
+     * comparison URLs on the DEFAULT path, fires queries for them, and reports
+     * `rivals.reachedMap`. An integrations equivalent would give this relation
+     * a head instead of a tie at one.
+     *
+     * Not built here: it needs a real run to validate and this branch's budget
+     * is spent. Specified rather than guessed at.
+     */
     for (const i of d.integrations)
       think("understand", `integration — ${i.with}: ${i.does} (${i.foundAt})`);
 
