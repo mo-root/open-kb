@@ -76,6 +76,37 @@ describe("listicle harvest", () => {
     expect(stats.queriesFired).toBe(1)
   })
 
+  it("puts the vendor several roundups agree on ahead of the one mentioned once", async () => {
+    /**
+     * `rivalHand` spends two thirds of its budget on the FIRST names it is
+     * handed, so on a real harvest the order decides who gets asked about at
+     * all: one shopify run named 54 vendors, 14 got a query, and the model's
+     * category-grouped order spent the whole prefix on point-of-sale — cutting
+     * Adobe Commerce and Magento, the second and third most corroborated names
+     * in its own list.
+     */
+    const twoRoundups = (): Record<string, SearchHit[]> => ({
+      ...SERP,
+      "log search alternatives": [
+        ...SERP["log search alternatives"]!,
+        { url: "https://r1.example/", title: "Best log search alternatives", description: "Zetalog and Quarrylog both made this best-of list." },
+        { url: "https://r2.example/", title: "Top 5 log search alternatives", description: "Quarrylog leads this comparison." },
+      ],
+    })
+    const h = await runFixture({
+      sweepOptions: { listicleHarvest: true },
+      serp: twoRoundups(),
+      // Alpha-order puts Quarrylog second; two roundups name it and one names
+      // Zetalog, so corroboration must overturn the order it was written in.
+      script: { listicle: () => ({ vendors: ["Zetalog", "Quarrylog"] }) },
+    })
+    const q = h.asked.indexOf("Quarrylog alternatives")
+    const z = h.asked.indexOf("Zetalog alternatives")
+    expect(q).toBeGreaterThanOrEqual(0)
+    expect(z).toBeGreaterThanOrEqual(0)
+    expect(q).toBeLessThan(z)
+  })
+
   it("a vendor already on the map buys no query at all", async () => {
     const h = await runFixture({
       sweepOptions: { listicleHarvest: true },

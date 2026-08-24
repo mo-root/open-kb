@@ -4445,6 +4445,50 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           (v) => !knownLabel(v) && !banned(v, "rival", anchorBanName, banCoinages),
         );
         listicleVendorsFound = fresh.length;
+        /**
+         * MOST-MENTIONED FIRST, because this cap cuts hard and the model's
+         * own order is thematic rather than ranked.
+         *
+         * `rivalHand(fresh, LISTICLE_MAX_QUERIES)` only ever touches
+         * `fresh.slice(0, 14)` — two thirds of the budget goes to
+         * `<name> alternatives` and the rest to `vs` pairs drawn from the
+         * same prefix — so 14 of the 54 names one shopify run harvested got
+         * a query and 40 got nothing.
+         *
+         * Which 14 was decided by the order the model happened to write them
+         * in, and that order groups by category. On that run it listed
+         * fourteen point-of-sale vendors, then four tax vendors, then the
+         * ecommerce platforms — so the prefix was spent entirely on POS and
+         * tax, and Adobe Commerce (21st), Magento (22nd) and Medusa (23rd)
+         * were cut. Those are shopify's most direct rivals, and Magento and
+         * Adobe Commerce were the second and third MOST corroborated names in
+         * the whole list.
+         *
+         * The corroboration is free and the run already paid for it: how many
+         * of the scanned roundup rows name the vendor. Across that harvest it
+         * ran 6 for Square POS, 5 for Magento, 3 for Adobe Commerce and 1 for
+         * most of the tail, which is enough to lift the handful that several
+         * roundups agree on above the ones a single row mentioned in passing.
+         *
+         * Substring matching, deliberately crude: these are names read off
+         * the same rows they are being counted in, so a name that appears at
+         * all appears verbatim. It is a tie-break on an existing list, not a
+         * gate — a name matched zero times keeps its place in the order the
+         * model gave it, behind the ones that were corroborated.
+         */
+        const mentions = new Map<string, number>();
+        for (const v of fresh) {
+          const needle = v.toLowerCase();
+          mentions.set(
+            v,
+            roundupRows.filter((h) =>
+              `${h.title} ${h.description ?? ""}`.toLowerCase().includes(needle),
+            ).length,
+          );
+        }
+        // Stable: `sort` preserves the model's order inside a tie, and most of
+        // the tail ties at one mention.
+        fresh.sort((a, b) => (mentions.get(b) ?? 0) - (mentions.get(a) ?? 0));
         if (fresh.length > 0) {
           // The SAME machinery a name the anchor's own sitemap publishes
           // already gets — see `rivalHand` — not a second query-shape
