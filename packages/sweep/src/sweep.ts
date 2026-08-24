@@ -5356,11 +5356,18 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     );
     // Most corroborated first, for the reason set out at
     // `mostCorroboratedFirst`: sliced in array order this cap spent its sixty
-    // questions on the least-surfaced hosts the run found. The cap binds on
-    // 4 of 10 recent runs — 94, 155, 172 and 338 dropped hosts against sixty
-    // slots — so on those runs the order decided most of what got re-asked.
-    // A host many queries surfaced and ranked well, that the model then ruled
-    // off the map entirely, is the more consequential refusal to re-examine.
+    // questions on the least-surfaced hosts the run found. A host many queries
+    // surfaced and ranked well, that the model then ruled off the map
+    // entirely, is the more consequential refusal to re-examine.
+    //
+    // A LATENT FIX, and worth saying so. This stage is opt-in — `DROP_CONFIRM`
+    // is `opts.dropConfirm === true`, which the CLI sets only under
+    // OPENKB_DROP_CONFIRM=1 — so it ran on none of the runs on disk. The
+    // "94, 155, 172 and 338 dropped hosts against sixty slots" that first
+    // argued for this are counts of the candidates it WOULD have had, not of
+    // questions it actually asked badly. The ordering bug was real and is
+    // fixed; its cost so far has been zero, and it would have been paid the
+    // first time anyone turned the stage on.
     const candidates = mostCorroboratedFirst(
       dropped.map((e) => ({
         e,
