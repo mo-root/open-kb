@@ -42,6 +42,23 @@
  * says the remaining inflated rows are the smaller prize. The bigger one is
  * the shopify map with no magento, prestashop, saleor or vtex in it.
  *
+ * ONE CAUSE OF THAT ROW IS NOW KNOWN, found on 2026-08-24 and fixed in
+ * sweep.ts's listicle harvest. The harvest DID find Magento — a roundup row
+ * named it and five of the scanned rows corroborated it, second only to
+ * Square POS in its own list — and then the cap dropped it. `rivalHand`
+ * only ever queries the first 14 names it is handed, and the model wrote
+ * them grouped by category: fourteen point-of-sale vendors, then tax, then
+ * the ecommerce platforms. Magento sat at position 22 and never got a query
+ * on either run checked. The maps carry seven vendors from its ECOSYSTEM
+ * (Meetanshi, Mageplaza, Amasty, Magestore, Webkul...) and not the platform
+ * itself.
+ *
+ * So this row was discovery failing at the last step rather than at the
+ * first: the name was surfaced, corroborated, and then cut by an ordering
+ * nobody chose. Worth knowing before reading the table as "the search never
+ * finds these" — for at least one of the four, it did. Whether the fix moves
+ * this row is the check to run next; it is not claimed here.
+ *
  * openai.com is where that shows most, and it also demonstrates the trap in
  * reading this table without checking run size: it first scored 36% found on a
  * run that stopped at 651 entities, and 55% on a re-run that reached 1,194.
