@@ -119,6 +119,57 @@ describe("the comparison urls a company publishes about itself", () => {
     }
   })
 
+  it("finds the sitemap robots.txt names when the conventional path 404s", async () => {
+    /**
+     * `/sitemap.xml` is a convention, not a rule. stripe.com 404s there and
+     * names `/sitemap/sitemap.xml` in robots.txt; sentry.io names
+     * `/sitemap-index.xml`. Those two anchors are exactly the two that
+     * reported `rivals.found: 0` — stripe on all three of its runs — which was
+     * being read as "publishes no comparison pages" when nothing had been read
+     * at all.
+     */
+    const h = await runFixture({
+      fetchTable: {
+        // The conventional path is absent, as it is on stripe.com.
+        [`https://${ANCHOR}/robots.txt`]: {
+          httpStatus: 200,
+          contentType: "text/plain",
+          body: `User-agent: *\nSitemap: https://${ANCHOR}/sitemap/sitemap.xml\n`,
+        },
+        [`https://${ANCHOR}/sitemap/sitemap.xml`]: {
+          httpStatus: 200,
+          contentType: "application/xml",
+          body: SITEMAP,
+        },
+      },
+    })
+    const rv = h.result.report.rivals as { found: number; urlsScanned: number }
+    expect(rv.urlsScanned).toBeGreaterThan(0)
+    expect(rv.found).toBe(4)
+  }, 30_000)
+
+  it("does not follow a robots.txt sitemap pointing at another host", async () => {
+    // robots.txt is the anchor's own file, but a `Sitemap:` line pointing
+    // off-site is not something to follow on its say-so.
+    const h = await runFixture({
+      fetchTable: {
+        [`https://${ANCHOR}/robots.txt`]: {
+          httpStatus: 200,
+          contentType: "text/plain",
+          body: `Sitemap: https://elsewhere.example/sitemap.xml\n`,
+        },
+        "https://elsewhere.example/sitemap.xml": {
+          httpStatus: 200,
+          contentType: "application/xml",
+          body: SITEMAP,
+        },
+      },
+    })
+    const rv = h.result.report.rivals as { found: number; urlsScanned: number }
+    expect(rv.urlsScanned).toBe(0)
+    expect(rv.found).toBe(0)
+  }, 30_000)
+
   it("separates an anchor with no comparison pages from a run with no sitemap", async () => {
     /**
      * `found: 0` had two readings and no way to tell them apart. stripe.com is

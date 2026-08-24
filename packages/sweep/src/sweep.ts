@@ -2444,6 +2444,41 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
 
     let candidates = [] as ReturnType<typeof candidatesFromSitemap>;
     let xml = await raw(`https://${anchor}/sitemap.xml`);
+    /**
+     * ROBOTS.TXT NAMES THE SITEMAP, and for some anchors it is the only thing
+     * that does. `/sitemap.xml` is a convention, not a rule, and the runs on
+     * disk show exactly what assuming it costs:
+     *
+     *   stripe.com    /sitemap.xml 404s; robots names /sitemap/sitemap.xml
+     *   sentry.io     404s;              robots names /sitemap-index.xml
+     *   vercel.com    /sitemap.xml works
+     *   supabase.com  works
+     *   shopify.com   works — 557 urls, 40 comparison-shaped
+     *
+     * And the correlation with the rival harvest is exact: those two anchors
+     * are the two that reported `rivals.found: 0`, stripe on all three of its
+     * runs. Not "publishes no comparison pages", which is what that zero was
+     * being read as — nothing was ever read. `urlsScanned` (added beside
+     * `found`) is what makes the two cases distinguishable at all.
+     *
+     * One extra free fetch, and only when the conventional path came back
+     * empty. Same registrable host required: robots.txt is the anchor's own
+     * file, but a `Sitemap:` line pointing off-site is not something to follow
+     * on its say-so.
+     */
+    if (!xml) {
+      const robots = await raw(`https://${anchor}/robots.txt`);
+      const named = /^[ \t]*sitemap:[ \t]*(\S+)/im.exec(robots)?.[1];
+      if (named) {
+        let sameHost = false;
+        try {
+          sameHost = registrableHost(new URL(named).hostname) === registrableHost(anchor);
+        } catch {
+          sameHost = false;
+        }
+        if (sameHost) xml = await raw(named);
+      }
+    }
     // A sitemap of sitemaps: follow the children, ALL of them, and read their
     // bodies as one file. Following only the first `<loc>` let alphabetical
     // order decide what a run read — on resend.com that was the blog sitemap,
