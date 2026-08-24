@@ -573,8 +573,45 @@ export function exportKbFiles(run: ExportRunLike): ExportedFile[] {
     byRelation.set(e.relation, list)
   }
   for (const [rel, list] of [...byRelation.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-    const rows = [...list].sort(tierSort).map((e) => {
-      const extra = e.relation === "unknown" && e.because ? ` — ${e.because}` : ""
+    const sorted = [...list].sort(tierSort)
+    /**
+     * ONE EXPLANATION AT THE TOP, NOT ON EVERY ROW.
+     *
+     * `relations/unknown.md` is the file the README sends a reader to for
+     * "what the run refused to guess", and the snippet gate grew it from
+     * roughly ten rows to a hundred. Every one of those hundred ended with the
+     * same thirty words — "a call that the host's own page bears out less than
+     * 80% of the time, so the relation is withheld rather than guessed" — so
+     * the file became 90% one repeated sentence, and the two things that
+     * actually differ per row (which relation was withheld, and how the page
+     * failed) were buried in the middle of it.
+     *
+     * The shared tail is lifted to a line under the heading and stripped from
+     * the rows that carry it. Computed rather than hardcoded: the longest
+     * common suffix beginning at a sentence break, taken only when it is long
+     * enough to be worth hoisting and shared by more than half the rows. A
+     * future `because` phrasing needs no change here, and a list whose rows
+     * genuinely differ keeps every word where it was.
+     */
+    const becauses = sorted.map((e) => (e.relation === "unknown" ? (e.because ?? "") : "")).filter(Boolean)
+    let shared = ""
+    if (becauses.length > 2) {
+      let cand = becauses[0]!
+      for (const b of becauses) {
+        let i = 0
+        while (i < cand.length && i < b.length && cand[cand.length - 1 - i] === b[b.length - 1 - i]) i += 1
+        cand = cand.slice(cand.length - i)
+      }
+      // Trim to a clean sentence start so the hoisted line reads as prose.
+      const cut = cand.search(/[a-z(]/)
+      const trimmed = cut > 0 ? cand.slice(cut) : cand
+      const carriers = becauses.filter((b) => b.endsWith(trimmed)).length
+      if (trimmed.length >= 40 && carriers > becauses.length / 2) shared = trimmed
+    }
+    const rows = sorted.map((e) => {
+      const raw = e.relation === "unknown" && e.because ? e.because : ""
+      const own = shared && raw.endsWith(shared) ? raw.slice(0, raw.length - shared.length).replace(/[\s—–-]+$/, "") : raw
+      const extra = own ? ` — ${own}` : ""
       return `- [[${slugOf(e)}]]${e.tier ? ` (${e.tier})` : ""}${extra}`
     })
     const order = tiered
@@ -582,7 +619,7 @@ export function exportKbFiles(run: ExportRunLike): ExportedFile[] {
       : "Ordered by how many distinct queries surfaced each host, most first."
     const head =
       rel === "unknown"
-        ? `# unknown\n\nThese are refusals, not absences: each claim failed an evidence bar and\nwears the reason. Resolving one means fetching better evidence, not deleting\nthe row.\n`
+        ? `# unknown\n\nThese are refusals, not absences: each claim failed an evidence bar and\nwears the reason. Resolving one means fetching better evidence, not deleting\nthe row.\n${shared ? `\nMost of these share one reason: ${shared}\n` : ""}`
         : `# ${rel}\n\n${order}\n`
     files.push({ path: `relations/${rel}.md`, content: `${head}\n${rows.join("\n")}\n` })
   }

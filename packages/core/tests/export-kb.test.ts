@@ -368,6 +368,50 @@ describe("an untiered run says nothing about tiers", () => {
   })
 })
 
+describe("unknown.md hoists a reason its rows all share", () => {
+  const withheld = (slug: string, rel: string) => ({
+    name: slug, domain: `${slug}.example`, kind: "company", relation: "unknown",
+    what: "A vendor of some kind.",
+    because: `its front page could not be read this run (http-403), and the search results read as ${rel} — a call that the host's own page bears out less than 80% of the time, so the relation is withheld rather than guessed`,
+  })
+
+  it("lifts the shared tail to the heading and leaves what differs on the row", () => {
+    /**
+     * The snippet gate grew this file from ~10 rows to ~100, and every one
+     * ended with the same thirty words. The two things that differ per row —
+     * which relation was withheld, how the page failed — were buried mid
+     * sentence.
+     */
+    const files = exportKbFiles({
+      anchor: "clerk.com",
+      entities: [withheld("a", "competitor"), withheld("b", "adjacent"), withheld("c", "covers")],
+    })
+    const md = files.find((f) => f.path === "relations/unknown.md")?.content ?? ""
+    expect(md).toContain("Most of these share one reason: a call that the host's own page bears out")
+    // Said once, not once per row.
+    expect(md.split("bears out less than 80%").length - 1).toBe(1)
+    // And each row still carries its own two facts.
+    expect(md).toContain("[[a-example]] — its front page could not be read this run (http-403), and the search results read as competitor")
+    expect(md).toContain("read as adjacent")
+    expect(md).toContain("read as covers")
+  })
+
+  it("leaves rows alone when they share nothing worth hoisting", () => {
+    const files = exportKbFiles({
+      anchor: "clerk.com",
+      entities: [
+        { name: "A", domain: "a.example", kind: "company", relation: "unknown", what: "x", because: "its front page links 40 distinct vendor domains" },
+        { name: "B", domain: "b.example", kind: "company", relation: "unknown", what: "x", because: "nothing on its own site says it does this" },
+        { name: "C", domain: "c.example", kind: "company", relation: "unknown", what: "x", because: "the page answered as another brand entirely" },
+      ],
+    })
+    const md = files.find((f) => f.path === "relations/unknown.md")?.content ?? ""
+    expect(md).not.toContain("Most of these share one reason")
+    expect(md).toContain("its front page links 40 distinct vendor domains")
+    expect(md).toContain("nothing on its own site says it does this")
+  })
+})
+
 describe("receiptSource — which text a quote came from", () => {
   it("says the page when nothing downgraded the row", () => {
     expect(receiptSource(undefined)).toBe("its page this run")
