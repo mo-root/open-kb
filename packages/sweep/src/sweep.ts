@@ -404,6 +404,30 @@ export const TRIAGE_MAX_OUTPUT_TOKENS = 2_000;
  *  23-260 `unknown` rows each, and every one over this cap would cost a fetch
  *  and a classify call on a host the front page already refused once — sixty
  *  bounds the stage to roughly what one triage pass costs. */
+/**
+ * NONE OF THIS FILE'S CAPS BIND ON A SMALL RUN, which decides whether the
+ * ordering fixes of 2026-08-24 reach the product at all.
+ *
+ * Measured on the two runs that bracket the range:
+ *
+ *                          queries   this cap   unlock 25   listicle 14
+ *   resend  --quick             59   43, inert   9, inert   13, inert
+ *   shopify full               147   60, BINDS  25, BINDS   54, BINDS
+ *
+ * A cap that does not bind cannot be filled in the wrong order, so
+ * `mostCorroboratedFirst` here, the unlock budget, and the listicle harvest's
+ * corroboration sort are all inert below roughly sixty queries — and the web
+ * deployment computes a budget of 18 (see packages/web/app/api/map/route.ts).
+ * They buy real coverage on CLI and gallery runs and nothing on a visitor's.
+ *
+ * What DOES reach every size, because it is per-host or per-run rather than
+ * per-cap: the snippet gate, the 4xx-only escalation, the understand timeout,
+ * the robots.txt sitemap fallback, the edge-quote and self-edge guards, and
+ * every export change.
+ *
+ * Worth knowing before tuning any of these numbers down: on the runs that
+ * matter to a visitor they are already slack.
+ */
 export const SECOND_LOOK_CAP = 60;
 
 /**
