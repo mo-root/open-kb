@@ -2455,6 +2455,13 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
      *   supabase.com  works
      *   shopify.com   works — 557 urls, 40 comparison-shaped
      *
+     * TWO OF THIRTEEN, which is the honest reach. The other nine anchors this
+     * repo has run — openai, datadoghq, figma, cloudflare, resend, brightdata,
+     * cursor, clerk, neon — all answer at the conventional path. So this is not
+     * a widespread fault; it is a total one on the anchors it hits, and it hit
+     * stripe on every run of it. A fix worth having for the shape of the
+     * failure rather than its frequency.
+     *
      * And the correlation with the rival harvest is exact: those two anchors
      * are the two that reported `rivals.found: 0`, stripe on all three of its
      * runs. Not "publishes no comparison pages", which is what that zero was
