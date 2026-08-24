@@ -75,10 +75,11 @@ the widening judge promote a product to four on real page-2 yield, but the deep 
 the shallow one, so the CLI's `4` reads four pages everywhere and leaves that promotion nothing to
 buy.
 
-The four stage flags are off by default and each is set with `1`. Each adds a model stage, each
-fails open, and each reports its own counters. On the newest stored run, triage skipped 123 of 926
-hosts before any fetch, second-look asked 22 and rescued 13, and drop-confirm confirmed all 27 of
-the drops it was given.
+Three of the four stage flags are on by default and each is turned off with `0`; `drop-confirm` is
+the odd one out, off by default and turned on with `1` (it rarely changes anything — see the table
+above). Each adds a model stage, each fails open, and each reports its own counters. On the newest
+stored run, triage skipped 123 of 926 hosts before any fetch, second-look asked 22 and rescued 13,
+and drop-confirm confirmed all 27 of the drops it was given.
 
 ## Checking it works
 
