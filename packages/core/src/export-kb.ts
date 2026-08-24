@@ -31,6 +31,11 @@ export interface ExportEntity {
   /** The surfacing queries, most-seen first — stored by the sweep since
    *  2026-08-17; absent on older maps and the page simply omits the line. */
   roads?: string[]
+  /** How many distinct queries surfaced this host. Read only for ORDER — see
+   *  `tierSort` — and optional so a map without it still exports. Structural
+   *  like the rest of this interface: the sweep's own `Entity` already carries
+   *  it, so nothing had to be plumbed. */
+  seenIn?: number
 }
 
 /**
@@ -164,13 +169,36 @@ function fm(pairs: Array<[string, unknown]>): string {
   return `---\n${lines.join("\n")}\n---\n`
 }
 
-/** Tier first, then the key the row actually displays — a list whose stated
- *  order is invisible in its own text reads as no order at all, and on an
- *  untiered run the key is the whole of the order. */
+/**
+ * Tier first, then how many queries surfaced the host, then the key the row
+ * actually displays — a list whose stated order is invisible in its own text
+ * reads as no order at all.
+ *
+ * THE MIDDLE TERM IS THE POINT, and it was missing. `tier` is a swarm concept
+ * the sweep never sets, so on every sweep-exported map both sides fell to rank
+ * 3 and the whole order was the slug. `relations/competitor.md` — the file the
+ * README sends a reader to as "the rivals" — opened like this:
+ *
+ *   activecampaign, adyen, altfunding, anchanto, arirms, b2bwave, bagisto...
+ *
+ * 236 rivals, alphabetical, with Stripe forty rows down. Ordered by the
+ * corroboration the run already measured, the same list opens:
+ *
+ *   stripe 23x, salesforce 19x, bigcommerce 17x, squareup 15x, wix 13x,
+ *   lightspeedhq 10x, adyen 6x
+ *
+ * Which is the market. `seenIn` is how many distinct queries surfaced the
+ * host, the same signal `mostCorroboratedFirst` uses in the sweep to decide
+ * which hosts a capped stage spends on, applied here to decide which rows a
+ * reader meets first.
+ *
+ * The slug stays as the last term so the order is total and an export is
+ * reproducible; a run with no `seenIn` sorts exactly as it did before.
+ */
 function tierSort(a: ExportEntity, b: ExportEntity): number {
   const ta = TIER_RANK[a.tier ?? ""] ?? 3
   const tb = TIER_RANK[b.tier ?? ""] ?? 3
-  return ta - tb || slugOf(a).localeCompare(slugOf(b))
+  return ta - tb || (b.seenIn ?? 0) - (a.seenIn ?? 0) || slugOf(a).localeCompare(slugOf(b))
 }
 
 function segmentOf(e: ExportEntity): string {
@@ -494,7 +522,9 @@ export function exportKbFiles(run: ExportRunLike): ExportedFile[] {
       const extra = e.relation === "unknown" && e.because ? ` — ${e.because}` : ""
       return `- [[${slugOf(e)}]]${e.tier ? ` (${e.tier})` : ""}${extra}`
     })
-    const order = tiered ? "Ordered by evidence tier, strongest first." : "Ordered by key; this run recorded no evidence tiers."
+    const order = tiered
+      ? "Ordered by evidence tier, strongest first."
+      : "Ordered by how many distinct queries surfaced each host, most first."
     const head =
       rel === "unknown"
         ? `# unknown\n\nThese are refusals, not absences: each claim failed an evidence bar and\nwears the reason. Resolving one means fetching better evidence, not deleting\nthe row.\n`

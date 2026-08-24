@@ -275,10 +275,31 @@ describe("an untiered run says nothing about tiers", () => {
     expect(get("entities/auth0-com.md")).toContain("**Route:** surfaced by this run's queries → competitor to clerk.com.")
   })
 
-  it("does not claim a relation list is ranked when it is alphabetical", () => {
-    expect(get("relations/competitor.md")).toContain("Ordered by key")
+  it("says how an untiered list is ordered, and does not claim tiers it has none of", () => {
+    expect(get("relations/competitor.md")).toContain("Ordered by how many distinct queries surfaced each host")
     expect(get("relations/competitor.md")).not.toContain("(untiered)")
     expect(get("llms.txt")).not.toContain("evidence-tiered")
+  })
+
+  it("puts the most-surfaced rival first, not the alphabetically first", () => {
+    /**
+     * `tier` is a swarm concept the sweep never sets, so every sweep-exported
+     * map fell through to the slug and `relations/competitor.md` — the file
+     * the README calls "the rivals" — was alphabetical. On a real shopify run
+     * that opened activecampaign, adyen, altfunding, anchanto, arirms… with
+     * Stripe forty rows down, out of 236.
+     */
+    const files = exportKbFiles({
+      anchor: "clerk.com",
+      entities: [
+        // Alphabetically first, barely corroborated.
+        { name: "Aardvark", domain: "aardvark.example", kind: "company", relation: "competitor", what: "A rival.", why: "Same buyer.", seenIn: 1 },
+        // Alphabetically last, the one the market actually points at.
+        { name: "Zebra", domain: "zebra.example", kind: "company", relation: "competitor", what: "A rival.", why: "Same buyer.", seenIn: 19 },
+      ],
+    })
+    const list = files.find((f) => f.path === "relations/competitor.md")?.content ?? ""
+    expect(list.indexOf("zebra-example")).toBeLessThan(list.indexOf("aardvark-example"))
   })
 
   it("keeps the tier prose when the run does carry tiers", () => {
