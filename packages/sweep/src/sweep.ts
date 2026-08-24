@@ -1218,10 +1218,23 @@ export interface SweepOptions {
    * rank phase's own escalation (`unlockSeenIn`/`OPENKB_RANK_UNLOCK` in
    * judge.ts), re-asked here rather than reinvented — but only for a host
    * that already earned its place twice over: `seenIn>=2` or `bestRank<=5`.
-   * About half of a real run's second looks landed on a page that was ALSO
-   * walled, the same door the judge's front page already hit, and paying to
-   * knock on it again is only worth it for a host the search corroborated.
-   * Bounded at SECOND_LOOK_UNLOCK_BUDGET escalations per run.
+   * About half of a real run's second looks used to land on a page that was
+   * ALSO walled — the same door the judge's front page already hit — and
+   * paying to knock on it again is only worth it for a host the search
+   * corroborated. Bounded at SECOND_LOOK_UNLOCK_BUDGET escalations per run.
+   *
+   * "About half" is now the wrong figure, and it moved because of the three
+   * fixes above it rather than by itself. Looks that failed open, of sixty
+   * asked, oldest run first:
+   *
+   *   42   40   32   20   16
+   *   70%  67%  53%  33%  27%
+   *
+   * The first two predate 16b8782 (escalate 4xx, never `thin-render`),
+   * 86ddf10 (a budget set by yield rather than by analogy) and bd74b2a (fill
+   * the cap most-corroborated first). Roughly a third now, not a half. Kept
+   * as a range rather than a new single number: it is five runs across two
+   * anchors and it was still drifting downward at the last one.
    */
   secondLook?: boolean;
   /**
