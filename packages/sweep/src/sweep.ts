@@ -1465,15 +1465,29 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    *
    * The search phase is the biggest block in a run — 613 of cloudflare's
    * 1,332 seconds, 54%, per `report.phases` — so it is the obvious place to
-   * look for speed. It is not the place to find it. The port paces itself to
-   * the rate the provider states (see `THROTTLED` in the Bright Data port),
-   * and a throttle is ACCOUNT-wide, so neither this number nor more zones
-   * lifts the ceiling.
+   * look for speed. The measurement says the width is not where it is.
    *
-   * The arithmetic, on a run dispatched 32 wide: 165 queries, median 4.6s of
-   * network each, 613s of wall. `SearchResult.ms` is timed AFTER the pacing
-   * wait, so that gap is about 2.7 seconds of waiting per query and an
-   * effective concurrency near one. `report.serp.paced` now names it.
+   * WHAT IS ESTABLISHED. On a run dispatched 32 wide, 32 workers really do
+   * start (`Array.from({ length: CONC }, worker)`), the queue holds all 598
+   * planned queries from the first tick so no worker starves, and the phase
+   * still moved 408 billable requests in 613 seconds — 0.67 per second,
+   * against 64 page-fetches nominally in flight. Whatever bounds it is not
+   * this constant.
+   *
+   * WHAT IS NOT ESTABLISHED, and I first wrote here that it was: that the
+   * bound is the port's own `pace()`. It is not, on this run. `pace()` only
+   * bites once a response matches `THROTTLED` in the Bright Data port, and
+   * none of this run's refusals do — they are "redirect location was
+   * rejected", "response body was rejected", "No ready cookies", "recently
+   * failed and cannot be attempted". So `minGapMs` stayed 0 and the pacing
+   * explanation was an arithmetic story fitted to the gap, not a reading of
+   * it. The bound is upstream of this process and invisible from here.
+   *
+   * WHICH IS WHY `report.serp.paced` MATTERS more than the number it usually
+   * shows. A slow search with `paced.queries` at 0 is a ceiling somewhere in
+   * the provider; a slow search with it high is one this client applied to
+   * itself. Until f598a85 there was no way to tell those apart, which is
+   * exactly how the wrong explanation survived being written down.
    *
    * A TEMPTING FIX THAT THE DATA DOES NOT SUPPORT: that firing 32 at once
    * trips a throttle the run then pays for all the way through, so opening
