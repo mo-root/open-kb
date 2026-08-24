@@ -883,18 +883,6 @@ const Entity = z.object({
     .describe("why it belongs on this map, stated against the anchor"),
 });
 
-/** What one query cost and what it returned. Persisted with the run, because
- *  per-query yield only ever existed on the span stream, which dies with the
- *  process, so every question about which shapes of query pay ("are ours too
- *  long?") had to be answered from the query text alone, by eye. */
-export interface QueryYield {
-  q: string;
-  intent: string;
-  words: number;
-  hits: number;
-  ok: boolean;
-}
-
 export type Decomposition = z.infer<typeof Decomposition>;
 export type PlannedQuery = z.infer<typeof PlannedQuery>;
 
