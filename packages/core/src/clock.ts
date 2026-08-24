@@ -150,9 +150,28 @@ export const MEASURED_PHASE_COSTS: PhaseCosts = {
    * records that this route once had exactly that bug. Conservative is the
    * correct direction to be wrong in.
    *
-   * What would justify a change is a handful of runs at a raised budget that
-   * all finish inside the clock — not three runs of arithmetic. The numbers
-   * are here so that experiment starts from evidence.
+   * AND ACROSS ALL 41 RUNS ON DISK IT IS NOT UNIFORMLY CONSERVATIVE, which
+   * the three-run reading above missed. Comparing `runSeconds(fired)` against
+   * what each run actually took:
+   *
+   *   over-predicted (safe)   29 of 41
+   *   under-predicted         12 of 41
+   *   ratio predicted/actual  min 0.42   median 1.44   max 2.36
+   *
+   * A median of 1.44 says "there is slack". A minimum of 0.42 says one run in
+   * three-and-a-half took longer than predicted, and one took nearly two and
+   * a half times longer. Raising the budget by the median would put roughly a
+   * quarter of runs over their clock — and on a serverless deadline that is
+   * not a smaller map, it is no map.
+   *
+   * So the model is conservative on the typical run and optimistic on the
+   * slow tail, and a budget has to survive the tail. The honest conclusion is
+   * narrower than "1.5-2x conservative": there is headroom in the middle of
+   * the distribution and none at its edge, and the number that matters for a
+   * deadline is the edge.
+   *
+   * `report.clock` on every run now records predicted against actual, so this
+   * distribution keeps itself up to date instead of needing a script.
    */
 }
 
