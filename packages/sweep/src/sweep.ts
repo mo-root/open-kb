@@ -6766,12 +6766,23 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
        * 366ms — an effective concurrency of 52. Node's fetch applies no
        * per-origin cap worth noticing.
        *
-       * That is the elimination complete, on three free measurements:
+       * That is the elimination complete, on four free measurements:
        *
        *   the worker pool     fills to its width          (fixture, no network)
        *   our own pacing      never fired at all          (`pacedMs`, no
        *                                                    THROTTLED on disk)
        *   the HTTP client     does 64 to one origin       (local server)
+       *   the model calls     reach their configured      (same run, other
+       *                       width in the same process    provider)
+       *
+       * The last one is the same runtime doing the same thing to a different
+       * provider on the same run: 4,263 seconds of billed model work inside
+       * roughly 612 seconds of model-phase wall — about seven concurrent,
+       * against widths of 8 (`RANK_CONC`) and 6 (`CATALOG_CONC`). The
+       * attribution is loose, since `cost.byKind.llm.ms` spans every phase and
+       * the listicle harvest runs inside `sweep` — but it cannot be loose by
+       * the factor that would matter. A process holding seven model calls open
+       * is not a process that cannot hold more than two sockets.
        *
        * Everything on this side of the socket can go wide. The search phase
        * still moves 0.27 queries a second, so the ceiling is Bright Data's,
