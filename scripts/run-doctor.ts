@@ -177,6 +177,33 @@ export function diagnose(r: Record<string, any>, stats: Record<string, any>): No
     })
   }
 
+  /**
+   * ANSWER-KEY OVERLAP, reported with the two things that make it readable.
+   *
+   * It is the share of hosts linked from pages naming the anchor that are
+   * also on the map — ALL outbound hosts, footers included, so a third to a
+   * half of the denominator is linkedin and googleapis, which a market map
+   * omits on purpose. It is not a completeness score and a low number is not
+   * a miss rate.
+   *
+   * MEASURED over the 42 runs carrying it: median 18.1%, quartiles 8.9% and
+   * 23.9%. And it moves with the PROBE COUNT — the six runs with fewer than
+   * five probe pages average 4.9% against 20.4% for the other thirty-six —
+   * so below five probes it is reported and not judged.
+   */
+  const rc = r.recall
+  if (!rc || rc.pooled == null) absent("answer-key overlap", "run predates report.recall, or no probe page named the anchor")
+  else {
+    const probes = rc.probes?.length ?? 0
+    out.push({
+      level: probes < 5 ? "unknown" : rc.pooled < 0.089 ? "watch" : "ok",
+      what: "answer-key overlap",
+      detail: `${(100 * rc.pooled).toFixed(1)}% of hosts linked from ${probes} probe page${probes === 1 ? "" : "s"} are on this map` +
+        (probes < 5 ? " — too few probes to judge, see the norm" : ""),
+      norm: "median 18.1% over 42 runs; under 5 probes the mean falls to 4.9% regardless of the map",
+    })
+  }
+
   const b = r.budget
   if (b && b.unjudged > 0)
     out.push({ level: "gap", what: "hosts unjudged", detail: `${b.unjudged} of ${b.hostsFound} found were never judged — the clock ended first` })

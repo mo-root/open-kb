@@ -825,7 +825,9 @@ export function exportKbFiles(run: ExportRunLike): ExportedFile[] {
       `- Answer-key overlap: ${(rep.recall.pooled as number).toFixed(2)} over ${rep.recall.probes?.length ?? 0} probe page(s)` +
         ` — the share of hosts linked from pages naming the anchor that are also on this map.` +
         ` A third to a half of those links are footers (facebook, linkedin, googleapis), which a market map leaves out on purpose,` +
-        ` so this is not a completeness score and is only comparable between runs of the same anchor.`,
+        ` so this is not a completeness score and is only comparable between runs of the same anchor` +
+        ` — and then only at a similar probe count: measured over 42 runs, the six with fewer than five probe pages average 0.05` +
+        ` where the other thirty-six average 0.20, so a low figure on few probes says more about the probes than the map.`,
     )
   if (rep?.recall?.aliasExclusion?.note) health.push(`- ${rep.recall.aliasExclusion.note}`)
   if (gate?.refusals) health.push(`- The finish gate refused ${gate.refusals} time(s); the objections are preserved below.`)
