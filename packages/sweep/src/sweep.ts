@@ -1459,6 +1459,34 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   // used to recompose them inside the rank pool for every residue host.
   const prompt = makePrompt();
   const target = Math.max(1, Math.floor(opts.queries ?? 40));
+  /**
+   * How many queries may be in flight. RAISING IT DOES NOT MAKE THE SEARCH
+   * FASTER, and that is measured rather than assumed.
+   *
+   * The search phase is the biggest block in a run — 613 of cloudflare's
+   * 1,332 seconds, 54%, per `report.phases` — so it is the obvious place to
+   * look for speed. It is not the place to find it. The port paces itself to
+   * the rate the provider states (see `THROTTLED` in the Bright Data port),
+   * and a throttle is ACCOUNT-wide, so neither this number nor more zones
+   * lifts the ceiling.
+   *
+   * The arithmetic, on a run dispatched 32 wide: 165 queries, median 4.6s of
+   * network each, 613s of wall. `SearchResult.ms` is timed AFTER the pacing
+   * wait, so that gap is about 2.7 seconds of waiting per query and an
+   * effective concurrency near one. `report.serp.paced` now names it.
+   *
+   * A TEMPTING FIX THAT THE DATA DOES NOT SUPPORT: that firing 32 at once
+   * trips a throttle the run then pays for all the way through, so opening
+   * narrower would finish sooner. If that were happening the refusals would
+   * be front-loaded. They are not — across three runs on two anchors the
+   * slow-query count per fifth of the run runs 6/5/5/5/5, 3/5/9/8/3 and
+   * 3/3/4/2/5, and the median query time is flat throughout. Whatever the
+   * limit is, the run meets it at the first query and not because of the
+   * burst.
+   *
+   * So this stays where it is, and a slow search is a fact about the account
+   * rather than a setting to turn up.
+   */
   const CONC = Math.max(1, Math.floor(opts.concurrency ?? 20));
   const BATCH = Math.max(1, Math.floor(opts.batchSize ?? 40));
 
