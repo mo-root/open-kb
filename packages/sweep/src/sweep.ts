@@ -2506,6 +2506,13 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     // 166 posts, zero products, zero rivals, while `/migrate/sitemap.xml` five
     // entries away named customer-io, mailchimp, mailgun, postmark and
     // sendgrid. Concurrent and direct, so eleven children cost what one did.
+    //
+    // ONE LEVEL, and that is enough on the anchors this repo runs. An index of
+    // indexes would put sitemap urls where page urls are expected; checked on
+    // openai (36 children), datadoghq (14) and resend (11) and none of them
+    // nests. Six of the thirteen anchors publish an index at all — neon 3,
+    // brightdata 10, resend 11, datadoghq 14, figma 14, openai 36 — so the
+    // shape is common and the nesting is not. A bounded check, not a proof.
     if (xml && isSitemapIndex(xml)) {
       const bodies = await Promise.all(sitemapChildren(xml).map(raw));
       xml = bodies.filter(Boolean).join("\n");
