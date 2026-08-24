@@ -275,6 +275,45 @@ describe("an untiered run says nothing about tiers", () => {
     expect(get("entities/auth0-com.md")).toContain("**Route:** surfaced by this run's queries → competitor to clerk.com.")
   })
 
+  it("does not claim a receipt came from the page when the page would not open", () => {
+    /**
+     * A host whose front page is walled is judged from the titles and
+     * descriptions of the search results, and its spans are verified against
+     * THAT text. The header said "verbatim from its page this run" anyway, two
+     * lines under a `Downgraded:` line saying the page could not be read.
+     * Measured: 165 of 1,215 kept rows on a shopify export, 131 of them
+     * snippet-judged.
+     */
+    const files = exportKbFiles({
+      anchor: "clerk.com",
+      entities: [
+        {
+          name: "Walled", domain: "walled.example", kind: "publisher", relation: "lists",
+          what: "A directory.", why: "It enumerates vendors.",
+          because: "its front page could not be read this run (http-403); judged from the search results that surfaced it",
+          spans: ["the best auth platforms"],
+        },
+        {
+          name: "Rescued", domain: "rescued.example", kind: "company", relation: "competitor",
+          what: "A rival.", why: "Same buyer.",
+          because: "its front page could not be read this run (http-403); second look at https://rescued.example/pricing",
+          spans: ["priced per active user"],
+        },
+        {
+          name: "Read", domain: "read.example", kind: "company", relation: "competitor",
+          what: "A rival.", why: "Same buyer.", spans: ["we sell authentication"],
+        },
+      ],
+    })
+    const get = (p: string) => files.find((f) => f.path === p)?.content ?? ""
+    expect(get("entities/walled-example.md")).toContain("the search results that surfaced it")
+    expect(get("entities/walled-example.md")).not.toContain("verbatim from its page this run")
+    // A second look DID reach a page — just not the front door.
+    expect(get("entities/rescued-example.md")).toContain("the page a second look reached")
+    // And a host that was simply read still says so.
+    expect(get("entities/read-example.md")).toContain("verbatim from its page this run")
+  })
+
   it("does not count the refusals among the entities with cited relations", () => {
     /**
      * An `unknown` row is this export's word for "the run would not say" — the

@@ -480,7 +480,40 @@ export function exportKbFiles(run: ExportRunLike): ExportedFile[] {
     if (e.why) lines.push(`**Why it's on the map:** ${e.why}\n`)
     if (e.because) lines.push(`**Downgraded:** ${e.because}\n`)
     if (e.spans?.length) {
-      lines.push(`**Receipts** (verbatim from its page this run):\n`)
+      /**
+       * SAY WHICH TEXT THIS IS QUOTED FROM, because for one row in eight it
+       * was not the page.
+       *
+       * A host whose front page would not open is judged from the titles and
+       * descriptions of the search results that surfaced it, and its spans are
+       * verified against THAT text. The header said "verbatim from its page
+       * this run" regardless, on notes whose own `Downgraded:` line two lines
+       * above said the front page could not be read. The artifact contradicted
+       * itself, and in the direction that overstates provenance.
+       *
+       * MEASURED on two exports:
+       *
+       *   shopify     165 of 1,215 kept rows carried spans with an unreadable
+       *               page — 131 judged from the search results, 34 rescued by
+       *               a second look
+       *   cloudflare  143 of 1,182
+       *
+       * The 34 are not the problem: a second look fetches a real page and its
+       * quotes are page quotes, just not the front door's. The 131 are, and
+       * they are 11% of the map.
+       *
+       * Read off `because`, which the judge already writes precisely enough to
+       * tell the three cases apart — no new field, and a map exported before
+       * this reads exactly as it did.
+       */
+      const from = !e.because
+        ? "its page this run"
+        : /second look at /.test(e.because)
+          ? "the page a second look reached"
+          : /could not be read this run/.test(e.because)
+            ? "the search results that surfaced it — its own page would not open"
+            : "its page this run"
+      lines.push(`**Receipts** (verbatim from ${from}):\n`)
       for (const s of e.spans) lines.push(`> ${s}\n`)
     }
     if (e.also?.length) {
