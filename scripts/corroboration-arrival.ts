@@ -57,9 +57,26 @@
  *
  * The open question is therefore not cost and not safety-by-construction. It
  * is empirical: does a judgement made on partial evidence agree with one made
- * on complete evidence? That is measurable — judge a run's hosts at the
- * halfway point and again at the end, and compare — and it is what this
- * design needs before anyone writes the concurrency.
+ * on complete evidence? Settling it properly means judging a run's hosts at
+ * the halfway point and again at the end and comparing, which costs a run.
+ *
+ * WHAT THE RUNS ON DISK ALREADY SUGGEST, and its limit. The second look is
+ * the engine re-judging a host after handing it better evidence, and
+ * `report.secondLook` has kept score over 28 runs: 716 hosts asked again,
+ * 248 of which never got a page, and of the 468 that DID get new evidence
+ * 324 — 69% — changed verdict.
+ *
+ * That is an UPPER BOUND and must not be quoted as a general instability
+ * rate. The second look is only ever asked about hosts that failed to place
+ * the first time, so the population is selected for weak first judgements,
+ * which is exactly where a change is likeliest. It also changes the evidence
+ * in a different direction than this design does: a fetched page against a
+ * snippet, rather than a longer road list against a shorter one.
+ *
+ * With those two caveats it still points one way, and it agrees with the
+ * branch audit's 55% read-versus-snippet agreement: this judge is not
+ * evidence-robust. A design whose whole premise is judging on less of it
+ * should be assumed to move the map until a measurement says otherwise.
  *
  * Rank is model-bound, not fetch-bound, so there is no cheaper version that
  * merely prefetches pages: cloudflare's 337-second rank made 0 unlocker calls
