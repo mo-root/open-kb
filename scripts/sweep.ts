@@ -102,10 +102,17 @@ const MODEL = process.env.OPENKB_MODEL ?? "deepseek/deepseek-v4-flash-0731"
  *
  * The top five are steady on both — stripe, bigcommerce, wix, squareup,
  * salesforce; akamai, fortinet, aws, checkpoint, paloaltonetworks — and the
- * churn is at ranks 6-10. So a quick map's first five rivals are worth the
- * same as a full run's; its sixth through tenth are a plausible set rather
- * than the right one. (The simulation cuts by query count and the flag seals
- * on host count, so it is the right shape and not the exact mechanism.)
+ * churn is at ranks 6-10. (The simulation cuts by query count and the flag
+ * seals on host count, so it is the right shape and not the exact mechanism.)
+ *
+ * AND 6 OF 10 IS THE FULL RUN'S OWN FIGURE, which is the context that number
+ * needs. Comparing eight full shopify runs against each other, 28 pairs, they
+ * share 4 to 8 of their top 10 competitors and 3 to 5 of their top 5. The
+ * engine does not reproduce ranks 6-10 between two full runs either.
+ *
+ * So --quick costs almost nothing in ranking stability: what it loses there
+ * was never stable. What it genuinely costs is REACH — a third of the
+ * entities — and the model-labelled edges.
  *
  * Skipping the paid link pass costs edges the model would have labelled, not
  * the free ones a page names outright — this run still recorded 739.

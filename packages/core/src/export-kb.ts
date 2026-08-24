@@ -195,6 +195,27 @@ function fm(pairs: Array<[string, unknown]>): string {
  * The slug stays as the last term so the order is total and an export is
  * reproducible; a run with no `seenIn` sorts exactly as it did before.
  *
+ * HOW FAR DOWN TO TRUST IT — measured, because this order is now what a reader
+ * meets first and nothing said. Comparing the top competitors of eight full
+ * shopify.com runs against each other, 28 pairs:
+ *
+ *   top 5    3 to 5 shared
+ *   top 10   4 to 8 shared
+ *
+ * So the engine does not reproduce its own ranking past roughly the first
+ * three or four rows. The head is real — stripe, bigcommerce, squareup, wix
+ * and salesforce appear near the top of every run — but the exact order, and
+ * most of ranks 6-10, is run-to-run noise. `understand` reading the same
+ * anchor as 43, 43, 51 and 56 products across those runs is the largest known
+ * source of it.
+ *
+ * This does NOT weaken the change: alphabetical put activecampaign first and
+ * Stripe fortieth on every run, reproducibly wrong. Corroboration is right at
+ * the top and unstable below it, which is strictly better and worth stating
+ * rather than letting a reader infer that a stable-looking list is a stable
+ * ranking. SKILL.md's trust rule already says corroboration is not
+ * correctness; this is the same caution with a number on it.
+ *
  * EXERCISED ACROSS FIVE ANCHORS, because "the shopify list looks right" is one
  * list. The head of `relations/competitor.md` on each:
  *
