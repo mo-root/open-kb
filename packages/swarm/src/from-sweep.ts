@@ -91,10 +91,39 @@ export const GAP_CLUSTER_CAP = 2
  *  every host needs its own settle. */
 export const GAP_CLUSTER_SIZE = 5
 
-/** A pooled recall below this mints the recall-gap mission. The reference run
- *  (the brightdata sweep this module's tests carry) measured 0.234 — its own
- *  probe pages named four vendors for every one the map held. Below half, the
- *  probes say the map under-reached; above it, the gap is noise-sized. */
+/**
+ * A pooled recall below this mints the recall-gap mission. The reference run
+ * (the brightdata sweep this module's tests carry) measured 0.234 — its own
+ * probe pages named four vendors for every one the map held. Below half, the
+ * probes say the map under-reached; above it, the gap is noise-sized.
+ *
+ * IT HAS NEVER NOT FIRED, and that is a fact about the METRIC rather than
+ * about the maps. Pooled recall across the 40 sweep runs on disk:
+ *
+ *   min 0.00   median 0.188   max 0.45
+ *
+ * Not one reaches 0.5. The gate is a constant, so the recall lens mints on
+ * every run whatever the run did.
+ *
+ * The cause is measured in export-kb.ts (3756659): the answer key is every
+ * outbound host on the probe pages, and 29-42% of those are footers —
+ * facebook, linkedin, youtube, googleapis, gstatic. A market map correctly
+ * holds none of them, which caps this figure far below 1 however good the map
+ * is. "Above half, the gap is noise-sized" assumed a number that can reach
+ * half, and it cannot. The rarest-first sort below already encodes the same
+ * insight about the same data, from the other end.
+ *
+ * NOT RECALIBRATED HERE, deliberately. The honest replacement is relative to
+ * the observed distribution — fire below the median, say — but the reference
+ * run sits at 0.234, ABOVE that median, so any such threshold reclassifies the
+ * fixture this module's tests are built on from "under-reached" to "fine".
+ * Whether that is correct depends on what the recall lens is for: if it should
+ * run whenever probes name vendors the map missed, the gate is vestigial and
+ * should go; if it should distinguish a poor run from a typical one, the
+ * number needs setting against the distribution above AND the fixture's
+ * framing revisited. That is a judgement about the mission, not a constant to
+ * nudge, so it is written down rather than guessed at.
+ */
 export const DEFAULT_RECALL_GAP_THRESHOLD = 0.5
 
 /** Hosts named by the recall-gap mission — shallower per-host work than a
