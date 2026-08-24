@@ -36,18 +36,35 @@ describe("the opening catalog", () => {
   it("deals every product an opening hand, core market first, and buys the reserve from none of them", () => {
     // ORDER, off `result.queries` — the plan as the engine composed it, before
     // a pool decided who ran what. `log search` is the core market and
-    // `uptime alerts` the adjacent one, so the core product's whole hand comes
-    // first even though the adjacent product is a real market with real rivals.
+    // `uptime alerts` the adjacent one, so the core product's OPENING comes
+    // first — but only its opening. Core's whole hand used to come first, and
+    // on shopify.com that put thirteen products' first door past index 262 in
+    // a plan that only ever fired 147 queries.
     const planned = h.result.queries.map((q) => q.q)
     expect(planned).toEqual([
-      ...logHand.open.map((f) => f.q),
+      // The core product's two front doors and their comparison fields.
+      "log search",
+      "log search alternatives",
+      "log management",
+      "log management alternatives",
+      // Then the adjacent market's opening, ahead of anything second-tier.
+      "uptime monitoring",
+      "uptime monitoring alternatives",
+      "who gets paged when an endpoint stops answering",
+      // Only now the tails: branded, then the rest of the debranded questions.
+      "Log Search Cloud alternatives",
       "how do i find one request across a hundred containers",
       "keeping a year of logs without paying per seat",
-      ...upHand.open.map((f) => f.q),
-      "who gets paged when an endpoint stops answering",
       "synthetic checks from more than one region",
       ...co.map((f) => f.q),
     ])
+
+    // The property the literal above is an instance of, stated so a future
+    // fixture change cannot quietly lose it: the adjacent market's first door
+    // is bought before the core product's second-tier queries.
+    const firstAdjacentDoor = planned.indexOf(upHand.open[0]!.q)
+    const coreDebranded = planned.indexOf("how do i find one request across a hundred containers")
+    expect(firstAdjacentDoor).toBeLessThan(coreDebranded)
 
     // A held template is a query the run has decided not to buy yet. If any of
     // these reach the port at the open, the widening loop has nothing left to

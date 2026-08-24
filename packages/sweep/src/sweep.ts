@@ -3204,7 +3204,45 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   // index for index and the centrality of hand i is funded[i]'s market.
   const coreHands = catalogs.filter((_, i) => funded[i]?.market.centrality === "core");
   const restHands = catalogs.filter((_, i) => funded[i]?.market.centrality !== "core");
-  const interleaved = [...interleave(coreHands), ...interleave(restHands)];
+  /**
+   * CORE FIRST, BUT NOT CORE ENTIRELY — the round-robin above only rotates
+   * WITHIN a band, and concatenating the two bands put every core product's
+   * whole hand ahead of the first door of every adjacent one.
+   *
+   * That is fine while the plan fires in full and fatal when it does not, and
+   * on a large anchor it does not: the search stops at `HOST_CEILING`, not at
+   * the end of the plan. shopify.com planned 373 queries and fired 147 — 39% —
+   * and the plan positions show what the concatenation did with the other 61%:
+   *
+   *   idx   0   fired   Shopify
+   *   idx   1   fired   Shopify POS
+   *   ...
+   *   idx 262   NEVER   Shopify Email
+   *   idx 263   NEVER   Sidekick
+   *   idx 265   NEVER   Shopify Inbox
+   *   ...        (13 products in all, first door at 262 or later)
+   *
+   * Thirteen products whose FIRST door sat past index 262 were unreachable
+   * before the run began. This is the same failure a9be42a fixed for products
+   * inside one band, surviving between the bands.
+   *
+   * So a core product takes its OPENING — `openingHand` gives a core product
+   * two front doors and each one's comparison field, which is four queries —
+   * and then every adjacent product takes its opening, before any core product
+   * takes a fifth query. Core still leads, and a small run still spends itself
+   * on what the company is bought for, which is what the `maxQueries: 4`
+   * contract pins. What changes is only that "core first" stops meaning "core
+   * until core is exhausted".
+   */
+  const CORE_OPENING = 4;
+  const head = (h: SweptQuery[]) => h.slice(0, CORE_OPENING);
+  const tail = (h: SweptQuery[]) => h.slice(CORE_OPENING);
+  const interleaved = [
+    ...interleave(coreHands.map(head)),
+    ...interleave(restHands.map(head)),
+    ...interleave(coreHands.map(tail)),
+    ...interleave(restHands.map(tail)),
+  ];
 
   const seenQ = new Set<string>();
   const cat = {
