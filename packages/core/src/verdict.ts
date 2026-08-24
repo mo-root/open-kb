@@ -69,6 +69,22 @@ export function outboundHosts(html: string, pageUrl: string): string[] {
  * that cannot tell those apart trades seven honest duplicates for a merge that
  * invents a relationship, which is the trade this file exists to refuse.
  *
+ * THE SECOND SIGNAL DOES NOT RESCUE IT EITHER, and that was worth testing
+ * rather than assuming, because the pipeline already knows each host's
+ * classified `name` and an obvious fix is "fold when the names agree too".
+ *
+ * Exact agreement is too strict. The seven GetApp mirrors are named "GetApp",
+ * "GetApp México", "GetApp Australia", "GetApp Ireland" — one company, four
+ * names — so requiring equality refuses the folds that are actually right.
+ *
+ * Prefix agreement is too loose, and loose in the dangerous direction. Both
+ * `opensource.to` ("Opensource.to") and `opensource.com` ("Opensource.com")
+ * start with the brand, as do `static.run` and `static.app`. It would merge
+ * every one of those.
+ *
+ * So neither rule separates a mirror from a collision, and the fold stays
+ * unbuilt on evidence rather than on caution.
+ *
  * Recorded so the count is known and the trap is known with it.
  */
 
