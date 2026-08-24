@@ -27,21 +27,6 @@ export function normalizeDomain(input?: string | null): string {
   return d;
 }
 
-/** Reconstruct a domain from a player slug or note path, mirroring
-    tools/bench_recall.py's `slug_matches_domain`: the LAST hyphen splits the
-    TLD, so `firecrawl-dev` -> `firecrawl.dev`, `oxylabs-io` -> `oxylabs.io`. A
-    slug that already looks like a domain (has a dot) is normalized and returned;
-    a dotless, dashless slug is returned as-is (SiteIcon then shows a monogram). */
-export function domainFromSlug(slug?: string | null): string {
-  let s = (slug ?? "").trim().toLowerCase();
-  if (!s) return "";
-  s = (s.split("/").pop() ?? s).replace(/\.md$/, ""); // players/x.md -> x
-  if (s.includes(".")) return normalizeDomain(s);
-  const i = s.lastIndexOf("-");
-  if (i <= 0 || i === s.length - 1) return s; // no usable TLD split
-  return `${s.slice(0, i)}.${s.slice(i + 1)}`;
-}
-
 /** First alphanumeric of a name, uppercased, the monogram fallback glyph. */
 function monogram(name?: string): string {
   const m = (name ?? "").match(/[a-z0-9]/i);
