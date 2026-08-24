@@ -2434,6 +2434,8 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    * is free, and `RivalLead` in core for why a lead is not an entity.
    */
   const rivalLeads: RivalLead[] = [];
+  /** Urls in the anchor's sitemap, the pool `rivalsFromSitemap` reads. */
+  let rivalUrlsScanned = 0;
   {
     const raw = async (u: string) => {
       const r = await fetcher.get(u, "direct", { signal });
@@ -2482,6 +2484,10 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
      * no model. What it produces is NAMES — leads to be resolved and judged
      * like any other host, never rivals to be written onto the map.
      */
+    // How many urls the sitemap offered, kept for the report. `found: 0` means
+    // two very different things — an anchor that publishes no comparison pages,
+    // and a run that had no sitemap to read — and nothing distinguished them.
+    rivalUrlsScanned = xml ? (xml.match(/<loc>/g) ?? []).length : 0;
     if (xml) rivalLeads.push(...rivalsFromSitemap(xml, anchor));
 
     // The nav ALWAYS, merged rather than used as a fallback. One company's
@@ -7128,6 +7134,23 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       }
       return {
         found: rivalLeads.length,
+        /**
+         * The pool the names were read from — urls in the anchor's sitemap, 0
+         * when there was no sitemap to read.
+         *
+         * `found: 0` had two readings and no way to tell them apart. The
+         * comment above assumes the charitable one, "a company that publishes
+         * no comparison pages", and stripe.com is the case that shows it is
+         * not always right: three runs, zero names, and the question of
+         * whether its sitemap was empty, unreachable, or simply free of /vs/
+         * pages was unanswerable from the report.
+         *
+         * With this beside it: `urlsScanned` high and `found` 0 is the
+         * charitable reading confirmed — plenty of urls, none comparing
+         * anything. `urlsScanned` 0 is a source that was never read, which is
+         * a fixable problem rather than a fact about the anchor.
+         */
+        urlsScanned: rivalUrlsScanned,
         cap: brandedBought,
         queries: asked.filter((q) => q.family === "rival").length,
         reachedMap: rivalLeads.filter((r) => onMap.has(squash(r.name))).length,

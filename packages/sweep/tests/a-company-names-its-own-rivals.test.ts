@@ -119,6 +119,37 @@ describe("the comparison urls a company publishes about itself", () => {
     }
   })
 
+  it("separates an anchor with no comparison pages from a run with no sitemap", async () => {
+    /**
+     * `found: 0` had two readings and no way to tell them apart. stripe.com is
+     * the case: three runs, zero names, and no way to know whether its sitemap
+     * was empty, unreachable, or simply free of /vs/ pages.
+     *
+     * `urlsScanned` high with `found` 0 is "this anchor publishes no
+     * comparison pages", which is a fact about the anchor. `urlsScanned` 0 is
+     * a source never read, which is a fixable problem.
+     */
+    const h = await runFixture({
+      fetchTable: {
+        [`https://${ANCHOR}/sitemap.xml`]: {
+          httpStatus: 200,
+          contentType: "application/xml",
+          body:
+            `<urlset>` +
+            [`/pricing`, `/docs`]
+              .map((path) => `<url><loc>https://${ANCHOR}${path}</loc></url>`)
+              .join("") +
+            `</urlset>`,
+        },
+      },
+    })
+    const rv = h.result.report.rivals as { found: number; urlsScanned: number }
+    // Two urls offered, neither a comparison page: the charitable reading,
+    // confirmed rather than assumed.
+    expect(rv.urlsScanned).toBe(2)
+    expect(rv.found).toBe(0)
+  }, 30_000)
+
   it("says so plainly when there are no names to hand over", async () => {
     const h = await runFixture()
     const catalog = h.calls.find((c) => c.phase === "catalog")
