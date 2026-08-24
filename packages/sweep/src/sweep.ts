@@ -7366,7 +7366,35 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
          */
         urlsScanned: rivalUrlsScanned,
         cap: brandedBought,
-        queries: asked.filter((q) => q.family === "rival").length,
+        /**
+         * THE SITEMAP CHANNEL'S OWN QUERIES, and not the `rival` FAMILY's.
+         *
+         * This read `asked.filter((q) => q.family === "rival").length`, which
+         * is a different quantity. The listicle harvest builds its queries
+         * with the same `rivalHand` — deliberately, so a name off a roundup
+         * row gets the machinery a name off a sitemap gets — and they carry
+         * `family: "rival"` with them. So this field counted both channels
+         * while being named for one.
+         *
+         * Caught on stripe.com, whose `/sitemap.xml` 404s: two runs report
+         * `found: 0, leads: 0` and `queries: 20`, twenty queries from names
+         * that were never found. The 20 are its listicle harvest's, which
+         * fired exactly 20 on the same runs.
+         *
+         * It matters beyond the arithmetic. `found: 0` beside `queries: 20`
+         * reads as a channel doing work, so the sitemap failure that produced
+         * it stayed invisible for three runs; and any check for "names found
+         * and never asked about" is blinded by a second channel's queries
+         * filling the same counter.
+         *
+         * Counted by string against the hand this channel actually dealt,
+         * rather than by family, so the taxonomy `report.families` and
+         * scripts/query-yield.ts are measured on does not move.
+         */
+        queries: (() => {
+          const mine = new Set(rivals.map((q) => q.q.trim().toLowerCase()));
+          return asked.filter((q) => mine.has(q.q.trim().toLowerCase())).length;
+        })(),
         reachedMap: rivalLeads.filter((r) => onMap.has(squash(r.name))).length,
         leads: rivalLeads.map((r) => ({
           name: r.name,

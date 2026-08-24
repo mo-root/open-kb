@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { ANCHOR, HOSTS, SERP, runFixture } from "./fixture.js"
+import type { SearchHit } from "@open-kb/core"
 
 /**
  * Every run downloads the anchor's sitemap and reads it for product pages. A
@@ -199,6 +200,53 @@ describe("the comparison urls a company publishes about itself", () => {
     // confirmed rather than assumed.
     expect(rv.urlsScanned).toBe(2)
     expect(rv.found).toBe(0)
+  }, 30_000)
+
+  /**
+   * THIS FIELD IS THE SITEMAP CHANNEL'S, NOT THE `rival` FAMILY'S.
+   *
+   * The listicle harvest deals its names through the same `rivalHand`, on
+   * purpose, so its queries carry `family: "rival"` too. Counting the family
+   * therefore counted both channels under one channel's name.
+   *
+   * MEASURED on stripe.com, whose /sitemap.xml 404s: two runs report
+   * `found: 0, leads: 0` and `queries: 20` — twenty queries from names never
+   * found. Those 20 are its listicle harvest's, which fired exactly 20 on the
+   * same runs. `found: 0` beside `queries: 20` reads as a working channel,
+   * which is how a dead sitemap stayed invisible across three runs.
+   */
+  it("counts only its own queries when the listicle harvest is also dealing rivals", async () => {
+    const ROUNDUP: SearchHit = {
+      url: "https://roundup.example/",
+      title: "Best log search alternatives",
+      description: "Runlog made this best-of list.",
+    }
+    const h = await runFixture({
+      fetchTable: withSitemap,
+      serp: {
+        ...SERP,
+        "log search alternatives": [...(SERP["log search alternatives"] ?? []), ROUNDUP],
+        "Runlog alternatives": [
+          { url: "https://runlog.example/", title: "Runlog", description: "A vendor this run never asked about." },
+        ],
+      },
+      // Deliberately a name NO sitemap lead shares, so the two channels'
+      // queries cannot be confused for one another by string.
+      script: { listicle: () => ({ vendors: ["Runlog"] }) },
+    })
+
+    const rivals = rivalsOf(h.result.report)
+    const families = h.result.report.families as Record<string, number>
+
+    // Both channels really did deal rival-family queries on this run.
+    expect(h.asked).toContain("grepstack alternatives")
+    expect(h.asked).toContain("Runlog alternatives")
+
+    // THE TWO NUMBERS MUST DIFFER, or this test would pass on the bug it
+    // exists to catch: the family carries both channels, the field carries one.
+    expect(families.rival).toBeGreaterThan(rivals.queries)
+    expect(rivals.found).toBe(4)
+    expect(rivals.queries).toBe(4)
   }, 30_000)
 
   it("says so plainly when there are no names to hand over", async () => {
