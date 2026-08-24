@@ -151,6 +151,22 @@ describe("exportKbFiles", () => {
     for (const f of files) expect(manifest.files).toContain(f.path)
   })
 
+  /**
+   * The invariant `scripts/export-kb.ts`'s lake INDEX now depends on: a
+   * folder's entity count is the number of pages in it, and re-deriving it
+   * from the run's non-noise rows gives a DIFFERENT, larger number. The INDEX
+   * used to re-derive it that way and overstated every one of the twelve maps
+   * in demo/ — clerk 445 against 197 pages, supabase 1478 against 541 — because
+   * `noise` is one of seven gates and it was subtracting only that one.
+   */
+  it("the README's count is the number of pages, not the number of non-noise rows", () => {
+    const pages = files.filter((f) => f.path.startsWith("entities/")).length
+    const stated = Number(/^(\d+) entities:/m.exec(get("README.md"))?.[1])
+    const nonNoise = run.entities.filter((e) => e.kind !== "noise").length
+    expect(stated).toBe(pages)
+    expect(nonNoise).toBeGreaterThan(pages)
+  })
+
   it("is deterministic: same run, same bytes", () => {
     const again = exportKbFiles(run)
     expect(again).toEqual(files)

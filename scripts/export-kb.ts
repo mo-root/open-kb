@@ -19,7 +19,7 @@
  */
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
-import { exportKbFiles, type ExportRunLike } from "../packages/core/src/index.js"
+import { exportKbFiles, type ExportRunLike, type ExportedFile } from "../packages/core/src/index.js"
 import { exportTargetRefusal, judgeExportTarget } from "./export-target.js"
 
 function loadRun(p: string): (ExportRunLike & { anchor?: string }) | null {
@@ -39,7 +39,7 @@ function retryWithForce(): string {
   return `pnpm run export ${args.join(" ")}`
 }
 
-function writeExport(run: ExportRunLike, outDir: string, force: boolean): number {
+function writeExport(run: ExportRunLike, outDir: string, force: boolean): ExportedFile[] {
   // Guarded here rather than at the call sites: this is the line that deletes,
   // so every path into it — default, --all, or an argv the user typed — is
   // asked the same question, and a future caller cannot forget to ask it.
@@ -55,8 +55,30 @@ function writeExport(run: ExportRunLike, outDir: string, force: boolean): number
     mkdirSync(dirname(p), { recursive: true })
     writeFileSync(p, f.content)
   }
-  return files.length
+  return files
 }
+
+/**
+ * How many entities a folder actually SHIPPED — the number its own README.md
+ * opens with, read off the files that were written.
+ *
+ * The INDEX used to re-derive this as `run.entities` minus noise, and that is
+ * the crawl, not the map. `exportKbFiles` gates seven classes (see
+ * `DropReason`: noise, silent, withdrawn, unrelated, commentary, personal,
+ * unexplained) and only the first was being subtracted here, so every row
+ * overstated the folder it links to. Measured by running `exportKbFiles` over
+ * the twelve maps in `demo/`: clerk 445 against 197 pages, supabase 1478
+ * against 541, vercel 2333 against 968, cursor 881 against 379, and the
+ * narrowest gap, shopify, still 1251 against 1065. Not one of the twelve
+ * agreed. A reader clicked a "445 entities" row into a README that opens
+ * "197 entities".
+ *
+ * Counted rather than re-derived because a re-derivation is a second copy of
+ * the gate rules, kept in a file that does not own them — which is how this
+ * drifted in the first place.
+ */
+const entityPages = (files: readonly ExportedFile[]): number =>
+  files.filter((f) => f.path.startsWith("entities/")).length
 
 const argv = process.argv.slice(2)
 const force = argv.includes("--force")
@@ -75,9 +97,9 @@ if (runPath === "--all") {
     const run = loadRun(join("runs", name))
     if (!run) continue
     const dir = join("runs", "exports", `kb-${name.replace(/\.json$/, "")}`)
-    const n = writeExport(run, dir, force)
-    rows.push({ anchor: run.anchor ?? "?", source: `runs/${name}`, dir, entities: run.entities.filter((e) => e.kind !== "noise").length })
-    console.log(`${dir}  (${n} files)`)
+    const written = writeExport(run, dir, force)
+    rows.push({ anchor: run.anchor ?? "?", source: `runs/${name}`, dir, entities: entityPages(written) })
+    console.log(`${dir}  (${written.length} files)`)
   }
   const byAnchor = new Map<string, typeof rows>()
   for (const r of rows) byAnchor.set(r.anchor, [...(byAnchor.get(r.anchor) ?? []), r])
@@ -107,6 +129,6 @@ if (!run) {
 
 const anchorSlug = (run.anchor ?? "map").replace(/\W+/g, "-")
 const outDir = outArg ?? join("runs", "exports", `kb-${anchorSlug}`)
-const n = writeExport(run, outDir, force)
-console.log(`wrote ${n} files to ${outDir}`)
+const exported = writeExport(run, outDir, force)
+console.log(`wrote ${exported.length} files to ${outDir}`)
 console.log(`start at ${join(outDir, "README.md")}`)
