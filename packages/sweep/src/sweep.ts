@@ -6751,6 +6751,22 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
        * getting wide and waiting, and no other number in this report can tell
        * those apart. `peak` near `width` says the pool is full and the wire is
        * the ceiling; `peak` near 1 says the workers are blocked before it.
+       *
+       * HALF OF THAT IS ALREADY ANSWERED, for free, by running the fixture —
+       * which has no network at all — at two widths against 14 queries:
+       *
+       *   width  8   peak  8   mean 6.0    the pool fills completely
+       *   width 32   peak 14   mean 7.5    bounded by the work, not the pool
+       *
+       * So the dispatch loop CAN get fully wide, and nothing in it serialises.
+       * Together with `pacedMs` — no run on disk ever tripped `THROTTLED`, so
+       * our own limiter never fired — that leaves the ceiling at or beyond the
+       * socket: the provider, or the HTTP layer under it. Neither is visible
+       * from this process, and neither is fixed by any constant in this file.
+       *
+       * Which means the expected reading on a real run is `peak` near `width`.
+       * If it comes back near 1, something changed in the worker loop since
+       * this was measured, and that IS ours.
        */
       dispatch: {
         width: CONC,
