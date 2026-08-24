@@ -4469,6 +4469,26 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         // holds every host the search phase has found so far, and a vendor
         // whose normalized label already shows up inside one of those hosts
         // already has a query running for it somewhere in this run.
+        //
+        // SUBSTRING, AND CHECKED RATHER THAN ASSUMED SAFE. This file's judge
+        // learned the hard way that substring matching counts "radio.com" as
+        // naming "io.com", and boundary-matched it. The rule here looks like
+        // the same mistake and mostly is not. Measured over 1,177 entity
+        // names on a cloudflare run, twelve are matched only through a host
+        // that is not their own registrable domain, and eleven of the twelve
+        // are RIGHT: go.lightnode.com really is LightNode, info.nvidia.com is
+        // NVIDIA, cpl.thalesgroup.com is Thales, classic-app.nft.storage is
+        // NFT.Storage. Substring is what catches those, and a boundary rule
+        // would send the harvest off to re-search vendors the run already has.
+        //
+        // One of the twelve is a genuine false drop: "Geo", swallowed by
+        // edGEOne.ai and imaGEOptim.com. That is the whole failure mode —
+        // names of three or four characters — and it costs one query out of
+        // twenty on a name the roundups barely mentioned.
+        //
+        // Left alone deliberately. The cheap "fix" is a boundary match, and
+        // the measurement says it would break eleven correct drops to save
+        // one wrong one.
         const knownLabel = (name: string): boolean => {
           const norm = name.toLowerCase().replace(/[^a-z0-9]/g, "");
           if (!norm) return true;
