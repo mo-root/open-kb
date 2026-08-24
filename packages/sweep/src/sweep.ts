@@ -1126,7 +1126,23 @@ export interface SweepOptions {
    *  (`scripts/calibrate-kernel.ts`) found no separation between vendor and
    *  directory front pages on the measured sample, so the rule ships disabled
    *  (`null`) rather than shipping a guessed number. Set it once a real run
-   *  produces a cutoff worth trusting. */
+   *  produces a cutoff worth trusting.
+   *
+   *  CONFIRMED DISABLED ON THE WIRE: not one of the 40 sweep runs on disk
+   *  carries a single aggregator downgrade. Both paths agree — the pre-model
+   *  check in judge.ts is skipped by `if (threshold !== null)` and the
+   *  post-model one is passed `threshold ?? Number.POSITIVE_INFINITY`, so a
+   *  null disables it twice over rather than coercing to `>= 0` and firing on
+   *  everything, which is what an unguarded `n >= null` would have done.
+   *
+   *  AND HERE IS WHAT IT COSTS, which the calibration could not have known
+   *  because it predates these runs. Over the 12 most recent, the model
+   *  labelled 816 hosts `directory` — about 68 a run — and every single one
+   *  was settled by a MODEL call, none for free. So the rule's absence is a
+   *  bill, not an error: the classifier finds these hosts correctly (capterra,
+   *  getapp and softwareadvice all land as `directory`/`lists`), it just pays
+   *  a call each time to do it. Anyone re-running the calibration should weigh
+   *  68 free settlements a run against the risk of guessing the cutoff. */
   aggregatorThreshold?: number;
   /** How many co-occurring entity pairs to ask about. 0 disables linking. */
   maxPairs?: number;
