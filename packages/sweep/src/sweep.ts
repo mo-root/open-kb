@@ -5237,6 +5237,33 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       }
     });
     judgeList = [];
+    /**
+     * WHY THIS GATE CANNOT MOVE EARLIER, which is the whole answer to
+     * "start judging while the search tail drains".
+     *
+     * Rank is 25% to 41% of a run's wall clock (337s of cloudflare's 1,332)
+     * and it begins only when the last SERP call lands, so overlapping it
+     * with the search is the largest single latency win left. Every version
+     * of that change has to pass through this loop, because judging a host
+     * means triaging it first, and triaging it means reading `h.seenIn`.
+     *
+     * MEASURED over the 42 runs on disk by `scripts/corroboration-arrival.ts`:
+     * of the 2,975 hosts that reach `TRIAGE_KEEP_SEENIN`, 49% reach it after
+     * half the search is bought and 25% in the final quarter. Every run
+     * agrees, 38% to 69%, from resend at 43 queries to cloudflare at 165.
+     *
+     * So triaging at the halfway point would send about half the hosts this
+     * exemption exists to protect down the `triagedOut` branch, which is
+     * irreversible — they are never judged and never reach the map. The
+     * latency would be bought by silently deleting corroborated hosts.
+     *
+     * The version that survives is to judge without this gate and apply it at
+     * the END against final `seenIn`. Triage only ever REMOVES hosts from the
+     * judge list, so the map is identical; the cost is the judge calls spent
+     * on hosts that get dropped anyway. That price is unmeasured on a large
+     * anchor — 3% on the one run reporting `hostsFound` against
+     * `hostsJudged`, which is resend and too small to build on.
+     */
     for (const h of hostList) {
       const v = verdictByHost.get(h.host);
       // The exemption is code, not prompt: a host the market kept returning
