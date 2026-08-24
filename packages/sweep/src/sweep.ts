@@ -393,9 +393,31 @@ export const SECOND_LOOK_CAP = 60;
  *  the direct fetch the stage already spends is not a different door than the
  *  one the judge's front page hit. Only a host that earned its first look
  *  twice over (`seenIn>=2` or `bestRank<=5` — the rank phase's own corroboration
- *  bar, not a new one) gets the unlocker's ~$0.008; ten of them is roughly what
- *  the rank phase's own `OPENKB_RANK_UNLOCK` bar spends on one fresh map. */
-export const SECOND_LOOK_UNLOCK_BUDGET = 10;
+ *  bar, not a new one) gets the unlocker's ~$0.008.
+ *
+ *  SET BY YIELD, which it was not before. The number was ten by analogy —
+ *  "roughly what the rank phase's own `OPENKB_RANK_UNLOCK` bar spends on one
+ *  fresh map" — and ten was exhausted on both runs since the snippet gate
+ *  shipped, so the analogy was bounding the stage without anyone knowing what
+ *  the next escalation was worth. It is now measured:
+ *
+ *    an escalation recovers a page      91%  (10 of 11, unlocker on 4xx)
+ *    a recovered page places the host   72%  (13 rescued of 18 that got one)
+ *    so one $0.008 escalation buys      0.66 placed rows, about $0.012 each
+ *
+ *  Those are rows that otherwise do not exist — the host is unplaced and this
+ *  is the last stage that will look at it — so a cent apiece is worth paying
+ *  on a run that costs ~$0.90.
+ *
+ *  Twenty-five is the population, not a round number: the earned-and-4xx hosts
+ *  left over after the stage ran number 23 and 14 on two shopify runs, plus
+ *  the ten it had already spent. The ceiling only binds on maps that big.
+ *  Stripe's run has ZERO earned-4xx hosts and would spend nothing at any
+ *  ceiling, which is the property that makes raising this cheap: it is a
+ *  ceiling on the runs that need it, not a floor on the ones that do not.
+ *  Worst case is $0.20 against a $0.90 run, and only when 25 corroborated
+ *  hosts really did wall their pages. */
+export const SECOND_LOOK_UNLOCK_BUDGET = 25;
 
 /** How many model-settled `relation: "none"` hosts the drop-confirm stage may
  *  re-ask about, on the same precedent SECOND_LOOK_CAP sets: bounds the stage
