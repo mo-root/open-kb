@@ -635,6 +635,32 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
            * the real price: 25 unlocker escalations at up to a two-minute
            * timeout each is most of it.
            */
+          /**
+           * AND IT SETTLES THE `admit()` BYPASS, which was a real complaint
+           * about this branch: it returns before either `admit()` call below,
+           * so the gate in verdict.ts written for unreadable hosts never sees
+           * a snippet judgement.
+           *
+           * That bypass is now harmless, and by subsumption rather than by
+           * luck. `admit()` has exactly two rules:
+           *
+           *   the aggregator rule  requires `page?.readable`, and a snippet
+           *                        judgement has no readable page by
+           *                        definition — inapplicable, not evaded
+           *   the commercial rule  refuses `competitor` and `substitute`
+           *                        when the page could not be read
+           *
+           * The second is precisely what this allowlist already does, and
+           * more: `competitor` and `substitute` are not in it, so they are
+           * withheld here before `admit()` would have had the chance. Routing
+           * this branch through it would change no row.
+           *
+           * THAT HOLDS ONLY WHILE THE ALLOWLIST EXCLUDES THEM. Add
+           * `competitor` to the set above on some future evidence and the
+           * bypass goes live again — verdict.ts's rule would want to refuse
+           * exactly the row this gate just admitted. Whoever widens it owes
+           * the `admit()` call this branch currently does not need.
+           */
           const SNIPPET_MAY_SAY = new Set(["lists", "discusses"])
           const overreach = !SNIPPET_MAY_SAY.has(out.relation)
           emit({
