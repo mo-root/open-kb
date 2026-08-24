@@ -223,6 +223,58 @@ describe("report.wire — the plan against the purchase", () => {
     for (const name of w.productsUnsearched)
       expect(h.asked.some((q) => q.includes(name))).toBe(false)
   }, 30_000)
+
+  /**
+   * THE JOIN IS BY TERM, NOT BY LABEL — and reading it the other way gives a
+   * different, wrong answer.
+   *
+   * Two products can strip to the same term. The plan dedupes them to one
+   * query, and that query carries ONE product label, so a join over
+   * `searched[].product` reports the other product as never searched. The
+   * join `report.wire` actually uses asks whether the product's TERMS reached
+   * the wire, which credits both.
+   *
+   * MEASURED on shopify-com-20260824020850: the label join says 8 products
+   * were never searched, the term join says 2, and the 6 in between are real
+   * — `Online store`, `Shop app`, `Hydrogen`, `Checkout Kit`, `Shopify
+   * developer platform` and `Shopify AI Toolkit` all strip to terms
+   * (`headless commerce`, `commerce API`, `ecommerce platform`) that fired
+   * under another product's name. The term join is the correct one: the
+   * market WAS searched and its hosts ARE on the map, which is what the field
+   * exists to tell you. I read it the label way first and had to be corrected
+   * by the data, so this pins it.
+   */
+  it("credits a product whose every term another product also wrote", async () => {
+    const h = await runFixture({
+      script: {
+        catalog: (product: string) =>
+          product === "Uptime Alerts"
+            ? { terms: ["log search"], generic: true, queries: [] }
+            : { terms: ["log search", "retention window"], generic: true, queries: [] },
+      },
+    })
+    const w = h.result.report.wire as {
+      products: number; productsSearched: number; productsUnsearched: string[]
+    }
+
+    // Uptime Alerts was planned, and stripped to a term Log Search Cloud
+    // also wrote.
+    const strips = h.result.report.strips as { product: string; terms: string[] }[]
+    expect(strips.map((st) => st.product)).toContain("Uptime Alerts")
+    expect(strips.find((st) => st.product === "Uptime Alerts")!.terms).toEqual(["log search"])
+
+    // THE WIRE CARRIES NO QUERY OF ITS OWN. The shared term deduped to a
+    // single row, and that row is labelled with the other product — so the
+    // label join would call this product unsearched.
+    const rows = h.result.queries as { q: string; product?: string }[]
+    expect(rows.filter((r) => r.q === "log search")).toHaveLength(1)
+    expect(rows.some((r) => r.product === "Uptime Alerts")).toBe(false)
+
+    // And the field credits it anyway, because its term was bought.
+    expect(w.products).toBe(2)
+    expect(w.productsSearched).toBe(2)
+    expect(w.productsUnsearched).toEqual([])
+  }, 30_000)
 })
 
 /**
