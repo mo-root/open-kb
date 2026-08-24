@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest"
+import { secondLookOrder } from "../src/sweep.js"
 import {
   runFixture,
   defaultScript,
@@ -268,5 +269,39 @@ describe("second look", () => {
       failed: 1,
       unlocked: 0,
     })
+  })
+})
+
+/**
+ * WHICH hosts fill the cap.
+ *
+ * The cap binds on every run since the snippet gate — more unplaced hosts than
+ * looks to spend — so the order is the whole decision. It used to be whatever
+ * order `entities` happened to be in, and that order was measurably
+ * anti-correlated with merit: on the run where the cap bound hardest the 60
+ * hosts it looked at averaged seenIn 1.08 while the 43 it skipped averaged 4.07.
+ */
+describe("second look order", () => {
+  const row = (seenIn: number, bestRank: number | undefined, tag: string) => ({ seenIn, bestRank, tag })
+
+  it("puts the most corroborated host first", () => {
+    const out = secondLookOrder([row(1, 3, "once"), row(4, 30, "four times"), row(2, 1, "twice")])
+    expect(out.map((r) => r.tag)).toEqual(["four times", "twice", "once"])
+  })
+
+  it("breaks a tie on the best rank any query gave the host", () => {
+    const out = secondLookOrder([row(2, 9, "ninth"), row(2, 2, "second"), row(2, 40, "fortieth")])
+    expect(out.map((r) => r.tag)).toEqual(["second", "ninth", "fortieth"])
+  })
+
+  it("sorts a host no query ranked last, rather than letting undefined win by accident", () => {
+    const out = secondLookOrder([row(2, undefined, "unranked"), row(2, 50, "fiftieth")])
+    expect(out.map((r) => r.tag)).toEqual(["fiftieth", "unranked"])
+  })
+
+  it("does not mutate what it was given", () => {
+    const rows = [row(1, 1, "a"), row(9, 1, "b")]
+    secondLookOrder(rows)
+    expect(rows.map((r) => r.tag)).toEqual(["a", "b"])
   })
 })

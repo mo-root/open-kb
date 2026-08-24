@@ -388,6 +388,26 @@ export const TRIAGE_MAX_OUTPUT_TOKENS = 2_000;
  *  bounds the stage to roughly what one triage pass costs. */
 export const SECOND_LOOK_CAP = 60;
 
+/**
+ * The order the second look fills its cap in: most-corroborated first, and
+ * ties broken by the best rank any query gave the host.
+ *
+ * Exported because the thing worth pinning is the ORDER, and the cap is 60 —
+ * a fixture with sixty unplaced hosts would exercise the slice and say almost
+ * nothing about the comparison inside it.
+ *
+ * `bestRank` is optional and sorts last when missing: a host no query ranked
+ * is not evidence of a good host, and `undefined` must not win a tie by
+ * arithmetic accident the way `Math.floor` once picked a median.
+ */
+export function secondLookOrder<T extends { seenIn: number; bestRank: number | undefined }>(
+  rows: readonly T[],
+): T[] {
+  return [...rows].sort(
+    (a, b) => b.seenIn - a.seenIn || (a.bestRank ?? Infinity) - (b.bestRank ?? Infinity),
+  );
+}
+
 /** How many second-look fetches may escalate to the unlocker in one run. About
  *  half of a real run's second looks landed on a page that was ALSO walled —
  *  the direct fetch the stage already spends is not a different door than the
@@ -4919,13 +4939,42 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
      *  filled in until the report section below this stage runs. */
     const earnedUnlock = (row: HostCandidate, domain: string): boolean =>
       row.seenIn >= 2 || (bestRankOf(domain) ?? Infinity) <= 5;
-    const lookAt: Array<{ e: Entity; row: HostCandidate; url: string }> = [];
-    for (const e of unplaced) {
-      if (lookAt.length >= SECOND_LOOK_CAP) break;
-      const row = rowOf.get(e.domain);
-      if (row?.topHit && !frontDoorAgain(row.topHit, e.domain))
-        lookAt.push({ e, row, url: row.topHit });
-    }
+    /**
+     * BY MERIT, NOT BY ARRAY ORDER.
+     *
+     * The cap binds — since the snippet gate every run has had more unplaced
+     * hosts than looks to spend — so WHICH hosts fill it is the whole game,
+     * and until this sort it was whatever order `entities` happened to be in.
+     *
+     * That order is not neutral. Measured on the run where the cap bound
+     * hardest, 103 unplaced and 60 looks:
+     *
+     *   the 60 it took     13 earned an unlock   mean seenIn 1.08
+     *   the 43 it skipped  22 earned an unlock   mean seenIn 4.07
+     *   the best 60        35 earned an unlock   mean seenIn 3.28
+     *
+     * It was systematically looking at the WORST candidates — the hosts it
+     * skipped were corroborated four times over, the ones it took barely
+     * once. Sorting first takes the escalation-eligible population inside the
+     * cap from 13 to 35 for exactly the same sixty fetches and the same
+     * unlock budget. Nothing here costs more; the same money buys better odds.
+     *
+     * The key is `earnedUnlock`'s own, deliberately: the stage should look
+     * first at the hosts it would actually be willing to pay to rescue, since
+     * a look at a host it would never escalate is a look that fails open the
+     * moment the page is walled. `row.seenIn`, not `e.seenIn` — the entity's
+     * own is not filled in until the report section below this stage runs,
+     * which is the same trap `earnedUnlock` documents just above.
+     */
+    const ranked = unplaced
+      .flatMap((e) => {
+        const row = rowOf.get(e.domain);
+        return row?.topHit && !frontDoorAgain(row.topHit, e.domain)
+          ? [{ e, row, url: row.topHit }]
+          : [];
+      })
+      .map((c) => ({ ...c, seenIn: c.row.seenIn, bestRank: bestRankOf(c.e.domain) }));
+    const lookAt = secondLookOrder(ranked).slice(0, SECOND_LOOK_CAP);
     if (lookAt.length > 0) {
       say(
         "rank",
