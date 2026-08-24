@@ -597,6 +597,21 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
            * controlled comparison and no map-level number is claimed from it.
            * What it does establish is that the gate does on the wire what it
            * says it does, which is the part that was not previously checked.
+           *
+           * AND IT DOES NOT GUT THE CHANNEL LAYER, which is the obvious
+           * objection to a gate that refuses `covers` — the relation with the
+           * highest volume of the lot. Channel rows on the map, all sources:
+           *
+           *   band gate    180 rows, 16% of kept   covers 128, lists 33
+           *   band gate    139 rows, 13% of kept   covers 100, lists 33
+           *   this gate    181 rows, 16% of kept   covers  96, lists 70
+           *
+           * The share holds because most `covers` rows were never snippet
+           * guesses — they come from hosts whose page opened, which this
+           * branch does not touch. What moved is the composition: `lists`
+           * doubled, because the band gate had been refusing the single most
+           * reliable thing a snippet says, and the `covers` that went away
+           * were the guessed ones.
            */
           const SNIPPET_MAY_SAY = new Set(["lists", "discusses"])
           const overreach = !SNIPPET_MAY_SAY.has(out.relation)
