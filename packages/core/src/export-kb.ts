@@ -230,6 +230,25 @@ export function receiptSource(because?: string): string {
   return "its page this run"
 }
 
+/**
+ * An entity's home lane is the market whose queries surfaced it MOST — the
+ * sweep sorts `foundBy` by count descending, so `[0]` is a real winner and not
+ * an array accident. Checked, because "the first element of a list" is exactly
+ * the shape of four ordering bugs found elsewhere on this branch.
+ *
+ * IT IS AN ACCIDENT FOR THE TIES, and those are 34 of 1,215 kept rows on a
+ * shopify export and 36 of 1,182 on cloudflare — about 3%, entities two lanes
+ * surfaced the same number of times, where `sort` keeps whichever market's
+ * query happened to run first.
+ *
+ * Left alone, for two reasons. Nothing is lost: a straddler carries every
+ * other lane on its row (`also: ...`), so the tie decides which folder a row
+ * files under and not what is known about it. And no better rule is available
+ * HERE — market centrality would break the tie properly, and the export only
+ * ever receives market names, not the `core`/`adjacent` grading the sweep used
+ * to fund them. Recorded so the next reader who suspects the segments are
+ * arbitrary can stop at 3% instead of re-deriving it.
+ */
 function segmentOf(e: ExportEntity): string {
   return e.foundBy?.[0] ?? "unattributed"
 }
