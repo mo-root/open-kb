@@ -9,6 +9,7 @@ import {
   recallTool,
   rememberTool,
   commercialDowngradeHint,
+  linksOf,
   SLICE,
   type MapNode,
   type RememberCtx,
@@ -115,6 +116,16 @@ describe("readTool", () => {
     if (!r.ok) throw new Error(r.reason)
     expect(r.text).toContain("https://rival.com/pricing — Pricing")
     expect(r.text).toContain("https://twitter.com/acme — tw")
+  })
+
+  // linksOf's own catch/continue (an href that `new URL(href, baseUrl)` cannot
+  // resolve, e.g. an empty authority) has zero coverage anywhere in the repo —
+  // both fixture anchors above resolve cleanly, so `projectLinks` never walks
+  // it. `http://` is such an href: a scheme with no host, which throws rather
+  // than resolving against the base the way a bare relative path does.
+  it("linksOf drops an anchor whose href fails to resolve, and keeps the rest", () => {
+    const raw = '<a href="http://">broken</a><a href="/ok">Ok</a>'
+    expect(linksOf(raw, "https://rival.com/")).toEqual([{ href: "https://rival.com/ok", text: "Ok" }])
   })
 
   it("grep keeps matching lines and counts them; range slices before the cap", () => {
