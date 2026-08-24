@@ -2465,6 +2465,20 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
      * empty. Same registrable host required: robots.txt is the anchor's own
      * file, but a `Sitemap:` line pointing off-site is not something to follow
      * on its say-so.
+     *
+     * WHY THE SYMPTOM APPEARED ONLY IN THE RIVAL HARVEST, checked rather than
+     * assumed: product candidates have a second source and rivals do not. The
+     * nav is merged below "ALWAYS, rather than used as a fallback", so a
+     * missing sitemap costs products little — stripe averages 25 products over
+     * three runs and sentry 11, both mid-range against anchors whose sitemap
+     * loads fine (cursor 11, figma 10, openai 11, supabase 14). The rival
+     * leads come from `rivalsFromSitemap` and nowhere else, so the same
+     * missing file took all of them.
+     *
+     * That asymmetry is the thing to remember: a single-sourced input fails
+     * silently and completely, and a dual-sourced one degrades. `urlsScanned`
+     * exists because the first kind cannot otherwise be told from an empty
+     * answer.
      */
     if (!xml) {
       const robots = await raw(`https://${anchor}/robots.txt`);
