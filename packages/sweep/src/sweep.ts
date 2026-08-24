@@ -450,7 +450,32 @@ export function mostCorroboratedFirst<T extends { seenIn: number; bestRank: numb
  *  ceiling, which is the property that makes raising this cheap: it is a
  *  ceiling on the runs that need it, not a floor on the ones that do not.
  *  Worst case is $0.20 against a $0.90 run, and only when 25 corroborated
- *  hosts really did wall their pages. */
+ *  hosts really did wall their pages.
+ *
+ *  MEASURED ON A REAL RUN, this raise together with the 4xx-only shape check,
+ *  against the two shopify runs either side of it:
+ *
+ *                       asked  rescued  failed  unlocked   pages got   cost
+ *    thin-render + 10      60       13      42        10        30%   $1.038
+ *    thin-render + 10      60       15      40        10        33%   $1.046
+ *    4xx only + 25         60       24      32        14        47%   $1.036
+ *
+ *  Every column moved the same way at once, and the cost did not move at all —
+ *  the four extra escalations were paid for out of the thin-render ones that
+ *  stopped happening. `unlocked` landing at 14 rather than 25 is the useful
+ *  detail: the budget is no longer what bounds this stage, so raising it
+ *  further would buy nothing. `earnedUnlock` and the shape check bound it now.
+ *
+ *  WHAT THIS DOES NOT SHOW. One run against two, on an anchor whose own
+ *  baselines disagree — the two runs above kept 1,242 and 1,034 entities and
+ *  left 103 and 54 hosts unplaced. Map-level numbers are too noisy at this n
+ *  to attribute to anything, and none are claimed here. What the three runs do
+ *  support is the stage-level reading, because the second look's own metrics
+ *  moved together rather than one of them moving alone.
+ *
+ *  It also predates `mostCorroboratedFirst`, which changed WHICH sixty hosts
+ *  this stage sees. That is a further improvement on the same numbers and is
+ *  not in the 47% above. */
 export const SECOND_LOOK_UNLOCK_BUDGET = 25;
 
 /** How many model-settled `relation: "none"` hosts the drop-confirm stage may
