@@ -216,6 +216,25 @@ function fm(pairs: Array<[string, unknown]>): string {
  * ranking. SKILL.md's trust rule already says corroboration is not
  * correctness; this is the same caution with a number on it.
  *
+ * AND `seenIn` IS THE BEST SIGNAL AVAILABLE, which was worth checking rather
+ * than assuming once the instability was known. Mean top-10 overlap over the
+ * same 28 pairs, ranking by each field an entity already carries:
+ *
+ *   seenIn, most first        5.2 / 10
+ *   edge degree, most first   5.0 / 10
+ *   bestRank, best first      0.9 / 10
+ *   span count, most first    0.1 / 10
+ *
+ * Edge degree is a near tie and would need the graph built first; the other
+ * two are noise. So the ~5/10 ceiling is the anchor's run-to-run variance and
+ * not a poor choice of key — no reordering available here does better.
+ *
+ * `bestRank` scoring 0.9 is worth knowing on its own: a host's best SERP rank
+ * barely survives a re-run. It is still the right tie-break inside
+ * `mostCorroboratedFirst`, which spends a cap WITHIN one run where rank is
+ * real, and it is correctly absent from this order, which is read across
+ * runs.
+ *
  * EXERCISED ACROSS FIVE ANCHORS, because "the shopify list looks right" is one
  * list. The head of `relations/competitor.md` on each:
  *
