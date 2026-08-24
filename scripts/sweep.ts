@@ -73,12 +73,39 @@ const MODEL = process.env.OPENKB_MODEL ?? "deepseek/deepseek-v4-flash-0731"
  * this preset below — `--quick` fills gaps, it does not override a setting
  * the operator already made.
  */
+/**
+ * WHAT --quick ACTUALLY BUYS, measured on resend.com 2026-08-24 — nothing had
+ * ever said, and the answer is better than "a first look" suggests.
+ *
+ *              cost    wall    on the map   competitors
+ *   --quick   $0.40   6 min          411           106
+ *   full      ~$1.14  ~25 min      ~1,150         ~240
+ *
+ * A third of the entities for a third of the cost and a quarter of the clock.
+ * What survives the cut is the part a reader looks at first: resend's rivals
+ * came back mailtrap, mailchimp, sequenzy, mailersend, mailgun, brevo,
+ * postmark, twilio, mailjet, mailerlite — ordered by corroboration, and every
+ * one of them a real competitor.
+ *
+ * That is the shape to expect, and it follows from what the flag does rather
+ * than being luck. Sealing the search early cuts the TAIL of every list, and
+ * relation lists are ordered most-corroborated-first (`tierSort` in
+ * export-kb.ts), so the rows lost are the ones a reader reaches last. Skipping
+ * the paid link pass costs edges the model would have labelled, not the free
+ * ones a page names outright — this run still recorded 739.
+ *
+ * So --quick is not only "a first look". For a gallery entry or a fast answer
+ * about who competes with whom, it is most of the value at a third of the
+ * price; the full run is for the long tail and the labelled edges.
+ */
 const QUICK_MAX_HOSTS = 90
 
 if (QUICK) {
   console.log(
     `--quick: capping this run at ~${QUICK_MAX_HOSTS} hosts and skipping the paid link pass ` +
-      `— a smaller, faster-linked map for a first look. Drop --quick for the full run.`,
+      `— measured on resend.com at $0.40 and 6 minutes for 411 mapped entities against ~$1.14 and ~25 ` +
+      `minutes for a full run. The head of each relation list survives; the tail is what is cut. ` +
+      `Drop --quick for the long tail and the model-labelled edges.`,
   )
 }
 
