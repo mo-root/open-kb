@@ -14,7 +14,7 @@
  * `runs/stopped-<domain>-<stamp>.json` with its spans, and exits 6.
  */
 import { openrouter } from "@openrouter/ai-sdk-provider"
-import { SpanStream, withSpendCap, type Span, type SpendTrip } from "../packages/core/src/index.js"
+import { SpanStream, withSpendCap, queriesThatFit, type Span, type SpendTrip } from "../packages/core/src/index.js"
 import { priceForModel } from "../packages/providers/src/index.js"
 import { sweep, readUi, onMap } from "../packages/sweep/src/index.js"
 import { EXIT, fatal } from "./fatal.js"
@@ -174,10 +174,46 @@ console.log(
       : `stopping at $${RUN_CAP_USD.toFixed(2)} (${CLI_LIMIT_VARS.runCap})`),
 )
 
+/**
+ * REPRODUCE A DEADLINE-BOUND RUN FROM THE TERMINAL.
+ *
+ * Every one of the 41 runs on disk carries `report.budget: null` — not one is
+ * deadline-bound, because only the web route sets `deadlineAt` and this file
+ * never did. So the shape the PRODUCT actually runs has never been observed
+ * here, and the arithmetic in core/clock.ts about what a 270-second clock
+ * yields has never been checked against a run.
+ *
+ * `OPENKB_DEADLINE_S=270` reproduces it exactly: the same clock, and the same
+ * query budget derived from it the same way, through `queriesThatFit` at the
+ * same rank width the route uses. One env var, no new flags to keep in sync.
+ *
+ * The open question it answers, from `report.clock` and `report.budget` on the
+ * finished run: `fixedSeconds` is modelled at 60 and measured at 102 and 226,
+ * so a clock-bound run should seal its search almost at once and ship a map
+ * built from a couple of queries. Should. Nothing has watched one.
+ */
+const DEADLINE_S = Number(process.env.OPENKB_DEADLINE_S ?? 0) || 0
+const DEADLINE_RANK_WIDTH = Math.max(
+  1,
+  Math.floor(Number(process.env.OPENKB_RANK_CONCURRENCY ?? 8) || 8),
+)
+if (DEADLINE_S) {
+  console.log(
+    `--deadline: ${DEADLINE_S}s clock, ${queriesThatFit(DEADLINE_S, undefined, DEADLINE_RANK_WIDTH)} queries — ` +
+      `the shape the web route runs. Watch report.clock and report.budget.`,
+  )
+}
+
 const out = await withSpendCap(
   sweep({
     domain: anchor,
     queries: TARGET,
+    ...(DEADLINE_S
+      ? {
+          deadlineAt: startedAt + DEADLINE_S * 1000,
+          maxQueries: queriesThatFit(DEADLINE_S, undefined, DEADLINE_RANK_WIDTH),
+        }
+      : {}),
     // UNSET BY DEFAULT, and that is the whole point since variable page depth
     // landed. The engine opens a query at SHALLOW_PAGES (2) and moves a product
     // to DEEP_PAGES (4) only once `assess` has per-page-yield evidence for it —
