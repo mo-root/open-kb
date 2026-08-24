@@ -17,7 +17,7 @@
  * writes. The lake INDEX links every exported map and pairs runs of one anchor
  * with the diff command that shows their drift.
  */
-import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { exportKbFiles, type ExportRunLike, type ExportedFile } from "../packages/core/src/index.js"
 import { exportTargetRefusal, judgeExportTarget } from "./export-target.js"
@@ -91,7 +91,16 @@ if (!runPath) {
 }
 
 if (runPath === "--all") {
-  const names = readdirSync("runs").filter((n) => /^(sweep|swarm)-.*\.json$/.test(n) && !n.endsWith(".spans.jsonl"))
+  // `runs/` is gitignored, so a fresh clone has none. readdirSync throws
+  // ENOENT on a MISSING directory, unlike an empty one, which returns `[]`
+  // and falls through to the `0 runs` message below exactly as intended —
+  // this file's own copy of the fix already applied to bench.ts,
+  // run-doctor.ts, calibrate-kernel.ts, query-yield.ts, recall.ts,
+  // corroboration-arrival.ts and read.ts (see read.ts's `resolve`), missed
+  // here when that pass went through --all readers.
+  const names = (existsSync("runs") ? readdirSync("runs") : []).filter(
+    (n) => /^(sweep|swarm)-.*\.json$/.test(n) && !n.endsWith(".spans.jsonl"),
+  )
   const rows: Array<{ anchor: string; source: string; dir: string; entities: number }> = []
   for (const name of names.sort()) {
     const run = loadRun(join("runs", name))
@@ -113,6 +122,12 @@ if (runPath === "--all") {
           : ""
       return `## ${anchor}\n\n${items.join("\n")}\n${drift}`
     })
+  // `writeExport` makes `runs/exports/kb-*/` per row, but with zero rows (an
+  // empty or freshly-created `runs/`) that loop never runs and the INDEX
+  // write below threw ENOENT on the missing `runs/exports/` — confirmed by
+  // running `--all` end to end against both a missing and an empty `runs/`
+  // after the readdirSync fix above.
+  mkdirSync(join("runs", "exports"), { recursive: true })
   writeFileSync(
     join("runs", "exports", "INDEX.md"),
     `# The knowledge lake\n\nEvery exported map, newest last. Each folder is self-describing: start at its\nREADME.md, or hand its SKILL.md to an agent.\n\n${sections.join("\n")}`,
