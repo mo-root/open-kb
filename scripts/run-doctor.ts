@@ -25,6 +25,7 @@
  *   second look        35% of asked hosts never get a page, over 28 runs
  *   clock              predicted/actual median 1.44 over 41 runs (0.42-2.36)
  *   terms fired        32%-58% of terms written, over the 8 runs with wire
+ *   snippet-judged     13.4% of judged hosts over 39 runs (11.0%-15.6%)
  *
  * WHAT IT FOUND ON ITS FIRST PASS over the 45 runs on disk (2026-08-25):
  * the two free harvest channels are the first thing a clock starves.
@@ -145,6 +146,34 @@ export function diagnose(r: Record<string, any>, stats: Record<string, any>): No
       what: "second look",
       detail: `${sl.asked} asked, ${sl.rescued} rescued, ${sl.failed ?? 0} got no page (${pct(sl.failed ?? 0, sl.asked)})`,
       norm: "35% get no page, over 28 runs",
+    })
+  }
+
+  /**
+   * HOW MUCH OF THIS MAP RESTS ON A SEARCH SNIPPET rather than a page.
+   *
+   * The branch audit's headline: a host nobody could read is judged from its
+   * SERP snippet, and those judgements agreed with a real read only 55% of
+   * the time. The per-relation gate now stops such a row claiming a market
+   * relation, so what it can say is bounded — but the SHARE is unchanged,
+   * because the gate does not make a host readable. It is the fraction of
+   * the map standing on the thinner evidence, and it belongs on every run
+   * rather than in one audit.
+   */
+  const k = r.kernel
+  const judged = (k?.modelJudged ?? 0) + (k?.serpJudged ?? 0)
+  if (!k || k.serpJudged == null || !judged) absent("snippet-judged", "run predates report.kernel.serpJudged")
+  else {
+    const share = k.serpJudged / judged
+    out.push({
+      level: share > 0.16 ? "watch" : "ok",
+      what: "snippet-judged",
+      // One decimal, deliberately: the norm's ceiling is 15.6% and whole
+      // percent rounds 15.6 to "16%", which reads as out-of-range beside an
+      // `ok`. A check that looks self-contradictory gets ignored.
+      detail: `${k.serpJudged}/${judged} hosts (${(100 * share).toFixed(1)}%) judged from a snippet, not a page` +
+        (k.unlocked ? `, ${k.unlocked} recovered by the unlocker` : ""),
+      norm: "13.4% over 39 runs, 11.0%-15.6%",
     })
   }
 
