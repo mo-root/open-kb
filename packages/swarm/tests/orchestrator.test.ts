@@ -1899,6 +1899,84 @@ describe("runSwarm: the ledger stays honest", () => {
   })
 })
 
+// ── the ports' own failure narration ────────────────────────────────────────
+
+describe("runSwarm: the instrumented search and fetch ports narrate their own failure", () => {
+  // orchestrator.ts wraps `opts.search`/`opts.fetch` so a rejection still lands
+  // one span — kind, ok:false, the error message — before it rethrows for the
+  // tool boundary to turn into a graceful refusal. Every fake port in this file
+  // always resolves, so neither `catch` block had ever run.
+
+  it("a search engine that throws is narrated as a $0 failed span, and the seed mission reads it as an empty SERP", async () => {
+    const spans = new SpanStream()
+    const lead = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = leadTurnOf(prompt)
+        if (turn === 1) return reply(call("n1", "next", { after: { landings: 1 }, why: "wait for the seed" }), false)
+        return reply(call("f1", "finish", { reason: "done", summary: "s", unresolved: [], why: "d" }), false)
+      },
+    })
+    const throwingSearch: SearchPort = {
+      async search() {
+        throw new Error("SERP zone unreachable")
+      },
+    }
+
+    const run = await runSwarm(mkOpts({ lead, over: { search: throwingSearch, spans } }))
+    spans.close()
+    const seen: Array<{ kind: string; ok: boolean; usd: number; error?: string }> = []
+    for await (const s of spans.stream()) seen.push(s)
+
+    // The run is not derailed by the throw itself: tools-paid.ts's own
+    // try/catch around `ctx.search.search` turns the rethrow into a refusal
+    // the seed investigator reads, same as a live SERP answering nothing. The
+    // seed then correctly reads that as stillborn — a thrown search engine and
+    // an empty one are indistinguishable from here, and lying that the run
+    // "finished" with a map would be worse than saying so.
+    expect(run.ending.reason).toBe("stillborn")
+    const failed = seen.find((s) => s.kind === "search" && !s.ok)
+    expect(failed).toBeDefined()
+    expect(failed?.usd).toBe(0)
+    expect(failed?.error).toContain("SERP zone unreachable")
+  })
+
+  it("a fetch that throws is narrated as a $0 failed span, and the run finishes anyway", async () => {
+    const spans = new SpanStream()
+    const lead = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = leadTurnOf(prompt)
+        if (turn === 1) return reply(call("n1", "next", { after: { landings: 1 }, why: "wait for the seed" }), false)
+        return reply(call("f1", "finish", { reason: "done", summary: "s", unresolved: [], why: "d" }), false)
+      },
+    })
+    const inv = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = invTurnOf(prompt)
+        if (turn === 0) return reply(call("s1", "search", { queries: ["fraud scoring"], why: "orient" }), false)
+        if (turn === 1)
+          return reply(call("f1", "fetch", { urls: ["https://dead.example"], mode: "direct", why: "read it" }), false)
+        return reply(text("done."), true)
+      },
+    })
+    const throwingFetch: FetchPort = {
+      async get() {
+        throw new Error("socket reset")
+      },
+    }
+
+    const run = await runSwarm(mkOpts({ lead, inv, over: { fetch: throwingFetch, spans } }))
+    spans.close()
+    const seen: Array<{ kind: string; ok: boolean; usd: number; error?: string }> = []
+    for await (const s of spans.stream()) seen.push(s)
+
+    expect(run.ending.reason).toBe("lead-finished")
+    const failed = seen.find((s) => s.kind === "fetch" && !s.ok)
+    expect(failed).toBeDefined()
+    expect(failed?.usd).toBe(0)
+    expect(failed?.error).toContain("socket reset")
+  })
+})
+
 // ── the harvest tier through the whole loop ─────────────────────────────────
 
 describe("runSwarm: a harvest mission over fake ports", () => {
