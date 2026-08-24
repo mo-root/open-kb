@@ -87,12 +87,28 @@ const MODEL = process.env.OPENKB_MODEL ?? "deepseek/deepseek-v4-flash-0731"
  * postmark, twilio, mailjet, mailerlite — ordered by corroboration, and every
  * one of them a real competitor.
  *
- * That is the shape to expect, and it follows from what the flag does rather
- * than being luck. Sealing the search early cuts the TAIL of every list, and
- * relation lists are ordered most-corroborated-first (`tierSort` in
- * export-kb.ts), so the rows lost are the ones a reader reaches last. Skipping
- * the paid link pass costs edges the model would have labelled, not the free
- * ones a page names outright — this run still recorded 739.
+ * That follows from what the flag does rather than being luck — but "the head
+ * survives" is truer of the first handful than of the first ten, and the
+ * difference is worth knowing before trusting a quick map.
+ *
+ * Sealing early does not only drop the tail: it TRUNCATES CORROBORATION, so a
+ * host many queries would have surfaced accumulates fewer of them and can slip
+ * down the order rather than merely off the end. Simulated on two full runs by
+ * recomputing each competitor's `seenIn` from the first third of the fired
+ * queries and re-ranking:
+ *
+ *   shopify     6 of the full run's top 10 still in the top 10
+ *   cloudflare  8 of 10
+ *
+ * The top five are steady on both — stripe, bigcommerce, wix, squareup,
+ * salesforce; akamai, fortinet, aws, checkpoint, paloaltonetworks — and the
+ * churn is at ranks 6-10. So a quick map's first five rivals are worth the
+ * same as a full run's; its sixth through tenth are a plausible set rather
+ * than the right one. (The simulation cuts by query count and the flag seals
+ * on host count, so it is the right shape and not the exact mechanism.)
+ *
+ * Skipping the paid link pass costs edges the model would have labelled, not
+ * the free ones a page names outright — this run still recorded 739.
  *
  * So --quick is not only "a first look". For a gallery entry or a fast answer
  * about who competes with whom, it is most of the value at a third of the
@@ -104,8 +120,8 @@ if (QUICK) {
   console.log(
     `--quick: capping this run at ~${QUICK_MAX_HOSTS} hosts and skipping the paid link pass ` +
       `— measured on resend.com at $0.40 and 6 minutes for 411 mapped entities against ~$1.14 and ~25 ` +
-      `minutes for a full run. The head of each relation list survives; the tail is what is cut. ` +
-      `Drop --quick for the long tail and the model-labelled edges.`,
+      `minutes for a full run. The top few rivals match a full run's; ranks 6-10 and the long tail do not. ` +
+      `Drop --quick when the order past the first handful has to be right.`,
   )
 }
 
