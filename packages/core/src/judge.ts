@@ -527,8 +527,20 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
            * `SECOND_LOOK_CAP`: the population it now sees is precisely the
            * hosts whose page would not open, and "about half of a real run's
            * second looks landed on a page that was ALSO walled". When it does
-           * get a page it places the host every time — 11 of 11 on that run —
-           * so the failures are the fetch, not the judgement.
+           * get a page it usually places the host, so the failures are the
+           * fetch and not the judgement.
+           *
+           * "Every time — 11 of 11 on that run" is what this said, and five
+           * later runs put it lower — rescued against looks that got a page:
+           *
+           *   13/18  72%     15/20  75%     24/28  86%
+           *   36/40  90%     38/44  86%     (the last is cloudflare)
+           *
+           * 72% to 90%, not 100%. One run of eleven was too small to carry the
+           * word "every", and the sentence it supported never needed it. What
+           * matters is the ratio between the two failure modes: the fetch
+           * fails far more often than the judgement does, which is why
+           * 16b8782 and 86ddf10 went after the fetch and not the prompt.
            */
           /**
            * PER RELATION, NOT PER BAND — the band split above was measured on
