@@ -551,8 +551,39 @@ export function exportKbFiles(run: ExportRunLike): ExportedFile[] {
   const gate = rep?.scorecard?.gate
   const health: string[] = []
   if (usd !== undefined) health.push(`- Cost: $${usd.toFixed(2)}${seconds ? ` over ${Math.round(seconds)}s` : ""}`)
+  /**
+   * NOT A COMPLETENESS SCORE, and it was printed as if it were one.
+   *
+   * "Answer-key recall: 0.14" beside "1106 entities" reads as "86% of the
+   * market is missing". It is not that. The answer key is every outbound host
+   * on the pages that named the anchor, and a large share of those are the
+   * links every website has. Measured on the probes of two runs:
+   *
+   *   shopify      645 entries,   42% match a CDN or social pattern
+   *   cloudflare  2230 entries,   29%
+   *
+   * The most common entries are facebook.com, linkedin.com, youtube.com,
+   * instagram.com, twitter.com, googleapis.com and gstatic.com — footers,
+   * not competitors — and the pattern that found them is conservative, so
+   * those shares are floors.
+   *
+   * A market map correctly leaves all of that out, which caps this number far
+   * below 1 no matter how good the map is. It moves with which probe pages a
+   * run happened to collect: shopify read 0.22-0.29 across seven runs and
+   * 0.14 on the eighth, while cloudflare went 0.13 to 0.18 over the same
+   * changes. Up on one anchor, down on the other, same engine.
+   *
+   * So it is worth keeping and worth labelling. What it IS good for is
+   * comparing runs of the SAME anchor with the same probes, which is what
+   * scripts/recall.ts does deliberately against a hand-written field.
+   */
   if (rep?.recall?.pooled != null)
-    health.push(`- Answer-key recall: ${(rep.recall.pooled as number).toFixed(2)} over ${rep.recall.probes?.length ?? 0} probe page(s)`)
+    health.push(
+      `- Answer-key overlap: ${(rep.recall.pooled as number).toFixed(2)} over ${rep.recall.probes?.length ?? 0} probe page(s)` +
+        ` — the share of hosts linked from pages naming the anchor that are also on this map.` +
+        ` A third to a half of those links are footers (facebook, linkedin, googleapis), which a market map leaves out on purpose,` +
+        ` so this is not a completeness score and is only comparable between runs of the same anchor.`,
+    )
   if (rep?.recall?.aliasExclusion?.note) health.push(`- ${rep.recall.aliasExclusion.note}`)
   if (gate?.refusals) health.push(`- The finish gate refused ${gate.refusals} time(s); the objections are preserved below.`)
   if (rep?.ending?.humanReason) health.push(`- Ending: ${rep.ending.humanReason}`)
