@@ -1672,7 +1672,34 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   const lines = (m: Map<string, Line>) =>
     [...m.values()].sort((a, b) => b.usd - a.usd);
 
+  /**
+   * WHERE THE MINUTES WENT, per rail — the one thing the report could not say.
+   *
+   * `report.seconds` is the total and `cost.byKind[].ms` is BILLED time, which
+   * on a 30-minute cloudflare run summed to 85 minutes of concurrent model
+   * calls. Neither answers "which phase was slow", so the only way to find out
+   * was to diff the timestamps in a terminal log — and when I did it from
+   * memory instead, I blamed the second look for eleven minutes it did not
+   * spend. It spent 73 seconds; `understand` spent 362.
+   *
+   * FIRST AND LAST NARRATION ON EACH RAIL, which is an honest approximation
+   * and not a claim of exclusive occupancy. The pipeline is mostly sequential
+   * — understand, then sweep, then rank, then link — so the spans line up with
+   * the phases, but a stage that narrates late (the listicle harvest talks on
+   * the sweep rail while the fold has already begun) can overlap the next.
+   * Read them as "this rail was active from here to here", which is the
+   * question a slow run actually raises.
+   */
+  const railClock: Record<string, { firstSec: number; lastSec: number; lines: number }> = {};
   const say = (agent: Phase, message: string) => {
+    const at = sec();
+    const c = railClock[agent];
+    if (c) {
+      c.lastSec = at;
+      c.lines += 1;
+    } else {
+      railClock[agent] = { firstSec: at, lastSec: at, lines: 1 };
+    }
     onLog?.(`${el()}s  ${message}`);
     emitUi(spans, runId, "progress", agent, {
       round: 1,
@@ -6735,6 +6762,23 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     readPages,
     usd,
     seconds,
+    /**
+     * Wall-clock per rail: when each first spoke, when it last spoke, and how
+     * many lines it wrote. `seconds` above is the total and `cost.byKind[].ms`
+     * is BILLED time — on a 30-minute cloudflare run that summed to 85 minutes
+     * of concurrent model calls — so neither could answer "which phase was
+     * slow" without a terminal log to diff.
+     *
+     * `spanSec` is last-minus-first, NOT exclusive occupancy: rails overlap
+     * where a stage narrates late. It is the span in which a rail was active,
+     * which is the question a slow run raises.
+     */
+    phases: Object.fromEntries(
+      Object.entries(railClock).map(([rail, c]) => [
+        rail,
+        { firstSec: Math.round(c.firstSec), lastSec: Math.round(c.lastSec), spanSec: Math.round(c.lastSec - c.firstSec), lines: c.lines },
+      ]),
+    ),
     kernel: { ...judged.stats, threshold: KERNEL_THRESHOLD },
     /** Null when the flag was off — "not run" must not read as "kept all".
      *  When on: the census of the stage's one power, with its call count. */

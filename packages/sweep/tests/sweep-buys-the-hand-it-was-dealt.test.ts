@@ -239,6 +239,31 @@ describe("report.wire — the plan against the purchase", () => {
  * So it is read three times and the MEDIAN product count is kept — the middle
  * rather than the richest, because both tails are failures.
  */
+describe("report.phases — where the minutes went", () => {
+  it("carries a span for every rail that spoke", async () => {
+    // `report.seconds` is the total and `cost.byKind[].ms` is BILLED time, so
+    // neither answers "which phase was slow". Without this the only way to
+    // find out was to diff timestamps in a terminal log — and doing it from
+    // memory instead blamed the second look for eleven minutes it did not
+    // spend (73 seconds; `understand` spent 362).
+    const h = await runFixture()
+    const phases = h.result.report.phases as Record<
+      string,
+      { firstSec: number; lastSec: number; spanSec: number; lines: number }
+    >
+    // The rail names are a closed set and the pipeline walks all of them.
+    expect(Object.keys(phases).sort()).toEqual(["link", "plan", "rank", "sweep", "understand", "write"])
+    for (const [rail, c] of Object.entries(phases)) {
+      expect(c.lines, rail).toBeGreaterThan(0)
+      expect(c.spanSec, rail).toBe(c.lastSec - c.firstSec)
+      expect(c.spanSec, rail).toBeGreaterThanOrEqual(0)
+    }
+    // Ordered as the pipeline runs them, which is what makes the spans
+    // readable as phases at all.
+    expect(phases.understand!.firstSec).toBeLessThanOrEqual(phases.write!.firstSec)
+  }, 30_000)
+})
+
 describe("reading the company more than once", () => {
   const decomp = (n: number) => ({
     sells: "hosted log search for small platform teams",

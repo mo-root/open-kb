@@ -381,6 +381,19 @@ console.log(`relations `, count(keep.map((e) => e.relation)))
   )
 }
 console.log(`tokens ${stats.tokIn.toLocaleString()} in / ${stats.tokOut.toLocaleString()} out`)
+// Where the minutes went. The total alone cannot tell a run that was slow in
+// `understand` from one that was slow in the judge, and those want opposite
+// fixes. Ordered by when each rail first spoke, so it reads as the pipeline.
+{
+  const phases = (out!.report as { phases?: Record<string, { firstSec: number; lastSec: number; spanSec: number; lines: number }> }).phases
+  if (phases && Object.keys(phases).length) {
+    const rows = Object.entries(phases).sort(([, a], [, b]) => a.firstSec - b.firstSec)
+    console.log(
+      `phases  ` +
+        rows.map(([rail, c]) => `${rail} ${c.firstSec}-${c.lastSec}s`).join("  ·  "),
+    )
+  }
+}
 console.log(`$${stats.usd.toFixed(4)} · ${stats.seconds.toFixed(0)}s`)
 
 /**
