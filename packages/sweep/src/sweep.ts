@@ -6200,10 +6200,35 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         // hand — and only ever adds a mechanism, never removes one: a host
         // with exactly one naming row keeps behaving exactly as before,
         // which is what the two existing tests above lock in.
+        /**
+         * THE QUOTE HAS TO NAME IT, not merely the row it came from.
+         *
+         * `namesIt` was checked against title and description JOINED, and then
+         * the description alone was quoted. A row whose TITLE carried the name
+         * therefore shipped a quote that did not contain it — offered to a
+         * reader as the evidence for an edge it does not support.
+         *
+         * MEASURED on two runs, edges whose `why` carries a quote:
+         *
+         *   shopify      92 of 1,329   6.9%
+         *   cloudflare  124 of 1,407   8.8%
+         *
+         * Three competitor edges out of squareup.com — to SumUp, Stripe and
+         * Lightspeed — all carried the same sentence, "Learn why thousands of
+         * businesses choose Square every year", which names none of them.
+         *
+         * So the candidate is now the field that actually names the hit,
+         * preferring the description and falling back to the title. A row
+         * where neither does contributes no quote, and the `why` below falls
+         * back to its no-quote form — which is honest, and is what this
+         * already does when there is no mechanism at all.
+         */
         let mechanism = "";
         for (const r of rows) {
-          if (!namesIt(`${r.title} ${r.description ?? ""}`, hit)) continue;
-          const candidate = (r.description || r.title || "").trim();
+          const desc = (r.description ?? "").trim();
+          const title = (r.title ?? "").trim();
+          const candidate = namesIt(desc, hit) ? desc : namesIt(title, hit) ? title : "";
+          if (!candidate) continue;
           if (candidate.toLowerCase() === hit.toLowerCase()) continue;
           if (candidate.length > mechanism.length) mechanism = candidate;
         }

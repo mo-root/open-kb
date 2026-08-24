@@ -49,6 +49,40 @@ describe("the free naming pass", () => {
     )
   })
 
+  it("never quotes a sentence that does not contain the name it is evidence for", async () => {
+    /**
+     * `namesIt` was checked against title and description JOINED and then the
+     * description alone was quoted, so a row whose TITLE carried the name
+     * shipped a quote that did not. Measured on two real runs: 92 of 1,329
+     * quoted edges on shopify (6.9%) and 124 of 1,407 on cloudflare (8.8%).
+     * Three competitor edges out of squareup.com all carried "Learn why
+     * thousands of businesses choose Square every year", which names none of
+     * the three companies it was offered as evidence about.
+     */
+    const h = await runFixture({
+      serp: {
+        ...SERP,
+        "log search": [
+          {
+            url: `https://${HOSTS.grepstack}/`,
+            // The TITLE names Loglens; the description is generic marketing
+            // that does not. Only the title may be quoted here.
+            title: `Grepstack vs ${HOSTS.loglens} — hosted log search`,
+            description: "Learn why thousands of teams choose Grepstack every year to search their logs.",
+          },
+          ...SERP["log search"]!.slice(1),
+        ],
+      },
+    })
+    const e = named(h).find((x) => x.from === HOSTS.grepstack && x.to === HOSTS.loglens)
+    expect(e, "grepstack's own row named loglens and no naming edge was written").toBeDefined()
+    // Whatever it quotes, the quote must contain the name. The generic
+    // description is longer and would have won the old "longest wins" contest.
+    const quoted = /names "[^"]+": "([\s\S]*)"$/.exec(e!.why)?.[1]
+    if (quoted) expect(quoted.toLowerCase()).toContain(HOSTS.loglens.toLowerCase())
+    expect(e!.why).not.toContain("thousands of teams choose Grepstack")
+  }, 30_000)
+
   it("falls back to the bare discovery sentence when the row says nothing more", async () => {
     const h = await runFixture({
       sweepOptions: { skipModelLinking: true },
