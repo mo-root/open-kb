@@ -505,6 +505,32 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
            * blocked host is worth a dollar per hundred, so the money is not
            * spent and the claim is withheld instead.
            *
+           * A SIGNAL WAS FOUND LATER, and this paragraph should not be read as
+           * saying none exists. What it actually establishes is that RANK and
+           * `seenIn` are not signals — which is true and was the right thing to
+           * check first, since those are the two the pipeline already had.
+           *
+           * The one that works is the BLOCK SHAPE, and it separates by 11x.
+           * Re-fetching the block-shaped hosts a shopify run left unplaced,
+           * through the unlocker (16b8782):
+           *
+           *   http-4xx      10 of 11 recovered, every one a usable page
+           *   thin-render    2 of 12 recovered, ONE of them usable
+           *
+           * A 4xx is the site's judgement of the fetcher, which is what an
+           * unlocker exists to overturn; `thin-render` is a fact about the
+           * page, which it cannot. thin-render is 24% of the eligible
+           * population across 12 runs, so a quarter of the spend this
+           * paragraph priced was buying 8% odds.
+           *
+           * WHETHER THAT REOPENS THE DECISION IS UNMEASURED. The arithmetic
+           * above is for ALL 124 block-shaped hosts at seenIn 1; restricted to
+           * 4xx it is roughly three quarters of that, at 91% page recovery
+           * rather than the blended rate assumed here — a different trade, and
+           * nobody has costed it. The second look spends its escalations this
+           * way already and rescues 72-90% of the hosts whose page it gets, so
+           * the evidence points at "worth re-costing" rather than at an answer.
+           *
            * MEASURED ON THE WIRE, two shopify.com runs either side of it:
            *
            *              snippet rows   channel claims   unknown   kept
