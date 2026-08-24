@@ -235,6 +235,20 @@ function fm(pairs: Array<[string, unknown]>): string {
  * real, and it is correctly absent from this order, which is read across
  * runs.
  *
+ * AND THE LISTS ARE NOT EQUALLY TRUSTWORTHY. Same 28 pairs, per relation:
+ *
+ *   competitor   5.2 / 10      covers   4.6 / 10
+ *   adjacent     4.4 / 10      lists    4.4 / 10
+ *   integration  1.8 / 10
+ *
+ * `competitor` — the list a reader opens first and the one the README calls
+ * "the rivals" — is the steadiest of them, which is the right way round.
+ * `integration` is close to random: its top ten barely survives a re-run, on
+ * lists of 48 to 114 rows. Whatever surfaces an integration is not something
+ * two runs of one anchor agree on, and a reader treating that file's head as
+ * "the main integrations" would be reading noise. Worth a look on its own; not
+ * a thing `tierSort` can fix, since the instability is in the input.
+ *
  * EXERCISED ACROSS FIVE ANCHORS, because "the shopify list looks right" is one
  * list. The head of `relations/competitor.md` on each:
  *
