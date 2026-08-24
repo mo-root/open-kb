@@ -576,6 +576,27 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
            * The same number of true rows, with thirty-six fewer false ones.
            * A gate that refuses more is only worth it if what it keeps is
            * worth more, and here what it keeps is nearly all of the truth.
+           *
+           * ON THE WIRE, three shopify.com runs. "Snippet-only" is a row this
+           * branch kept and the second look never revisited; "rescued" is one
+           * it withheld that a real page then placed:
+           *
+           *   band gate    adjacent 67, competitor 7                 11 rescued
+           *   band gate    adjacent 51, competitor 19, +2            23 rescued
+           *   this gate    lists 23, discusses 4                     34 rescued
+           *
+           * Exactly the allowlist survives, and nothing else does. The rows
+           * the gate stops keeping do not simply vanish either — withholding
+           * them is what sends them to the second look, and the count it
+           * places on real evidence went 11 to 34 over the same three runs.
+           * So the map trades ~70 rows guessed at 30-59% for ~27 guessed at
+           * 82-88% plus 34 read off an actual page.
+           *
+           * The caveat that belongs with it: `understand` read shopify as 43,
+           * 43 and 56 products on those three runs, so nothing here is a
+           * controlled comparison and no map-level number is claimed from it.
+           * What it does establish is that the gate does on the wire what it
+           * says it does, which is the part that was not previously checked.
            */
           const SNIPPET_MAY_SAY = new Set(["lists", "discusses"])
           const overreach = !SNIPPET_MAY_SAY.has(out.relation)
