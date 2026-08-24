@@ -658,9 +658,28 @@ export function exportKbFiles(run: ExportRunLike): ExportedFile[] {
       return `- [[${slugOf(e)}]] — ${e.relation}${lanes}`
     })
     const slug = seg.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "unattributed"
+    /**
+     * THE SHAPE BEFORE THE SCROLL. Every map has one lane holding a third to
+     * two thirds of it — measured at 43% on shopify, 37% cloudflare, 33%
+     * openai and 60% on stripe, whose payments lane is 672 rows. That is not a
+     * defect, it is what a company's ecosystem looks like, but "N entities, M
+     * straddling" tells a reader nothing about a file that long.
+     *
+     * The relation split is the one cut this file does not already carry —
+     * rows are ordered by corroboration and labelled with their relation, so
+     * the counts are derivable by scrolling all 672 of them and by no other
+     * means. One line makes "mostly adjacent, ninety-six rivals" readable at
+     * the top.
+     */
+    const segCounts = new Map<string, number>()
+    for (const e of list) segCounts.set(e.relation, (segCounts.get(e.relation) ?? 0) + 1)
+    const split = [...segCounts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([r, n]) => `${r} ${n}`)
+      .join(" · ")
     files.push({
       path: `segments/${slug}.md`,
-      content: `# ${seg}\n\n${list.length} entities, ${straddlers.length} straddling other segments.\n\n${rows.join("\n")}\n`,
+      content: `# ${seg}\n\n${list.length} entities, ${straddlers.length} straddling other segments.\n\n${split}.\n\n${rows.join("\n")}\n`,
     })
   }
 

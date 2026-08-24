@@ -375,6 +375,29 @@ describe("an untiered run says nothing about tiers", () => {
   })
 })
 
+describe("a segment says its own shape", () => {
+  it("carries the relation split, because the biggest lane is a third to two thirds of the map", () => {
+    /**
+     * Measured across four anchors: the largest segment holds 43% on shopify,
+     * 37% cloudflare, 33% openai and 60% on stripe — whose payments lane is
+     * 672 rows. "N entities, M straddling" says nothing about a file that
+     * long, and the relation counts are the one cut it does not already carry.
+     */
+    const row = (slug: string, relation: string) => ({
+      name: slug, domain: `${slug}.example`, kind: "company", relation,
+      what: "A thing.", why: "Because.", foundBy: ["Payments"],
+    })
+    const files = exportKbFiles({
+      anchor: "clerk.com",
+      entities: [row("a", "competitor"), row("b", "adjacent"), row("c", "adjacent"), row("d", "lists")],
+    })
+    const seg = files.find((f) => f.path === "segments/payments.md")?.content ?? ""
+    expect(seg).toContain("4 entities, 0 straddling other segments.")
+    // Most-common relation first, so the line reads as the shape of the lane.
+    expect(seg).toContain("adjacent 2 · competitor 1 · lists 1.")
+  })
+})
+
 describe("the manifest carries the ranking the relation lists use", () => {
   it("emits seenIn where the run recorded it, so both access paths agree", () => {
     /**
