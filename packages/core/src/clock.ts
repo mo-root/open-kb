@@ -125,6 +125,35 @@ export const MEASURED_PHASE_COSTS: PhaseCosts = {
   rankSecondsPerHost: 0.63,
   rankPoolWidth: 8,
   tailSeconds: 30,
+  /*
+   * RE-MEASURED 2026-08-24 against the first runs carrying `report.phases`,
+   * and every term is off — in both directions, which is why the total is
+   * closer than the parts:
+   *
+   *                          here   resend(59q)   cloudflare(165q)
+   *   sweepSecondsPerQuery    1.4          2.36               4.35
+   *   hostsPerQuery            13           7.6                7.4
+   *   rankSecondsPerHost     0.63         0.244              0.277
+   *
+   * Sweep costs MORE than modelled (the provider's throttle: 28 of resend's
+   * 59 queries waited, 1,063s of cumulative pacing). Rank costs less, and
+   * fewer hosts arrive per query than assumed. Net, `secondsPerQuery` reads
+   * 9.59 here against roughly 4.3-6.3 measured, so the budget is something
+   * like 1.5-2x conservative — 18 queries on the web's 270s clock where the
+   * measurements suggest 30-40 would fit.
+   *
+   * NOT RETUNED, and the reason is the asymmetry rather than the sample size.
+   * Too small a budget costs map size, which degrades gracefully and is the
+   * failure this branch measured extensively — top five rivals survive at 18.
+   * Too large a budget costs the whole run: a serverless function killed at
+   * `maxDuration` returns nothing at all, and the comment on QUERY_BUDGET
+   * records that this route once had exactly that bug. Conservative is the
+   * correct direction to be wrong in.
+   *
+   * What would justify a change is a handful of runs at a raised budget that
+   * all finish inside the clock — not three runs of arithmetic. The numbers
+   * are here so that experiment starts from evidence.
+   */
 }
 
 /** Wall seconds to judge `hosts` at the rank pool's width. The engine's own
