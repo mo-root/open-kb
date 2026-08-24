@@ -3571,6 +3571,11 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    *  for why a page had to be re-bought. */
   let serpRequests = 0;
   let serpRetries = 0;
+  /** Wall-clock the provider's own rate limit took, and how many queries paid
+   *  it. A throttle is account-wide, so a run can lose most of its search
+   *  phase to a ceiling nothing in the report mentioned. */
+  let serpPacedMs = 0;
+  let serpPacedQueries = 0;
   const serpBlocks: Record<string, number> = {};
   /** Queries that failed outright, by reason — the non-retryable half of the
    *  story `serpBlocks` tells for retries. See the tally beside it. */
@@ -3715,6 +3720,8 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     // 28% on one map, visible nowhere but in the total.
     serpRequests += r.requests ?? 0;
     serpRetries += r.retries ?? 0;
+    serpPacedMs += r.pacedMs ?? 0;
+    if ((r.pacedMs ?? 0) > 0) serpPacedQueries += 1;
     serpRedirects += r.redirects ?? 0;
     if (r.ok && /pages failed/.test(r.error ?? "")) serpPartial += 1;
     for (const b of r.blocked ?? []) {
@@ -6643,6 +6650,25 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       /** Queries that answered on one page and lost another — counted, because
        *  they return half their rows and report success. */
       partial: serpPartial,
+      /**
+       * WHAT THE PROVIDER'S RATE LIMIT COST, which nothing said before.
+       *
+       * A Bright Data throttle is ACCOUNT-wide — the port's `THROTTLED`
+       * comment measures why spreading across zones cannot lift it — so once
+       * it fires, a thirty-two-wide pool becomes a queue and the search phase
+       * stops being about how many queries a run wants.
+       *
+       * MEASURED on cloudflare.com: the search phase ran 613 seconds while
+       * 165 queries with a 4.6s median should have occupied that pool for
+       * well under a minute. The difference was pacing, and a reader
+       * comparing two runs of one anchor had no way to tell "this map is
+       * smaller because the account was throttled" from "this market is
+       * smaller".
+       *
+       * `queries` is how many waited at all, so a run with a big `ms` spread
+       * over few queries reads differently from one that paced everything.
+       */
+      paced: { ms: Math.round(serpPacedMs), queries: serpPacedQueries },
     },
     /** Agent-mode phase one's own account: turns, pages, and the integrations
      *  the docs stated. Null on the default path, which reads nothing an agent

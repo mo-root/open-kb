@@ -409,7 +409,7 @@ console.log(`$${stats.usd.toFixed(4)} · ${stats.seconds.toFixed(0)}s`)
   const report = out!.report as Record<string, unknown>
   const cost = report.cost as { usd: number; byKind: { label: string; calls: number; failures: number; usd: number; ms: number }[] }
   const serp = report.serp as
-    | { requests: number; retries: number; pagesPerQuery: number; blocked: Record<string, number>; failed?: Record<string, number>; redirects?: number; partial?: number }
+    | { requests: number; retries: number; pagesPerQuery: number; blocked: Record<string, number>; failed?: Record<string, number>; redirects?: number; partial?: number; paced?: { ms: number; queries: number } }
     | undefined
   const kernel = report.kernel as { fetched: number; unreadable: number; unreadableByReason: Record<string, number>; unlocked?: number; serpJudged?: number } | undefined
   const pct = (n: number) => `${((100 * n) / (cost.usd || 1)).toFixed(1)}%`
@@ -440,6 +440,15 @@ console.log(`$${stats.usd.toFixed(4)} · ${stats.seconds.toFixed(0)}s`)
     // later page still returns about half the rows it was bought for. Said
     // out loud because every per-query yield is computed over those rows.
     if (serp.partial) console.log(`  ${serp.partial} queries answered on one page and lost another`)
+    // The account's own ceiling. Said out loud because it is the one line that
+    // explains a slow run the reader can actually act on — and because a
+    // throttle is account-wide, so no amount of concurrency here lifts it.
+    if (serp.paced && serp.paced.queries) {
+      console.log(
+        `  ${serp.paced.queries} queries waited a total of ${Math.round(serp.paced.ms / 1000)}s for the provider's rate limit` +
+          ` — a throttle is account-wide, so this is a ceiling on the account, not on this run's settings`,
+      )
+    }
     const blocks = Object.entries(serp.blocked).sort((a, b) => b[1] - a[1]).slice(0, 6)
     for (const [reason, n] of blocks) console.log(`  ${String(n).padStart(4)} × ${reason}`)
     // Retries are the provider letting a query in on the second ask; these

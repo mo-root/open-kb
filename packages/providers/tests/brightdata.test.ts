@@ -982,6 +982,51 @@ describe("brightDataSearch obeys a stated rate limit", () => {
    * forever. MEASURED on a brightdata map: 706 requests took 37 minutes at an
    * effective concurrency of 1.5 against a pool configured for 32.
    */
+  it("reports what the pace cost, so a throttled run can say so", async () => {
+    /**
+     * A throttle is account-wide, so once it fires a thirty-two-wide pool is a
+     * queue — and until `pacedMs` existed that happened entirely inside this
+     * port. A cloudflare run spent 613 seconds in a search phase whose 165
+     * queries had a 4.6s median, and nothing in the report could tell that
+     * apart from a big market.
+     */
+    let n = 0
+    const fetchImpl = vi.fn(async (..._: FetchArgs) => {
+      n += 1
+      return n === 1
+        ? new Response("", {
+            status: 200,
+            headers: { "x-brd-error": "auto-throttled, decrease your request rate to 120/min" },
+          })
+        : new Response(JSON.stringify({ organic: [{ link: "https://a.com", title: "A", description: "" }] }), { status: 200 })
+    })
+    const s = brightDataSearch(creds, {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      pages: 1,
+      retryMs: 0,
+      recoverMs: 60_000,
+    })
+
+    // The first query trips the throttle AND pays for it: the refusal is
+    // retryable, so its own retry is the first call to meet the new gap. 120/min
+    // at 90% is a 556ms slot, and that is what it reports.
+    const [first] = await s.search(["a"])
+    expect(first!.pacedMs ?? 0).toBeGreaterThan(100)
+
+    // The gap stays in force, so a later wave of two cannot both go at once and
+    // the one that waits says how long.
+    const next = await s.search(["b", "c"])
+    const waited = next.map((r) => r.pacedMs ?? 0)
+    expect(Math.max(...waited)).toBeGreaterThan(100)
+
+    // Real waits, not numbers invented beside the clock: the whole of what the
+    // port reports as pacing has to fit in the wall-clock it actually took.
+    const started = Date.now()
+    const third = await s.search(["d", "e"])
+    const elapsed = Date.now() - started
+    expect(Math.max(...third.map((r) => r.pacedMs ?? 0))).toBeLessThanOrEqual(elapsed + 50)
+  })
+
   it("recovers the pace once the provider stops complaining", async () => {
     let n = 0
     const fetchImpl = vi.fn(async (..._: FetchArgs) => {

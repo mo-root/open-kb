@@ -158,12 +158,19 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
   /** When the provider last said it was throttling us. The pace recovers from
    *  this, so a throttle that has lifted stops being paid for. */
   let lastThrottleAt = 0
-  const pace = async () => {
-    if (minGapMs <= 0) return
+  /** Returns how long the caller was made to wait, so the sweep can report a
+   *  throttle rather than leaving it as unexplained wall-clock. */
+  const pace = async (): Promise<number> => {
+    if (minGapMs <= 0) return 0
     const now = Date.now()
     const slot = Math.max(now, nextSlotAt)
     nextSlotAt = slot + minGapMs
-    if (slot > now) await new Promise((r) => setTimeout(r, slot - now))
+    if (slot > now) {
+      const waited = slot - now
+      await new Promise((r) => setTimeout(r, waited))
+      return waited
+    }
+    return 0
   }
   /** Raise the floor, never lower it — shared by the reactive and proactive
    *  triggers below so a message and a trend cannot fight over the pace. */
@@ -345,7 +352,10 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
             `${start ? `&start=${start}` : ""}&brd_json=1`
 
           const once = async (zone: string): Promise<SearchResult> => {
-            await pace()
+            // What the provider's own rate limit cost this call, kept apart
+            // from `ms` — a caller needs to tell a slow provider from a
+            // throttled account, and `ms` alone cannot.
+            const pacedMs = await pace()
             const started = Date.now()
             try {
               const res = await f(API, {
@@ -435,10 +445,10 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
               const redirects = hits.length - usable.length
               if (hits.length && usable.length === 0) {
                 noteOutcome(false)
-                return { query, hits: [], ok: false, error: "serp returned redirect-encoded links — try again", usd: price, ms, requests: 1, redirects }
+                return { query, hits: [], ok: false, error: "serp returned redirect-encoded links — try again", usd: price, ms, pacedMs, requests: 1, redirects }
               }
               noteOutcome(true)
-              return { query, hits: usable, ok: true, usd: price, ms, requests: 1, redirects }
+              return { query, hits: usable, ok: true, usd: price, ms, pacedMs, requests: 1, redirects }
             } catch (e) {
               noteOutcome(false)
               const timedOut = (e as Error).name === "TimeoutError" || (e as Error).name === "AbortError"
@@ -488,6 +498,10 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
               usd: second.usd + first.usd,
               requests: (second.requests ?? 0) + (first.requests ?? 0),
               retries: (second.requests ?? 0),
+              // Both waits, plus the retry's own sleep: everything this query
+              // spent not asking. A throttled retry sleeps `max(retryMs,
+              // minGapMs)` and that is pacing too, not incidental latency.
+              pacedMs: (first.pacedMs ?? 0) + (second.pacedMs ?? 0) + wait,
               redirects: (second.redirects ?? 0) + (first.redirects ?? 0),
               blocked: [...(first.error ? [first.error] : []), ...(second.ok ? [] : second.error ? [second.error] : [])],
             }
@@ -547,6 +561,11 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
           // let in on the second ask.
           requests: mine.reduce((n, r) => n + (r.requests ?? 0), 0),
           retries: mine.reduce((n, r) => n + (r.retries ?? 0), 0),
+          // MAX, not sum, and for the opposite reason to `requests`. The pages
+          // of one query are in flight together, so their waits overlap in
+          // wall-clock the way `ms` above does — summing them would report a
+          // five-page query as having waited five times over.
+          pacedMs: Math.max(...mine.map((r) => r.pacedMs ?? 0)),
           blocked: mine.flatMap((r) => r.blocked ?? []),
           redirects: mine.reduce((n, r) => n + (r.redirects ?? 0), 0),
         }

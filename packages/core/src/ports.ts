@@ -26,6 +26,26 @@ export interface SearchResult {
   usd: number
   ms: number
   /**
+   * How long this query spent WAITING for the provider's own rate limit,
+   * before it was allowed to ask.
+   *
+   * A throttle is the account's, not the request's, so once the provider says
+   * "decrease your request rate to N/min" a port that obeys turns a pool of
+   * thirty-two workers into a queue. That is the right thing to do — see the
+   * argument at `THROTTLED` in the Bright Data port — but until now it
+   * happened entirely inside the port, and a run slowed to a crawl by an
+   * account-wide throttle looked exactly like a run that was simply big.
+   *
+   * MEASURED on cloudflare.com: the search phase is 613 seconds of a
+   * 1,332-second run, and 165 queries whose median is 4.6s should occupy a
+   * 32-wide pool for well under a minute. The gap is the pace, and nothing in
+   * the report said so.
+   *
+   * Optional, like `requests` below: a port that does not pace omits it, and
+   * the sweep reports what it is given.
+   */
+  pacedMs?: number
+  /**
    * Billable requests this query actually cost, and how many of those were
    * retries of a refused one.
    *
