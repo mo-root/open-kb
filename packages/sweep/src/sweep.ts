@@ -1501,7 +1501,41 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   const PRODUCT_PAGES = Math.max(0, Math.floor(opts.productPages ?? 25));
   /** See SweepOptions.platformScope. */
   const PLATFORM_SCOPE = Math.max(0, Math.floor(opts.platformScope ?? 0));
-  /** See SweepOptions.maxHosts. */
+  /**
+   * See SweepOptions.maxHosts.
+   *
+   * A SIZE CHOICE, NOT AN EXHAUSTION POINT, and worth knowing which before
+   * anyone moves it. On a large anchor this is the binding stop on the whole
+   * search — shopify.com planned 373 queries and fired 147 before the ceiling
+   * ended it — so the natural question is whether the queries it cut were
+   * still buying anything. Measured on the runs, they were.
+   *
+   * New hosts per query, by position in the fired order (shopify, 147 fired):
+   *
+   *   1-25   12.8    26-50   8.7    51-75   8.6
+   *   76-100  6.5   101-125  7.2   126-147  8.0
+   *
+   * The yield drops once early and then PLATEAUS — the last bucket buys as
+   * much as the fifth. And the late hosts are not worse hosts. Share that
+   * turn out to be market entities, by the query bucket that first surfaced
+   * them, over three runs on two anchors:
+   *
+   *   shopify   77  77  73  68  75
+   *   shopify   82  75  80  69  51
+   *   openai    66  66  64  66  69
+   *
+   * Flat on two of three. So the search is not stopped because it stopped
+   * finding things; it is stopped because the run has as many hosts as it
+   * intends to pay to judge. That is a legitimate thing to stop on — every
+   * host past this one costs a classify call and clock — but it means the
+   * number is a budget, and "~900 is where the returns die" would be false.
+   *
+   * NOT CHANGED HERE, deliberately. Raising it roughly doubles the judging
+   * this run does, which is most of its cost and minutes, in exchange for a
+   * longer tail on a map that already keeps over a thousand entities. That is
+   * a product call about how big a map should be and what it may cost, and
+   * the measurement above is what it should be made on.
+   */
   const HOST_CEILING = Math.max(50, Math.floor(opts.maxHosts ?? 900));
   /** The rank pool's actual width, read once and used both to run the pool
    *  and to price it — the clock's coefficient was measured at width 8, and a
