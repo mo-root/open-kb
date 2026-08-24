@@ -3600,6 +3600,26 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    * on what the company is bought for, which is what the `maxQueries: 4`
    * contract pins. What changes is only that "core first" stops meaning "core
    * until core is exhausted".
+   *
+   * WHERE THIS ENGAGES, AND WHERE IT IS INERT. Both orders interleave core BY
+   * DOOR, so they emit an identical sequence until core's heads run out.
+   * shopify has 27 core products at four head queries each, so the two are the
+   * same list for ~108 queries and diverge only after: the old one continues
+   * with core's fifth door, this one switches to the adjacent products' first.
+   *
+   *   18 queries    18 distinct products under either order — inert
+   *   147 queries   50 products against 27 — the 81%-to-96% measured above
+   *
+   * That matters because `QUERY_BUDGET` computes to 18 on the web deployment
+   * (see packages/web/app/api/map/route.ts): this fix buys coverage for
+   * CLI-sized runs and nothing for the size the product actually serves.
+   *
+   * I nearly recorded the opposite, from an estimate that the old order dealt
+   * whole hands sequentially and would touch two products in eighteen queries.
+   * It would not — `interleave` was already there for core, and only the BAND
+   * concatenation was the bug. Reading the plan's first 18 rows, 18 products
+   * at one query each, is what caught it. If the product runs 18 queries the
+   * lever is WHICH 18, not how the 109th is ordered.
    */
   const CORE_OPENING = 4;
   const head = (h: SweptQuery[]) => h.slice(0, CORE_OPENING);
