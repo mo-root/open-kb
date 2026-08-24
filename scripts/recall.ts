@@ -174,7 +174,7 @@
  * "strip wider". Left unmade here because it needs an A/B run rather than an
  * argument: `--by family` is how it should be judged.
  */
-import { readdirSync, readFileSync } from "node:fs"
+import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 
 const TRUTH: Record<string, string[]> = {
@@ -202,9 +202,19 @@ const hostOf = (u: string): string => {
   try { return new URL(u).hostname.toLowerCase().replace(/^www\./, "") } catch { return "" }
 }
 
-/** The newest run for an anchor — filenames carry a sortable stamp. */
+/**
+ * The newest run for an anchor — filenames carry a sortable stamp.
+ *
+ * `runs/` is gitignored — a fresh clone has none, and readdirSync throws
+ * ENOENT on a missing directory rather than the `[]` an empty one returns,
+ * which used to crash the very first anchor in `TRUTH` instead of falling
+ * through to the "(no run in runs/)" line the caller already prints for a
+ * missing file. Same fix as read.ts's `resolve`; see its comment for the
+ * rest of the list — this file has the fix twice, here and in `byFamily`
+ * below.
+ */
 const newestRun = (anchor: string): string | undefined =>
-  readdirSync(runsDir)
+  (existsSync(runsDir) ? readdirSync(runsDir) : [])
     .filter((f) => f.startsWith(`sweep-${anchor.replace(/\./g, "-")}-`) && f.endsWith(".json"))
     .sort()
     .pop()
@@ -258,7 +268,8 @@ if (byFamily) {
   let runs = 0
   for (const [anchor, rivals] of Object.entries(TRUTH)) {
     const field = new Set(rivals)
-    for (const f of readdirSync(runsDir).filter((f) => f.startsWith(`sweep-${anchor.replace(/\./g, "-")}-`) && f.endsWith(".json"))) {
+    // Same missing-directory guard as `newestRun` above.
+    for (const f of (existsSync(runsDir) ? readdirSync(runsDir) : []).filter((f) => f.startsWith(`sweep-${anchor.replace(/\./g, "-")}-`) && f.endsWith(".json"))) {
       let r: { searched?: any[] }
       try { r = JSON.parse(readFileSync(join(runsDir, f), "utf8")) } catch { continue }
       if (!Array.isArray(r.searched)) continue

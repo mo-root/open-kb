@@ -155,7 +155,7 @@
  *     entities from 78 queries (14.1 each) where datadoghq.com took 1,077
  *     from 177 (6.1 each).
  */
-import { readdirSync, readFileSync } from "node:fs"
+import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 
 const MARKET = new Set(["competitor", "substitute", "adjacent", "shaper", "dependency", "integration", "buyer", "target"])
@@ -178,7 +178,10 @@ const MIN_FRESH = 150
 const tally: Record<string, Cell> = {}
 let runs = 0
 
-for (const f of readdirSync(runsDir).filter((f) => f.startsWith("sweep-") && f.endsWith(".json"))) {
+// `runs/` is gitignored — a fresh clone has none, and readdirSync throws
+// ENOENT on a missing directory rather than the `[]` an empty one returns.
+// Same fix as read.ts's `resolve`; see its comment for the rest of the list.
+for (const f of (existsSync(runsDir) ? readdirSync(runsDir) : []).filter((f) => f.startsWith("sweep-") && f.endsWith(".json"))) {
   let r: { searched?: any[]; entities?: any[] }
   try { r = JSON.parse(readFileSync(join(runsDir, f), "utf8")) } catch { continue }
   if (!Array.isArray(r.searched) || !Array.isArray(r.entities)) continue

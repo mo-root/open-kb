@@ -46,7 +46,7 @@
  * which was false and would have sent someone after a channel that works
  * fine on 46 of 47 occasions. The check that caught it is the one below.)
  */
-import { readdirSync, readFileSync, statSync } from "node:fs"
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs"
 import { join } from "node:path"
 
 const runsDir = join(process.cwd(), "runs")
@@ -225,7 +225,11 @@ function load(file: string) {
 const invokedDirectly = process.argv[1] ? import.meta.url.endsWith(process.argv[1].split("/").pop() ?? "\0") : false
 if (!invokedDirectly) { /* imported for `diagnose` */ } else {
 
-const files = readdirSync(runsDir).filter((f) => f.startsWith("sweep-") && f.endsWith(".json"))
+// `runs/` is gitignored — a fresh clone has none, and readdirSync throws
+// ENOENT on a missing directory rather than the `[]` an empty one returns,
+// which used to skip the "no runs in runs/" message below and crash instead.
+// Same fix as read.ts's `resolve`; see its comment for the rest of the list.
+const files = (existsSync(runsDir) ? readdirSync(runsDir) : []).filter((f) => f.startsWith("sweep-") && f.endsWith(".json"))
 if (!files.length) { console.log("no runs in runs/"); process.exit(0) }
 
 if (ALL) {

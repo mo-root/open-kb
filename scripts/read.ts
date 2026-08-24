@@ -9,7 +9,7 @@
  * So the run's own summary is a command. `--json` for a machine, plain text for
  * everyone else.
  */
-import { readFileSync, readdirSync } from "node:fs"
+import { existsSync, readFileSync, readdirSync } from "node:fs"
 import path from "node:path"
 
 interface Entity {
@@ -34,7 +34,15 @@ interface Edge {
 function resolve(arg: string): string {
   if (arg.endsWith(".json")) return arg
   const dir = "runs"
-  const files = readdirSync(dir).filter((f) => f.endsWith(".json"))
+  // `runs/` is gitignored, so a fresh clone — the exact moment a reader is
+  // most likely to type `pnpm read <domain>` before ever running a sweep —
+  // has none. readdirSync throws ENOENT on a MISSING directory (unlike an
+  // empty one, which returns `[]` and falls through to the "no run matching"
+  // message below, exactly as intended); this used to surface as a bare
+  // stack trace instead of that message. Same mistake, same fix, in
+  // bench.ts, run-doctor.ts, calibrate-kernel.ts, query-yield.ts, recall.ts
+  // and corroboration-arrival.ts.
+  const files = (existsSync(dir) ? readdirSync(dir) : []).filter((f) => f.endsWith(".json"))
   const slug = arg.replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/\W+/g, "-")
   const matches = files.filter((f) => f.includes(slug) || f.includes(arg))
   if (!matches.length) {

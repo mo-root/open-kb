@@ -9,7 +9,7 @@
  * (threshold null) rather than tuned into looking right. That outcome is a
  * finding, not a failure.
  */
-import { readdirSync, readFileSync, writeFileSync, mkdirSync } from "node:fs"
+import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync } from "node:fs"
 import { outboundHosts, registrableHost } from "../packages/core/src/index.js"
 
 const CONC = 8
@@ -37,7 +37,15 @@ interface MapFile { entities?: Labelled[]; result?: { entities?: Labelled[] } }
 const MAP_PREFIXES = ["run-", "sweep-", "swarm-"]
 
 const seen = new Map<string, { kind: string; relation: string }>()
-for (const f of readdirSync("runs").filter((x) => x.endsWith(".json") && MAP_PREFIXES.some((p) => x.startsWith(p)))) {
+// `runs/` is gitignored, so a clean checkout has none — readdirSync throws
+// ENOENT on a missing directory (unlike an empty one, which returns `[]`),
+// which used to crash this script before it ever reached a file. Measured:
+// scripts/read.ts, bench.ts, run-doctor.ts, query-yield.ts, recall.ts and
+// corroboration-arrival.ts all made the identical mistake — see their own
+// comments at the same fix.
+for (const f of (existsSync("runs") ? readdirSync("runs") : []).filter(
+  (x) => x.endsWith(".json") && MAP_PREFIXES.some((p) => x.startsWith(p)),
+)) {
   // Past the name gate, a file that will not parse or carries no entities is an error
   // rather than a skip. diff-runs.ts:38 and audit.ts:51 refuse by name at exactly this
   // point, read.ts joined them in b6ffd99, and this is their sentence — the only

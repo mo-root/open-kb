@@ -82,7 +82,7 @@
  * merely prefetches pages: cloudflare's 337-second rank made 0 unlocker calls
  * against 4.2M input tokens.
  */
-import { readdirSync, readFileSync } from "node:fs"
+import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { registrableHost } from "../packages/core/src/index.js"
 
@@ -100,7 +100,10 @@ const hostOf = (u: string): string => {
 interface Row { run: string; queries: number; hosts: number; reached: number; late: number; veryLate: number }
 const rows: Row[] = []
 
-for (const f of readdirSync(runsDir).filter((f) => f.startsWith("sweep-") && f.endsWith(".json"))) {
+// `runs/` is gitignored — a fresh clone has none, and readdirSync throws
+// ENOENT on a missing directory rather than the `[]` an empty one returns.
+// Same fix as read.ts's `resolve`; see its comment for the rest of the list.
+for (const f of (existsSync(runsDir) ? readdirSync(runsDir) : []).filter((f) => f.startsWith("sweep-") && f.endsWith(".json"))) {
   if (ONLY && !f.includes(ONLY)) continue
   let r: { searched?: { hits?: { url: string }[] }[] }
   try { r = JSON.parse(readFileSync(join(runsDir, f), "utf8")) } catch { continue }

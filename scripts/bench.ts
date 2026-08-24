@@ -61,7 +61,7 @@
  *   pnpm bench            the current-config tables, as markdown
  *   pnpm bench --all      also the runs that predate the grounding meter
  */
-import { readFileSync, readdirSync, statSync } from "node:fs"
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs"
 import path from "node:path"
 
 /* ------------------------------------------------------------- the artifacts */
@@ -351,7 +351,10 @@ const HEAD = ["anchor", "hosts", "on map", "rivals", "unread", "grounded", "$", 
 
 const wantAll = process.argv.includes("--all")
 
-const files = readdirSync(DIR)
+// `runs/` is gitignored — a fresh clone has none, and readdirSync throws
+// ENOENT on a missing directory rather than the `[]` an empty one returns.
+// Same fix as read.ts's `resolve`; see its comment for the rest of the list.
+const files = (existsSync(DIR) ? readdirSync(DIR) : [])
   .filter((f) => f.endsWith(".json"))
   .sort()
 
