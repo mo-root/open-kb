@@ -2075,25 +2075,31 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         ((e as Error).name === "TimeoutError" ||
           (e as Error).name === "AbortError" ||
           /aborted due to timeout/i.test(String((e as Error).message ?? "")));
+      // Triage, the second look and drop-confirm narrate on the rank rail;
+      // listicle harvest narrates on the sweep rail (it runs before the host
+      // fold, still inside the search phase) — the rail's five names are a
+      // closed set, and all four are billing labels, not stages.
+      //
+      // ONE COPY, because the accepted-timeout branch below needs the same
+      // answer and I first gave it a second, divergent version that sent
+      // triage to "sweep". A closed set with two mappings is a closed set
+      // that will disagree with itself.
+      const rail =
+        agent === "triage" || agent === "second-look" || agent === "drop-confirm"
+          ? "rank"
+          : agent === "listicle"
+            ? "sweep"
+            : agent;
       if (timedOut && opts.acceptTimeout) {
         say(
-          agent === "understand" ? "understand" : agent === "link" ? "link" : "sweep",
+          rail,
           `  ${label}: no answer in ${Math.round(timeoutMs / 1000)}s, and the other asks answer for it`,
         );
         throw e;
       }
       if (empty || timedOut) {
         say(
-          // Triage, the second look and drop-confirm narrate on the rank
-          // rail; listicle harvest narrates on the sweep rail (it runs
-          // before the host fold, still inside the search phase) — the
-          // rail's five names are a closed set, and all four are billing
-          // labels, not stages.
-          agent === "triage" || agent === "second-look" || agent === "drop-confirm"
-            ? "rank"
-            : agent === "listicle"
-              ? "sweep"
-              : agent,
+          rail,
           timedOut
             ? `  ${label}: no answer in ${Math.round(timeoutMs / 1000)}s, retrying once`
             : `  ${label}: the model's answer was refused${detailOf(e) ? ` (${detailOf(e)})` : ""}, retrying with more room`,
