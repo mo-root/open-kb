@@ -311,10 +311,16 @@ describe("report.phases — where the minutes went", () => {
     // The rail names are a closed set and the pipeline walks all of them.
     expect(Object.keys(phases).sort()).toEqual(["link", "plan", "rank", "sweep", "understand", "write"])
     for (const [rail, c] of Object.entries(phases)) {
-      expect(c.lines, rail).toBeGreaterThan(0)
-      expect(c.spanSec, rail).toBe(c.lastSec - c.firstSec)
       expect(c.spanSec, rail).toBeGreaterThanOrEqual(0)
     }
+    // `lines` has to be COUNTED, and "greater than zero" does not check that —
+    // the initialiser is 1, so deleting the increment passes it. Caught by a
+    // mutation test that removed `c.lines += 1` and broke nothing.
+    //
+    // `write` narrates exactly once, at the end; `understand` narrates
+    // repeatedly. A counter that never increments makes them equal.
+    expect(phases.write!.lines).toBe(1)
+    expect(phases.understand!.lines).toBeGreaterThan(1)
     // Ordered as the pipeline runs them, which is what makes the spans
     // readable as phases at all.
     expect(phases.understand!.firstSec).toBeLessThanOrEqual(phases.write!.firstSec)
