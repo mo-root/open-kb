@@ -4680,6 +4680,33 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         .join("\n") + (qs.length > 3 ? `\n  …and ${qs.length - 3} more` : "");
     return {
       host,
+      /**
+       * HOW MANY QUERIES SURFACED THIS HOST — and the reason judging cannot
+       * start before the search finishes, which is worth stating here because
+       * this line is where that constraint actually lives.
+       *
+       * Overlapping the judge with the search tail is a standing ~3-minute
+       * idea (the search phase is ~9 minutes of a cloudflare run and the judge
+       * ~6). It costs more than it did when it was first costed, because
+       * `seenIn` is only final once every query has landed, and four separate
+       * decisions now read it:
+       *
+       *   TRIAGE_KEEP_SEENIN  a host triage votes to DROP is kept anyway at 5+
+       *   unlockSeenIn        the judge's own unlock ladder, at 3+
+       *   earnedUnlock        the second look's escalation, at 2+
+       *   mostCorroboratedFirst  the order both capped stages spend in
+       *
+       * Judge a host at seenIn 2 that the finished search would have put at 8
+       * and all four misfire at once. The first is the one that cannot be
+       * undone: triage's override exists precisely so a well-corroborated host
+       * survives a bad verdict, and a host dropped there never reaches the
+       * judge, the second look, or the map. The other three cost escalations
+       * and ordering, which are recoverable in principle.
+       *
+       * So the three minutes are real and so is the price. Anyone attempting
+       * it should either freeze nothing on `seenIn` until the search seals, or
+       * only start early on hosts already past the highest bar of the four.
+       */
       seenIn: qs.length,
       foundBy,
       intents: [...new Set(hs.map((h) => h.intent))],
