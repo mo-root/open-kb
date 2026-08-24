@@ -4840,7 +4840,43 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
   let listicleRowsScanned = 0;
   let listicleVendorsFound = 0;
   let listicleQueriesFired = 0;
-  if (LISTICLE_HARVEST) {
+  /**
+   * WITH NO ROOM LEFT, THE HARVEST HAS NOWHERE TO PUT A NAME.
+   *
+   * Its only output is queries: a vendor it reads off a roundup row reaches
+   * the map by being searched for, or not at all. So under a ceiling already
+   * spent, the model call that reads those rows buys nothing — and it is a
+   * clock-bound run, the one kind that cannot afford it, that always pays.
+   *
+   * MEASURED on the only deadline-bound run on disk. It scanned 60 rows,
+   * named 16 vendors this run had never surfaced, fired 0 queries and threw
+   * all 16 away — at 114 seconds, between the end of sweep and the start of
+   * rank, on a 270-second clock. Of the 27 runs on disk that harvested
+   * vendors, that is the one that fired nothing, and it is the one with a
+   * ceiling.
+   *
+   * The check is the same arithmetic the firing site does, read one step
+   * earlier. Nothing is added to `asked` between here and there except this
+   * harvest's own queries, so the two agree.
+   *
+   * NOT a decision about whether the harvest deserves budget. Reserving a
+   * slice of a ceiling for it would be a real improvement and a real trade —
+   * these are names known to be missing from the map — but it changes what
+   * every clock-bound run buys, and no measurement here says by how much.
+   * This only declines to pay for an answer that gets discarded.
+   */
+  const listicleRoom =
+    QUERY_CEILING === null ? Infinity : Math.max(0, QUERY_CEILING - asked.length);
+  let listicleStarved = false;
+  if (LISTICLE_HARVEST && listicleRoom <= 0) {
+    listicleStarved = true;
+    say(
+      "sweep",
+      `listicle harvest: skipped — the ${QUERY_CEILING}-query ceiling is spent, ` +
+        `so any vendor it named would be read and discarded`,
+    );
+  }
+  if (LISTICLE_HARVEST && !listicleStarved) {
     const roundupRows = hits
       .filter((h) => ROUNDUP_SHAPE.test(h.title) || ROUNDUP_SHAPE.test(h.description ?? ""))
       .slice(0, LISTICLE_MAX_ROWS);
@@ -7464,6 +7500,13 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
      *  those vendors were dealt. */
     listicleHarvest: LISTICLE_HARVEST
       ? {
+          /**
+           * True when the stage declined to run because the query ceiling was
+           * already spent. Without it `rowsScanned: 0` reads as "no roundup
+           * rows in this run's hits", which is a fact about the anchor, when
+           * it is really a fact about the budget.
+           */
+          starved: listicleStarved,
           rowsScanned: listicleRowsScanned,
           vendorsFound: listicleVendorsFound,
           queriesFired: listicleQueriesFired,

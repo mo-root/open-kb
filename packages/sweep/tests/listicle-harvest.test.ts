@@ -47,6 +47,54 @@ describe("listicle harvest", () => {
     expect(h.result.entities.some((e) => e.domain === "runlog.example")).toBe(true)
   })
 
+  /**
+   * THE STAGE'S ONLY OUTPUT IS QUERIES, so with the ceiling spent it reads
+   * roundup rows to produce names it must immediately discard — and it is a
+   * clock-bound run, the one that can least afford a model call, that pays.
+   *
+   * MEASURED on the only deadline-bound run on disk: 60 rows scanned, 16
+   * unsurfaced vendors named, 0 queries fired, all 16 thrown away, at 114
+   * seconds of a 270-second clock. Of the 27 runs that harvested vendors it
+   * is the one that fired nothing, and the one with a ceiling.
+   */
+  it("declines to read roundup rows when the query ceiling is already spent", async () => {
+    const h = await runFixture({
+      // Small enough that the opening hand spends it before the harvest.
+      sweepOptions: { maxQueries: 3 },
+      serp: serpWithRoundup(),
+      script: { listicle: () => ({ vendors: ["Grepstack", "Tailwatch", "Runlog"] }) },
+    })
+
+    // THE CALL IS NOT MADE. This is the whole saving — a flag that said
+    // "starved" while still paying for the answer would be worth nothing.
+    expect(h.calls.filter((c) => c.phase === "listicle")).toEqual([])
+
+    // And the report says WHY it read nothing, so `rowsScanned: 0` cannot be
+    // read as "this run's hits held no roundup rows" — they did.
+    const stats = (h.result.report as {
+      listicleHarvest: { starved: boolean; rowsScanned: number; queriesFired: number }
+    }).listicleHarvest
+    expect(stats.starved).toBe(true)
+    expect(stats.queriesFired).toBe(0)
+
+    // The run really was at its ceiling, so this is the case it claims to be.
+    expect(h.asked.length).toBe(3)
+    expect(h.asked).not.toContain("Runlog alternatives")
+  }, 30_000)
+
+  it("still harvests when the run has room, which is every uncapped run", async () => {
+    // The guard above must not be reachable on the CLI's shape. 26 of the 27
+    // runs on disk that harvested vendors had no ceiling and fired queries.
+    const h = await runFixture({
+      serp: serpWithRoundup(),
+      script: { listicle: () => ({ vendors: ["Grepstack", "Tailwatch", "Runlog"] }) },
+    })
+    const stats = (h.result.report as { listicleHarvest: { starved: boolean } }).listicleHarvest
+    expect(stats.starved).toBe(false)
+    expect(h.calls.filter((c) => c.phase === "listicle").length).toBe(1)
+    expect(h.asked).toContain("Runlog alternatives")
+  }, 30_000)
+
   it("a roundup row naming an unsurfaced vendor fires a fresh query for it", async () => {
     const h = await runFixture({
       sweepOptions: { listicleHarvest: true },
@@ -146,8 +194,14 @@ describe("listicle harvest", () => {
     const h = await runFixture({ sweepOptions: { listicleHarvest: true } })
     expect(h.calls.filter((c) => c.phase === "listicle")).toEqual([])
     const stats = (
-      h.result.report as { listicleHarvest: { rowsScanned: number; vendorsFound: number; queriesFired: number } }
+      h.result.report as {
+        listicleHarvest: { starved: boolean; rowsScanned: number; vendorsFound: number; queriesFired: number }
+      }
     ).listicleHarvest
-    expect(stats).toEqual({ rowsScanned: 0, vendorsFound: 0, queriesFired: 0 })
+    // `starved: false` is the load-bearing half of these zeros. The stage ran,
+    // looked, and found no roundup-shaped row — a fact about what this run's
+    // hits contained. The identical zeros with `starved: true` mean it never
+    // looked, which is a fact about the budget.
+    expect(stats).toEqual({ starved: false, rowsScanned: 0, vendorsFound: 0, queriesFired: 0 })
   })
 })

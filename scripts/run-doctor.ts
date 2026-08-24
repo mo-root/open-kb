@@ -96,11 +96,14 @@ function diagnose(r: Record<string, any>, stats: Record<string, any>): Note[] {
 
   const lh = r.listicleHarvest
   if (lh) {
-    out.push({
-      level: lh.vendorsFound > 0 && lh.queriesFired === 0 ? "gap" : "ok",
-      what: "listicle harvest",
-      detail: `${lh.vendorsFound} vendors from ${lh.rowsScanned} rows, ${lh.queriesFired} queries fired`,
-    })
+    if (lh.starved)
+      out.push({ level: "watch", what: "listicle harvest", detail: "declined — the query ceiling was spent before it ran, so no vendor names were read" })
+    else
+      out.push({
+        level: lh.vendorsFound > 0 && lh.queriesFired === 0 ? "gap" : "ok",
+        what: "listicle harvest",
+        detail: `${lh.vendorsFound} vendors from ${lh.rowsScanned} rows, ${lh.queriesFired} queries fired`,
+      })
   } else absent("listicle harvest", "run predates report.listicleHarvest")
 
   // ── what was judged ───────────────────────────────────────────────────
