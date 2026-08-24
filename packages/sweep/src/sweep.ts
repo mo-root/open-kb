@@ -6259,6 +6259,13 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
          *
          * Checked at the edge rather than in the fold, because the fold's
          * decision to keep these hosts apart is right and this one is separate.
+         *
+         * AND NOT ALREADY HANDLED DOWNSTREAM, which is the obvious objection.
+         * The web canvas drops an edge when `from === to`, but that compares
+         * the resolved NODES: `umbrella.cisco.com` and `cisco.com` are two
+         * entities and therefore two nodes, so the guard misses exactly these.
+         * It is also only the canvas — `result.edges`, the export and anything
+         * else reading the run would still carry them.
          */
         if (registrableHost(host) === registrableHost(target)) continue;
         edges.push({
