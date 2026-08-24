@@ -1781,6 +1781,20 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
        * deliberate for exactly the case where one ask is missing. If all
        * three are lost it still falls back to a single retrying ask, so the
        * safety net is one layer down rather than gone.
+       *
+       * VALIDATED on the anchor that motivated it, cloudflare.com, which
+       * times out one ask on both runs:
+       *
+       *   before   182s  no answer in 180s, retrying once
+       *            362s  read it 2 times — 67, 67 products
+       *   after    184s  no answer in 180s, and the other asks answer for it
+       *            184s  read it 2 times — 67, 67 products
+       *
+       * 362s to 184s, and the SAME decomposition either way — 67 products
+       * both times — so the three minutes bought a third opinion that would
+       * not have changed the answer. That is the whole case for the flag, and
+       * it is falsifiable rather than statistical: the phase either waits for
+       * the retry or it does not.
        */
       acceptTimeout?: boolean;
     } = {},
