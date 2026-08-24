@@ -2843,6 +2843,25 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
      * `rivals.reachedMap`. An integrations equivalent would give this relation
      * a head instead of a tie at one.
      *
+     * THAT PATTERN'S OWN NUMBERS, checked before leaning on the word "proven",
+     * over 14 runs — 251 names found, 285 queries, 149 reaching the map:
+     *
+     *   shopify   26 found -> 16-20 on the map, eight runs   65-77%
+     *   supabase   3 found ->  2                             67%
+     *   vercel    40 found -> 10 queried ->  4               a cap bound
+     *   stripe     0 found on three runs                     no input at all
+     *
+     * It converts well when it fires, and it carries two failure modes any
+     * copy inherits. The cap is the smaller. The larger is stripe: the harvest
+     * reads the anchor's own COMPARISON urls, and an anchor publishing none in
+     * its sitemap yields nothing — three runs, zero names, and no signal that
+     * a source was missing rather than empty.
+     *
+     * An integrations version would likely do better on exactly that axis, a
+     * docs or integrations directory being more universally published than a
+     * /vs/ page. That is the reason to build it rather than to widen the rival
+     * harvest — but what is proven here is the conversion, not the input.
+     *
      * Not built here: it needs a real run to validate and this branch's budget
      * is spent. Specified rather than guessed at.
      */
