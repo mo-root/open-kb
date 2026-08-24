@@ -40,6 +40,7 @@ import {
   rivalHand,
   banned,
   MEASURED_PHASE_COSTS,
+  runSeconds,
   rankSeconds,
   answerKeyRecall,
   anchorAliasSet,
@@ -7310,6 +7311,32 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     readPages,
     usd,
     seconds,
+    /**
+     * WHAT THE CLOCK MODEL PREDICTED, BESIDE WHAT IT COST.
+     *
+     * `queriesThatFit` sizes every deadline-bound run — the web route turns a
+     * 270-second budget into 18 queries with it — and nothing has ever checked
+     * the model against a finished run. Re-measured by hand on 2026-08-24 it
+     * is 1.5-2x conservative, every term off in both directions (see
+     * MEASURED_PHASE_COSTS in core/clock.ts for the table).
+     *
+     * That check should not need a person. `predictedSeconds` is
+     * `runSeconds(queries)` under the shipped costs; `actualSeconds` is what
+     * the run took. A handful of runs where predicted exceeds actual is the
+     * evidence for raising a budget, and one where actual exceeds predicted is
+     * the warning against it — which matters because the failure modes are not
+     * symmetric: an undersized budget yields a smaller map, an oversized one on
+     * a serverless clock yields nothing at all.
+     *
+     * Predicted is for the queries this run FIRED, not the ones it planned, so
+     * a run sealed early by the host ceiling is compared against the cost of
+     * what it actually bought.
+     */
+    clock: {
+      predictedSeconds: Math.round(runSeconds(firedCount)),
+      actualSeconds: Math.round(seconds),
+      queries: firedCount,
+    },
     /**
      * Wall-clock per rail: when each first spoke, when it last spoke, and how
      * many lines it wrote. `seconds` above is the total and `cost.byKind[].ms`

@@ -296,6 +296,29 @@ describe("report.serp.paced — whose ceiling was it", () => {
   })
 })
 
+describe("report.clock — what the model predicted against what it cost", () => {
+  it("prices the queries the run FIRED, not the ones it planned", async () => {
+    /**
+     * `queriesThatFit` sizes every deadline-bound run — the web route turns
+     * 270 seconds into 18 queries with it — and nothing checked the model
+     * against a finished run. Measured by hand it is 1.5-2x conservative;
+     * this makes the check automatic.
+     *
+     * Fired, not planned, because the host ceiling seals the search early on a
+     * large anchor: shopify planned 373 queries and bought 147, and pricing
+     * the plan would compare the clock against work never done.
+     */
+    const h = await runFixture()
+    const c = h.result.report.clock as { predictedSeconds: number; actualSeconds: number; queries: number }
+    expect(c.queries).toBe(h.result.report.queries)
+    expect(c.queries).toBeLessThanOrEqual((h.result.report.queued as number) ?? Infinity)
+    // A prediction, not an echo of the clock: the fixture runs in about a
+    // second and the model still charges fixed and tail seconds for it.
+    expect(c.predictedSeconds).toBeGreaterThan(c.actualSeconds)
+    expect(c.actualSeconds).toBeGreaterThanOrEqual(0)
+  }, 30_000)
+})
+
 describe("report.phases — where the minutes went", () => {
   it("carries a span for every rail that spoke", async () => {
     // `report.seconds` is the total and `cost.byKind[].ms` is BILLED time, so
