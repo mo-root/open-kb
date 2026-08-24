@@ -111,15 +111,20 @@ describe("judgeHosts", () => {
   })
 
   /**
-   * A SNIPPET MAY NAME A VENDOR AND MAY NOT NAME A PUBLISHER.
+   * WHAT A SNIPPET MAY SAY, PER RELATION.
    *
-   * MEASURED over 217 hosts judged from their page in one run and from a
-   * snippet in another: a market relation claimed from search text agreed
-   * with the page 80% of the time, a channel relation 48%. And the
-   * disagreement is one-way — 59 demotions from market to channel-or-unknown
-   * against 2 promotions, 29.5 to 1 — because a vendor's blog post ranking
-   * for a market term reads, in a search result, exactly like a publication
-   * about that market.
+   * The first reading of this was per BAND — market claims agreed with the
+   * page 80% of the time, channel claims 48%, so keep market and refuse
+   * channel. Re-measured per relation over 948 pairs, the bands turned out
+   * to hide the answer: `covers` is 62% of all channel claims and dragged
+   * its band down, while `lists` (88%) and `discusses` (82%) are the most
+   * reliable things a snippet says and the band gate refused them both.
+   *
+   *   lists 88%, discusses 82%   |   competitor 59%, covers 54%,
+   *                                  adjacent 30%, none 25%, rare 0/21
+   *
+   * The bar is 80% agreement with the host's own page, and it cuts across
+   * both bands rather than along them.
    */
   // Long enough to clear the 80-char floor the SERP-judged branch requires.
   const surfaced = (host: string): HostCandidate => ({
@@ -128,18 +133,30 @@ describe("judgeHosts", () => {
     desc: "Guides, comparisons and explainers about accepting card payments on the web",
   })
 
-  it("keeps a market relation claimed from a snippet — that call holds up 80% of the time", async () => {
+  it("keeps `lists` from a snippet — the one call the page bears out 88% of the time", async () => {
+    const out = await judgeHosts([surfaced("blocked-directory.com")], {
+      fetcher: fakeFetcher({}),
+      classify: async () => ({ name: "Blocked Directory", kind: "directory", what: "ranks payment vendors", relation: "lists", why: "enumerates vendors", spans: [] }),
+      anchor: "anchor.com",
+      aggregatorThreshold: 12,
+    })
+    expect(out.entities[0]!).toMatchObject({ relation: "lists", kind: "directory" })
+    expect(out.entities[0]!.because).toMatch(/could not be read/)
+  })
+
+  it("refuses `competitor` from a snippet — a market claim is not exempt at 59%", async () => {
+    // The band gate kept this row. It is the case the per-relation reading
+    // changed: the market/channel line was an artefact of `covers` volume.
     const out = await judgeHosts([surfaced("blocked-vendor.com")], {
       fetcher: fakeFetcher({}),
       classify: async () => ({ name: "Blocked Vendor", kind: "company", what: "sells payments", relation: "competitor", why: "same job", spans: [] }),
       anchor: "anchor.com",
       aggregatorThreshold: 12,
     })
-    expect(out.entities[0]!).toMatchObject({ relation: "competitor", kind: "company" })
-    expect(out.entities[0]!.because).toMatch(/could not be read/)
+    expect(out.entities[0]!.relation).toBe("unknown")
   })
 
-  it("refuses a channel relation claimed from a snippet, and says why rather than dropping the host", async () => {
+  it("refuses `covers` from a snippet, and says why rather than dropping the host", async () => {
     const out = await judgeHosts([surfaced("blocked-blog.com")], {
       fetcher: fakeFetcher({}),
       classify: async () => ({ name: "Blocked Blog", kind: "publisher", what: "writes about payments", relation: "covers", why: "publishes explainers", spans: [] }),
@@ -150,7 +167,7 @@ describe("judgeHosts", () => {
     // Downgraded, not deleted — the host stays on the map wearing the refusal.
     expect(e.relation).toBe("unknown")
     expect(e.domain).toBe("blocked-blog.com")
-    expect(e.because).toMatch(/48%/)
+    expect(e.because).toMatch(/80%/)
     // The claim it could not support is not left standing as evidence.
     expect(e.why).toBe("")
   })
@@ -839,12 +856,15 @@ describe("judgeHosts blocked-page recovery", () => {
   })
 
   it("judges an unreadable host from its SERP presence, wearing the caveat", async () => {
+    // `lists` rather than `competitor`: the relation has to be one the
+    // snippet gate admits, or this exercises the withholding path instead
+    // of the caveat path it is named for. The two tests above cover that.
     const out = await judgeHosts([{ ...rich("dark.com"), seenIn: 1 }], {
       fetcher: fakeFetcher({}),
       classify: async (_h, text) => ({
-        name: "Dark", kind: "company",
-        what: "a vendor selling hosted log search to platform teams",
-        relation: "competitor", why: "same capability to the same buyer",
+        name: "Dark", kind: "directory",
+        what: "a directory ranking hosted log search vendors for platform teams",
+        relation: "lists", why: "enumerates the vendors in this market",
         spans: ["hosted log search", "not on the serp text at all"],
       }),
       anchor: "anchor.com",
@@ -852,7 +872,7 @@ describe("judgeHosts blocked-page recovery", () => {
     })
     const e = out.entities[0]!
     expect(out.stats.serpJudged).toBe(1)
-    expect(e.kind).toBe("company")
+    expect(e.kind).toBe("directory")
     expect(e.because).toContain("judged from the search results that surfaced it")
     expect(e.unreadableReason).toBeDefined()
     // Spans still verified — against the SERP text, same containment check.

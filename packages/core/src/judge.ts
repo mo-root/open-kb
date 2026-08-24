@@ -481,13 +481,16 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
            * stated: a vendor's blog post ranking for a market term reads,
            * in a search result, exactly like a publication about that market.
            *
-           * So the market half is kept and the channel half is refused. An
-           * unreadable host that looks like a publisher is recorded as
-           * `unknown`, which is what this codebase already says to do when the
-           * evidence will not carry a relation — "a reader can finish an
-           * unknown, and cannot correct an invention". It ships 2checkout.com
-           * on the stripe map as a publisher writing educational articles;
-           * unknown would have been true.
+           * That was first read as "keep the market half, refuse the channel
+           * half", and the band split below replaced it once the same pairing
+           * was run per relation instead of per band — the market/channel
+           * line turned out to be an artefact of `covers` outvoting everything
+           * else in its band. What survives from this paragraph is the
+           * PRINCIPLE, not the split: an unreadable host whose relation the
+           * evidence will not carry is recorded as `unknown`, because "a
+           * reader can finish an unknown, and cannot correct an invention".
+           * It shipped 2checkout.com on the stripe map as a publisher writing
+           * educational articles; unknown would have been true.
            *
            * UNLOCKING THESE HOSTS INSTEAD was the other candidate and it was
            * costed and dropped. The gate above admits `seenIn >= 3`, which is
@@ -527,15 +530,62 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
            * get a page it places the host every time — 11 of 11 on that run —
            * so the failures are the fetch, not the judgement.
            */
-          const CHANNEL_FROM_SNIPPET = ["covers", "lists", "discusses"]
-          const overreach = CHANNEL_FROM_SNIPPET.includes(out.relation)
+          /**
+           * PER RELATION, NOT PER BAND — the band split above was measured on
+           * an aggregate that hid the answer.
+           *
+           * Pairing every snippet claim in the run corpus against the majority
+           * verdict the same host got when a run DID read its page — 948 such
+           * pairs — the agreement is nothing like uniform inside either band:
+           *
+           *   lists          224      88%     [channel, kept]
+           *   discusses       49      82%     [channel, kept]
+           *   competitor      90      59%     -> page says lists 13%
+           *   covers         439      54%     -> page says competitor 15%
+           *   adjacent       105      30%     -> page says competitor 36%
+           *   none            20      25%     -> page says adjacent 30%
+           *   substitute,      21       0%     pooled: 0 of 21 correct
+           *   integration,
+           *   dependency,
+           *   target
+           *
+           * `covers` is 62% of all channel claims, so it dragged the channel
+           * average to the 48% the band split was built on and buried `lists`
+           * at 88% and `discusses` at 82% underneath it. Those two are the
+           * most reliable things a snippet says, and the band gate refused
+           * them. This keeps them.
+           *
+           * The bar is 80% agreement, and the three relations that miss it
+           * badly are refused whichever band they sit in. `adjacent` at 30%
+           * is wrong more often than right and its most common truth is
+           * `competitor` — a rival misfiled as a neighbour. `covers` at 54%
+           * is the model's shrug: highest volume, lowest signal, and the row
+           * that ships 2checkout.com on the stripe map as a publisher writing
+           * educational articles. `none` is a claim too — it drops the host —
+           * and at 25% it is the least supported of all.
+           *
+           * The rare market relations are 0 for 21 individually too thin to
+           * read, but pooled they are not: if the true rate were even 50%,
+           * 0 of 21 would be a one-in-two-million result.
+           *
+           * WHAT IT COSTS AND BUYS, on shopify's snippet-judged rows:
+           *
+           *   band gate    keeps 62 rows   ~23 correct   ~39 wrong
+           *   this gate    keeps 28 rows   ~25 correct    ~3 wrong
+           *
+           * The same number of true rows, with thirty-six fewer false ones.
+           * A gate that refuses more is only worth it if what it keeps is
+           * worth more, and here what it keeps is nearly all of the truth.
+           */
+          const SNIPPET_MAY_SAY = new Set(["lists", "discusses"])
+          const overreach = !SNIPPET_MAY_SAY.has(out.relation)
           emit({
             name: out.name || h.host, domain: h.host,
             kind: out.kind, what: out.what,
             relation: overreach ? "unknown" : out.relation,
             why: overreach ? "" : out.why,
             because: overreach
-              ? `its front page could not be read this run (${s.status}), and the search results read as ${out.relation} — a call that agrees with the page only 48% of the time, so the relation is withheld rather than guessed`
+              ? `its front page could not be read this run (${s.status}), and the search results read as ${out.relation} — a call that the host's own page bears out less than 80% of the time, so the relation is withheld rather than guessed`
               : `its front page could not be read this run (${s.status}); judged from the search results that surfaced it`,
             unreadableReason: s.reason,
             settledBy: "model",
