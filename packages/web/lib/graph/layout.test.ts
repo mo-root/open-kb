@@ -7,6 +7,8 @@ import {
   isHubDegree,
   linkDistance,
   linkStrength,
+  seatRadius,
+  SEAT_FLOOR,
   seedPosition,
   span,
   tetherAspect,
@@ -58,6 +60,30 @@ describe("hub detection", () => {
     expect(chargeStrength(node({ isHub: true, deg: 300 }))).toBeLessThan(
       chargeStrength(node({ deg: 82 })),
     )
+  })
+})
+
+describe("seatRadius", () => {
+  it("is the drawn radius plus the floor when spacing is zero", () => {
+    // At spacing 0 the proportional term drops out entirely — the floor is
+    // the only padding a node gets, never zero padding.
+    expect(seatRadius(10, 0)).toBe(10 + SEAT_FLOOR)
+  })
+
+  it("claims half again its own radius per unit of spacing, on top of the floor", () => {
+    expect(seatRadius(10, 1)).toBe(10 * 1.5 + SEAT_FLOOR)
+    expect(seatRadius(10, 2)).toBe(10 * 2 + SEAT_FLOOR)
+  })
+
+  it("clamps negative spacing to zero rather than shrinking the seat below the floor", () => {
+    // Nothing constructs a negative spacing today, but the dial is user-facing
+    // and the clamp is what stands between a bad value and a seat smaller than
+    // the node it is meant to pad.
+    expect(seatRadius(10, -5)).toBe(seatRadius(10, 0))
+  })
+
+  it("keeps the floor even for a zero-radius node", () => {
+    expect(seatRadius(0, 3)).toBe(SEAT_FLOOR)
   })
 })
 
