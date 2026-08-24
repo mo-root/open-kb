@@ -378,14 +378,23 @@ export const TRIAGE_BATCH = 30;
  *  that many roads in is the search itself vouching for it, and a title and
  *  description do not outrank the search.
  *
- *  MEASURED ACTIVE, which matters because `be4e081` cites this override as the
- *  one cost of overlapping the judge with the search tail that cannot be
- *  undone — a host dropped here never reaches the judge, the second look or
- *  the map. Across every run on disk, 1,247 triage-skipped entities have a
- *  maximum `seenIn` of 4 against this bar of 5, and not one violates it. A bar
- *  the data touches from directly below is a bar doing work; one sitting well
- *  above the distribution would be decoration. `report.triage.saved` now
- *  counts the saves directly instead of leaving them to be inferred. */
+ *  THE INVARIANT HOLDS: across every run on disk, 1,247 triage-skipped
+ *  entities have a maximum `seenIn` of 4 against this bar of 5, and not one
+ *  violates it.
+ *
+ *  I READ THAT AS THE BAR DOING WORK, and the counter says otherwise. Two
+ *  stories fit "no skipped host has seenIn >= 5": either the override keeps
+ *  saving them, or triage simply never votes against a host the search
+ *  vouched for that hard. `report.triage.saved` was added to tell them apart,
+ *  and its first real reading is ZERO — a resend.com run that skipped 29 of
+ *  450 hosts saved none of them. That is evidence for the second story.
+ *
+ *  One run, and a small one, so it is a lean rather than a finding. But it
+ *  matters for `be4e081`, which names this override as the one cost of
+ *  overlapping the judge with the search tail that cannot be undone. If triage
+ *  rarely objects to a well-corroborated host in the first place, that risk is
+ *  smaller than that note claims. The number to watch is `saved` on a full
+ *  run; a few of those settle it either way. */
 export const TRIAGE_KEEP_SEENIN = 5;
 /** The verdict rows are short; this documents the answer's size the way
  *  CLASSIFY_MAX_OUTPUT_TOKENS does, and `call()` floors the wire cap anyway. */
