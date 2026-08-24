@@ -389,18 +389,32 @@ export const TRIAGE_MAX_OUTPUT_TOKENS = 2_000;
 export const SECOND_LOOK_CAP = 60;
 
 /**
- * The order the second look fills its cap in: most-corroborated first, and
- * ties broken by the best rank any query gave the host.
+ * The order a capped stage should spend its slots in: most-corroborated
+ * first, ties broken by the best rank any query gave the host.
  *
- * Exported because the thing worth pinning is the ORDER, and the cap is 60 —
- * a fixture with sixty unplaced hosts would exercise the slice and say almost
+ * WHY EVERY CAPPED STAGE NEEDS THIS. The stages that cap themselves used to
+ * slice `entities` in array order, and that array is not in a neutral order —
+ * it runs from least corroborated to most. Mean `seenIn` across its five
+ * fifths, on three different anchors:
+ *
+ *   shopify   1.06  1.07  1.31  1.71  3.18
+ *   stripe    1.10  1.17  1.17  1.53  3.32
+ *   vercel    1.09  1.16  1.39  1.77  3.73
+ *
+ * Monotonic on all three. So `slice(0, CAP)` on that array does not take an
+ * arbitrary sample, it takes the WEAKEST hosts the run found — and the two
+ * stages that do it, the second look and drop-confirm, are both spending a
+ * scarce budget on the question "is this host worth another look".
+ *
+ * Exported because the thing worth pinning is the ORDER, and the caps are 60
+ * — a fixture with sixty hosts would exercise the slice while saying almost
  * nothing about the comparison inside it.
  *
  * `bestRank` is optional and sorts last when missing: a host no query ranked
  * is not evidence of a good host, and `undefined` must not win a tie by
  * arithmetic accident the way `Math.floor` once picked a median.
  */
-export function secondLookOrder<T extends { seenIn: number; bestRank: number | undefined }>(
+export function mostCorroboratedFirst<T extends { seenIn: number; bestRank: number | undefined }>(
   rows: readonly T[],
 ): T[] {
   return [...rows].sort(
@@ -4900,8 +4914,23 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       `second look withheld: only the write reserve is left on the clock, so the first judgements stand`,
     );
   }
+  /** The host row behind an entity, for the two capped stages below that both
+   *  need to know how well corroborated a host was before they choose which
+   *  ones to spend on. Hoisted out of the second look when drop-confirm turned
+   *  out to need exactly the same read. */
+  const rowOf = new Map(hostList.map((h) => [h.host, h]));
+  /** The same `bestRank` the report section computes on entities later —
+   *  earlier here, because both capped stages below need it before that
+   *  section runs. `byHost` is the one source they read; a second field
+   *  restated on `Entity` would just be this, cached. */
+  const bestRankOf = (domain: string): number | undefined => {
+    const rows = byHost.get(domain) ?? [];
+    const ranks = rows
+      .map((h) => h.rank)
+      .filter((n): n is number => typeof n === "number");
+    return ranks.length ? Math.min(...ranks) : undefined;
+  };
   if (SECOND_LOOK && secondLookAffordable) {
-    const rowOf = new Map(hostList.map((h) => [h.host, h]));
     const unplaced = entities.filter(
       (e) => e.settledBy === "model" && e.relation === "unknown",
     );
@@ -4919,17 +4948,6 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       } catch {
         return true; // an unparseable URL is not worth a fetch either
       }
-    };
-    /** The same `bestRank` the report section computes on entities later —
-     *  earlier here, because the unlock ladder below needs it before that
-     *  section runs. `byHost` is the one source both read; a second field
-     *  restated on `Entity` would just be this, cached. */
-    const bestRankOf = (domain: string): number | undefined => {
-      const rows = byHost.get(domain) ?? [];
-      const ranks = rows
-        .map((h) => h.rank)
-        .filter((n): n is number => typeof n === "number");
-      return ranks.length ? Math.min(...ranks) : undefined;
     };
     /** Earned a second knock on a page that came back blocked: corroborated
      *  by more than one query, or ranked well by at least one — the same
@@ -4974,7 +4992,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           : [];
       })
       .map((c) => ({ ...c, seenIn: c.row.seenIn, bestRank: bestRankOf(c.e.domain) }));
-    const lookAt = secondLookOrder(ranked).slice(0, SECOND_LOOK_CAP);
+    const lookAt = mostCorroboratedFirst(ranked).slice(0, SECOND_LOOK_CAP);
     if (lookAt.length > 0) {
       say(
         "rank",
@@ -5251,7 +5269,22 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     const dropped = entities.filter(
       (e) => e.settledBy === "model" && e.relation === "none",
     );
-    const candidates = dropped.slice(0, DROP_CONFIRM_CAP);
+    // Most corroborated first, for the reason set out at
+    // `mostCorroboratedFirst`: sliced in array order this cap spent its sixty
+    // questions on the least-surfaced hosts the run found. The cap binds on
+    // 4 of 10 recent runs — 94, 155, 172 and 338 dropped hosts against sixty
+    // slots — so on those runs the order decided most of what got re-asked.
+    // A host many queries surfaced and ranked well, that the model then ruled
+    // off the map entirely, is the more consequential refusal to re-examine.
+    const candidates = mostCorroboratedFirst(
+      dropped.map((e) => ({
+        e,
+        seenIn: rowOf.get(e.domain)?.seenIn ?? 0,
+        bestRank: bestRankOf(e.domain),
+      })),
+    )
+      .slice(0, DROP_CONFIRM_CAP)
+      .map((c) => c.e);
     if (candidates.length > 0) {
       say(
         "rank",
