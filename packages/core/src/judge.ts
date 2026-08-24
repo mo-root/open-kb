@@ -612,6 +612,28 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
            * doubled, because the band gate had been refusing the single most
            * reliable thing a snippet says, and the `covers` that went away
            * were the guessed ones.
+           *
+           * IT GENERALISES — cloudflare.com, a second anchor, before and after
+           * everything on this branch:
+           *
+           *              snippet-only kept rows                    kept   cost
+           *   before     covers 75, adjacent 21, competitor 17,    1122  $1.05
+           *              discusses 16, lists 15   (144 rows)
+           *   after      lists 24, discusses 14    (38 rows)       1165  $1.25
+           *
+           * The same collapse to the allowlist, on an anchor whose plan was cut
+           * far harder than shopify's — 163 queries fired of 592 queued, 28%.
+           * And the map did not shrink: `kept` rose by 43 even though ~106
+           * snippet-guessed rows were withheld, because the second look placed
+           * 32 hosts on real pages where the earlier run placed 3.
+           *
+           * Two caveats. The second-look comparison is confounded BY this gate
+           * — the earlier run had few unplaced hosts to look at precisely
+           * because it was guessing at them instead (asked 13, this one 60 of
+           * 141) — so that column shows the two stages composing, not an
+           * independent gain. And the run took 30 minutes against 19, which is
+           * the real price: 25 unlocker escalations at up to a two-minute
+           * timeout each is most of it.
            */
           const SNIPPET_MAY_SAY = new Set(["lists", "discusses"])
           const overreach = !SNIPPET_MAY_SAY.has(out.relation)
