@@ -169,6 +169,8 @@ describe.skipIf(runsDir === null)("two real swarm runs of one anchor", () => {
 
     const keysA = new Set(a.entities.map(entityKey))
     const keysB = new Set(b.entities.map(entityKey))
+    expect(d.left.length).toBeGreaterThan(0)
+    expect(d.entered.length).toBeGreaterThan(0)
     expect(d.left.every((k) => keysA.has(k) && !keysB.has(k))).toBe(true)
     expect(d.entered.every((k) => keysB.has(k) && !keysA.has(k))).toBe(true)
     const changedKeys = new Set(d.changed.map((c) => c.key))

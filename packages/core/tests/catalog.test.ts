@@ -388,6 +388,7 @@ describe("spending the query budget across products", () => {
       [mk("Core", "core", ["c1", "c2"]), mk("Side", "adjacent", ["s1"])],
       6,
     )
+    expect(funded.length).toBeGreaterThan(0)
     expect(funded.every((f) => f.market === "Core")).toBe(true)
   })
 

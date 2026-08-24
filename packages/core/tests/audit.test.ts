@@ -70,6 +70,7 @@ describe("buildAuditPacket sampling", () => {
   it("samples only the requested relations", () => {
     const entities = [...pool(10, 10), { name: "noise", domain: "noise.com", kind: "company", relation: "unknown" }]
     const packet = build(entities, { relations: ["competitor"] })
+    expect(packet.rows.length).toBeGreaterThan(0)
     expect(packet.rows.every((r) => r.entity.relation === "competitor")).toBe(true)
   })
 

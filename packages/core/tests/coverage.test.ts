@@ -59,6 +59,7 @@ describe("answerKeyRecall", () => {
   })
   it("never emits NaN recall even at minVendors 0", () => {
     const r = answerKeyRecall([{ url: "https://x.com/", html: "anchor.com" }], { anchor: "anchor.com", mapHosts: new Set(), minVendors: 0 })
+    expect(r.probes.length).toBeGreaterThan(0)
     expect(r.probes.every((p) => Number.isFinite(p.recall))).toBe(true)
   })
 })
