@@ -174,11 +174,28 @@ const QUERY_BUDGET = queriesThatFit(CLOCK_S, undefined, RANK_WIDTH)
  *
  * This is not a bug in this file: the budget is honest arithmetic over a
  * measured yield against a hard serverless clock, and the comment above
- * records the bug it fixed. It is a product fact worth being explicit about
- * where the number is computed, because two things follow that nothing states.
- * A gallery map cannot be reproduced by the product that displays it. And a
- * finding measured on a CLI run needs re-checking before it is believed about
- * the web.
+ * records the bug it fixed.
+ *
+ * AND THE GAP IS REACH, NOT THE ANSWER — measured before leaving the warning
+ * as written, by replaying the first 18 queries of two full runs and asking
+ * what they would have surfaced. Of the full run's competitors, ranked by
+ * corroboration:
+ *
+ *              top 5   top 10   top 20   top 50
+ *   shopify     5/5     9/10    14/20    25/50
+ *   cloudflare  5/5    10/10    16/20    25/50
+ *
+ * 226 and 204 distinct hosts respectively, 52 and 71 of them competitors. So
+ * an 18-query run finds every one of the top five rivals and nearly all of the
+ * top ten, and loses half the field by rank fifty. That is the same shape as
+ * `--quick` and as the ranking stability measured on this branch: the head is
+ * robust and the tail is where size buys something.
+ *
+ * So the honest statement is narrower than "a gallery map cannot be
+ * reproduced". A web map is roughly a ninth the size and answers "who competes
+ * with this company" with the same names at the top. What it cannot reproduce
+ * is the long tail the gallery advertises by entity count — which is worth
+ * knowing if that count is what the product is sold on.
  */
 
 interface Body {
