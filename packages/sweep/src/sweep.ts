@@ -3701,6 +3701,29 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    */
   /** Search one query and record everything it produced. The pool below calls
    *  this; nothing here knows about batches or waves. */
+  /**
+   * HOW MANY QUERIES WERE EVER ACTUALLY IN FLIGHT AT ONCE.
+   *
+   * The search phase is the biggest block in a run and nothing explains its
+   * rate. 32 workers start, the queue is full from the first tick, every
+   * query reports a ~4.6s median — and the phase still moves 0.27 queries a
+   * second, which is what one worker would do. Two very different faults look
+   * identical from outside: a dispatch that never gets wide (workers blocked
+   * on something before the wire) or a wire that is wide and slow (32 in
+   * flight, each waiting on a provider that queues them).
+   *
+   * `pacedMs` ruled out one candidate — our own rate limiter never fired. This
+   * rules on the other, and it is a counter rather than an inference: peak is
+   * the high-water mark of concurrent `runOne` calls, `sum`/`samples` give the
+   * mean so a single spike cannot read as sustained width.
+   *
+   * Cheap on purpose. Two integers around an await that already exists, no
+   * timers, and nothing that can change what the phase does.
+   */
+  let inFlight = 0;
+  let peakInFlight = 0;
+  let inFlightSum = 0;
+  let inFlightSamples = 0;
   const runOne = async (planned: SweptQuery) => {
     /**
      * THE PLATFORM, RENDERED WHERE THE QUERY IS BOUGHT.
@@ -3975,7 +3998,15 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         await idle(200);
         continue;
       }
-      await runOne(planned);
+      inFlight += 1;
+      if (inFlight > peakInFlight) peakInFlight = inFlight;
+      inFlightSum += inFlight;
+      inFlightSamples += 1;
+      try {
+        await runOne(planned);
+      } finally {
+        inFlight -= 1;
+      }
       ran += 1;
       // Every tenth, and the last. Not "whenever the queue is empty": with more
       // workers than queued queries that is true on every completion, and the
@@ -6711,6 +6742,21 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
        * over few queries reads differently from one that paced everything.
        */
       paced: { ms: Math.round(serpPacedMs), queries: serpPacedQueries },
+      /**
+       * The dispatch's own width, against the width it was configured for.
+       *
+       * `width` is `CONC`, `peak` the most queries ever in flight at once and
+       * `mean` the average measured at each dispatch. A phase moving 0.27
+       * queries a second on a 32-wide pool is either never getting wide or
+       * getting wide and waiting, and no other number in this report can tell
+       * those apart. `peak` near `width` says the pool is full and the wire is
+       * the ceiling; `peak` near 1 says the workers are blocked before it.
+       */
+      dispatch: {
+        width: CONC,
+        peak: peakInFlight,
+        mean: inFlightSamples ? Math.round((10 * inFlightSum) / inFlightSamples) / 10 : 0,
+      },
     },
     /** Agent-mode phase one's own account: turns, pages, and the integrations
      *  the docs stated. Null on the default path, which reads nothing an agent

@@ -409,7 +409,7 @@ console.log(`$${stats.usd.toFixed(4)} · ${stats.seconds.toFixed(0)}s`)
   const report = out!.report as Record<string, unknown>
   const cost = report.cost as { usd: number; byKind: { label: string; calls: number; failures: number; usd: number; ms: number }[] }
   const serp = report.serp as
-    | { requests: number; retries: number; pagesPerQuery: number; blocked: Record<string, number>; failed?: Record<string, number>; redirects?: number; partial?: number; paced?: { ms: number; queries: number } }
+    | { requests: number; retries: number; pagesPerQuery: number; blocked: Record<string, number>; failed?: Record<string, number>; redirects?: number; partial?: number; paced?: { ms: number; queries: number }; dispatch?: { width: number; peak: number; mean: number } }
     | undefined
   const kernel = report.kernel as { fetched: number; unreadable: number; unreadableByReason: Record<string, number>; unlocked?: number; serpJudged?: number } | undefined
   const pct = (n: number) => `${((100 * n) / (cost.usd || 1)).toFixed(1)}%`
@@ -443,6 +443,15 @@ console.log(`$${stats.usd.toFixed(4)} · ${stats.seconds.toFixed(0)}s`)
     // The account's own ceiling. Said out loud because it is the one line that
     // explains a slow run the reader can actually act on — and because a
     // throttle is account-wide, so no amount of concurrency here lifts it.
+    // How wide the dispatch actually got. Printed whenever it fell short of
+    // what was configured, because that is the case worth looking at: a pool
+    // that never fills is a different problem from a provider that queues.
+    if (serp.dispatch && serp.dispatch.peak < serp.dispatch.width) {
+      console.log(
+        `  dispatch went ${serp.dispatch.peak} wide at its peak (mean ${serp.dispatch.mean}) against ${serp.dispatch.width} configured` +
+          ` — the pool never filled, so the ceiling is before the wire, not on it`,
+      )
+    }
     if (serp.paced && serp.paced.queries) {
       console.log(
         `  ${serp.paced.queries} queries waited a total of ${Math.round(serp.paced.ms / 1000)}s for the provider's rate limit` +

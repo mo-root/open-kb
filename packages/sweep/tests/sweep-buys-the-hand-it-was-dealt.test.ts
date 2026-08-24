@@ -239,6 +239,43 @@ describe("report.wire — the plan against the purchase", () => {
  * So it is read three times and the MEDIAN product count is kept — the middle
  * rather than the richest, because both tails are failures.
  */
+describe("report.serp.dispatch — did the pool ever fill", () => {
+  it("records the peak and mean width against the configured one", async () => {
+    /**
+     * The search phase moves 0.27 queries a second on a 32-wide pool whose
+     * queries have a 4.6s median. Two different faults look identical from
+     * outside — a dispatch that never gets wide, or a wire that is wide and
+     * slow — and no other field can separate them. `pacedMs` ruled out our own
+     * rate limiter; this rules on the pool itself.
+     */
+    const h = await runFixture({ sweepOptions: { concurrency: 4 } })
+    const d = (h.result.report.serp as { dispatch: { width: number; peak: number; mean: number } }).dispatch
+    expect(d.width).toBe(4)
+    // A real count, not a restatement of the setting: it cannot exceed the
+    // width, and with queries to spend it must have gone above one.
+    expect(d.peak).toBeGreaterThan(1)
+    expect(d.peak).toBeLessThanOrEqual(4)
+    expect(d.mean).toBeGreaterThan(0)
+    expect(d.mean).toBeLessThanOrEqual(d.peak)
+  }, 30_000)
+
+  it("reports a peak BELOW the width when there is not enough work to fill it", async () => {
+    // The case that proves the counter counts rather than echoing
+    // `concurrency` back. Eight workers and three queries can never put more
+    // than three in flight, so `peak === width` here would mean the field is
+    // a restatement of the setting.
+    //
+    // Written after a mutation test caught exactly that: with the pool full,
+    // `peak: CONC` passes every assertion, because peak legitimately equals
+    // the width. Only starving it separates the two.
+    const h = await runFixture({ sweepOptions: { concurrency: 8, maxQueries: 3 } })
+    const d = (h.result.report.serp as { dispatch: { width: number; peak: number } }).dispatch
+    expect(d.width).toBe(8)
+    expect(d.peak).toBeLessThanOrEqual(3)
+    expect(d.peak).toBeGreaterThan(0)
+  }, 30_000)
+})
+
 describe("report.serp.paced — whose ceiling was it", () => {
   it("is absent from the count when nothing waited", async () => {
     const h = await runFixture()
