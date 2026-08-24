@@ -1585,8 +1585,20 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    * returns die, and it preempts the mechanism that would have measured where
    * that point is.
    *
-   * Kept, because a run with a raised or absent ceiling would need it
-   * immediately, and because a floor that never fires costs nothing.
+   * AND THE UNITS ARE WORTH A SECOND LOOK if anyone raises the ceiling
+   * expecting this to catch the run. `gained` is new hosts per ROUND, and a
+   * round is tens of queries. The two rounds on record added 173 and 54; the
+   * tail-end per-QUERY yield measured at `HOST_CEILING` is 7-8 new hosts. So a
+   * round would have to come back with fewer new hosts than a single query
+   * typically brings before this fires — it is set roughly an order of
+   * magnitude below what a round actually yields, not just preempted by the
+   * ceiling.
+   *
+   * Kept as-is on both counts. A run with a raised or absent ceiling needs
+   * SOME floor immediately, a floor that never fires costs nothing, and
+   * choosing a better number needs a run that was allowed to exhaust — which
+   * no run on disk has been. The measurement to make first is the one this
+   * comment is missing, not a new constant.
    */
   const MIN_NEW_HOSTS = Math.max(1, Math.floor(opts.minNewHosts ?? 8));
   /** How many co-occurring pairs to ask a model about. Bounds the linking
