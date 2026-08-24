@@ -3620,6 +3620,25 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    * concatenation was the bug. Reading the plan's first 18 rows, 18 products
    * at one query each, is what caught it. If the product runs 18 queries the
    * lever is WHICH 18, not how the 109th is ordered.
+   *
+   * AND WHICH 18 IS ALREADY RIGHT, which was worth testing rather than
+   * assuming since the whole point of asking was that nobody had. Replaying a
+   * full run two ways at an 18-query budget, scored against that run's own
+   * competitors ranked by corroboration:
+   *
+   *                                      hosts   top10   top25   top50
+   *   wide  18 products x 1 door     226 / 204   9,10    17,19   25,25
+   *   deep   4 products x 18 doors   156 /  92   6, 5     7,11   10,14
+   *
+   * Wide finds roughly one and a half to two times the competitors at every
+   * depth, on both anchors. `interleave` emits door one for all 27 core
+   * products before any second door, so a run cut at 18 IS the wide plan —
+   * the good allocation, arrived at for a different reason.
+   *
+   * The `maxQueries: 4` test looks like it pins the opposite, one product
+   * taking four doors. That is the fixture having a single core product:
+   * `interleave` over one hand is that hand in order. On a real anchor four
+   * queries are four products' front doors.
    */
   const CORE_OPENING = 4;
   const head = (h: SweptQuery[]) => h.slice(0, CORE_OPENING);
