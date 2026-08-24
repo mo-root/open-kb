@@ -445,7 +445,7 @@ console.log(`$${stats.usd.toFixed(4)} · ${stats.seconds.toFixed(0)}s`)
   // a catalog call bought for nothing, and a strip term written and never
   // fired is a door that was opened into a queue nobody reads. Both have
   // happened on real runs; neither was visible without a script until now.
-  const wire = report.wire as { products: number; productsSearched: number; termsWritten: number; termsFired: number } | undefined
+  const wire = report.wire as { products: number; productsSearched: number; termsWritten: number; termsFired: number; productsUnsearched?: string[] } | undefined
   if (wire && wire.products) {
     const pct = (a: number, b: number) => `${Math.round((100 * a) / (b || 1))}%`
     console.log(
@@ -453,7 +453,17 @@ console.log(`$${stats.usd.toFixed(4)} · ${stats.seconds.toFixed(0)}s`)
         `, ${wire.termsFired} of ${wire.termsWritten} strip terms fired (${pct(wire.termsFired, wire.termsWritten)})`,
     )
     if (wire.productsSearched < wire.products) {
-      console.log(`  ${wire.products - wire.productsSearched} products were stripped and planned but never searched`)
+    {
+      const missed = wire.products - wire.productsSearched
+      // Named, not just counted. The names are what turn "the budget was
+      // tight" into a diagnosis — on the run that found the band bug they
+      // were every non-core product, in a row.
+      const names = wire.productsUnsearched ?? []
+      console.log(
+        `  ${missed} products were stripped and planned but never searched` +
+          (names.length ? `: ${names.join(", ")}${missed > names.length ? `, and ${missed - names.length} more` : ""}` : ""),
+      )
+    }
     }
   }
 

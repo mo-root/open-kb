@@ -201,10 +201,27 @@ describe("report.wire — the plan against the purchase", () => {
         }),
       },
     })
-    const w = h.result.report.wire as { termsWritten: number; termsFired: number }
+    const w = h.result.report.wire as {
+      termsWritten: number; termsFired: number
+      products: number; productsSearched: number; productsUnsearched: string[]
+    }
     expect(w.termsWritten).toBeGreaterThan(w.termsFired)
     // And the terms that DID fire are real, so this is not simply an empty run.
     expect(w.termsFired).toBeGreaterThan(0)
+
+    // NAMES, not just a count. The count sent me to a hand-written script the
+    // first time it was non-zero; the names are what identified the missed
+    // products as every non-core one, which is what found the band bug.
+    expect(w.productsUnsearched.length).toBe(w.products - w.productsSearched)
+    // The NAME, not just the arity — an assertion on length and type would
+    // pass over an empty list and prove nothing. With three queries to spend
+    // the fixture buys the core market's product and misses the adjacent
+    // one, which is the same shape the band bug had on shopify: the products
+    // that fall off are the non-core ones.
+    expect(w.productsUnsearched).toEqual(["Uptime Alerts"])
+    // And it really is absent from the wire it is said to have missed.
+    for (const name of w.productsUnsearched)
+      expect(h.asked.some((q) => q.includes(name))).toBe(false)
   }, 30_000)
 })
 

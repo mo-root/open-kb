@@ -6654,6 +6654,26 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       productsSearched: strips.filter((st) =>
         st.terms.some((t) => firedQueries.has(t.trim().toLowerCase())),
       ).length,
+      /**
+       * WHICH products were planned and never asked about, not just how many.
+       *
+       * The count alone sent me to a hand-written script over `searched[]`
+       * the first time it was non-zero, which is the exact errand this field
+       * exists to abolish. And the names are the whole finding: "8 of 43
+       * missed" says a budget was tight, while `Shopify Email, Sidekick,
+       * Shopify Inbox, Shopify Audiences, Shopify Collabs...` said every one
+       * of them was non-core and led straight to the band-concatenation bug
+       * in the opening hand.
+       *
+       * Capped at twelve because this rides in the report a browser replays
+       * and an anchor with a large decomposition can miss dozens; the count
+       * above stays exact, so a truncated list can never be read as the
+       * whole one.
+       */
+      productsUnsearched: strips
+        .filter((st) => !st.terms.some((t) => firedQueries.has(t.trim().toLowerCase())))
+        .map((st) => st.product)
+        .slice(0, 12),
       termsWritten: strips.reduce((n, st) => n + st.terms.length, 0),
       termsFired: strips.reduce(
         (n, st) =>
