@@ -172,6 +172,30 @@ export const MEASURED_PHASE_COSTS: PhaseCosts = {
    *
    * `report.clock` on every run now records predicted against actual, so this
    * distribution keeps itself up to date instead of needing a script.
+   *
+   * THE DOMINANT ERROR IS `fixedSeconds`, and it is the one term that points
+   * the dangerous way. Measured from `report.phases`:
+   *
+   *                understand + plan = fixed        here: 60
+   *   cloudflare        184 + 42     = 226
+   *   resend             96 +  6     = 102
+   *
+   * Two to nearly four times the modelled figure. `understand` alone is 96
+   * seconds on a clean read and 184 when one of its three asks times out,
+   * which e8b3157 capped — before that fix it reached 362.
+   *
+   * On a long CLI run that is noise against 25 minutes. On the web's 270-second
+   * clock it is most of the budget: `270 - 60 - 30` leaves 180 variable seconds
+   * and 18 queries, but `270 - 226 - 30` leaves FOURTEEN. A run that plans 18
+   * queries from the optimistic figure and then spends 226 seconds
+   * understanding the company will seal its search almost immediately on the
+   * deadline backstop, and ship a map built from a couple of queries.
+   *
+   * That is also the likeliest source of the under-predicting tail above: the
+   * runs where actual beat predicted are the runs whose fixed phase ran long.
+   * Fixing the term would make the model honest and the WEB BUDGET SMALLER,
+   * which is the opposite of the headroom the median suggested — and is why
+   * the budget question wants this number, not the median, to decide it.
    */
 }
 
