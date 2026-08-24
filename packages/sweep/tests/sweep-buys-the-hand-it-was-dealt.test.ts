@@ -239,6 +239,26 @@ describe("report.wire — the plan against the purchase", () => {
  * So it is read three times and the MEDIAN product count is kept — the middle
  * rather than the richest, because both tails are failures.
  */
+describe("report.serp.paced — whose ceiling was it", () => {
+  it("is absent from the count when nothing waited", async () => {
+    const h = await runFixture()
+    const paced = (h.result.report.serp as { paced?: { ms: number; queries: number } }).paced
+    // Zero, not missing: "nothing waited" and "this port cannot say" have to
+    // read differently, because a slow search with paced.queries at 0 means
+    // the ceiling is upstream and one with it high means it is ours.
+    expect(paced).toEqual({ ms: 0, queries: 0 })
+  })
+
+  it("sums the wait and counts the queries that paid it", async () => {
+    const h = await runFixture({ pacedMs: 250 })
+    const paced = (h.result.report.serp as { paced: { ms: number; queries: number } }).paced
+    const fired = h.result.report.queries as number
+    expect(fired).toBeGreaterThan(0)
+    expect(paced.queries).toBe(fired)
+    expect(paced.ms).toBe(fired * 250)
+  })
+})
+
 describe("report.phases — where the minutes went", () => {
   it("carries a span for every rail that spoke", async () => {
     // `report.seconds` is the total and `cost.byKind[].ms` is BILLED time, so

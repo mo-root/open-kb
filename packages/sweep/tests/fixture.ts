@@ -380,6 +380,9 @@ export interface FixtureOptions {
   script?: Script
   /** Queries `FakeSearch` refuses, reported inside their own row. */
   failing?: string[]
+  /** Make every answered query report this much rate-limit wait, so the
+   *  sweep's `report.serp.paced` aggregation can be exercised. */
+  pacedMs?: number
   serp?: Record<string, SearchHit[]>
   /** Rows laid OVER the market's own fetch table, for a run that needs a
    *  surface this company does not publish — a sitemap, say. Merged rather than
@@ -614,7 +617,7 @@ export function blockTheNetwork(): () => void {
 
 export async function runFixture(opts: FixtureOptions = {}): Promise<Harness> {
   const script = { ...defaultScript(), ...opts.script }
-  const search = new FakeSearch(opts.serp ?? SERP, { failing: opts.failing })
+  const search = new FakeSearch(opts.serp ?? SERP, { failing: opts.failing, pacedMs: opts.pacedMs })
   const fetcher = new FakeFetch({ ...FETCH_TABLE, ...(opts.fetchTable ?? {}) })
   const spans = new SpanStream()
   const calls: ModelCall[] = []

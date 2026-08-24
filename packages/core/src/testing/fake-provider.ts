@@ -31,7 +31,19 @@ import type { SearchHit, SearchPort, SearchResult, FetchPort, FetchMode, FetchRe
 export class FakeSearch implements SearchPort {
   constructor(
     private table: Record<string, SearchHit[]>,
-    private opts: { failing?: string[] } = {},
+    private opts: {
+      failing?: string[]
+      /**
+       * What every answered query reports as `pacedMs` — time it spent waiting
+       * for the provider's own rate limit before it was allowed to ask.
+       *
+       * Here so the sweep's aggregation of it can be tested at all. A real
+       * throttle needs a provider that sends one, and the port-level test
+       * covers that; this covers the half above the port, which is where the
+       * number becomes `report.serp.paced` and reaches a reader.
+       */
+      pacedMs?: number
+    } = {},
   ) {}
 
   /**
@@ -59,7 +71,14 @@ export class FakeSearch implements SearchPort {
       if (this.opts.failing?.includes(query)) {
         return { query, hits: [], ok: false, error: "search provider refused this query", usd: 0, ms: 1 }
       }
-      return { query, hits: this.table[query] ?? [], ok: true, usd: 0.001, ms: 5 }
+      return {
+        query,
+        hits: this.table[query] ?? [],
+        ok: true,
+        usd: 0.001,
+        ms: 5,
+        ...(this.opts.pacedMs ? { pacedMs: this.opts.pacedMs } : {}),
+      }
     })
   }
 }
