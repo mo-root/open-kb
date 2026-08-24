@@ -1257,6 +1257,7 @@ describe("runSwarm: the finish gate", () => {
     const gate = run.control.gate!
     expect(gate.workAnswered).toBe(0)
     expect(gate.stood).toBe("refusals-spent")
+    expect(run.landings.length).toBeGreaterThan(0)
     expect(run.landings.every((l) => !l.mission.dedupeKey.startsWith("family:"))).toBe(true)
     expectEndingShape(run.ending, run.ledger)
   }, 20_000)

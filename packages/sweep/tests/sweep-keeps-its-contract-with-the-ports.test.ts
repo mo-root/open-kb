@@ -121,12 +121,14 @@ describe("the fetches the run makes", () => {
     // answering to nothing when the run is cancelled.
     expect(h.fetch.calls.length).toBeGreaterThan(8)
     for (const c of h.fetch.calls) expect(c.signal).toBeInstanceOf(AbortSignal)
+    expect(h.fetch.calls.length).toBeGreaterThan(0)
     expect(h.fetch.calls.every((c) => c.signal!.aborted === false)).toBe(true)
   })
 
   it("never reaches for the unlocker while a direct read is answering", () => {
     // ~$0.008 and 13-16 seconds each. The unlocked path is a fallback for a
     // site that refuses an anonymous GET, and this anchor does not.
+    expect(h.fetch.calls.length).toBeGreaterThan(0)
     expect(h.fetch.calls.every((c) => c.mode === "direct")).toBe(true)
     expect(h.result.stats.unlockerCalls).toBe(0)
   })

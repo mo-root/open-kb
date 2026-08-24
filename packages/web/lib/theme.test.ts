@@ -52,6 +52,7 @@ describe("themeFromStored", () => {
     // survives someone adding a third theme: the day "sepia" is real, this line
     // is the one that fails and asks whether the fallback is still right.
     const notDark = EVERY_INPUT.filter(([raw]) => raw !== "dark")
+    expect(notDark.length).toBeGreaterThan(0)
     expect(notDark.every(([raw]) => themeFromStored(raw) === "light")).toBe(true)
   })
 })

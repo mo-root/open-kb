@@ -66,6 +66,7 @@ describe("graphOf, entity-to-entity edges", () => {
       [entity("a.com", "competitor")],
       [{ from: "a.com", to: "never-found.com", relation: "competitor", why: "x", confidence: "inferred" }],
     ))
+    expect(g.edges.length).toBeGreaterThan(0)
     expect(g.edges.every((e) => e.source === "company.md" || e.target === "company.md")).toBe(true)
   })
 

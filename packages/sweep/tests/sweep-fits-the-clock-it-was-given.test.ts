@@ -227,11 +227,33 @@ describe("out of clock, the run ships what it has instead of being killed", () =
     // The adaptive half, and the one a static budget cannot do: this run has no
     // `maxQueries` at all. It stops widening because the hosts that actually
     // landed — not the hosts a median predicted — no longer fit the clock.
+    //
+    // THE DEADLINE HAS TO LEAVE ROOM FOR AN OPENING. It was
+    // `Date.now() - 1_000` — already expired, the same setup as the test
+    // above, which correctly asserts that such a run buys NOTHING. So there
+    // was no opening to widen from, `h.asked` was empty, and
+    // `[].every(...)` is true: the assertion below ran over nothing and this
+    // test proved only what its neighbour already proves. Found by adding
+    // `expect(h.asked.length).toBeGreaterThan(0)` to every `.every()` in the
+    // suite and seeing which one went red.
+    //
+    // Measured to place the new one: at `tailSeconds + 1` and `+3` the run
+    // buys its 14-query opening and widens zero times; at `+6` it widens once
+    // and calls `assess`. Three sits between the floor that buys nothing and
+    // the ceiling that widens.
     const h = await runFixture({
       script: greedy,
       serp: greedySerp(),
-      sweepOptions: { deadlineAt: Date.now() - 1_000, minNewHosts: 1, maxWaves: 4, concurrency: 20 },
+      sweepOptions: {
+        deadlineAt: Date.now() + (MEASURED_PHASE_COSTS.tailSeconds + 3) * 1_000,
+        minNewHosts: 1,
+        maxWaves: 4,
+        concurrency: 20,
+      },
     })
+    // The opening happened, which is what makes the two assertions below mean
+    // "it chose not to widen" rather than "it did nothing at all".
+    expect(h.asked.length).toBeGreaterThan(0)
     expect(assessCalls(h)).toBe(0)
     expect(h.asked.every((q) => !q.startsWith("widening question"))).toBe(true)
   }, 30_000)

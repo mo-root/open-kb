@@ -641,7 +641,9 @@ describe("the daily cap refuses the next run", () => {
       throw new Error("provider fell over")
     }
     for (let i = 0; i < 2; i++) expect((await map()).status).toBe(200)
+    expect(rows.length).toBeGreaterThan(0)
     expect(rows.every((r) => r.status === "failed")).toBe(true)
+    expect(rows.length).toBeGreaterThan(0)
     expect(rows.every((r) => (r.usd ?? 0) > 0.39)).toBe(true)
 
     hoisted.sweepImpl = costing(0.01)
