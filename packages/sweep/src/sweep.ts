@@ -6759,10 +6759,25 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
        *   width 32   peak 14   mean 7.5    bounded by the work, not the pool
        *
        * So the dispatch loop CAN get fully wide, and nothing in it serialises.
-       * Together with `pacedMs` — no run on disk ever tripped `THROTTLED`, so
-       * our own limiter never fired — that leaves the ceiling at or beyond the
-       * socket: the provider, or the HTTP layer under it. Neither is visible
-       * from this process, and neither is fixed by any constant in this file.
+       *
+       * NOR IS IT THE HTTP LAYER, which was the last candidate inside this
+       * process. 64 concurrent POSTs from this runtime to one origin, each
+       * held 300ms server-side, reach a peak of 64 at the server and finish in
+       * 366ms — an effective concurrency of 52. Node's fetch applies no
+       * per-origin cap worth noticing.
+       *
+       * That is the elimination complete, on three free measurements:
+       *
+       *   the worker pool     fills to its width          (fixture, no network)
+       *   our own pacing      never fired at all          (`pacedMs`, no
+       *                                                    THROTTLED on disk)
+       *   the HTTP client     does 64 to one origin       (local server)
+       *
+       * Everything on this side of the socket can go wide. The search phase
+       * still moves 0.27 queries a second, so the ceiling is Bright Data's,
+       * applied without the `THROTTLED` message that would let the port see
+       * it. That is an account or zone capacity question to take to the
+       * provider, and no constant in this file changes it.
        *
        * Which means the expected reading on a real run is `peak` near `width`.
        * If it comes back near 1, something changed in the worker loop since
