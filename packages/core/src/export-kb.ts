@@ -194,6 +194,22 @@ function fm(pairs: Array<[string, unknown]>): string {
  *
  * The slug stays as the last term so the order is total and an export is
  * reproducible; a run with no `seenIn` sorts exactly as it did before.
+ *
+ * EXERCISED ACROSS FIVE ANCHORS, because "the shopify list looks right" is one
+ * list. The head of `relations/competitor.md` on each:
+ *
+ *   cloudflare  akamai        stripe   gocardless     figma  canva
+ *   datadoghq   manageengine  openai   github
+ *
+ * Four are the obvious answer and the fifth is defensible — GitHub reaches
+ * openai.com's map through Copilot. Alphabetical gave `activecampaign` and
+ * `24techcommerce`.
+ *
+ * The same five exports also cover the shapes this file now branches on: two
+ * have enough `unknown` rows to hoist a shared reason and three do not, and
+ * every one carries all three receipt sources (page, search results, second
+ * look). Three of the five predate the snippet gate entirely, so a map
+ * exported from an older run gets the corrected provenance too.
  */
 function tierSort(a: ExportEntity, b: ExportEntity): number {
   const ta = TIER_RANK[a.tier ?? ""] ?? 3
