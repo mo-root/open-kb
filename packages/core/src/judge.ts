@@ -523,13 +523,39 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
            * population across 12 runs, so a quarter of the spend this
            * paragraph priced was buying 8% odds.
            *
-           * WHETHER THAT REOPENS THE DECISION IS UNMEASURED. The arithmetic
-           * above is for ALL 124 block-shaped hosts at seenIn 1; restricted to
-           * 4xx it is roughly three quarters of that, at 91% page recovery
-           * rather than the blended rate assumed here — a different trade, and
-           * nobody has costed it. The second look spends its escalations this
-           * way already and rescues 72-90% of the hosts whose page it gets, so
-           * the evidence points at "worth re-costing" rather than at an answer.
+           * SO IT WAS RE-COSTED, and the answer is not the one the mechanism
+           * predicts. Three things had to be established and all three now are.
+           *
+           * FIRST, does the unlocker work on a FRONT page? The 10-of-11 above
+           * is search-surfaced pages, and this ladder retries the front door —
+           * the very URL that just refused. Measured on twelve front pages a
+           * widening would add: 12 of 12 recovered, every one over 500 chars.
+           * The transfer holds and is if anything better.
+           *
+           * SECOND, what does it cost? The 4xx hosts below the seenIn>=3 bar
+           * number 107 on a shopify run and 79 on a cloudflare one:
+           *
+           *   shopify      +107 escalations   $0.86   on a $1.14 run   +75%
+           *   cloudflare    +79 escalations   $0.63   on a $1.23 run   +51%
+           *
+           * At ~100% page recovery and the second look's 72-90% placement,
+           * that is about $0.010 per placed row — CHEAPER per row than the
+           * second look's own escalation at $0.012, which this codebase
+           * already judged worth paying.
+           *
+           * THIRD, AND THIS IS WHAT DECIDES IT: what are the rows? Of the
+           * twelve recovered front pages, nine are software directories —
+           * softonic, saasworthy, selecthub, softwareworld, hoteltechreport,
+           * capterra.nl, softwareadvice.com.au, getapp.za.com, getapp.com.mx.
+           * The 4xx-walled population is dominated by regional mirrors of the
+           * same handful of listing sites, because those are the sites that
+           * wall a datacentre fetcher hardest.
+           *
+           * So the money buys `lists` rows, not competitors. 86 more
+           * directories on a map that already carries 40 is not what a reader
+           * of a market map is short of, and it is a 75% cost increase. The
+           * decision stands — but on evidence about WHAT the rows are, which
+           * is a different and better reason than "there is no signal".
            *
            * MEASURED ON THE WIRE, two shopify.com runs either side of it:
            *
