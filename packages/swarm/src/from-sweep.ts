@@ -308,6 +308,24 @@ export function sweepSeedMissions(run: SweepRunLike, opts: SweepSeedOptions): Mi
     // links (github.com sat in 6 of the reference run's 7 probes) is page
     // furniture — footers, CDNs, social; the genuine miss is the vendor one
     // roundup names and the sweep never surfaced anywhere.
+    //
+    // CORROBORATED AT SCALE on 2026-08-24, from the other direction. Counting
+    // the whole answer key rather than the missed tail, on two runs' probes:
+    //
+    //   shopify      645 entries,   42% match a CDN or social pattern
+    //   cloudflare  2230 entries,   29%
+    //
+    // Most common across both: facebook, linkedin, youtube, instagram,
+    // twitter, googleapis, gstatic. The pattern that found them is
+    // conservative, so those shares are floors. So the "page furniture"
+    // this sort exists to skip is a third to a half of the key, not an
+    // occasional github.com — and the same measurement is why
+    // export-kb.ts stopped calling the pooled figure "recall" (3756659).
+    //
+    // The ascending sort reads like the capped-slice bug this codebase found
+    // four times elsewhere on 2026-08-24 — a cap taking the weakest
+    // candidates. It is the opposite: here the frequent ones ARE the weak
+    // ones, and the comment above is why.
     const freq = new Map<string, number>()
     for (const probe of run.report?.recall?.probes ?? []) {
       for (const vendor of probe.vendors) {
