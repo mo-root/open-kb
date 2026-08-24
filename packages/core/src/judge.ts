@@ -396,11 +396,32 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
     // anything is settled: the block is the site's judgement of the fetcher,
     // not a fact about the company, and the bar keeps the spend proportional
     // — a host three queries surfaced is worth $0.008, a drive-by is not.
+    //
+    // 4xx ONLY, NOT `thin-render`, and that is measured rather than assumed.
+    // Both were admitted until the escalation was priced on the population
+    // that actually receives it — the block-shaped hosts a real shopify run
+    // left unplaced, re-fetched through the unlocker:
+    //
+    //   http-4xx      10 of 11 recovered, every one a usable page
+    //   thin-render    2 of 12 recovered, ONE of them usable
+    //
+    // The two thin-render "successes" say why: pinterest.com at 340 chars
+    // and threads.com at 529, both login walls. `thin-render` means the page
+    // rendered and had nothing in it, so a better fetcher fetches the same
+    // empty page — it is a fact about the page, where a 4xx is a judgement
+    // of the fetcher and is exactly what the unlocker exists to overturn.
+    //
+    // It is not a rounding error either. Over 12 runs across 6 anchors,
+    // thin-render is 24% of the eligible population (15-33% per run), so a
+    // quarter of every escalation dollar bought an 8% chance of a page. And
+    // because both this ladder and the second look's are bounded, that
+    // quarter was not merely wasted, it DISPLACED 4xx hosts that convert at
+    // 91%. Dropping it spends the same money on better odds.
     if (
       s.status !== "found" &&
       (deps.unlockSeenIn ?? 0) > 0 &&
       h.seenIn >= (deps.unlockSeenIn ?? 0) &&
-      (s.reason === "thin-render" || /^http-4/.test(s.reason))
+      /^http-4/.test(s.reason)
     ) {
       try {
         const retried = await deps.fetcher.get(url, "unlocked", { signal: deps.signal })

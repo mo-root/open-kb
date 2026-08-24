@@ -4940,9 +4940,17 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           // look fails open, the same bar (not a new one) and the same
           // blocked-shape check (`unlockSeenIn`) the rank phase applies
           // to the judge's own front-page fetch.
+          //
+          // 4xx only. `thin-render` was admitted here too until it was
+          // priced on this exact population — the hosts THIS stage left
+          // unplaced — and recovered 2 of 12 pages, one of them usable,
+          // against 10 of 11 for 4xx. The reasoning is in judge.ts beside
+          // the ladder this one deliberately mirrors; it matters more here
+          // because this budget is the tighter of the two and binds every
+          // post-gate run.
           if (
             s.status !== "found" &&
-            (s.reason === "thin-render" || /^http-4/.test(s.reason)) &&
+            /^http-4/.test(s.reason) &&
             secondLookUnlocked < SECOND_LOOK_UNLOCK_BUDGET &&
             earnedUnlock(row, e.domain)
           ) {

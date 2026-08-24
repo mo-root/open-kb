@@ -793,6 +793,31 @@ describe("judgeHosts blocked-page recovery", () => {
     expect(e.because).toBeUndefined()
   })
 
+  it("spends nothing on a thin-render page, however corroborated", async () => {
+    // `thin-render` recovered 2 of 12 pages against 10 of 11 for 4xx, and
+    // only one of the two was usable. The page rendered and had nothing in
+    // it, so a better fetcher fetches the same nothing.
+    const calls: string[] = []
+    const out = await judgeHosts([rich("shell.com")], {
+      fetcher: {
+        async get(url, mode) {
+          calls.push(mode)
+          // 200 with an app shell — sniff calls this `blocked: thin-render`.
+          return { url, httpStatus: 200, body: "<html><body><div id=root></div></body></html>", ms: 100, usd: 0 }
+        },
+      },
+      classify: async () => ({
+        name: "Shell", kind: "company", what: "a vendor selling hosted log search",
+        relation: "competitor", why: "same job", spans: ["hosted log search"],
+      }),
+      anchor: "anchor.com",
+      aggregatorThreshold: null,
+      unlockSeenIn: 3,
+    })
+    expect(calls).toEqual(["direct"])
+    expect(out.stats.unlocked).toBe(0)
+  })
+
   it("spends nothing on a host below the corroboration bar", async () => {
     const calls: string[] = []
     const out = await judgeHosts([{ ...rich("walled.com"), seenIn: 1 }], {
