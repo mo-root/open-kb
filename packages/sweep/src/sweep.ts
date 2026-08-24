@@ -1624,7 +1624,14 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     label: string,
     schema: T,
     prompt: string,
-    opts: { think?: "none" | "low" | "medium"; maxOutputTokens?: number } = {},
+    opts: {
+      think?: "none" | "low" | "medium";
+      maxOutputTokens?: number;
+      /** Choose the upstream host by this criterion instead of sticking to
+       *  the run's host. Only `understand` uses it — see `understandByCall`,
+       *  which deliberately spreads its asks across hosts that disagree. */
+      sort?: "throughput" | "latency" | "price";
+    } = {},
   ): Promise<z.infer<T>> {
     const started = Date.now();
 
@@ -1718,9 +1725,13 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
                * what actually answered, which is how a bad sticky host is
                * caught rather than assumed away.
                */
-              ...(routed && stickyHost
-                ? { order: [stickyHost] }
-                : { sort: routed ? "throughput" : "latency" }),
+              ...(opts.sort
+                ? // An explicit criterion outranks the run's host: the caller
+                  // is asking for a DIFFERENT host on purpose.
+                  { sort: opts.sort }
+                : routed && stickyHost
+                  ? { order: [stickyHost] }
+                  : { sort: routed ? "throughput" : "latency" }),
               // Only hosts that support every parameter this request carries
               // — `response_format: json_schema` above all. The run on
               // 2026-08-23 (run D) had its catalog retry answered by a host
@@ -2316,11 +2327,19 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    * the 14/1/19 probe above was Wafer throughout. Wafer is now on
    * MODEL_HOST_IGNORE, which carries the table.
    *
-   * That does not retire this. The gateway serves this model from about
-   * thirty hosts, the ignore list names the two that have been measured, and
-   * the next one is found the same way — by a run coming back wrong. Reading
-   * three times costs a third of a cent and does not need to know which host
-   * answered.
+   * That does not retire this, and it changes what the three asks are FOR.
+   * The gateway serves this model from about thirty hosts and the ignore list
+   * names only the two that have been measured, so the next unstable one gets
+   * found the way these did — by a run coming back wrong.
+   *
+   * But the larger number is the disagreement BETWEEN hosts: 46/54/54 on
+   * DeepInfra, 60/61/60 on Reka, 63/63/63 on SiliconFlow — steady hosts that
+   * read the same company as a third bigger or smaller than each other. That
+   * is most of the 43-to-51 spread across real shopify.com runs, because a
+   * run's host is whichever answered first. So the asks are deliberately sent
+   * to different hosts (`UNDERSTAND_ROUTES`) and the middle answer kept: three
+   * asks to one host measure the host, three hosts asked once measure the
+   * question.
    *
    * So it is asked UNDERSTAND_ASKS times, concurrently, and the answer with
    * the MEDIAN product count is kept. The median rather than the richest,
@@ -2335,7 +2354,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    * failing ask no longer ends the run: the others answer for it, and only an
    * empty set falls through to `call()`'s own retry.
    */
-  const understandOnce = () =>
+  const understandOnce = (sort?: "throughput" | "latency" | "price") =>
     call(
       "understand",
       `read ${anchor} — ${pages.length} page${pages.length === 1 ? "" : "s"}`,
@@ -2347,14 +2366,31 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           : "(none found: no sitemap or nav gave product urls, so work from the pages above)",
       }),
       // Worth thinking about: everything downstream descends from these sentences.
-      { think: "medium", maxOutputTokens: 8_000 },
+      { think: "medium", maxOutputTokens: 8_000, sort },
     );
+
+  /**
+   * The asks go to DIFFERENT HOSTS on purpose, and this is why.
+   *
+   * Hosts do not merely differ in steadiness, they disagree about what the
+   * company is. Three identical asks pinned per host, same prompt, same day:
+   * DeepInfra 46/54/54, Reka 60/61/60, SiliconFlow 63/63/63. Asking one host
+   * three times measures that host; asking three hosts once each measures the
+   * question.
+   *
+   * The criteria pick the hosts, so no host is named here and none can go
+   * stale the way a pinned order did this morning. Probed the same evening,
+   * `throughput` landed on Reka, `latency` on DeepInfra and `price` on
+   * OpenInference — three distinct hosts, and each criterion stable across
+   * repeat asks.
+   */
+  const UNDERSTAND_ROUTES = ["throughput", "latency", "price"] as const;
 
   const understandByCall = async (): Promise<z.infer<typeof Decomposition>> => {
     if (UNDERSTAND_ASKS <= 1) return understandOnce();
     const asks = await Promise.all(
-      Array.from({ length: UNDERSTAND_ASKS }, () =>
-        understandOnce().then(
+      Array.from({ length: UNDERSTAND_ASKS }, (_, i) =>
+        understandOnce(UNDERSTAND_ROUTES[i % UNDERSTAND_ROUTES.length]).then(
           (d) => d,
           // A refusal is one vote lost, not a dead run — unless every one of
           // them refuses, which falls through to the single-ask path below so
