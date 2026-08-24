@@ -266,7 +266,14 @@ describe("an untiered run says nothing about tiers", () => {
   it("drops the tier bullet from AGENTS.md and the trust rules from SKILL.md", () => {
     expect(get("AGENTS.md")).not.toContain("tier")
     expect(get("SKILL.md")).not.toContain("own-page > page > snippet")
-    expect(get("SKILL.md")).toContain("no evidence tiers")
+    // The untiered trust rule used to say the lists are "alphabetical, not
+    // ranked" and to weight a row by its receipts "not its position". Once
+    // relation lists learned to sort by how many queries surfaced each host,
+    // that told a reader to ignore the only ranking the file has. What the
+    // test pins is the INTENT — say nothing about tiers, say what the order
+    // actually is — rather than the sentence that carried it.
+    expect(get("SKILL.md")).not.toContain("tier")
+    expect(get("SKILL.md")).toContain("ordered by how many distinct queries surfaced each host")
   })
 
   it("does not tell an agent to grep a frontmatter field no note has", () => {

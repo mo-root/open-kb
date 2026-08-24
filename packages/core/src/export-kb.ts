@@ -803,13 +803,32 @@ the community entities.`
   const grepFields = ["relation:", tiered && "tier:", "segment:"].filter(Boolean).map((f) => `\`${f}\``).join(", ")
   const trustRules = [
     tiered && `- Trust by **tier**: own-page > page > snippet. A tier is where the evidence came from.`,
-    `- **Receipts prove provenance, not support**: the quote is verbatim from the entity's own
-  fetched page; that it supports the description is the model's claim, metered by
-  \`descGrounded\` (a relative drift meter — 0.68 is a normal honest score, not 68% true).`,
+    /**
+     * BOTH OF THESE WERE MADE FALSE BY FIXES ON THIS BRANCH, which is exactly
+     * the rot a file of "trust rules" can least afford — a reader who follows
+     * them is being told to distrust the right things and trust the wrong ones.
+     *
+     * The receipts rule was the third copy of the claim `receiptSource` exists
+     * to stop: a quote is verbatim from the text the model read, and for about
+     * one row in eight that text was the search results rather than a page.
+     * Each note now says which, so this points at the note instead of
+     * asserting the page.
+     *
+     * The ordering rule told a reader the lists are alphabetical and to weight
+     * a row by its receipts "not its position". They were, until relation
+     * lists learned to sort by how many queries surfaced each host — so the
+     * rule now instructs a reader to ignore the only ranking the file has.
+     */
+    `- **Receipts prove provenance, not support**: each note says which text its quotes
+  are verbatim from — its own page, the page a second look reached, or the search results
+  that surfaced it when the page would not open. That they SUPPORT the description is the
+  model's claim, metered by \`descGrounded\` (a relative drift meter — 0.68 is a normal
+  honest score, not 68% true).`,
     tiered
       ? `- The head of each relation list is solid; treat the snippet-tier tail as leads to check.`
-      : `- This run recorded no evidence tiers, so the relation lists are alphabetical, not
-  ranked. Weight a row by its receipts, not its position.`,
+      : `- The relation lists are ordered by how many distinct queries surfaced each host, most
+  first, so the head of each list is what this market points at hardest. That is corroboration,
+  not correctness: weight a row by its receipts too, never by its position alone.`,
     `- Never repeat a *why* about an unfamiliar entity as established fact — quote its receipt
   or go fetch its page.`,
   ].filter(Boolean)
