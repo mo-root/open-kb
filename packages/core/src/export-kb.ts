@@ -201,6 +201,35 @@ function tierSort(a: ExportEntity, b: ExportEntity): number {
   return ta - tb || (b.seenIn ?? 0) - (a.seenIn ?? 0) || slugOf(a).localeCompare(slugOf(b))
 }
 
+/**
+ * WHICH TEXT A RECEIPT WAS QUOTED FROM.
+ *
+ * The spans on an entity are verified in code as literal substrings of the
+ * text the model read — but that text is not always a page. A host whose front
+ * page will not open is judged from the titles and descriptions of the search
+ * results that surfaced it, and its quotes are checked against those.
+ *
+ * Both surfaces claimed the page regardless. The export printed "verbatim from
+ * its page this run" four lines under a `Downgraded:` line saying the page
+ * could not be read, and the web panel's heading said "quoted from its page,
+ * checked word for word". Measured on two runs, kept rows carrying spans with
+ * an unreadable page: 165 of 1,215 on shopify (131 from the search results, 34
+ * from a page a second look reached) and 143 of 1,182 on cloudflare.
+ *
+ * ONE IMPLEMENTATION, because it was two copies of the same ternary the moment
+ * the second surface was fixed, and a provenance claim that drifts between the
+ * export and the panel is worse than either being wrong alone. `because` is
+ * the discriminator: the judge already writes it precisely enough to separate
+ * the three cases, so no new field travels for this.
+ */
+export function receiptSource(because?: string): string {
+  if (!because) return "its page this run"
+  if (/second look at /.test(because)) return "the page a second look reached"
+  if (/could not be read this run/.test(because))
+    return "the search results that surfaced it — its own page would not open"
+  return "its page this run"
+}
+
 function segmentOf(e: ExportEntity): string {
   return e.foundBy?.[0] ?? "unattributed"
 }
@@ -506,14 +535,7 @@ export function exportKbFiles(run: ExportRunLike): ExportedFile[] {
        * tell the three cases apart — no new field, and a map exported before
        * this reads exactly as it did.
        */
-      const from = !e.because
-        ? "its page this run"
-        : /second look at /.test(e.because)
-          ? "the page a second look reached"
-          : /could not be read this run/.test(e.because)
-            ? "the search results that surfaced it — its own page would not open"
-            : "its page this run"
-      lines.push(`**Receipts** (verbatim from ${from}):\n`)
+      lines.push(`**Receipts** (verbatim from ${receiptSource(e.because)}):\n`)
       for (const s of e.spans) lines.push(`> ${s}\n`)
     }
     if (e.also?.length) {

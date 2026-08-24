@@ -113,4 +113,5 @@ export {
   type ExportedFile,
   type MintedEdge,
   type NamedRow,
+  receiptSource,
 } from "./export-kb.js"

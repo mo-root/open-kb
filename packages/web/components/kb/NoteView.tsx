@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { receiptSource } from "@open-kb/core";
 import type { NoteRef, NoteView as NoteData } from "@/lib/viewTypes";
 import {
   FAMILY_TONE,
@@ -349,11 +350,24 @@ export function NoteView({
           A slate quote rail rather than the amber box `because` uses: amber
           means "this claim was downgraded" everywhere else in this app, and
           these are the opposite of a downgrade. The engine caps the set at 360
-          characters in total, so there is nothing to truncate here. */}
+          characters in total, so there is nothing to truncate here.
+
+          THE HEADING HAS TO SAY WHICH TEXT, because for about one row in eight
+          it was not the page. A host whose front page will not open is judged
+          from the titles and descriptions of the search results that surfaced
+          it, and its quotes are checked against THAT text. This said "quoted
+          from its page" regardless — directly under a `because` box, two
+          elements up, saying the front page could not be read.
+
+          Measured on two runs: 165 of 1,215 kept rows on shopify carried spans
+          with an unreadable page (131 from search results, 34 from a page a
+          second look reached), and 143 of 1,182 on cloudflare. The export had
+          the identical bug and the same fix; `because` is what tells the three
+          cases apart, and the engine already writes it precisely enough. */}
       {(note.spans?.length ?? 0) > 0 && (
         <section className="mt-4">
           <div className="mb-1.5 text-[11px] uppercase tracking-wide text-slate-500">
-            quoted from its page, checked word for word
+            quoted from {receiptSource(note.because)}
           </div>
           <ul className="space-y-1.5 border-l border-slate-800 pl-3">
             {note.spans!.map((s, i) => (

@@ -475,9 +475,14 @@ export interface NoteView {
    *  They ride the whole entity and not the list ref on purpose: the panel is
    *  the only surface that shows them, and putting a paragraph per row on
    *  `NoteRef` would send it to every list on this map to be rendered by none
-   *  of them. Absent on the ~14% of rows the kernel verified no quote for —
-   *  mostly hosts whose front page it could not read at all — and on runs
-   *  recorded before the kernel kept them. */
+   *  of them. Absent on the rows the kernel verified no quote for, and on runs
+   *  recorded before the kernel kept them.
+   *
+   *  That used to read "the ~14% of rows ... mostly hosts whose front page it
+   *  could not read at all", which has it backwards. Measured on two recent
+   *  runs those hosts DO carry spans — 165 of 1,215 kept rows on shopify, 143
+   *  of 1,182 on cloudflare — verified against the search text instead of the
+   *  page. Rows with no span at all are 0.6%. */
   spans?: string[]
   /** Model-judged entities only: one sentence, the single decisive fact that
    *  settled `kind` and `relation` — not `evidence` restated, the fact that

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { exportDrop, exportKbFiles, slugOf } from "../src/export-kb.js"
+import { exportDrop, exportKbFiles, receiptSource, slugOf } from "../src/export-kb.js"
 
 /** A tiered run (the swarm shape): every kept row carries a provenance tier, so
  *  the export is allowed to explain what a tier is. Also carries one row per
@@ -365,6 +365,30 @@ describe("an untiered run says nothing about tiers", () => {
     const skill = tiered.find((f) => f.path === "SKILL.md")?.content ?? ""
     expect(skill).toContain("own-page > page > snippet")
     expect(tiered.find((f) => f.path === "AGENTS.md")?.content).toContain("**tier** is where the evidence came from")
+  })
+})
+
+describe("receiptSource — which text a quote came from", () => {
+  it("says the page when nothing downgraded the row", () => {
+    expect(receiptSource(undefined)).toBe("its page this run")
+  })
+
+  it("says the search results when the page would not open", () => {
+    expect(
+      receiptSource("its front page could not be read this run (http-403); judged from the search results that surfaced it"),
+    ).toContain("the search results that surfaced it")
+  })
+
+  it("says the second look's page, because that one IS a page", () => {
+    expect(
+      receiptSource("its front page could not be read this run (http-403); second look at https://x.example/pricing"),
+    ).toBe("the page a second look reached")
+  })
+
+  it("falls back to the page for a `because` about something else entirely", () => {
+    // A downgrade that says nothing about readability leaves the provenance
+    // where it was — the row was read, it just did not survive a gate.
+    expect(receiptSource("its front page links 40 distinct vendor domains")).toBe("its page this run")
   })
 })
 
