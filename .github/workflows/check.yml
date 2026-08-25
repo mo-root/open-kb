@@ -71,29 +71,24 @@ jobs:
       # pnpm BEFORE node, because setup-node's `cache: pnpm` shells out to
       # `pnpm store path` and needs pnpm to already exist.
       #
-      # `version` is here because the root package.json has no `packageManager`
-      # field (open queue item 12b) and this action hard-errors with "No pnpm
-      # version is specified" when it can find neither. Corepack is the other
-      # option and it is the wrong one today: with no `packageManager` to read
-      # it resolves whatever pnpm its Node ships, which is not 10.23.0, and
-      # pnpm 9 and 10 disagree about running dependencies' lifecycle scripts —
-      # so a green run would have installed something a developer never did.
-      #
-      # Pinning HERE is not the same as pinning in package.json and does not
-      # pre-empt 12b. It binds this workflow and nothing else: a developer's
-      # shell, the Dockerfile's bare `corepack enable`, and anyone who clones
-      # the repo all still get whatever they happen to have. That gap is 12b's
-      # to close, in the one place all four read. Nor can this quietly disagree
-      # with the fix when it lands — the action throws "Multiple versions of
-      # pnpm specified" if a `packageManager` field says anything other than
-      # what is written here. That guarantee covers `packageManager` and NOT
-      # `devEngines.packageManager`, which the action also reads: with this
-      # `version:` set, a disagreeing `devEngines` is taken silently. So if 12b
-      # lands as `devEngines`, this line has to go in the same commit. When 12b
-      # lands either way, delete this line and let the field be the source.
+      # No `version:` input here — 12b is closed. The root `package.json` now
+      # carries `"packageManager": "pnpm@10.23.0"`, which this action reads on
+      # its own (read the action's `readTargetVersion` at the pinned SHA to
+      # confirm rather than trust this comment if it is ever bumped: a
+      # `version:` input left in alongside an agreeing `packageManager` field
+      # would NOT throw — the mismatch guard only fires when the two disagree
+      # — so nothing here forces the input out by itself). Removing it anyway
+      # is what actually closes 12b: the field is now the one place a
+      # developer's shell, the Dockerfile's bare `corepack enable`, this
+      # workflow and anyone who clones the repo all read the same version
+      # from, and a `version:` surviving here — even one that still agrees
+      # today — would be a second source that silently drifts from it the
+      # next time someone bumps only one of the two. `devEngines.packageManager`
+      # is the one thing this does not cover: the action reads that field too
+      # and would take a disagreeing one silently, so if `devEngines` is ever
+      # added it must agree with `packageManager` or replace it, in the same
+      # commit.
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-        with:
-          version: 10.23.0
 
       # 20, matching `node:20-slim` in the Dockerfile and the version this was
       # developed on. `engines` says ">=20", so 22 and 24 are claimed to work
