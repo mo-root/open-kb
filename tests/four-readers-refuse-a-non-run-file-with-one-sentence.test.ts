@@ -18,9 +18,12 @@ import { describe, expect, it } from "vitest"
  * rewording, a dash swapped for a hyphen — silently breaks the doctrine while
  * every file still refuses correctly on its own; nothing short of grepping
  * all four by hand would notice. Source-string assertions rather than an
- * import: `calibrate-kernel.ts` fetches live pages at module scope and the
- * other three read real argv, so none of the four can be imported in a test
- * process — the same reason
+ * import: all four now guard their CLI body behind an `invokedDirectly` check
+ * (calibrate-kernel.ts was the last to get one) and could in principle be
+ * imported for this one sentence, but the check itself is a string embedded
+ * in each file's own argv-handling branch — importing would still mean
+ * exercising `usage()`/`process.exit` paths just to reach it, which is more
+ * than a source-string assertion needs. Same reason
  * `tests/the-cli-entrypoints-have-a-dollar-bound.test.ts` checks its three
  * entrypoints by source text instead of by running them.
  *
