@@ -86,6 +86,40 @@ async function headroom(): Promise<number> {
   return data.limit === null ? Number.POSITIVE_INFINITY : data.limit - data.usage
 }
 
+export interface SweepSummary {
+  usd: number
+  secs: number
+  kept: number
+  hosts: number
+  products: number
+  markets: number
+  uncovered: number
+}
+
+/**
+ * Pulls the one row this batch cares about out of `pnpm sweep`'s own stdout.
+ * Pure over the captured text — no process spawn, no network — so a change
+ * to any of the seven lines it reads (the headline in scripts/sweep.ts, or
+ * the "products → distinct markets" / "no queries for" narration inside
+ * packages/sweep/src/sweep.ts) can be caught by a fixture instead of by the
+ * next real 30-minute run silently writing zeroes to results.jsonl.
+ *
+ * "The CLI's own summary line is the contract" was asserted, not tested —
+ * the same gap bench.ts's $Infinity footnote (aebb2a9) and the sweep
+ * headline's queries-vs-queued mixup both shipped from once each.
+ */
+export function parseSweepStdout(stdout: string): SweepSummary {
+  return {
+    usd: Number(/\$([\d.]+) ·/.exec(stdout)?.[1] ?? 0),
+    secs: Number(/· (\d+)s/.exec(stdout)?.[1] ?? 0),
+    kept: Number(/(\d+) on the map/.exec(stdout)?.[1] ?? 0),
+    hosts: Number(/from (\d+) hosts/.exec(stdout)?.[1] ?? 0),
+    products: Number(/(\d+) products →/.exec(stdout)?.[1] ?? 0),
+    markets: Number(/→ (\d+) distinct markets/.exec(stdout)?.[1] ?? 0),
+    uncovered: Number(/no queries for (\d+) of/.exec(stdout)?.[1] ?? "0"),
+  }
+}
+
 async function main() {
   const budget = Number(process.argv[2] ?? 15)
   const queries = Number(process.argv[3] ?? 30)
@@ -123,16 +157,9 @@ async function main() {
         maxBuffer: 64 * 1024 * 1024,
         timeout: 30 * 60_000,
       })
-      // The CLI's own summary line is the contract: "$1.23 · 456s"
-      const usd = Number(/\$([\d.]+) ·/.exec(stdout)?.[1] ?? 0)
-      const secs = Number(/· (\d+)s/.exec(stdout)?.[1] ?? 0)
-      const kept = Number(/(\d+) on the map/.exec(stdout)?.[1] ?? 0)
-      const hosts = Number(/from (\d+) hosts/.exec(stdout)?.[1] ?? 0)
-      const markets = Number(/→ (\d+) distinct markets/.exec(stdout)?.[1] ?? 0)
-      const products = Number(/(\d+) products →/.exec(stdout)?.[1] ?? 0)
-      const uncovered = /no queries for (\d+) of/.exec(stdout)?.[1] ?? "0"
+      const { usd, secs, kept, hosts, products, markets, uncovered } = parseSweepStdout(stdout)
       spent += usd
-      row = { domain: t.domain, why: t.why, ok: true, usd, secs, kept, hosts, products, markets, uncovered: Number(uncovered) }
+      row = { domain: t.domain, why: t.why, ok: true, usd, secs, kept, hosts, products, markets, uncovered }
       console.log(`   ${kept} entities from ${hosts} hosts · ${products}p → ${markets} markets · $${usd.toFixed(2)} · ${secs}s`)
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
@@ -145,7 +172,11 @@ async function main() {
   console.log(`\nspent $${((await keyUsage()) - startUsage).toFixed(2)} by the key's own count. rows in ${LOG}`)
 }
 
-main().catch((e) => {
-  console.error(e)
-  process.exit(1)
-})
+/** Only when run as a command. Same guard shape as `scripts/query-yield.ts`. */
+const invokedDirectly = process.argv[1] ? import.meta.url.endsWith(process.argv[1].split("/").pop() ?? "\0") : false
+if (invokedDirectly) {
+  main().catch((e) => {
+    console.error(e)
+    process.exit(1)
+  })
+}
