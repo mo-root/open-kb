@@ -584,12 +584,18 @@ if (wantAll) {
   const cli = runs.filter((r) => r.source === "cli")
   const web = runs.filter((r) => r.source === "web")
   const ts = runs.map((r) => r.at ?? 0).filter(Boolean)
+  // `Math.min(...[])` is `Infinity`, and `new Date(Infinity).toISOString()`
+  // throws `RangeError: Invalid time value` — reached on a fresh clone's empty
+  // `runs/` (zero files) and equally on a `runs/` whose files all lack `at`.
+  // `day()` already reads `null` as "—" for the same shape of gap everywhere
+  // else in this file; empty `ts` is that gap, so it gets the same null.
+  const span = ts.length ? `${day(Math.min(...ts))} to ${day(Math.max(...ts))}` : "—"
   say(
     `<sub>**Provenance.** \`pnpm bench\` read ${files.length} JSON files in \`runs/\`: ${runs.length} maps ` +
       `(${cli.filter((r) => r.engine === "sweep").length} sweep and ${cli.filter((r) => r.engine === "swarm").length} swarm from the CLI, ` +
       `${web.length} through the web route), ${skipped.length} not a map ` +
       `(${skipped.map((s) => `\`${s.file}\``).slice(0, 2).join(", ")}${skipped.length > 2 ? ", …" : ""}). ` +
-      `The runs span ${day(Math.min(...ts))} to ${day(Math.max(...ts))}; ${current.length} carry the grounding meter ` +
+      `The runs span ${span}; ${current.length} carry the grounding meter ` +
       `and are the tables above. Regenerate with \`pnpm bench\`.</sub>`,
   )
 }

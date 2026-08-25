@@ -35,6 +35,18 @@ import { describe, expect, it } from "vitest"
  * script downstream of the first guard. Fixed with an unconditional
  * `mkdirSync(runs/exports, {recursive:true})` ahead of that write.
  *
+ * `bench.ts` carried a THIRD, separate crash of its own, noted but not fixed
+ * when the first seven were: its `readdirSync` guard above was always fine,
+ * but with zero runs read its provenance footer computed
+ * `Math.min(...ts)`/`Math.max(...ts)` over an empty array — `Infinity` and
+ * `-Infinity` — and handed them to `new Date(...).toISOString()`, which
+ * throws `RangeError: Invalid time value` on a non-finite input. Reproduced
+ * from a scratch directory with no `runs/` at all before this fix: `pnpm
+ * bench` crashed with that RangeError instead of printing its report.
+ * `day()`, the same file's own helper for this exact shape of gap, already
+ * reads `null` as "—"; the fix is passing it null when there are no
+ * timestamps to span rather than teaching it a second empty-input shape.
+ *
  * None of the seven can be imported directly in a test process — read.ts,
  * bench.ts, calibrate-kernel.ts, query-yield.ts, recall.ts,
  * corroboration-arrival.ts and export-kb.ts all act on real `process.argv`
@@ -110,5 +122,12 @@ describe("a missing runs/ directory no longer crashes the scripts that scan it",
     expect(stderr).not.toContain("ENOENT")
     expect(status).toBe(0)
     expect(stdout.trim()).toBe("wrote runs/exports/INDEX.md (0 maps, 0 anchors)")
+  })
+
+  it("bench.ts: a fresh clone prints its report with '—' for the span, instead of throwing RangeError", () => {
+    const { status, stdout, stderr } = runInEmptyClone("bench.ts")
+    expect(stderr).not.toContain("RangeError")
+    expect(status).toBe(0)
+    expect(stdout).toContain("The runs span —; 0 carry the grounding meter")
   })
 })
