@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
-import { afterEach, describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { SpanStream, tripAtUsd, withSpendCap, type Span, type SpendTrip } from "../packages/core/src/index.js"
 import { EXIT } from "../scripts/fatal.js"
 import {
@@ -9,6 +9,7 @@ import {
   DEFAULT_RUN_CAP_USD,
   SWARM_CAP_HEADROOM,
   cappedReason,
+  capUsdOrExit,
   listRoom,
   readCapUsd,
   stoppedRun,
@@ -146,6 +147,59 @@ describe("a cap an operator cannot act on is refused rather than ignored", () =>
         expect(reading.why).toContain('"off"')
       }
     }
+  })
+})
+
+/**
+ * `capUsdOrExit` is the ONLY caller of `readCapUsd` in all three CLI
+ * entrypoints (`sweep.ts:155`, `swarm.ts:208`, `batch.ts:167-168`) — every
+ * real run's dollar bound is decided by this function at module load, before
+ * a single query fires. It had zero direct test coverage: the "three
+ * entrypoints are actually wired to it" describe below only greps the
+ * scripts' source for the call, which pins that the wiring exists but proves
+ * nothing about what the function does when the reading it wraps is refused.
+ * Coverage gap found sweeping `scripts/*.ts beyond sweep.ts` (D-scope: "areas
+ * nobody has swept"). Same `spy process.exit and console.error` shape
+ * `tests/fatal.test.ts` uses for the other CLI function that calls
+ * `process.exit` directly, for the same reason: vitest's own process cannot
+ * survive a real exit.
+ */
+describe("capUsdOrExit turns a refusal into the exit code a shell script can check", () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it("returns the cap without touching process.exit when the reading is ok", () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never)
+    process.env[CLI_LIMIT_VARS.runCap] = "12.5"
+    expect(capUsdOrExit(CLI_LIMIT_VARS.runCap, 8)).toBe(12.5)
+    expect(exitSpy).not.toHaveBeenCalled()
+  })
+
+  it("returns the fallback, unmodified, when nothing is set", () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never)
+    expect(capUsdOrExit(CLI_LIMIT_VARS.runCap, DEFAULT_RUN_CAP_USD)).toBe(DEFAULT_RUN_CAP_USD)
+    expect(exitSpy).not.toHaveBeenCalled()
+  })
+
+  it("returns null for the word that turns the cap off", () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never)
+    process.env[CLI_LIMIT_VARS.runCap] = "off"
+    expect(capUsdOrExit(CLI_LIMIT_VARS.runCap, 8)).toBeNull()
+    expect(exitSpy).not.toHaveBeenCalled()
+  })
+
+  it("exits 2 and prints readCapUsd's own refusal, verbatim, on an unreadable value", () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never)
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined)
+    process.env[CLI_LIMIT_VARS.runCap] = "$5"
+
+    capUsdOrExit(CLI_LIMIT_VARS.runCap, 8)
+
+    expect(exitSpy).toHaveBeenCalledWith(2)
+    const reading = readCapUsd(CLI_LIMIT_VARS.runCap, 8)
+    expect(reading.ok).toBe(false)
+    if (!reading.ok) expect(errorSpy).toHaveBeenCalledWith(reading.why)
   })
 })
 
