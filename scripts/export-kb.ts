@@ -22,20 +22,41 @@ import { dirname, join } from "node:path"
 import { exportKbFiles, type ExportRunLike, type ExportedFile } from "../packages/core/src/index.js"
 import { exportTargetRefusal, judgeExportTarget } from "./export-target.js"
 
-function loadRun(p: string): (ExportRunLike & { anchor?: string }) | null {
+export type LoadedRun = ExportRunLike & { anchor?: string }
+
+/** Sniff one already-parsed run file into the export shape: top-level
+ *  entities (sweep, swarm) or the kernel wrapper's `result` — the same two
+ *  shapes diff-runs.ts's `parseRun` and audit.ts's `sniffEntities` each sniff
+ *  their own way. Unlike those two, this returns null rather than throwing:
+ *  `--all` below walks every file in `runs/` and skips a bad one rather than
+ *  aborting the whole export, so the CLI-only `loadRun` this was pulled out of
+ *  keeps that tolerance. Pure — never touches disk, so this is the piece the
+ *  `readFileSync` in `loadRun` hands off to. Found sweeping `scripts/*.ts`
+ *  beyond `sweep.ts` for the same "zero test coverage" class already fixed in
+ *  diff-runs.ts, audit.ts, read.ts, recall.ts, calibrate-kernel.ts and
+ *  bakeoff.ts — this file's whole body ran at import time (argv, `mkdirSync`,
+ *  `writeFileSync`), so nothing here was reachable from a test process. */
+export function asRun(
+  json: { entities?: ExportRunLike["entities"]; anchor?: string; result?: LoadedRun } | null | undefined,
+): LoadedRun | null {
+  const run = json && (Array.isArray(json.entities) ? (json as LoadedRun) : json.result)
+  return run && Array.isArray(run.entities) ? run : null
+}
+
+function loadRun(p: string): LoadedRun | null {
   try {
-    const raw = JSON.parse(readFileSync(p, "utf8")) as ExportRunLike & { result?: ExportRunLike }
-    const run = Array.isArray(raw.entities) ? raw : raw.result
-    return run && Array.isArray(run.entities) ? run : null
+    return asRun(JSON.parse(readFileSync(p, "utf8")))
   } catch {
     return null
   }
 }
 
-/** The command that would do what was just refused — the caller's own argv with
- *  the flag on the end, so the user reads back exactly what they typed. */
-function retryWithForce(): string {
-  const args = [...process.argv.slice(2), "--force"].map((a) => (/\s/.test(a) ? JSON.stringify(a) : a))
+/** The command that would do what was just refused — the caller's own argv
+ *  with the flag on the end, so the user reads back exactly what they typed.
+ *  Pure — `argv` is a parameter rather than a `process.argv` read in here, so
+ *  it can be tested against a fixture argv without a real CLI invocation. */
+export function retryWithForce(argv: string[]): string {
+  const args = [...argv, "--force"].map((a) => (/\s/.test(a) ? JSON.stringify(a) : a))
   return `pnpm run export ${args.join(" ")}`
 }
 
@@ -45,7 +66,7 @@ function writeExport(run: ExportRunLike, outDir: string, force: boolean): Export
   // asked the same question, and a future caller cannot forget to ask it.
   const verdict = judgeExportTarget(outDir)
   if (!verdict.writable && !force) {
-    for (const line of exportTargetRefusal(outDir, verdict, retryWithForce())) console.error(line)
+    for (const line of exportTargetRefusal(outDir, verdict, retryWithForce(process.argv.slice(2)))) console.error(line)
     process.exit(1)
   }
   rmSync(outDir, { recursive: true, force: true })
@@ -77,8 +98,43 @@ function writeExport(run: ExportRunLike, outDir: string, force: boolean): Export
  * the gate rules, kept in a file that does not own them — which is how this
  * drifted in the first place.
  */
-const entityPages = (files: readonly ExportedFile[]): number =>
+export const entityPages = (files: readonly ExportedFile[]): number =>
   files.filter((f) => f.path.startsWith("entities/")).length
+
+export interface IndexRow {
+  anchor: string
+  source: string
+  dir: string
+  entities: number
+}
+
+/** The lake INDEX body, given the rows `--all` already collected. Pure —
+ *  pulled out of the `--all` block below the same way `renderTable` was
+ *  pulled out of bakeoff.ts's contestant loop: the grouping, sorting and
+ *  drift-link logic is the only non-trivial arithmetic in the `--all` path,
+ *  and it ran only at import time behind argv before this. */
+export function renderIndex(rows: IndexRow[]): string {
+  const byAnchor = new Map<string, IndexRow[]>()
+  for (const r of rows) byAnchor.set(r.anchor, [...(byAnchor.get(r.anchor) ?? []), r])
+  const sections = [...byAnchor.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([anchor, list]) => {
+      const items = list.map((r) => `- [${r.source}](${r.dir.replace("runs/exports/", "")}/README.md) — ${r.entities} entities`)
+      const drift =
+        list.length > 1
+          ? `\nDrift between runs: \`pnpm run diff ${list[list.length - 2]!.source} ${list[list.length - 1]!.source}\`\n`
+          : ""
+      return `## ${anchor}\n\n${items.join("\n")}\n${drift}`
+    })
+  return `# The knowledge lake\n\nEvery exported map, newest last. Each folder is self-describing: start at its\nREADME.md, or hand its SKILL.md to an agent.\n\n${sections.join("\n")}`
+}
+
+// Body left un-indented after the `invokedDirectly` guard, the same choice
+// bakeoff.ts and run-doctor.ts made wrapping a pre-existing body: re-indenting
+// would bury the real diff above (the extraction) under a column shift on
+// every line.
+const invokedDirectly = process.argv[1] ? import.meta.url.endsWith(process.argv[1].split("/").pop() ?? "\0") : false
+if (invokedDirectly) {
 
 const argv = process.argv.slice(2)
 const force = argv.includes("--force")
@@ -101,7 +157,7 @@ if (runPath === "--all") {
   const names = (existsSync("runs") ? readdirSync("runs") : []).filter(
     (n) => /^(sweep|swarm)-.*\.json$/.test(n) && !n.endsWith(".spans.jsonl"),
   )
-  const rows: Array<{ anchor: string; source: string; dir: string; entities: number }> = []
+  const rows: IndexRow[] = []
   for (const name of names.sort()) {
     const run = loadRun(join("runs", name))
     if (!run) continue
@@ -110,29 +166,14 @@ if (runPath === "--all") {
     rows.push({ anchor: run.anchor ?? "?", source: `runs/${name}`, dir, entities: entityPages(written) })
     console.log(`${dir}  (${written.length} files)`)
   }
-  const byAnchor = new Map<string, typeof rows>()
-  for (const r of rows) byAnchor.set(r.anchor, [...(byAnchor.get(r.anchor) ?? []), r])
-  const sections = [...byAnchor.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([anchor, list]) => {
-      const items = list.map((r) => `- [${r.source}](${r.dir.replace("runs/exports/", "")}/README.md) — ${r.entities} entities`)
-      const drift =
-        list.length > 1
-          ? `\nDrift between runs: \`pnpm run diff ${list[list.length - 2]!.source} ${list[list.length - 1]!.source}\`\n`
-          : ""
-      return `## ${anchor}\n\n${items.join("\n")}\n${drift}`
-    })
   // `writeExport` makes `runs/exports/kb-*/` per row, but with zero rows (an
   // empty or freshly-created `runs/`) that loop never runs and the INDEX
   // write below threw ENOENT on the missing `runs/exports/` — confirmed by
   // running `--all` end to end against both a missing and an empty `runs/`
   // after the readdirSync fix above.
   mkdirSync(join("runs", "exports"), { recursive: true })
-  writeFileSync(
-    join("runs", "exports", "INDEX.md"),
-    `# The knowledge lake\n\nEvery exported map, newest last. Each folder is self-describing: start at its\nREADME.md, or hand its SKILL.md to an agent.\n\n${sections.join("\n")}`,
-  )
-  console.log(`wrote runs/exports/INDEX.md (${rows.length} maps, ${byAnchor.size} anchors)`)
+  writeFileSync(join("runs", "exports", "INDEX.md"), renderIndex(rows))
+  console.log(`wrote runs/exports/INDEX.md (${rows.length} maps, ${new Set(rows.map((r) => r.anchor)).size} anchors)`)
   process.exit(0)
 }
 
@@ -147,3 +188,5 @@ const outDir = outArg ?? join("runs", "exports", `kb-${anchorSlug}`)
 const exported = writeExport(run, outDir, force)
 console.log(`wrote ${exported.length} files to ${outDir}`)
 console.log(`start at ${join(outDir, "README.md")}`)
+
+}
