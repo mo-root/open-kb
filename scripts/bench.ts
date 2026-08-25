@@ -393,20 +393,29 @@ say()
 
 const clerkSweeps = sweeps.filter((r) => r.anchor === "clerk.com")
 if (clerkSweeps.length >= 3) {
-  const span = (f: (r: Run) => number | null) => {
+  // Null when every row's field is null (a run recorded before `stats.usd`/
+  // `.seconds` existed, or one that never finished) — `Math.min/max(...[])`
+  // is Infinity/-Infinity, and `.toFixed()` prints that as the literal string
+  // "Infinity" instead of throwing, so this sentence read "for $Infinity to
+  // $-Infinity" rather than failing loudly. `onMap` is never null, so `e`
+  // below is never null in practice — the `?? "—"` fallbacks are for `d`/`s`.
+  const span = (f: (r: Run) => number | null): { lo: number; hi: number } | null => {
     const v = clerkSweeps.map(f).filter((x): x is number => x !== null)
-    return { lo: Math.min(...v), hi: Math.max(...v) }
+    return v.length ? { lo: Math.min(...v), hi: Math.max(...v) } : null
   }
   const e = span((r) => r.onMap)
   const d = span((r) => r.usd)
   const s = span((r) => r.seconds)
-  say(
-    `**Repeatability.** ${clerkSweeps.length} of those rows are the same command on the same anchor ` +
-      `(\`clerk.com\`), inside ${Math.round((Math.max(...clerkSweeps.map((r) => r.at ?? 0)) - Math.min(...clerkSweeps.map((r) => r.at ?? 0))) / 3600_000)} hours. ` +
-      `The map came back between **${e.lo} and ${e.hi} entities**, for **$${d.lo.toFixed(2)} to $${d.hi.toFixed(2)}**, ` +
-      `in **${Math.round(s.lo)}s to ${Math.round(s.hi)}s**. Size is not a property of the anchor; plan for the range, not the median.`,
-  )
-  say()
+  if (e) {
+    say(
+      `**Repeatability.** ${clerkSweeps.length} of those rows are the same command on the same anchor ` +
+        `(\`clerk.com\`), inside ${Math.round((Math.max(...clerkSweeps.map((r) => r.at ?? 0)) - Math.min(...clerkSweeps.map((r) => r.at ?? 0))) / 3600_000)} hours. ` +
+        `The map came back between **${e.lo} and ${e.hi} entities**, for ` +
+        `${d ? `**$${d.lo.toFixed(2)} to $${d.hi.toFixed(2)}**` : "an unrecorded cost"}, ` +
+        `in ${s ? `**${Math.round(s.lo)}s to ${Math.round(s.hi)}s**` : "an unrecorded time"}. Size is not a property of the anchor; plan for the range, not the median.`,
+    )
+    say()
+  }
 }
 
 say("### Swarm — depth, an agent loop")
