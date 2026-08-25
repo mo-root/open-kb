@@ -195,11 +195,47 @@ const TRUTH: Record<string, string[]> = {
 const RIVAL = new Set(["competitor", "substitute"])
 
 const runsDir = join(process.cwd(), "runs")
-const byFamily = process.argv.includes("--by") && process.argv[process.argv.indexOf("--by") + 1] === "family"
-const only = process.argv[2] && !process.argv[2].startsWith("--") ? process.argv[2] : undefined
 
-const hostOf = (u: string): string => {
+export const hostOf = (u: string): string => {
   try { return new URL(u).hostname.toLowerCase().replace(/^www\./, "") } catch { return "" }
+}
+
+export interface RecallRow {
+  kept: number
+  truth: number
+  found: number
+  asRival: number
+  missed: string[]
+  misplaced: string[]
+}
+
+/**
+ * The found-vs-placed split for one anchor, given its truth list and its
+ * newest run's entities. Pulled out of the CLI body — which used to run this
+ * arithmetic inline at import time, unreachable by a test process — so the
+ * distinction the whole file exists to measure (a SEARCH miss vs a CLASSIFY
+ * miss) has direct coverage. Same extraction shape as `promptStats` in
+ * `show-prompt.ts`: a pure function plus an `invokedDirectly` guard around
+ * the argv/console body.
+ */
+export function recallForAnchor(
+  rivals: readonly string[],
+  entities: readonly { domain: string; relation: string; kind?: string }[],
+): RecallRow {
+  // `noise` is the one kind that leaves the map, so it does not count as found.
+  const placed = new Map<string, string>(entities.filter((e) => e.kind !== "noise").map((e) => [e.domain, e.relation]))
+  const kept = entities.filter((e) => e.kind !== "noise" && e.relation !== "none").length
+
+  const missed: string[] = []
+  const misplaced: string[] = []
+  let asRival = 0
+  for (const d of rivals) {
+    const v = placed.get(d)
+    if (v === undefined) missed.push(d)
+    else if (RIVAL.has(v)) asRival++
+    else misplaced.push(`${d}=${v}`)
+  }
+  return { kept, truth: rivals.length, found: rivals.length - missed.length, asRival, missed, misplaced }
 }
 
 /**
@@ -221,78 +257,75 @@ const newestRun = (anchor: string): string | undefined =>
 
 const pct = (n: number, d: number) => `${Math.round((100 * n) / d)}%`
 
-console.log("\nRecall against a hand-written field — found = discovery, as rival = placement\n")
-console.log("  " + "anchor".padEnd(16) + "map".padStart(6) + "truth".padStart(7) + "found".padStart(10) + "as rival".padStart(11) + "  misplaced")
+// Gated the same way `show-prompt.ts` gates its CLI body: importing this file
+// for `recallForAnchor`/`hostOf` must not also run a report against whatever
+// happens to be in `runs/` on the machine doing the importing (a test runner
+// included).
+const invokedDirectly = process.argv[1] ? import.meta.url.endsWith(process.argv[1].split("/").pop() ?? "\0") : false
+if (invokedDirectly) {
+  const byFamily = process.argv.includes("--by") && process.argv[process.argv.indexOf("--by") + 1] === "family"
+  const only = process.argv[2] && !process.argv[2].startsWith("--") ? process.argv[2] : undefined
 
-for (const [anchor, rivals] of Object.entries(TRUTH)) {
-  if (only && anchor !== only) continue
-  const file = newestRun(anchor)
-  if (!file) {
-    console.log("  " + anchor.padEnd(16) + "  (no run in runs/)")
-    continue
-  }
-  const r = JSON.parse(readFileSync(join(runsDir, file), "utf8")) as { entities: any[] }
-  // `noise` is the one kind that leaves the map, so it does not count as found.
-  const placed = new Map<string, string>(r.entities.filter((e) => e.kind !== "noise").map((e) => [e.domain, e.relation]))
-  const kept = r.entities.filter((e) => e.kind !== "noise" && e.relation !== "none").length
+  console.log("\nRecall against a hand-written field — found = discovery, as rival = placement\n")
+  console.log("  " + "anchor".padEnd(16) + "map".padStart(6) + "truth".padStart(7) + "found".padStart(10) + "as rival".padStart(11) + "  misplaced")
 
-  const missed: string[] = []
-  const misplaced: string[] = []
-  let asRival = 0
-  for (const d of rivals) {
-    const v = placed.get(d)
-    if (v === undefined) missed.push(d)
-    else if (RIVAL.has(v)) asRival++
-    else misplaced.push(`${d}=${v}`)
-  }
-  const found = rivals.length - missed.length
-  console.log(
-    "  " + anchor.padEnd(16) + String(kept).padStart(6) + String(rivals.length).padStart(7) +
-    `${found} ${pct(found, rivals.length)}`.padStart(10) + `${asRival} ${pct(asRival, rivals.length)}`.padStart(11) +
-    "  " + (misplaced.join(" ") || "—"),
-  )
-  if (only) {
-    console.log("\n  never surfaced by any query:")
-    for (const d of missed) console.log("    " + d)
-  }
-}
-console.log("\n  ground truth is hand-written and conservative — a floor on the real field, not a census\n")
-
-/**
- * The same ground truth, asked of the SEARCHES rather than the map: which kind
- * of query was the first to surface each rival. A miss in the main table is a
- * discovery failure; this says which family would have had to find it.
- */
-if (byFamily) {
-  const fam: Record<string, { q: number; rivals: number; usd: number }> = {}
-  let runs = 0
   for (const [anchor, rivals] of Object.entries(TRUTH)) {
-    const field = new Set(rivals)
-    // Same missing-directory guard as `newestRun` above.
-    for (const f of (existsSync(runsDir) ? readdirSync(runsDir) : []).filter((f) => f.startsWith(`sweep-${anchor.replace(/\./g, "-")}-`) && f.endsWith(".json"))) {
-      let r: { searched?: any[] }
-      try { r = JSON.parse(readFileSync(join(runsDir, f), "utf8")) } catch { continue }
-      if (!Array.isArray(r.searched)) continue
-      runs++
-      const seen = new Set<string>()
-      for (const s of r.searched) {
-        const hosts = [...new Set((s.hits ?? []).map((h: any) => hostOf(h.url)).filter(Boolean))] as string[]
-        // FIRST to surface it: a rival already seen this run is not this
-        // query's find, however many times it comes back afterwards.
-        const found = hosts.filter((h) => !seen.has(h) && field.has(h)).length
-        hosts.forEach((h) => seen.add(h))
-        const c = (fam[s.family ?? "?"] ??= { q: 0, rivals: 0, usd: 0 })
-        c.q++
-        c.rivals += found
-        c.usd += s.usd ?? 0
-      }
+    if (only && anchor !== only) continue
+    const file = newestRun(anchor)
+    if (!file) {
+      console.log("  " + anchor.padEnd(16) + "  (no run in runs/)")
+      continue
+    }
+    const r = JSON.parse(readFileSync(join(runsDir, file), "utf8")) as { entities: any[] }
+    const { kept, found, asRival, missed, misplaced } = recallForAnchor(rivals, r.entities)
+    console.log(
+      "  " + anchor.padEnd(16) + String(kept).padStart(6) + String(rivals.length).padStart(7) +
+      `${found} ${pct(found, rivals.length)}`.padStart(10) + `${asRival} ${pct(asRival, rivals.length)}`.padStart(11) +
+      "  " + (misplaced.join(" ") || "—"),
+    )
+    if (only) {
+      console.log("\n  never surfaced by any query:")
+      for (const d of missed) console.log("    " + d)
     }
   }
-  console.log(`\nWhich family first surfaced a rival — ${runs} runs\n`)
-  console.log("  " + "family".padEnd(12) + "queries".padStart(8) + "rivals".padStart(8) + "per 100 q".padStart(11) + "$/rival".padStart(10))
-  for (const [k, c] of Object.entries(fam).sort((a, b) => b[1].rivals / b[1].q - a[1].rivals / a[1].q)) {
-    console.log("  " + k.padEnd(12) + String(c.q).padStart(8) + String(c.rivals).padStart(8) +
-      (100 * c.rivals / c.q).toFixed(1).padStart(11) + `$${(c.usd / (c.rivals || 1)).toFixed(3)}`.padStart(10))
+  console.log("\n  ground truth is hand-written and conservative — a floor on the real field, not a census\n")
+
+  /**
+   * The same ground truth, asked of the SEARCHES rather than the map: which kind
+   * of query was the first to surface each rival. A miss in the main table is a
+   * discovery failure; this says which family would have had to find it.
+   */
+  if (byFamily) {
+    const fam: Record<string, { q: number; rivals: number; usd: number }> = {}
+    let runs = 0
+    for (const [anchor, rivals] of Object.entries(TRUTH)) {
+      const field = new Set(rivals)
+      // Same missing-directory guard as `newestRun` above.
+      for (const f of (existsSync(runsDir) ? readdirSync(runsDir) : []).filter((f) => f.startsWith(`sweep-${anchor.replace(/\./g, "-")}-`) && f.endsWith(".json"))) {
+        let r: { searched?: any[] }
+        try { r = JSON.parse(readFileSync(join(runsDir, f), "utf8")) } catch { continue }
+        if (!Array.isArray(r.searched)) continue
+        runs++
+        const seen = new Set<string>()
+        for (const s of r.searched) {
+          const hosts = [...new Set((s.hits ?? []).map((h: any) => hostOf(h.url)).filter(Boolean))] as string[]
+          // FIRST to surface it: a rival already seen this run is not this
+          // query's find, however many times it comes back afterwards.
+          const found = hosts.filter((h) => !seen.has(h) && field.has(h)).length
+          hosts.forEach((h) => seen.add(h))
+          const c = (fam[s.family ?? "?"] ??= { q: 0, rivals: 0, usd: 0 })
+          c.q++
+          c.rivals += found
+          c.usd += s.usd ?? 0
+        }
+      }
+    }
+    console.log(`\nWhich family first surfaced a rival — ${runs} runs\n`)
+    console.log("  " + "family".padEnd(12) + "queries".padStart(8) + "rivals".padStart(8) + "per 100 q".padStart(11) + "$/rival".padStart(10))
+    for (const [k, c] of Object.entries(fam).sort((a, b) => b[1].rivals / b[1].q - a[1].rivals / a[1].q)) {
+      console.log("  " + k.padEnd(12) + String(c.q).padStart(8) + String(c.rivals).padStart(8) +
+        (100 * c.rivals / c.q).toFixed(1).padStart(11) + `$${(c.usd / (c.rivals || 1)).toFixed(3)}`.padStart(10))
+    }
+    console.log("")
   }
-  console.log("")
 }
