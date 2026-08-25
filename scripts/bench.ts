@@ -432,12 +432,15 @@ say()
   // this repo got the hero number it had to retract.
   const shownSwarm = mSwarm === null ? null : Number(mSwarm.toFixed(4))
   const shownSweep = mSweep === null ? null : Number(mSweep.toFixed(4))
-  const ratio = shownSwarm && shownSweep ? shownSwarm / shownSweep : null
+  // `!== null`, not truthiness: a legitimate 0.0000 is a measured figure and
+  // must not print as "—" beside the two operands that produced it.
+  const ratio = shownSwarm !== null && shownSweep !== null && shownSweep !== 0 ? shownSwarm / shownSweep : null
   const keepSweep = median(sweeps.map((r) => (r.hosts ? r.onMap / r.hosts : null)).filter((x): x is number => x !== null))
   const keepSwarm = median(swarms.map((r) => (r.hosts ? r.onMap / r.hosts : null)).filter((x): x is number => x !== null))
   say(
     `**The swarm costs ${ratio === null ? "—" : `${ratio.toFixed(0)}x`} more per entity than the sweep** ` +
-      `($${shownSwarm?.toFixed(4)} vs $${shownSweep?.toFixed(4)}), and that is the trade, not a defect: the sweep puts ` +
+      `(${shownSwarm === null ? "—" : `$${shownSwarm.toFixed(4)}`} vs ` +
+      `${shownSweep === null ? "—" : `$${shownSweep.toFixed(4)}`}), and that is the trade, not a defect: the sweep puts ` +
       `${keepSweep === null ? "—" : `${Math.round(keepSweep * 100)}%`} of the hosts it saw on the map, the swarm ` +
       `${keepSwarm === null ? "—" : `${Math.round(keepSwarm * 100)}%`}. They are not the same unit. Compare the ` +
       `\`rivals\` and \`unread\` columns before comparing the \`$/entity\` one.`,
@@ -490,13 +493,24 @@ say()
   const withBoth = sweeps.filter((r) => r.statQueries !== null && r.firedQueries !== null && r.firedQueries > 0)
   const ratios = withBoth.map((r) => r.firedQueries! / r.statQueries!)
   const worst = withBoth.length ? withBoth.reduce((a, b) => (b.firedQueries! / b.statQueries! > a.firedQueries! / a.statQueries! ? b : a)) : null
+  // The same empty population as the swarm headline above, and the same `?.`
+  // that printed `$undefined` there: with no run logging both fields, `median`
+  // returns null and `?.toFixed(1)` renders the literal "undefined" inside a
+  // sentence that also says "Across the 0 current sweep runs". A count of zero
+  // gets a sentence of its own rather than a figure with nothing behind it.
+  const medianRatio = median(ratios)
   say(
-    `3. **There is no "queries" column, because \`stats.queries\` is not the number of queries fired.** It is the ` +
-      `opening batch; the widening loop fires more and logs them under \`searched\`. Across the ${withBoth.length} ` +
-      `current sweep runs that logged both, the run fired a median of **${median(ratios)?.toFixed(1)}x** its stated ` +
-      `query count` +
-      (worst ? ` — ${label(worst)} reports ${worst.statQueries} and fired ${worst.firedQueries}` : "") +
-      `. Reporting the stat would have published the wrong number in the column meant to prove the numbers are right.`,
+    withBoth.length === 0 || medianRatio === null
+      ? `3. **There is no "queries" column, because \`stats.queries\` is not the number of queries fired.** It is the ` +
+          `opening batch; the widening loop fires more and logs them under \`searched\`. No run here logged both, so ` +
+          `the ratio is unmeasured on this set. Reporting the stat would have published the wrong number in the ` +
+          `column meant to prove the numbers are right.`
+      : `3. **There is no "queries" column, because \`stats.queries\` is not the number of queries fired.** It is the ` +
+          `opening batch; the widening loop fires more and logs them under \`searched\`. Across the ${withBoth.length} ` +
+          `current sweep runs that logged both, the run fired a median of **${medianRatio.toFixed(1)}x** its stated ` +
+          `query count` +
+          (worst ? ` — ${label(worst)} reports ${worst.statQueries} and fired ${worst.firedQueries}` : "") +
+          `. Reporting the stat would have published the wrong number in the column meant to prove the numbers are right.`,
   )
   say()
 }

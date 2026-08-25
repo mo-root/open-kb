@@ -65,6 +65,24 @@ describe("bench.ts's clerk.com repeatability footnote never asserts a number nob
     })
     expect(stdout).not.toContain("Infinity")
     expect(stdout).toContain("for an unrecorded cost, in an unrecorded time")
+
+    /**
+     * THE SAME EMPTY POPULATION, ONE SENTENCE LOWER, and this file ran past
+     * it on every invocation.
+     *
+     * The swarm/sweep headline reached for `shownSwarm?.toFixed(4)` where its
+     * three siblings each guarded with an explicit `=== null ? "—"`. With no
+     * swarm run in the directory — which is every directory today, since the
+     * swarm runs live in `runs/archive/pre-agent-20260816` and `readdirSync`
+     * does not descend — optional chaining yields `undefined` and the
+     * template prints the literal `$undefined`. `pnpm bench` did this on the
+     * author's own machine while this test passed, because it only ever
+     * looked for "Infinity".
+     *
+     * An unmeasured figure has one spelling in this file and it is "—".
+     */
+    expect(stdout).not.toContain("undefined")
+    expect(stdout).not.toContain("NaN")
   })
 
   it("still prints the real span once stats.usd/.seconds are present", () => {
@@ -74,6 +92,7 @@ describe("bench.ts's clerk.com repeatability footnote never asserts a number nob
       "sweep-clerk-com-202608070002.json": fixtureRun({ usd: 1.1, seconds: 101 }),
     })
     expect(stdout).not.toContain("Infinity")
+    expect(stdout).not.toContain("undefined")
     expect(stdout).not.toContain("unrecorded")
     expect(stdout).toContain("for **$1.00 to $1.20**, in **100s to 102s**")
   })
