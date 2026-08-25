@@ -90,7 +90,7 @@ describe("a missing runs/ directory no longer crashes the scripts that scan it",
     ["bench.ts", "const files = (existsSync(DIR) ? readdirSync(DIR) : [])"],
     ["run-doctor.ts", "const files = (existsSync(runsDir) ? readdirSync(runsDir) : [])"],
     ["calibrate-kernel.ts", 'for (const f of (existsSync("runs") ? readdirSync("runs") : []).filter('],
-    ["query-yield.ts", "for (const f of (existsSync(runsDir) ? readdirSync(runsDir) : [])"],
+    ["query-yield.ts", "const files = (existsSync(runsDir) ? readdirSync(runsDir) : [])"],
     ["corroboration-arrival.ts", "for (const f of (existsSync(runsDir) ? readdirSync(runsDir) : [])"],
     ["export-kb.ts", 'const names = (existsSync("runs") ? readdirSync("runs") : []).filter('],
   ])("%s guards its readdirSync(runs) with existsSync", (file, guard) => {

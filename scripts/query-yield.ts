@@ -161,72 +161,97 @@ import { join } from "node:path"
 const MARKET = new Set(["competitor", "substitute", "adjacent", "shaper", "dependency", "integration", "buyer", "target"])
 const CHANNEL = new Set(["covers", "lists", "discusses"])
 
-const hostOf = (u: string): string => {
+export const hostOf = (u: string): string => {
   try { return new URL(u).hostname.toLowerCase().replace(/^www\./, "") } catch { return "" }
 }
 
-interface Cell { q: number; usd: number; fresh: number; market: number; channel: number; other: number; barren: number }
-const cell = (): Cell => ({ q: 0, usd: 0, fresh: 0, market: 0, channel: 0, other: 0, barren: 0 })
+export interface Cell { q: number; usd: number; fresh: number; market: number; channel: number; other: number; barren: number }
+export const cell = (): Cell => ({ q: 0, usd: 0, fresh: 0, market: 0, channel: 0, other: 0, barren: 0 })
 
 /** Which position band a query sits in — the saturation control. */
-const band = (i: number) => (i < 25 ? "  0-24" : i < 50 ? " 25-49" : i < 100 ? " 50-99" : i < 200 ? "100-199" : "   200+")
+export const band = (i: number) => (i < 25 ? "  0-24" : i < 50 ? " 25-49" : i < 100 ? " 50-99" : i < 200 ? "100-199" : "   200+")
 
-const runsDir = join(process.cwd(), "runs")
-const by = process.argv.includes("--by") ? process.argv[process.argv.indexOf("--by") + 1] : "family"
-const MIN_FRESH = 150
-
-const tally: Record<string, Cell> = {}
-let runs = 0
-
-// `runs/` is gitignored — a fresh clone has none, and readdirSync throws
-// ENOENT on a missing directory rather than the `[]` an empty one returns.
-// Same fix as read.ts's `resolve`; see its comment for the rest of the list.
-for (const f of (existsSync(runsDir) ? readdirSync(runsDir) : []).filter((f) => f.startsWith("sweep-") && f.endsWith(".json"))) {
-  let r: { searched?: any[]; entities?: any[] }
-  try { r = JSON.parse(readFileSync(join(runsDir, f), "utf8")) } catch { continue }
-  if (!Array.isArray(r.searched) || !Array.isArray(r.entities)) continue
-  runs++
-  // A host's verdict, by domain. `noise` is a kind, not a relation, so it is
-  // folded in here rather than left to look like a missing row.
-  const verdict = new Map<string, string>(r.entities.map((e: any) => [e.domain, e.kind === "noise" ? "noise" : e.relation]))
-  const seen = new Set<string>()
-  r.searched.forEach((s: any, i: number) => {
-    const hosts = [...new Set((s.hits ?? []).map((h: any) => hostOf(h.url)).filter(Boolean))] as string[]
-    const fresh = hosts.filter((h) => !seen.has(h))
-    hosts.forEach((h) => seen.add(h))
-    const key =
-      by === "position" ? `${band(i)} · ${s.family ?? "?"}`
-      : by === "platform" ? (s.platform ?? "?")
-      : by === "intent" ? (s.intent ?? "?")
-      : (s.family ?? "?")
-    const c = (tally[key] ??= cell())
-    c.q++
-    c.usd += s.usd ?? 0
-    c.fresh += fresh.length
-    if (fresh.length === 0) c.barren++
-    for (const h of fresh) {
-      const v = verdict.get(h)
-      if (v && MARKET.has(v)) c.market++
-      else if (v && CHANNEL.has(v)) c.channel++
-      else c.other++
-    }
-  })
+export interface QueryYieldRun {
+  searched?: { hits?: { url: string }[]; family?: string; platform?: string; intent?: string; usd?: number }[]
+  entities?: { domain: string; kind: string; relation: string }[]
 }
 
-const pct = (n: number, d: number) => (d ? `${Math.round((100 * n) / d)}%` : "—")
-console.log(`\n${runs} runs in runs/ — what each query bought\n`)
-console.log(
-  "  " + "key".padEnd(24) + "queries".padStart(8) + "spend".padStart(9) + "fresh".padStart(8) +
-  "market".padStart(9) + "channel".padStart(9) + "noise".padStart(8) + "barren".padStart(8) + "$/market".padStart(11),
-)
-const rows = Object.entries(tally).filter(([, c]) => c.fresh >= MIN_FRESH)
-for (const [k, c] of by === "position" ? rows.sort((a, b) => a[0].localeCompare(b[0])) : rows.sort((a, b) => b[1].market / b[1].fresh - a[1].market / a[1].fresh)) {
+/**
+ * The join at this file's heart: every query fired against every host it
+ * surfaced for the first time, bucketed by `by`. Pulled out of the module
+ * body — it ran unconditionally at import time (`readdirSync`, `console.log`
+ * baked into the same loop), so nothing could import it without also
+ * running the CLI. Same fix as `promptStats` in `show-prompt.ts`.
+ */
+export function tallyQueryYield(runs: QueryYieldRun[], by: string): Record<string, Cell> {
+  const tally: Record<string, Cell> = {}
+  for (const r of runs) {
+    if (!Array.isArray(r.searched) || !Array.isArray(r.entities)) continue
+    // A host's verdict, by domain. `noise` is a kind, not a relation, so it is
+    // folded in here rather than left to look like a missing row.
+    const verdict = new Map<string, string>(r.entities.map((e) => [e.domain, e.kind === "noise" ? "noise" : e.relation]))
+    const seen = new Set<string>()
+    r.searched.forEach((s, i) => {
+      const hosts = [...new Set((s.hits ?? []).map((h) => hostOf(h.url)).filter(Boolean))]
+      const fresh = hosts.filter((h) => !seen.has(h))
+      hosts.forEach((h) => seen.add(h))
+      const key =
+        by === "position" ? `${band(i)} · ${s.family ?? "?"}`
+        : by === "platform" ? (s.platform ?? "?")
+        : by === "intent" ? (s.intent ?? "?")
+        : (s.family ?? "?")
+      const c = (tally[key] ??= cell())
+      c.q++
+      c.usd += s.usd ?? 0
+      c.fresh += fresh.length
+      if (fresh.length === 0) c.barren++
+      for (const h of fresh) {
+        const v = verdict.get(h)
+        if (v && MARKET.has(v)) c.market++
+        else if (v && CHANNEL.has(v)) c.channel++
+        else c.other++
+      }
+    })
+  }
+  return tally
+}
+
+/** Only when run as a command. Same guard shape as `scripts/run-doctor.ts`. */
+const invokedDirectly = process.argv[1] ? import.meta.url.endsWith(process.argv[1].split("/").pop() ?? "\0") : false
+if (invokedDirectly) {
+  const runsDir = join(process.cwd(), "runs")
+  const by = process.argv.includes("--by") ? (process.argv[process.argv.indexOf("--by") + 1] ?? "family") : "family"
+  const MIN_FRESH = 150
+
+  // `runs/` is gitignored — a fresh clone has none, and readdirSync throws
+  // ENOENT on a missing directory rather than the `[]` an empty one returns.
+  // Same fix as read.ts's `resolve`; see its comment for the rest of the list.
+  const files = (existsSync(runsDir) ? readdirSync(runsDir) : []).filter((f) => f.startsWith("sweep-") && f.endsWith(".json"))
+  const runs: QueryYieldRun[] = []
+  for (const f of files) {
+    try { runs.push(JSON.parse(readFileSync(join(runsDir, f), "utf8"))) } catch { continue }
+  }
+  const tally = tallyQueryYield(runs, by)
+  // Same count `tallyQueryYield` itself tallies over — a file that parses as
+  // JSON but lacks one of the two arrays is skipped inside the join, and was
+  // never counted here either before this function was pulled out.
+  const validRuns = runs.filter((r) => Array.isArray(r.searched) && Array.isArray(r.entities)).length
+
+  const pct = (n: number, d: number) => (d ? `${Math.round((100 * n) / d)}%` : "—")
+  console.log(`\n${validRuns} runs in runs/ — what each query bought\n`)
   console.log(
-    "  " + k.padEnd(24) + String(c.q).padStart(8) + `$${c.usd.toFixed(2)}`.padStart(9) + String(c.fresh).padStart(8) +
-    pct(c.market, c.fresh).padStart(9) + pct(c.channel, c.fresh).padStart(9) + pct(c.other, c.fresh).padStart(8) +
-    pct(c.barren, c.q).padStart(8) + `$${(c.usd / (c.market || 1)).toFixed(4)}`.padStart(11),
+    "  " + "key".padEnd(24) + "queries".padStart(8) + "spend".padStart(9) + "fresh".padStart(8) +
+    "market".padStart(9) + "channel".padStart(9) + "noise".padStart(8) + "barren".padStart(8) + "$/market".padStart(11),
   )
+  const rows = Object.entries(tally).filter(([, c]) => c.fresh >= MIN_FRESH)
+  for (const [k, c] of by === "position" ? rows.sort((a, b) => a[0].localeCompare(b[0])) : rows.sort((a, b) => b[1].market / b[1].fresh - a[1].market / a[1].fresh)) {
+    console.log(
+      "  " + k.padEnd(24) + String(c.q).padStart(8) + `$${c.usd.toFixed(2)}`.padStart(9) + String(c.fresh).padStart(8) +
+      pct(c.market, c.fresh).padStart(9) + pct(c.channel, c.fresh).padStart(9) + pct(c.other, c.fresh).padStart(8) +
+      pct(c.barren, c.q).padStart(8) + `$${(c.usd / (c.market || 1)).toFixed(4)}`.padStart(11),
+    )
+  }
+  console.log(`\n  market  = fresh hosts that became a market entity, not press or noise`)
+  console.log(`  barren  = queries that surfaced no host the run had not already seen`)
+  console.log(`  rows under ${MIN_FRESH} fresh hosts are omitted\n`)
 }
-console.log(`\n  market  = fresh hosts that became a market entity, not press or noise`)
-console.log(`  barren  = queries that surfaced no host the run had not already seen`)
-console.log(`  rows under ${MIN_FRESH} fresh hosts are omitted\n`)
