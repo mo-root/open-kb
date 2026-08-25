@@ -24,7 +24,7 @@
  *   triage skip        4.6% over 28 runs, 28,182 hosts (0.3%-13.3%)
  *   second look        35% of asked hosts never get a page, over 28 runs
  *   clock              predicted/actual median 1.44 over 41 runs (0.42-2.36)
- *   terms fired        32%-58% of terms written, over the 8 runs with wire
+ *   terms fired        32%-65% of terms written, over the 8 runs with wire
  *   snippet-judged     13.4% of judged hosts over 39 runs (11.0%-15.6%)
  *
  * WHAT IT FOUND ON ITS FIRST PASS over the 45 runs on disk (2026-08-25):
@@ -88,7 +88,7 @@ export function diagnose(r: Record<string, any>, stats: Record<string, any>): No
       level: w.termsFired / w.termsWritten < 0.3 ? "watch" : "ok",
       what: "strip terms fired",
       detail: `${w.termsFired}/${w.termsWritten} (${pct(w.termsFired, w.termsWritten)})`,
-      norm: "32%-58% across the runs carrying wire",
+      norm: "32%-65% across the 8 runs carrying wire",
     })
   }
 
@@ -128,9 +128,14 @@ export function diagnose(r: Record<string, any>, stats: Record<string, any>): No
   else {
     const rate = t.skipped / t.hosts
     out.push({
-      level: rate > 0.13 ? "watch" : "ok",
+      // 0.14, not 0.13: the norm's own ceiling is 13.3%, so a 0.13 threshold
+      // flags the very run that DEFINES the range and prints "13% … norm
+      // 0.3%-13.3%" underneath itself. The snippet-judged check below sets its
+      // threshold clear of its ceiling for exactly this reason; so does this.
+      // One decimal for the same reason: whole percent rounds 13.3 to "13%".
+      level: rate > 0.14 ? "watch" : "ok",
       what: "triage skip",
-      detail: `${t.skipped}/${t.hosts} (${pct(t.skipped, t.hosts)}) in ${t.calls} calls` +
+      detail: `${t.skipped}/${t.hosts} (${(100 * rate).toFixed(1)}%) in ${t.calls} calls` +
         (t.failed ? `, ${t.failed} failed open` : ""),
       norm: "4.6% over 28 runs, 0.3%-13.3%",
     })
