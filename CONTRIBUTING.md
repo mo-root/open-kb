@@ -39,8 +39,10 @@ reason), then `tsc -b` across the workspace plus each package's own
 `tsconfig.tests.json`. Each of these is a guard file worth reading before you
 touch it; they say why they exist in their own header comments.
 
-`pnpm test` runs the vitest suite: 2,074 tests, offline, no network, no keys,
-under a minute (13 more are skipped by default — see below). `tests/live/*.live.test.ts`
+`pnpm test` runs the vitest suite: offline, no network, no keys, under a
+minute. It reports its own count, and this file deliberately does not repeat
+it — the total moves with every commit and a copy here is a claim that rots
+between one PR and the next. A handful more are skipped by default (see below). `tests/live/*.live.test.ts`
 is the exception — `describe.skipIf(!process.env.OPENKB_LIVE)`, real
 credentials, real HTTP, skipped by default and skipped in CI. **Never make an offline test depend on
 `OPENKB_LIVE`, and never add a fixture test that reaches the network.** A

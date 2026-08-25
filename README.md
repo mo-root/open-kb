@@ -97,10 +97,11 @@ the vendor names a roundup already printed (`OPENKB_LISTICLE_HARVEST=0` turns
 it off — found Windsurf, Zed, Tabnine, Codeium, Aider and Continue on
 cursor.com with zero direct SERP hits, and 18 real vendors on grundfos.com);
 **triage** skips hosts from search metadata before a fetch is spent
-(`OPENKB_TRIAGE=0` — 123 of 926 hosts skipped on the newest run);
+(`OPENKB_TRIAGE=0` — 4.6% of hosts skipped, pooled over the 28 runs that
+record it, 1,283 of 28,182; per-market it ranges 0.3% to 13.3%);
 **second-look** re-asks **classify** itself against a deeper page for hosts
-left `unknown` (`OPENKB_SECOND_LOOK=0` — 22 asked, 13 rescued on that same
-run). Two more stay opt-in, one environment variable each: **discover** and
+left `unknown` (`OPENKB_SECOND_LOOK=0` — 716 asked and 324 rescued over those
+same runs; a third of the asks never get a page at all). Two more stay opt-in, one environment variable each: **discover** and
 **group** replace the single understand call (`OPENKB_DISCOVERY=agent`);
 **drop-confirm** gives every settled `none` a second batched opinion
 (`OPENKB_DROP_CONFIRM=1`) — its own A/B did not survive, rescuing 0 of 12, 0 of
@@ -163,12 +164,12 @@ pnpm swarm yourcompany.com 5 --from-sweep runs/<run>  # interrogate a sweep's ma
 set -a && source .env && set +a   # the CLI reads keys from the shell
 
 pnpm sweep yourcompany.com        # breadth: the map
-pnpm sweep yourcompany.com --quick  # a bounded first look: ~90 hosts, no paid link pass
+pnpm sweep yourcompany.com --quick  # a bounded first look: seals the search early, no paid link pass
 pnpm swarm yourcompany.com 5      # depth, with a ceiling
 pnpm run export <run> vault  # the map as a folder of markdown
 pnpm run diff a.json b.json  # what moved between two runs of one anchor
 pnpm run audit <run>         # deal a review packet, score it symmetrically
-pnpm test                    # 2,074 tests, no network, no keys
+pnpm test                    # the full suite, offline, no network, no keys
 pnpm check                   # CI's gate: three guards, tsc, five test projects
 
 cd packages/web && pnpm dev  # the app, http://localhost:3210

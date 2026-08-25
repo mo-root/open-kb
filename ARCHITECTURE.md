@@ -95,7 +95,7 @@ Six phases — `understand`, `plan`, `sweep`, `rank`, `link`, `write`. Five of t
 spend; only `write` is free. `runs/sweep-vercel-com-20260818212925.json` bills
 all five in `report.cost.byAgent`: sweep $0.558, rank $0.303, link $0.0465,
 understand $0.0329, plan $0.0103. The optional stages below bill under their own
-labels — the newest run names nine.
+labels — `runs/sweep-cursor-com-20260821105321.json` names nine.
 
 **understand** reads `llms.txt`, the sitemap and the nav, and produces a
 decomposition: what the company sells, its products, its capabilities, and the
@@ -158,7 +158,7 @@ and second-look asked 22 and replaced 13.
 The relation vocabulary includes `adjacent` — a real business in the anchor's
 world that nobody picks *instead of* it — beside the commercial and
 non-commercial stances. It is now the plurality placement (302 of 776 kept on
-the newest run, 395 on the one before), and it is deliberately outside the
+`runs/sweep-cursor-com-20260821105321.json`, 395 on the run before it), and it is deliberately outside the
 `COMMERCIAL` set in `core/src/verdict.ts`, so unlike `competitor` and
 `substitute` it carries no own-readable-page requirement. `none`, the only
 relation that drops a host from the map, now costs the same evidence as any
@@ -173,8 +173,8 @@ re-fetch, before the host ships dropped for good.
 SERP title and description name another entity — those are `measured`. The
 residue goes to a batched model call over co-occurring pairs, 40 a call — those
 are `inferred`. Then a second model pass over the entities no pair ever reached:
-the `orphan` prompt, 20 at a time, against a peer-relations-only schema. On the
-newest run that pass was handed 168 orphans and placed 131. An edge whose
+the `orphan` prompt, 20 at a time, against a peer-relations-only schema. On that
+same run the pass was handed 168 orphans and placed 131. An edge whose
 endpoint is not on the map is dropped, whichever pass drew it.
 
 An edge's `why` proves mechanism now, not just discovery: the free pass quotes
