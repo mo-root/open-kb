@@ -129,6 +129,52 @@ describe("the supabase store", () => {
   })
 
   /**
+   * `listRuns` had its unconfigured path and its running-row-dropped path
+   * under test, but never the non-2xx branch, the `limit` param it builds
+   * into the query, or a listing of more than one row — so the `flatMap`
+   * that is the whole point of the function (drop running, drop anything
+   * `toStored` cannot read, keep the rest) had never run over a mix.
+   * Coverage gap found sweeping web/lib/store (D-scope: "areas nobody has
+   * swept"), same file B1-B4/SELF-12 already covered other branches of.
+   */
+  describe("listRuns", () => {
+    it("returns an empty list rather than throwing when the store answers non-2xx", async () => {
+      vi.stubEnv("SUPABASE_URL", "https://x.supabase.co")
+      vi.stubEnv("SUPABASE_SECRET_KEY", "k")
+      vi.stubGlobal("fetch", vi.fn(async () => new Response("nope", { status: 500 })))
+      expect(await (await load()).listRuns()).toEqual([])
+    })
+
+    it("passes the limit through to the query, defaulting to 100", async () => {
+      vi.stubEnv("SUPABASE_URL", "https://x.supabase.co")
+      vi.stubEnv("SUPABASE_SECRET_KEY", "k")
+      const f = vi.fn(async () => new Response("[]", { status: 200 }))
+      vi.stubGlobal("fetch", f)
+      const db = await load()
+
+      await db.listRuns()
+      expect((f.mock.calls[0] as unknown as [string])[0]).toContain("limit=100")
+
+      await db.listRuns(7)
+      expect((f.mock.calls[1] as unknown as [string])[0]).toContain("limit=7")
+    })
+
+    it("keeps complete and failed rows but drops running ones, in one listing", async () => {
+      vi.stubEnv("SUPABASE_URL", "https://x.supabase.co")
+      vi.stubEnv("SUPABASE_SECRET_KEY", "k")
+      vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify([
+        { id: "r1", domain: "a.com", queries: 4, status: "complete", started_at: "2026-08-03T00:00:00Z", result: { entities: [], edges: [] } },
+        { id: "r2", domain: "b.com", queries: 2, status: "running", started_at: "2026-08-03T00:01:00Z", result: null },
+        { id: "r3", domain: "c.com", queries: 6, status: "failed", started_at: "2026-08-03T00:02:00Z", result: null, error: "the run failed" },
+      ]), { status: 200 })))
+      const listed = await (await load()).listRuns()
+
+      expect(listed.map((r) => r.id)).toEqual(["r1", "r3"])
+      expect(listed.every((r) => r.status !== "running")).toBe(true)
+    })
+  })
+
+  /**
    * `upsertRun` and `appendSpans` had only the unconfigured path and the
    * throw path under test — never the configured, 2xx-request-shape path,
    * nor the branch that logs a non-2xx response instead of throwing (the
