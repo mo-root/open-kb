@@ -168,7 +168,7 @@ pnpm swarm yourcompany.com 5      # depth, with a ceiling
 pnpm run export <run> vault  # the map as a folder of markdown
 pnpm run diff a.json b.json  # what moved between two runs of one anchor
 pnpm run audit <run>         # deal a review packet, score it symmetrically
-pnpm test                    # 2,014 tests, no network, no keys
+pnpm test                    # 2,018 tests, no network, no keys
 pnpm check                   # CI's gate: three guards, tsc, five test projects
 
 cd packages/web && pnpm dev  # the app, http://localhost:3210

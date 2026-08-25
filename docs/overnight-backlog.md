@@ -40,7 +40,7 @@ listicle-harvest. The web route does not pass a single one of them either.
 
 ## P0 — the user's first run
 
-- [ ] **P0-1. Flip the three proven stages on by default, CLI and web.**
+- [x] **P0-1. Flip the three proven stages on by default, CLI and web.**
   The codebase's own doctrine (see `SweepOptions.triage`, `.secondLook`,
   `.listicleHarvest` doc comments) is "a flag, not a migration — the case has to
   survive an A/B on the same anchor before this defaults on." Those A/Bs are now
@@ -61,8 +61,13 @@ listicle-harvest. The web route does not pass a single one of them either.
   same product. Update `.env.example` and the README's stage table to say which
   are on by default. Tests: assert the default-on behaviour and that the
   disable-flag still works, in the existing fixture suite.
+  DONE (9c8a4f8). Checkbox was left unticked after the commit landed —
+  confirmed by reading the commit and `packages/sweep/src/sweep.ts` /
+  `packages/web/app/api/map/route.ts`: triage, second-look and
+  listicle-harvest all default on, each still disable-able via its env
+  flag, drop-confirm stays opt-in as the item specifies.
 
-- [ ] **P0-2. Link phase: chunked dispatch → continuous pool.** The single
+- [x] **P0-2. Link phase: chunked dispatch → continuous pool.** The single
   biggest time win available. `packages/sweep/src/sweep.ts` dispatches BOTH the
   pair batches (~line 5174) and the orphan batches (~line 5305) as
   `for (i += LINK_CONC) { await Promise.all(slice) }` — a barrier per group, so
@@ -74,14 +79,18 @@ listicle-harvest. The web route does not pass a single one of them either.
   Do not change concurrency, batch size, or what is asked — only the dispatch.
   Verify with the existing link tests; add one that proves a slow batch does not
   block the others if you can do it deterministically with the fixture.
+  DONE (9ee196f). Checkbox was left unticked after the commit landed.
 
-- [ ] **P0-3. `LINK_CONC` → env var, default 16.** It is a hardcoded `const
+- [x] **P0-3. `LINK_CONC` → env var, default 16.** It is a hardcoded `const
   LINK_CONC = 8` (~line 5060), unlike `RANK_CONC` which reads
   `OPENKB_RANK_CONCURRENCY`. Give it `OPENKB_LINK_CONCURRENCY` with the same
   guard shape as its sibling, and raise the default to 16. Comment it with the
   measured phase share (43% of wall time) as the reason.
+  DONE (b69c7d4). Checkbox was left unticked after the commit landed —
+  `OPENKB_LINK_CONCURRENCY` exists with the `RANK_CONC` guard shape,
+  default raised to 16.
 
-- [ ] **P0-4. A shorter deadline for link and orphan calls.** `CALL_TIMEOUT_MS`
+- [x] **P0-4. A shorter deadline for link and orphan calls.** `CALL_TIMEOUT_MS`
   is a global 120s (~line 407). On the measured run TWO timed-out link batches
   cost about 4 minutes of a 12.3-minute phase. The link and orphan calls are
   batched, uniform and retried once already, so they can carry a tighter
@@ -90,10 +99,13 @@ listicle-harvest. The web route does not pass a single one of them either.
   existing per-call deadline is composed in `withDeadline` first) of ~45-60s for
   the `link` agent only, leaving every other agent on 120s. Keep the existing
   single retry.
+  DONE (567b11b). Checkbox was left unticked after the commit landed —
+  `link` and `orphan` calls now carry their own shorter deadline, every
+  other agent unchanged at 120s.
 
 ## P1 — quality gaps measured the same evening
 
-- [ ] **P1-5. Edge `why` is still discovery, not mechanism, on 53% of edges.**
+- [x] **P1-5. Edge `why` is still discovery, not mechanism, on 53% of edges.**
   Night 1's P0-2 only half-landed: 1,593 of 2,983 edges on the cursor run still
   read "a page on X names Y", which proves the two were mentioned together and
   says nothing about how they relate. Read `prompts/agents/link.md`, the free
@@ -103,8 +115,14 @@ listicle-harvest. The web route does not pass a single one of them either.
   genuinely supports nothing more, and must keep saying so rather than inventing
   a mechanism). Measure the before/after share of discovery-shaped `why` over a
   stored run and put both numbers in the commit message.
+  DONE (e05629f). Checkbox was left unticked after the commit landed —
+  the free naming pass now scans every naming row on a host, not just the
+  first, and picks the richest one. Could not re-measure the cited 53%
+  figure against a real run (no `runs/` in this sandbox, same constraint
+  every item here hits); locked the mechanism with a new fixture test
+  instead, per the commit's own note.
 
-- [ ] **P1-6. The `reasoning` field fires on only 26% of entities** (202 of 776
+- [x] **P1-6. The `reasoning` field fires on only 26% of entities** (202 of 776
   on the cursor run). It is `.optional()` in the classify schema — deliberately,
   because every pre-existing fixture answers without it and a required field
   would fail their zod parse before the engine saw a response (the reason is
@@ -112,8 +130,12 @@ listicle-harvest. The web route does not pass a single one of them either.
   those fixtures: strengthening the prompt's ask is the safe first move; a
   required field with fixtures updated is the thorough one. Report the fill rate
   you achieve against a fixture run.
+  DONE (41e477a). Checkbox was left unticked after the commit landed —
+  `reasoning` now sits right after `relation` in the classify schema,
+  matching `classify.md`'s own documented answer order, instead of
+  trailing after `why`/`spans` where an optional field goes unfilled.
 
-- [ ] **P1-7. A fast first-run mode.** A user's first experience is currently a
+- [x] **P1-7. A fast first-run mode.** A user's first experience is currently a
   ~28-minute wait before they see anything. Add a `--quick` flag to
   `scripts/sweep.ts` (argv, not an env var — it is a human-facing convenience)
   that composes the existing options into a bounded run: a smaller
@@ -122,6 +144,9 @@ listicle-harvest. The web route does not pass a single one of them either.
   preset over `SweepOptions` that already exist. Print one line at start saying
   what it traded away and how to run the full thing. Document it in the README's
   command block.
+  DONE (d734540). Checkbox was left unticked after the commit landed —
+  `--quick` composes existing `SweepOptions`, prints what it traded away,
+  and is documented in the README's command block.
 
 - [x] **P1-8. Free-settle is effectively off: 2 hosts of 926 settled by
   predicate.** `KERNEL_THRESHOLD = opts.aggregatorThreshold ?? null` (~line
