@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url"
 import { runFixture } from "./fixture.js"
 
 /**
- * P1-6 (docs/overnight-backlog.md): `reasoning` filled on only 26% of
+ * MEASURED: `reasoning` filled on only 26% of
  * classified entities (202 of 776, cursor.com run) against 85% for
  * `relationSpan`, the schema's other optional field. classify.md:65-66 has
  * always told the model to answer `name, kind, what, relation, reasoning,

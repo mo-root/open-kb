@@ -13,8 +13,7 @@ import { describe, expect, it } from "vitest"
  * scope (`process.argv` parsing, `process.exit`, and — once past
  * validation — a real `child_process.spawn` of `scripts/sweep.ts`), the
  * same reason `bench.ts`/`calibrate-kernel.ts`/etc. are checked by subprocess
- * rather than import elsewhere in this repo. D-scope sweep, self-discovered
- * (A, B and C are all done or BLOCKED — see docs/overnight-backlog.md).
+ * rather than import elsewhere in this repo.
  *
  * EVERY CASE HERE STOPS BEFORE A SWEEP IS SPAWNED. That boundary is
  * deliberate, not incidental: this loop may make no live or paid calls, and

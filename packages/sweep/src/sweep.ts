@@ -633,8 +633,7 @@ export const UNDERSTAND_CALL_TIMEOUT_MS = Math.max(
 
 /** The link and orphan calls' own deadline — was tighter than `CALL_TIMEOUT_MS`
  *  when that stood at 120s; the two now meet at 60s and this one is kept as
- *  its own knob. `docs/overnight-backlog.md`'s P0-4 finding: on the measured
- *  cursor.com run (runs/sweep-cursor-com-20260821105321.json) two timed-out
+ *  its own knob. Measured on the cursor.com run (runs/sweep-cursor-com-20260821105321.json) two timed-out
  *  link batches cost about 4 minutes of the 12.3-minute link phase — the same
  *  run that motivated `LINK_CONC` above. Unlike a one-off classify call, link
  *  and orphan calls are batched, uniform, and already retried once on the
@@ -1535,14 +1534,14 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    * How many queries may be in flight. RAISING IT DOES NOT MAKE THE SEARCH
    * FASTER, and that is measured rather than assumed.
    *
-   * The search phase is the biggest block in a run — 613 of cloudflare's
+   * The search phase is the biggest block in a run — 717 of cloudflare's
    * 1,332 seconds, 54%, per `report.phases` — so it is the obvious place to
    * look for speed. The measurement says the width is not where it is.
    *
    * WHAT IS ESTABLISHED. On a run dispatched 32 wide, 32 workers really do
    * start (`Array.from({ length: CONC }, worker)`), the queue holds all 598
    * planned queries from the first tick so no worker starves, and the phase
-   * still moved 408 billable requests in 613 seconds — 0.67 per second,
+   * still moved 408 billable requests in 717 seconds — 0.57 per second,
    * against 64 page-fetches nominally in flight. Whatever bounds it is not
    * this constant.
    *
@@ -3979,7 +3978,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    *
    * The search phase is the biggest block in a run and nothing explains its
    * rate. 32 workers start, the queue is full from the first tick, every
-   * query reports a ~4.6s median — and the phase still moves 0.27 queries a
+   * query reports a ~4.6s median — and the phase still moves 0.23 queries a
    * second, which is what one worker would do. Two very different faults look
    * identical from outside: a dispatch that never gets wide (workers blocked
    * on something before the wire) or a wire that is wide and slow (32 in
@@ -5433,8 +5432,9 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
           // order: a model asked for the mechanism only after it had already
           // spent its output on two required fields (`why`, `spans`) had
           // every incentive to treat this trailing optional field as done.
-          // Measured on the cursor.com run (docs/overnight-backlog.md,
-          // P1-6): 202 of 776 entities (26%) carried a `reasoning`, against
+          // Measured on the cursor.com run
+          // (runs/sweep-cursor-com-20260821105321.json): 202 of 776 entities
+          // (26%) carried a `reasoning`, against
           // 85% for `relationSpan` — the other optional field, which sits
           // right after its own required counterpart (`spans`) rather than
           // after an unrelated one. Not `.min(1)`, and still optional: every
@@ -7155,7 +7155,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
        * it fires, a thirty-two-wide pool becomes a queue and the search phase
        * stops being about how many queries a run wants.
        *
-       * MEASURED on cloudflare.com: the search phase ran 613 seconds while
+       * MEASURED on cloudflare.com: the search phase ran 717 seconds while
        * 165 queries with a 4.6s median should have occupied that pool for
        * well under a minute. The difference was pacing, and a reader
        * comparing two runs of one anchor had no way to tell "this map is
@@ -7234,7 +7234,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
        * is not a process that cannot hold more than two sockets.
        *
        * Everything on this side of the socket can go wide. The search phase
-       * still moves 0.27 queries a second, so the ceiling is Bright Data's,
+       * still moves 0.23 queries a second, so the ceiling is Bright Data's,
        * applied without the `THROTTLED` message that would let the port see
        * it. That is an account or zone capacity question to take to the
        * provider, and no constant in this file changes it.

@@ -337,7 +337,7 @@ export interface ModelCall {
    *  for the text-only discovery turns, which carry no schema at all. Field
    *  order here is the order a structured-output provider fills the object
    *  in, which is not necessarily the order the prompt mentions fields in;
-   *  P1-6 (docs/overnight-backlog.md) found `reasoning` and its prompt at
+   *  a measured 26%-vs-85% fill gap found `reasoning` and its prompt at
    *  odds about that order and this is what would have caught it. */
   schemaKeys?: string[]
 }

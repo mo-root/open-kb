@@ -35,7 +35,7 @@ const disablesFlag = (raw: string | undefined) => {
   return v === "0" || v === "false"
 }
 
-// P1-7 (docs/overnight-backlog.md): a user's first run is currently a
+// A user's first run is currently a
 // ~28-minute wait (runs/sweep-cursor-com-20260821105321.json) before they see
 // anything. `--quick` is argv, not an env var — it is a one-time human choice
 // for a first look, not a standing shell setting like the OPENKB_* guards
@@ -122,13 +122,25 @@ const MODEL = process.env.OPENKB_MODEL ?? "deepseek/deepseek-v4-flash-0731"
  * about who competes with whom, it is most of the value at a third of the
  * price; the full run is for the long tail and the labelled edges.
  */
+/**
+ * A SEARCH-SEALING THRESHOLD, NOT A CAP ON THE MAP, and the banner below said
+ * "capping this run at ~90 hosts ... for 411 mapped entities" until that
+ * arithmetic was read aloud. Entities are roughly one per host, so the two
+ * halves of that sentence could not both be true.
+ *
+ * It feeds `maxHosts` -> `HOST_CEILING`, which stops the search once this many
+ * hosts are in view. Requests already in flight still return and their hosts
+ * still land, so the finished map is larger than the threshold — measured at
+ * 451 hosts and 411 kept on runs/sweep-resend-com-20260824124956.json.
+ */
 const QUICK_MAX_HOSTS = 90
 
 if (QUICK) {
   console.log(
-    `--quick: capping this run at ~${QUICK_MAX_HOSTS} hosts and skipping the paid link pass ` +
-      `— measured on resend.com at $0.40 and 6 minutes for 411 mapped entities against ~$1.14 and ~25 ` +
-      `minutes for a full run. The top few rivals match a full run's; ranks 6-10 and the long tail do not. ` +
+    `--quick: sealing the search once ~${QUICK_MAX_HOSTS} hosts are in view, and skipping the paid link ` +
+      `pass. The seal is not a cap on the map — results already in flight still land, so the measured run ` +
+      `(runs/sweep-resend-com-20260824124956.json) ended at 451 hosts and 411 mapped entities for $0.40 in ` +
+      `5.9 minutes. The top few rivals match a full run's; ranks 6-10 and the long tail do not. ` +
       `Drop --quick when the order past the first handful has to be right.`,
   )
 }
