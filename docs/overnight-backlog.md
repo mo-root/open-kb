@@ -247,15 +247,24 @@ above stay first; these follow.
 
 ## C. GitHub — the repo a stranger lands on
 
-- [ ] **C1. CONTRIBUTING.md** — none exists. Cover the pnpm workspace layout,
+- [x] **C1. CONTRIBUTING.md** — none exists. Cover the pnpm workspace layout,
   `pnpm check && pnpm test` as the gate, prompts-as-markdown-without-rebuild,
   the core-purity rule enforced by `scripts/check-core-purity.mjs`, and that
   runs cost real money so tests are offline by design.
+  DONE (e5c4183). This checkbox was left unticked after the commit landed —
+  the file has been on disk and covering all of the above since. Confirmed
+  by reading `CONTRIBUTING.md` in full: workspace table, the gate, core
+  purity, prompts-as-markdown, and the offline-by-design argument are all
+  there.
 
-- [ ] **C2. SECURITY.md plus issue and PR templates** under `.github/`. The
+- [x] **C2. SECURITY.md plus issue and PR templates** under `.github/`. The
   project takes API keys and fetches arbitrary web pages: say how to report a
   vulnerability and that keys live only in `.env`. Bug template should ask for
   the run artifact and anchor domain. Keep them short.
+  DONE (0ceedc0). Same as C1 — the checkbox was never ticked. Confirmed
+  `SECURITY.md`, `.github/ISSUE_TEMPLATE/bug_report.md` (asks for anchor
+  domain and run artifact) and `.github/pull_request_template.md` are all
+  present and cover what the item asks.
 
 - [x] **C3. README badge row and repo metadata.**
   DONE (2026-08-23 overnight fire). No badge existed anywhere in the repo to

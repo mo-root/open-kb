@@ -39,10 +39,10 @@ reason), then `tsc -b` across the workspace plus each package's own
 `tsconfig.tests.json`. Each of these is a guard file worth reading before you
 touch it; they say why they exist in their own header comments.
 
-`pnpm test` runs the vitest suite: 1,820 tests, offline, no network, no keys,
-under a minute. `tests/live/*.live.test.ts` is the exception —
-`describe.skipIf(!process.env.OPENKB_LIVE)`, real credentials, real HTTP,
-skipped by default and skipped in CI. **Never make an offline test depend on
+`pnpm test` runs the vitest suite: 2,012 tests, offline, no network, no keys,
+under a minute (13 more are skipped by default — see below). `tests/live/*.live.test.ts`
+is the exception — `describe.skipIf(!process.env.OPENKB_LIVE)`, real
+credentials, real HTTP, skipped by default and skipped in CI. **Never make an offline test depend on
 `OPENKB_LIVE`, and never add a fixture test that reaches the network.** A
 sweep or swarm run costs real money — the README's bake-off numbers are
 $0.0003–$0.71 per call depending on the agent — so the whole point of the
