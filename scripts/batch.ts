@@ -47,7 +47,7 @@ import {
   listRoom,
 } from "./spend-caps.js"
 
-interface Outcome {
+export interface Outcome {
   anchor: string
   ok: boolean
   /** Why it failed, in one line, or the run file it wrote. */
@@ -62,27 +62,165 @@ interface Outcome {
   at: string
 }
 
-/** `min` is 1 for the flags where zero is meaningless — no concurrency is no
- *  work, no timeout is an instant kill — and 0 for `--retries`, where "do not
- *  retry" is a real thing to ask for and was refused by a blanket `n <= 0`. */
-function flag(name: string, fallback: number, min = 1): number {
-  const at = process.argv.indexOf(`--${name}`)
-  if (at === -1) return fallback
-  const raw = process.argv[at + 1]
+/**
+ * `min` is 1 for the flags where zero is meaningless — no concurrency is no
+ * work, no timeout is an instant kill — and 0 for `--retries`, where "do not
+ * retry" is a real thing to ask for and was refused by a blanket `n <= 0`.
+ *
+ * Split from `flag` below the same way `readCapUsd`/`capUsdOrExit` split in
+ * scripts/spend-caps.ts, so the parsing itself is reachable without a
+ * `process.exit(2)` in the way: this whole file used to run at import time
+ * (argv, `mkdirSync`, `spawn`), so nothing in it — including this arithmetic
+ * — had a test that did not shell out to a real subprocess.
+ */
+export function readFlag(
+  argv: string[],
+  name: string,
+  fallback: number,
+  min = 1,
+): { ok: true; n: number } | { ok: false; why: string } {
+  const at = argv.indexOf(`--${name}`)
+  if (at === -1) return { ok: true, n: fallback }
+  const raw = argv[at + 1]
   const n = Number(raw)
   if (!Number.isFinite(n) || n < min || !Number.isInteger(n)) {
-    console.error(
-      `--${name} needs a whole number ${min === 0 ? "of 0 or more" : "of 1 or more"}, got ${JSON.stringify(raw ?? "")}`,
-    )
-    process.exit(2)
+    return {
+      ok: false,
+      why: `--${name} needs a whole number ${min === 0 ? "of 0 or more" : "of 1 or more"}, got ${JSON.stringify(raw ?? "")}`,
+    }
   }
-  return n
+  return { ok: true, n }
 }
 
-function stringFlag(name: string): string | null {
-  const at = process.argv.indexOf(`--${name}`)
-  return at === -1 ? null : (process.argv[at + 1] ?? null)
+function flag(name: string, fallback: number, min = 1): number {
+  const reading = readFlag(process.argv, name, fallback, min)
+  if (!reading.ok) {
+    console.error(reading.why)
+    process.exit(2)
+  }
+  return reading.n
 }
+
+export function stringFlag(argv: string[], name: string): string | null {
+  const at = argv.indexOf(`--${name}`)
+  return at === -1 ? null : (argv[at + 1] ?? null)
+}
+
+/** The domains a list names, once each — in first-seen order, so a resumed
+ *  batch's manifest still lines up with the list it was given. */
+export function dedupeAnchors(anchors: string[]): string[] {
+  const seen = new Set<string>()
+  return anchors.filter((a) => (seen.has(a) ? false : (seen.add(a), true)))
+}
+
+/**
+ * The anchors a resume manifest already finished, read back from its JSONL.
+ *
+ * A half-written last line is what a killed batch leaves — skipped rather
+ * than refusing to resume over one truncated record, same as the inline
+ * `try`/`catch` this was pulled out of.
+ */
+export function doneAnchorsFromManifest(text: string): Set<string> {
+  const done = new Set<string>()
+  for (const line of text.split("\n")) {
+    if (!line.trim()) continue
+    try {
+      const o = JSON.parse(line) as Outcome
+      if (o.ok) done.add(o.anchor)
+    } catch {
+      // see above
+    }
+  }
+  return done
+}
+
+/**
+ * What one sweep attempt's own exit tells the batch about it — pulled out of
+ * `runOne`'s `finish` closure, which is where every branch below used to live
+ * unreachable from a test process (it only runs once a real child process
+ * has exited). Disk reads (locating `mine`/`stopFile` and pricing them via
+ * `costOf`) stay in the closure; this is pure decision-making over what they
+ * found.
+ */
+export interface OutcomeInputs {
+  anchor: string
+  attempt: number
+  /** The child's exit code, or null if it never reported one (killed, or a
+   *  spawn failure). */
+  code: number | null
+  /** Killed by the outer wall-clock timer, as opposed to exiting on its own. */
+  killed: boolean
+  /** The last few lines of the child's combined stdout/stderr. */
+  tail: string
+  /** The run file this attempt is believed to have written, if any. */
+  mine: string | undefined
+  mineUsd: number | null
+  /** The `stopped-*.json` a capped run wrote, if one was found. */
+  stopFile: string | undefined
+  stopFileUsd: number | null
+  timeoutS: number
+  runCapUsd: number | null
+  seconds: number
+  at: string
+}
+
+export function computeOutcome(i: OutcomeInputs): Outcome {
+  // STOPPED AT ITS OWN CAP, and this is read from the EXIT CODE rather than
+  // from the files, because it is the one outcome the files cannot tell
+  // apart. A capped sweep writes `runs/stopped-<anchor>-<stamp>.json`, whose
+  // name begins with neither prefix the caller looks for and whose shape is
+  // deliberately not a map. Without this branch the domain would land in the
+  // manifest as `exit 6` — a mystery — and be retried, which spends the same
+  // cap a second time to reach the same place.
+  const capped = i.code === EXIT.capped
+
+  // The stopped record carries the real total, in-flight overrun and all. If
+  // it cannot be read, the run is charged at its cap: the money is gone
+  // either way, and the list's budget must not be told a stopped run was
+  // free. Same pessimism `count()` in lib/spend-limits.ts applies to a run
+  // whose ending was lost.
+  let usd: number | null = i.mine ? i.mineUsd : null
+  if (capped && usd === null) usd = (i.stopFile ? i.stopFileUsd : null) ?? i.runCapUsd
+
+  // WROTE A READABLE MAP, not "exited zero". A sweep that throws after
+  // writing is still a map, and one that exits zero having written nothing
+  // is not — the second is what a killed process looks like from here.
+  //
+  // A CAPPED RUN THAT WROTE A MAP IS STILL A MAP. The cap can fire during the
+  // link phase, which skips instead of throwing, and the sweep then writes a
+  // complete map with fewer edges and exits `capped` anyway. There is
+  // nothing to retry and nothing to mourn: the row says `ok`, and the detail
+  // says the cap is why the edges are thin.
+  const ok = Boolean(i.mine) && usd !== null
+
+  return {
+    anchor: i.anchor,
+    ok,
+    ...(capped ? { capped: true as const } : {}),
+    detail: ok
+      ? capped
+        ? `runs/${i.mine} — stopped at the run cap while linking`
+        : `runs/${i.mine}`
+      : capped
+        ? `stopped at the $${(i.runCapUsd ?? 0).toFixed(2)} run cap${i.stopFile ? ` — runs/${i.stopFile}` : ""}`
+        : i.killed
+          ? `killed at the ${i.timeoutS}s cap`
+          : `exit ${i.code}${i.tail.trim() ? ` — ${i.tail.trim().split("\n").slice(-3).join(" / ")}` : ""}`,
+    seconds: i.seconds,
+    usd,
+    attempt: i.attempt,
+    at: i.at,
+  }
+}
+
+/* --------------------------------------------------------------------- main */
+
+// Body left un-indented after the `invokedDirectly` guard, the same choice
+// bench.ts/bakeoff.ts made wrapping a pre-existing body: re-indenting the
+// whole thing would bury this diff's real change (the extraction above)
+// under a column shift on every line.
+const invokedDirectly = process.argv[1] ? import.meta.url.endsWith(process.argv[1].split("/").pop() ?? "\0") : false
+if (invokedDirectly) {
 
 const listPath = process.argv[2]
 if (!listPath || listPath.startsWith("--")) {
@@ -110,7 +248,7 @@ const CONCURRENCY = flag("concurrency", 2)
 
 /** Passed through to the sweep as its query target. Left unset, the engine
  *  deals its own hand per product, which is the normal path. */
-const QUERIES = stringFlag("queries")
+const QUERIES = stringFlag(process.argv, "queries")
 
 /**
  * The outer wall clock, per run, in seconds.
@@ -177,8 +315,7 @@ if (!anchors.length) {
   process.exit(2)
 }
 
-const seen = new Set<string>()
-const queue = anchors.filter((a) => (seen.has(a) ? false : (seen.add(a), true)))
+const queue = dedupeAnchors(anchors)
 if (queue.length !== anchors.length) {
   console.log(`${anchors.length - queue.length} duplicate ${anchors.length - queue.length === 1 ? "domain" : "domains"} dropped`)
 }
@@ -194,23 +331,14 @@ mkdirSync("runs", { recursive: true })
  * manifest records what this batch decided, so a resume retries exactly what is
  * still owed.
  */
-const resumeFrom = stringFlag("resume")
-const alreadyDone = new Set<string>()
+const resumeFrom = stringFlag(process.argv, "resume")
+let alreadyDone = new Set<string>()
 if (resumeFrom) {
   if (!existsSync(resumeFrom)) {
     console.error(`no such manifest: ${resumeFrom}`)
     process.exit(2)
   }
-  for (const line of readFileSync(resumeFrom, "utf8").split("\n")) {
-    if (!line.trim()) continue
-    try {
-      const o = JSON.parse(line) as Outcome
-      if (o.ok) alreadyDone.add(o.anchor)
-    } catch {
-      // A half-written last line is what a killed batch leaves. Skip it rather
-      // than refusing to resume over one truncated record.
-    }
-  }
+  alreadyDone = doneAnchorsFromManifest(readFileSync(resumeFrom, "utf8"))
 }
 
 // The one spelling every stamped writer in scripts/ uses, asserted by
@@ -313,66 +441,43 @@ function runOne(anchor: string, attempt: number): Promise<Outcome> {
       const mine = after.find((f) => !before.has(f) && f.startsWith(`sweep-${anchor.replace(/\W+/g, "-")}-`))
       if (mine) before.add(mine)
 
-      // STOPPED AT ITS OWN CAP, and this is read from the EXIT CODE rather than
-      // from the files, because it is the one outcome the files cannot tell
-      // apart. A capped sweep writes `runs/stopped-<anchor>-<stamp>.json`, whose
-      // name begins with neither prefix this function looks for and whose shape
-      // is deliberately not a map. Without this branch the domain would land in
-      // the manifest as `exit 6` — a mystery — and be retried, which spends the
-      // same cap a second time to reach the same place.
-      const capped = code === EXIT.capped
-      const stopFile = capped
-        ? after.find((f) => !before.has(f) && f.startsWith(`stopped-${anchor.replace(/\W+/g, "-")}-`))
-        : undefined
+      // A capped sweep writes `runs/stopped-<anchor>-<stamp>.json` instead of a
+      // map; only looked for once the exit code says the run was capped, same
+      // test `computeOutcome` makes internally off the same `code`.
+      const stopFile =
+        code === EXIT.capped
+          ? after.find((f) => !before.has(f) && f.startsWith(`stopped-${anchor.replace(/\W+/g, "-")}-`))
+          : undefined
       if (stopFile) before.add(stopFile)
 
-      let usd: number | null = null
       const costOf = (file: string): number | null => {
         try {
           const d = JSON.parse(readFileSync(`runs/${file}`, "utf8")) as { stats?: { usd?: number } }
           return typeof d.stats?.usd === "number" ? d.stats.usd : null
         } catch {
           // A truncated file is a failed run wearing a filename. Left null, and
-          // `ok` below is false because there is no readable map.
+          // `computeOutcome`'s `ok` is false because there is no readable map.
           return null
         }
       }
-      if (mine) usd = costOf(mine)
-      // The stopped record carries the real total, in-flight overrun and all. If
-      // it cannot be read, the run is charged at its cap: the money is gone
-      // either way, and the list's budget must not be told a stopped run was
-      // free. Same pessimism `count()` in lib/spend-limits.ts applies to a run
-      // whose ending was lost.
-      if (capped && usd === null) usd = (stopFile ? costOf(stopFile) : null) ?? RUN_CAP_USD
 
-      // WROTE A READABLE MAP, not "exited zero". A sweep that throws after
-      // writing is still a map, and one that exits zero having written nothing
-      // is not — the second is what a killed process looks like from here.
-      //
-      // A CAPPED RUN THAT WROTE A MAP IS STILL A MAP. The cap can fire during
-      // the link phase, which skips instead of throwing, and the sweep then
-      // writes a complete map with fewer edges and exits `capped` anyway. There
-      // is nothing to retry and nothing to mourn: the row says `ok`, and the
-      // detail says the cap is why the edges are thin.
-      const ok = Boolean(mine) && usd !== null
-      resolve({
-        anchor,
-        ok,
-        ...(capped ? { capped: true as const } : {}),
-        detail: ok
-          ? capped
-            ? `runs/${mine} — stopped at the run cap while linking`
-            : `runs/${mine}`
-          : capped
-            ? `stopped at the $${(RUN_CAP_USD ?? 0).toFixed(2)} run cap${stopFile ? ` — runs/${stopFile}` : ""}`
-            : killed
-              ? `killed at the ${TIMEOUT_S}s cap`
-              : `exit ${code}${tail.trim() ? ` — ${tail.trim().split("\n").slice(-3).join(" / ")}` : ""}`,
-        seconds,
-        usd,
-        attempt,
-        at: new Date().toISOString(),
-      })
+      resolve(
+        computeOutcome({
+          anchor,
+          attempt,
+          code,
+          killed,
+          tail,
+          mine,
+          mineUsd: mine ? costOf(mine) : null,
+          stopFile,
+          stopFileUsd: stopFile ? costOf(stopFile) : null,
+          timeoutS: TIMEOUT_S,
+          runCapUsd: RUN_CAP_USD,
+          seconds,
+          at: new Date().toISOString(),
+        }),
+      )
     }
 
     // BOTH EVENTS, because they answer different questions and either can be
@@ -520,3 +625,5 @@ if (failed.length || unstarted.length) {
 // counted, because from here that domain has no map, which is the question this
 // exit code answers.
 process.exit(failed.length ? 1 : 0)
+
+}
