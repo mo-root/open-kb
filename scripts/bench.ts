@@ -66,7 +66,7 @@ import path from "node:path"
 
 /* ------------------------------------------------------------- the artifacts */
 
-interface Entity {
+export interface Entity {
   name?: string
   domain?: string
   kind?: string
@@ -82,7 +82,7 @@ interface Entity {
   settledBy?: string
 }
 
-interface Stats {
+export interface Stats {
   queries?: number
   results?: number
   hosts?: number
@@ -95,7 +95,7 @@ interface Stats {
   seconds?: number
 }
 
-interface MapShape {
+export interface MapShape {
   anchor?: string
   entities?: Entity[]
   edges?: unknown[]
@@ -105,7 +105,7 @@ interface MapShape {
 }
 
 /** The web route writes an envelope around the same map the CLI writes bare. */
-interface Envelope extends MapShape {
+export interface Envelope extends MapShape {
   id?: string
   domain?: string
   startedAt?: number
@@ -133,10 +133,10 @@ const METER_LEARNED_PRICES_AT = Date.parse("2026-08-06T13:11:20Z")
 
 /* ------------------------------------------------------------------- reading */
 
-type Engine = "sweep" | "swarm"
-type Source = "cli" | "web"
+export type Engine = "sweep" | "swarm"
+export type Source = "cli" | "web"
 
-interface Run {
+export interface Run {
   file: string
   engine: Engine
   source: Source
@@ -169,7 +169,7 @@ interface Run {
   firedQueries: number | null
 }
 
-interface Skipped {
+export interface Skipped {
   file: string
   why: string
 }
@@ -178,7 +178,7 @@ const DIR = "runs"
 
 /** The stamp four scripts write into a run's filename, in UTC. Twelve digits
  *  before 2026-08-08, fourteen after — both widths are on disk. */
-function stampOf(file: string): number | null {
+export function stampOf(file: string): number | null {
   const m = /-(\d{12}|\d{14})\.json$/.exec(file)
   if (!m) return null
   const d = m[1]!
@@ -189,7 +189,7 @@ function stampOf(file: string): number | null {
   return Number.isNaN(t) ? null : t
 }
 
-function median(xs: number[]): number | null {
+export function median(xs: number[]): number | null {
   if (xs.length === 0) return null
   const s = [...xs].sort((a, b) => a - b)
   const mid = s.length >> 1
@@ -200,14 +200,12 @@ function median(xs: number[]): number | null {
  *  they appeared on disk. A run's set of these is its shape fingerprint. */
 const MARKERS = ["tier", "foundBy", "families", "settledBy", "unreadableReason", "descGrounded"] as const
 
-function readRun(file: string): Run | Skipped {
-  const full = path.join(DIR, file)
-  let json: Envelope
-  try {
-    json = JSON.parse(readFileSync(full, "utf8")) as Envelope
-  } catch {
-    return { file, why: "not JSON" }
-  }
+/** Sniff one already-parsed run file into a table row's worth of readings.
+ *  `mtimeMs` is the file's own mtime, for the `atFrom: "mtime"` fallback when
+ *  neither the filename nor `endedAt` carries a time — passed in rather than
+ *  stat'd here so this stays pure and testable without touching disk; see
+ *  `readRun` below, the thin wrapper that does the actual reading. */
+export function deriveRun(file: string, json: Envelope, mtimeMs: number): Run | Skipped {
   const map: MapShape = Array.isArray(json.entities) ? json : Array.isArray(json.result?.entities) ? json.result! : json
   const entities = map.entities
   if (!Array.isArray(entities)) {
@@ -235,7 +233,7 @@ function readRun(file: string): Run | Skipped {
     atFrom = "endedAt"
   }
   if (at === null) {
-    at = statSync(full).mtimeMs
+    at = mtimeMs
     atFrom = "mtime"
   }
 
@@ -281,7 +279,7 @@ function readRun(file: string): Run | Skipped {
 
 const NUM = new Set(["hosts", "on map", "rivals", "unread", "grounded", "$", "wall (s)", "$/entity"])
 
-function table(head: string[], rows: string[][]): string {
+export function table(head: string[], rows: string[][]): string {
   const align = head.map((h) => (NUM.has(h) ? "---:" : ":---"))
   return [`| ${head.join(" | ")} |`, `| ${align.join(" | ")} |`, ...rows.map((r) => `| ${r.join(" | ")} |`)].join("\n")
 }
@@ -302,12 +300,12 @@ const preMeter = (r: Run) => r.at !== null && r.at < METER_LEARNED_PRICES_AT
  *  are seven rows nobody can trace back to a file. This is the identity that
  *  makes a cell arguable: `clerk.com 08-06 23:31` is
  *  `runs/sweep-clerk-com-202608062331.json`. */
-function label(r: Run): string {
+export function label(r: Run): string {
   const when = r.at === null ? "" : ` ${new Date(r.at).toISOString().slice(5, 16).replace("T", " ")}`
   return `\`${r.anchor}\`${when}${preMeter(r) ? ` ${DAGGER}` : ""}${r.source === "web" ? " *(web)*" : ""}`
 }
 
-function runRow(r: Run): string[] {
+export function runRow(r: Run): string[] {
   return [
     label(r),
     n0(r.hosts),
@@ -324,7 +322,7 @@ function runRow(r: Run): string[] {
 /** The median run, as a row. Every cell is the median of that column across the
  *  runs — including `$/entity`, which is the median of the per-run ratios and
  *  not the ratio of the medians, because the second is a number no run had. */
-function medianRow(runs: Run[]): string[] {
+export function medianRow(runs: Run[]): string[] {
   const col = (f: (r: Run) => number | null) => median(runs.map(f).filter((x): x is number => x !== null))
   return [
     `**median of ${runs.length}**`,
@@ -349,6 +347,13 @@ const HEAD = ["anchor", "hosts", "on map", "rivals", "unread", "grounded", "$", 
 
 /* --------------------------------------------------------------------- main */
 
+// Body left un-indented after the `invokedDirectly` guard, the same choice
+// bakeoff.ts/run-doctor.ts made wrapping a pre-existing body: re-indenting
+// the whole thing would bury this diff's real change (the extraction above)
+// under a column shift on every line.
+const invokedDirectly = process.argv[1] ? import.meta.url.endsWith(process.argv[1].split("/").pop() ?? "\0") : false
+if (invokedDirectly) {
+
 const wantAll = process.argv.includes("--all")
 
 // `runs/` is gitignored — a fresh clone has none, and readdirSync throws
@@ -357,6 +362,20 @@ const wantAll = process.argv.includes("--all")
 const files = (existsSync(DIR) ? readdirSync(DIR) : [])
   .filter((f) => f.endsWith(".json"))
   .sort()
+
+/** The disk-reading half `deriveRun` above was split off from: parse the
+ *  file (a bad one is skipped, not thrown), stat it for the mtime fallback,
+ *  hand both to the pure function. */
+const readRun = (file: string): Run | Skipped => {
+  const full = path.join(DIR, file)
+  let json: Envelope
+  try {
+    json = JSON.parse(readFileSync(full, "utf8")) as Envelope
+  } catch {
+    return { file, why: "not JSON" }
+  }
+  return deriveRun(file, json, statSync(full).mtimeMs)
+}
 
 const parsed = files.map(readRun)
 const runs = parsed.filter((r): r is Run => "engine" in r)
@@ -627,4 +646,6 @@ console.log(out.join("\n"))
 
 if (skipped.length) {
   for (const s of skipped) process.stderr.write(`skipped ${DIR}/${s.file}: ${s.why}\n`)
+}
+
 }
