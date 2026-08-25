@@ -71,9 +71,11 @@ async function keyUsage(): Promise<number> {
   return data.usage
 }
 
-/** Read back what the arm produced, from the file the run wrote. */
-function measure(anchor: string): Record<string, unknown> {
-  const dir = "runs"
+/** Read back what the arm produced, from the file the run wrote. `dir`
+ *  defaults to "runs" for the CLI; a test points it at a fixture directory
+ *  instead, since this ran unconditionally at import time otherwise — see
+ *  the `invokedDirectly` guard below. */
+export function measure(anchor: string, dir = "runs"): Record<string, unknown> {
   const slug = anchor.replace(/\W+/g, "-")
   const f = readdirSync(dir)
     .filter((x) => x.startsWith(`sweep-${slug}-`) && x.endsWith(".json"))
@@ -166,7 +168,15 @@ async function main() {
   console.log(`then time, then cost. A cheap arm that mapped the wrong market has won nothing.`)
 }
 
-main().catch((e) => {
-  console.error(e)
-  process.exit(1)
-})
+/** Only when run as a command. Same guard shape as `scripts/query-yield.ts`.
+ *  Without it, importing this module for `measure` alone ran `main()` —
+ *  a live fetch to openrouter.ai and, past that, real `pnpm sweep`
+ *  subprocesses — the same class of gap SELF-55/56/57 already fixed in
+ *  query-yield.ts, corroboration-arrival.ts and overnight.ts. */
+const invokedDirectly = process.argv[1] ? import.meta.url.endsWith(process.argv[1].split("/").pop() ?? "\0") : false
+if (invokedDirectly) {
+  main().catch((e) => {
+    console.error(e)
+    process.exit(1)
+  })
+}
