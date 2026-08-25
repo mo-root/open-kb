@@ -18,14 +18,14 @@
 import { execFileSync } from "node:child_process"
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs"
 
-interface Contestant {
+export interface Contestant {
   key: string
   model: string
   env?: Record<string, string>
   note: string
 }
 
-const CONTESTANTS: Contestant[] = [
+export const CONTESTANTS: Contestant[] = [
   { key: "deepseek-off", model: "deepseek/deepseek-v4-flash-0731", note: "reasoning off, fast hosts (current default)" },
   {
     key: "deepseek-think",
@@ -38,14 +38,7 @@ const CONTESTANTS: Contestant[] = [
   { key: "gemini-3p", model: "google/gemini-3-flash-preview", note: "the design doc's lead model" },
 ]
 
-const [domain, queriesArg] = process.argv.slice(2)
-if (!domain) {
-  console.error("usage: pnpm run bakeoff <domain> [queries=10]")
-  process.exit(1)
-}
-const queries = queriesArg ?? "10"
-
-interface Row {
+export interface Row {
   key: string
   model: string
   usd: number
@@ -58,6 +51,86 @@ interface Row {
   groundingMean: string
   file: string
 }
+
+/** One contestant's row, from its already-parsed run file. Pure — the only
+ *  disk access (`readFileSync`) stays in the `invokedDirectly` body below, so
+ *  this can be tested against a fixture object without a real run on disk. */
+export function rowFromRun(
+  c: Contestant,
+  file: string,
+  r: {
+    stats: { usd: number; seconds: number; hosts: number }
+    report: {
+      entities: number
+      relations?: { competitor?: number; unknown?: number }
+      recall?: { pooled?: number | null }
+      kernel?: { groundingMean?: number | null }
+    }
+  },
+): Row {
+  return {
+    key: c.key,
+    model: c.model,
+    usd: r.stats.usd,
+    seconds: Math.round(r.stats.seconds),
+    entities: r.report.entities,
+    hosts: r.stats.hosts,
+    competitors: r.report.relations?.competitor ?? 0,
+    unknowns: r.report.relations?.unknown ?? 0,
+    recall: r.report.recall?.pooled != null ? r.report.recall.pooled.toFixed(2) : "no probe",
+    groundingMean: r.report.kernel?.groundingMean != null ? String(r.report.kernel.groundingMean) : "-",
+    file,
+  }
+}
+
+/** The row a contestant gets when its child sweep threw or left no new run
+ *  file behind — `usd`/`seconds` are `NaN` so the table's own `FAILED` check
+ *  (in `renderTable` below) fires instead of printing a bogus dollar figure. */
+export function failedRow(c: Contestant, recall: "run failed" | "no file"): Row {
+  return { key: c.key, model: c.model, usd: NaN, seconds: NaN, entities: 0, hosts: 0, competitors: 0, unknowns: 0, recall, groundingMean: "-", file: "-" }
+}
+
+/** The markdown table, given the rows already collected. Pure — `dateIso` is
+ *  a parameter rather than a `new Date()` call in here, on purpose: the
+ *  `invokedDirectly` body below takes that reading itself, separately from
+ *  the file-stamp reading it takes afterward, exactly as the comment below
+ *  (on the stamp) describes. Folding both into one `Date` here would remove
+ *  the (deliberately tolerated) gap that comment is about. */
+export function renderTable(domain: string, queries: string, rows: Row[], dateIso: string): string {
+  return [
+    `# Bake-off — ${domain}, ${queries} queries each, sequential, ${dateIso}`,
+    "",
+    "Quality (wrong-rate) is scored separately: fill each run's audit packet with the",
+    "symmetric workflow, then `pnpm run audit --score` — a model is not a winner until",
+    "its packet is.",
+    "",
+    "| config | model | $ | wall s | hosts | entities | competitor | unknown | recall | grounding |",
+    "|---|---|---|---|---|---|---|---|---|---|",
+    ...rows.map(
+      (r) =>
+        `| ${r.key} | ${r.model} | ${Number.isNaN(r.usd) ? "FAILED" : "$" + r.usd.toFixed(2)} | ${r.seconds || "-"} | ${r.hosts || "-"} | ${r.entities || "-"} | ${r.competitors} | ${r.unknowns} | ${r.recall} | ${r.groundingMean} |`,
+    ),
+    "",
+    ...rows.filter((r) => r.file !== "-").map((r) => `- ${r.key}: runs/${r.file}`),
+    "",
+  ].join("\n")
+}
+
+// Body left un-indented after the `invokedDirectly` guard, the same choice
+// run-doctor.ts made wrapping a pre-existing body: re-indenting the whole
+// thing would bury this diff's real change (the extraction above) under a
+// column shift on every line, and `runs.test.ts`'s "one spelling of the
+// stamp across all five writers" reads this file's `const stamp = new Date`
+// line by its exact column — indented, it silently drops out of that count.
+const invokedDirectly = process.argv[1] ? import.meta.url.endsWith(process.argv[1].split("/").pop() ?? "\0") : false
+if (invokedDirectly) {
+
+const [domain, queriesArg] = process.argv.slice(2)
+if (!domain) {
+  console.error("usage: pnpm run bakeoff <domain> [queries=10]")
+  process.exit(1)
+}
+const queries = queriesArg ?? "10"
 
 const rows: Row[] = []
 mkdirSync("runs/experiments", { recursive: true })
@@ -73,7 +146,7 @@ for (const c of CONTESTANTS) {
     })
   } catch (e) {
     console.error(`${c.key} FAILED: ${(e as Error).message} — recorded, moving on`)
-    rows.push({ key: c.key, model: c.model, usd: NaN, seconds: NaN, entities: 0, hosts: 0, competitors: 0, unknowns: 0, recall: "run failed", groundingMean: "-", file: "-" })
+    rows.push(failedRow(c, "run failed"))
     continue
   }
   const after = readdirSync("runs").filter(
@@ -81,23 +154,11 @@ for (const c of CONTESTANTS) {
   )
   const file = after.sort().pop()
   if (!file) {
-    rows.push({ key: c.key, model: c.model, usd: NaN, seconds: NaN, entities: 0, hosts: 0, competitors: 0, unknowns: 0, recall: "no file", groundingMean: "-", file: "-" })
+    rows.push(failedRow(c, "no file"))
     continue
   }
   const r = JSON.parse(readFileSync(`runs/${file}`, "utf8"))
-  rows.push({
-    key: c.key,
-    model: c.model,
-    usd: r.stats.usd,
-    seconds: Math.round(r.stats.seconds),
-    entities: r.report.entities,
-    hosts: r.stats.hosts,
-    competitors: r.report.relations?.competitor ?? 0,
-    unknowns: r.report.relations?.unknown ?? 0,
-    recall: r.report.recall?.pooled != null ? r.report.recall.pooled.toFixed(2) : "no probe",
-    groundingMean: r.report.kernel?.groundingMean != null ? String(r.report.kernel.groundingMean) : "-",
-    file,
-  })
+  rows.push(rowFromRun(c, file, r))
   // Deal the quality packet; scoring happens via the audit workflow later.
   try {
     execFileSync("npx", ["tsx", "scripts/audit.ts", `runs/${file}`, "--n", "15"], { stdio: "inherit", env: process.env })
@@ -106,23 +167,7 @@ for (const c of CONTESTANTS) {
   }
 }
 
-const table = [
-  `# Bake-off — ${domain}, ${queries} queries each, sequential, ${new Date().toISOString().slice(0, 10)}`,
-  "",
-  "Quality (wrong-rate) is scored separately: fill each run's audit packet with the",
-  "symmetric workflow, then `pnpm run audit --score` — a model is not a winner until",
-  "its packet is.",
-  "",
-  "| config | model | $ | wall s | hosts | entities | competitor | unknown | recall | grounding |",
-  "|---|---|---|---|---|---|---|---|---|---|",
-  ...rows.map(
-    (r) =>
-      `| ${r.key} | ${r.model} | ${Number.isNaN(r.usd) ? "FAILED" : "$" + r.usd.toFixed(2)} | ${r.seconds || "-"} | ${r.hosts || "-"} | ${r.entities || "-"} | ${r.competitors} | ${r.unknowns} | ${r.recall} | ${r.groundingMean} |`,
-  ),
-  "",
-  ...rows.filter((r) => r.file !== "-").map((r) => `- ${r.key}: runs/${r.file}`),
-  "",
-].join("\n")
+const table = renderTable(domain, queries, rows, new Date().toISOString().slice(0, 10))
 
 // Stamped, like the three CLIs — and for a reason none of them has. This table
 // is the receipt README.md:183 points at when it calls the default model "the
@@ -133,20 +178,21 @@ const table = [
 // that erased the evidence for the old. It stamps where its neighbour
 // audit.ts:88-92 refuses because that packet holds hand-filled verdicts and
 // refusing protects unsaved human work; this table is machine-generated, so the
-// answer is to keep every copy, not to block the second run. The heading's date
-// at line 110 is an earlier, separate `new Date()`, but only by the microseconds
-// it takes to join an array — both fire after the contestant loop, so the two can
-// disagree only across a UTC midnight, and nothing parses this name, which leaves
-// the heading the authoritative date of the table.
+// answer is to keep every copy, not to block the second run. The heading's date,
+// read where `renderTable` is called above, is an earlier, separate `new Date()`
+// from the stamp below — but only by the microseconds between the two calls, both
+// of which fire after the contestant loop — so the two can disagree only across a
+// UTC midnight, and nothing parses this name, which leaves the heading the
+// authoritative date of the table.
 //
 // Seconds, matching the other three writers exactly. This .md was never the file
 // at risk — a real bake-off is several sequential sweeps and takes hours — but the
 // SWEEPS this script spawns are, and they land under one domain back to back,
 // which is precisely the case scripts/sweep.ts's note measures. Worth naming here
 // because the damage surfaces in THIS file: a colliding second sweep reuses the
-// first one's filename, so it is absent from the `before`/`after` diff at :67/:79,
-// and the contestant that actually finished is written into the table as "no
-// file".
+// first one's filename, so it is absent from the `before`/`after` diff in the
+// loop above, and the contestant that actually finished is written into the
+// table as "no file".
 //
 // The residual is stated rather than fixed, and it is narrower than it first
 // looks. A bake-off whose contestants all throw — a bad key, an unreachable zone
@@ -158,9 +204,11 @@ const table = [
 // all-throw, both finishing inside one second, the second table overwriting the
 // first. A table of FAILED rows stays the right thing to lose. Seconds took the
 // window from 60s to 1s without pretending to close it; a random suffix would
-// close it and cost the sort — see packages/web/lib/runs.ts, and :79 here, which
-// both read these names in order.
+// close it and cost the sort — see packages/web/lib/runs.ts, and the `.sort()`
+// in the loop above, which both read these names in order.
 const stamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "")
 const out = `runs/experiments/bakeoff-${domain.replace(/\W+/g, "-")}-${stamp}.md`
 writeFileSync(out, table)
 console.log(`\n${table}\nwrote ${out}`)
+
+}
