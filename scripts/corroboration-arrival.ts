@@ -86,34 +86,28 @@ import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { registrableHost } from "../packages/core/src/index.js"
 
-const arg = (name: string, fallback: string) =>
-  process.argv.includes(name) ? (process.argv[process.argv.indexOf(name) + 1] ?? fallback) : fallback
-
-const THRESHOLD = Number(arg("--threshold", "5")) || 5
-const ONLY = arg("--runs", "")
-const runsDir = join(process.cwd(), "runs")
-
-const hostOf = (u: string): string => {
+export const hostOf = (u: string): string => {
   try { return registrableHost(new URL(u).hostname.toLowerCase()) } catch { return "" }
 }
 
-interface Row { run: string; queries: number; hosts: number; reached: number; late: number; veryLate: number }
-const rows: Row[] = []
+export interface Row { run: string; queries: number; hosts: number; reached: number; late: number; veryLate: number }
+export interface ArrivalRun { searched?: { hits?: { url: string }[] }[] }
 
-// `runs/` is gitignored — a fresh clone has none, and readdirSync throws
-// ENOENT on a missing directory rather than the `[]` an empty one returns.
-// Same fix as read.ts's `resolve`; see its comment for the rest of the list.
-for (const f of (existsSync(runsDir) ? readdirSync(runsDir) : []).filter((f) => f.startsWith("sweep-") && f.endsWith(".json"))) {
-  if (ONLY && !f.includes(ONLY)) continue
-  let r: { searched?: { hits?: { url: string }[] }[] }
-  try { r = JSON.parse(readFileSync(join(runsDir, f), "utf8")) } catch { continue }
-  const searched = r.searched
+/**
+ * One run's row, or `null` if the run says nothing about arrival timing.
+ * Pulled out of the module body — like `tallyQueryYield` in query-yield.ts,
+ * this ran unconditionally at import time (the loop over `readdirSync`
+ * doubled as both the file scan and the arithmetic), so nothing could import
+ * the join without also running the CLI and scanning a real `runs/`.
+ */
+export function arrivalRow(fileName: string, run: ArrivalRun, threshold: number): Row | null {
+  const searched = run.searched
   // A run too short to have a first and second half says nothing about when
   // corroboration arrives.
-  if (!Array.isArray(searched) || searched.length < 20) continue
+  if (!Array.isArray(searched) || searched.length < 20) return null
 
   const seen = new Map<string, number>()
-  /** The fraction of the search bought when this host first hit THRESHOLD. */
+  /** The fraction of the search bought when this host first hit `threshold`. */
   const reachedAt = new Map<string, number>()
 
   searched.forEach((s, i) => {
@@ -123,43 +117,67 @@ for (const f of (existsSync(runsDir) ? readdirSync(runsDir) : []).filter((f) => 
     for (const h of hosts) {
       const n = (seen.get(h) ?? 0) + 1
       seen.set(h, n)
-      if (n === THRESHOLD && !reachedAt.has(h)) reachedAt.set(h, i / searched.length)
+      if (n === threshold && !reachedAt.has(h)) reachedAt.set(h, i / searched.length)
     }
   })
 
-  if (!reachedAt.size) continue
+  if (!reachedAt.size) return null
   const at = [...reachedAt.values()]
-  rows.push({
-    run: f.replace(/^sweep-|\.json$/g, ""),
+  return {
+    run: fileName.replace(/^sweep-|\.json$/g, ""),
     queries: searched.length,
     hosts: seen.size,
     reached: reachedAt.size,
     late: at.filter((x) => x > 0.5).length,
     veryLate: at.filter((x) => x > 0.75).length,
-  })
+  }
 }
 
-const pct = (n: number, d: number) => (d ? `${Math.round((100 * n) / d)}%` : "—")
+/** Only when run as a command. Same guard shape as `scripts/query-yield.ts`. */
+const invokedDirectly = process.argv[1] ? import.meta.url.endsWith(process.argv[1].split("/").pop() ?? "\0") : false
+if (invokedDirectly) {
+  const arg = (name: string, fallback: string) =>
+    process.argv.includes(name) ? (process.argv[process.argv.indexOf(name) + 1] ?? fallback) : fallback
 
-console.log(`\n${rows.length} runs in runs/ — when hosts reach seenIn >= ${THRESHOLD}\n`)
-console.log(
-  "  " + "run".padEnd(32) + "queries".padStart(8) + "hosts".padStart(7) +
-  `seenIn>=${THRESHOLD}`.padStart(11) + "after 50%".padStart(12) + "after 75%".padStart(12),
-)
-for (const r of rows.sort((a, b) => b.late / b.reached - a.late / a.reached)) {
+  const THRESHOLD = Number(arg("--threshold", "5")) || 5
+  const ONLY = arg("--runs", "")
+  const runsDir = join(process.cwd(), "runs")
+
+  // `runs/` is gitignored — a fresh clone has none, and readdirSync throws
+  // ENOENT on a missing directory rather than the `[]` an empty one returns.
+  // Same fix as read.ts's `resolve`; see its comment for the rest of the list.
+  const files = (existsSync(runsDir) ? readdirSync(runsDir) : []).filter((f) => f.startsWith("sweep-") && f.endsWith(".json"))
+  const rows: Row[] = []
+  for (const f of files) {
+    if (ONLY && !f.includes(ONLY)) continue
+    let r: ArrivalRun
+    try { r = JSON.parse(readFileSync(join(runsDir, f), "utf8")) } catch { continue }
+    const row = arrivalRow(f, r, THRESHOLD)
+    if (row) rows.push(row)
+  }
+
+  const pct = (n: number, d: number) => (d ? `${Math.round((100 * n) / d)}%` : "—")
+
+  console.log(`\n${rows.length} runs in runs/ — when hosts reach seenIn >= ${THRESHOLD}\n`)
   console.log(
-    "  " + r.run.padEnd(32) + String(r.queries).padStart(8) + String(r.hosts).padStart(7) +
-    String(r.reached).padStart(11) + pct(r.late, r.reached).padStart(12) + pct(r.veryLate, r.reached).padStart(12),
+    "  " + "run".padEnd(32) + "queries".padStart(8) + "hosts".padStart(7) +
+    `seenIn>=${THRESHOLD}`.padStart(11) + "after 50%".padStart(12) + "after 75%".padStart(12),
+  )
+  for (const r of rows.sort((a, b) => b.late / b.reached - a.late / a.reached)) {
+    console.log(
+      "  " + r.run.padEnd(32) + String(r.queries).padStart(8) + String(r.hosts).padStart(7) +
+      String(r.reached).padStart(11) + pct(r.late, r.reached).padStart(12) + pct(r.veryLate, r.reached).padStart(12),
+    )
+  }
+
+  const sum = (k: keyof Row) => rows.reduce((n, r) => n + (r[k] as number), 0)
+  const reached = sum("reached")
+  console.log(
+    `\n  ${reached} hosts reached seenIn >= ${THRESHOLD} across ${rows.length} runs — ` +
+    `${pct(sum("late"), reached)} of them after half the search, ${pct(sum("veryLate"), reached)} in the final quarter.`,
+  )
+  console.log(
+    `\n  A gate that reads seenIn cannot be moved earlier than the share above\n` +
+    `  without dropping those hosts. See the header for which version survives.\n`,
   )
 }
-
-const sum = (k: keyof Row) => rows.reduce((n, r) => n + (r[k] as number), 0)
-const reached = sum("reached")
-console.log(
-  `\n  ${reached} hosts reached seenIn >= ${THRESHOLD} across ${rows.length} runs — ` +
-  `${pct(sum("late"), reached)} of them after half the search, ${pct(sum("veryLate"), reached)} in the final quarter.`,
-)
-console.log(
-  `\n  A gate that reads seenIn cannot be moved earlier than the share above\n` +
-  `  without dropping those hosts. See the header for which version survives.\n`,
-)

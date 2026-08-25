@@ -47,18 +47,22 @@ import { describe, expect, it } from "vitest"
  * reads `null` as "—"; the fix is passing it null when there are no
  * timestamps to span rather than teaching it a second empty-input shape.
  *
- * None of the seven can be imported directly in a test process — read.ts,
- * bench.ts, calibrate-kernel.ts, query-yield.ts, recall.ts,
- * corroboration-arrival.ts and export-kb.ts all act on real `process.argv`
- * (or, for calibrate-kernel.ts, fetch live pages) at module scope, the same
- * reason `tests/four-readers-refuse-a-non-run-file-with-one-sentence.test.ts`
- * checks its four by source text rather than by running them. Source text
- * proves the guard is present at every site; the subprocess runs below prove
- * the guard actually produces the intended message rather than some other
- * crash — run-doctor.ts's own `diagnose` is import-safe (it is gated behind
+ * Five of the seven cannot be imported directly in a test process — read.ts,
+ * bench.ts, calibrate-kernel.ts, recall.ts and export-kb.ts all act on real
+ * `process.argv` (or, for calibrate-kernel.ts, fetch live pages) at module
+ * scope, the same reason
+ * `tests/four-readers-refuse-a-non-run-file-with-one-sentence.test.ts` checks
+ * its four by source text rather than by running them. Source text proves
+ * the guard is present at every site; the subprocess runs below prove the
+ * guard actually produces the intended message rather than some other crash
+ * — run-doctor.ts's own `diagnose` is import-safe (it is gated behind
  * `invokedDirectly`, see run-doctor.test.ts), but the fixed line lives in
  * the CLI-only branch that guard exists to skip on import, so it needs the
- * same subprocess proof as the rest.
+ * same subprocess proof as the rest. query-yield.ts and
+ * corroboration-arrival.ts were later made import-safe the same way
+ * (SELF-55, SELF-56); their `readdirSync(runsDir)` guard still lives in the
+ * CLI-only branch, so it stays checked by source text here too, alongside
+ * their own dedicated `tallyQueryYield`/`arrivalRow` import tests.
  */
 
 const scriptPath = (name: string) => fileURLToPath(new URL(`../scripts/${name}`, import.meta.url))
@@ -91,7 +95,7 @@ describe("a missing runs/ directory no longer crashes the scripts that scan it",
     ["run-doctor.ts", "const files = (existsSync(runsDir) ? readdirSync(runsDir) : [])"],
     ["calibrate-kernel.ts", 'for (const f of (existsSync("runs") ? readdirSync("runs") : []).filter('],
     ["query-yield.ts", "const files = (existsSync(runsDir) ? readdirSync(runsDir) : [])"],
-    ["corroboration-arrival.ts", "for (const f of (existsSync(runsDir) ? readdirSync(runsDir) : [])"],
+    ["corroboration-arrival.ts", "const files = (existsSync(runsDir) ? readdirSync(runsDir) : [])"],
     ["export-kb.ts", 'const names = (existsSync("runs") ? readdirSync("runs") : []).filter('],
   ])("%s guards its readdirSync(runs) with existsSync", (file, guard) => {
     const src = source(file)
