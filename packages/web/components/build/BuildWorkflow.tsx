@@ -149,7 +149,7 @@ async function readOnce(
  * the assess loop writes, and an unmatched line still appears in the feed and
  * the stage rail, so the cost of missing one is that it is merely not promoted.
  */
-function isSpendDecision(agent: string, message: string): boolean {
+export function isSpendDecision(agent: string, message: string): boolean {
   if (agent.trim().toLowerCase() !== "plan") return false;
   const m = message.trimStart();
   return /^enough\b/i.test(m) || /^round\s+\d+/i.test(m);
@@ -951,7 +951,7 @@ function KeepLink({ runId, ready }: { runId: string; ready: boolean }) {
 
 /** Merge a classified batch into what is already on screen without losing
  *  fields an earlier batch supplied. */
-function mergeEntities(current: EntityData[], incoming: EntityData[]): EntityData[] {
+export function mergeEntities(current: EntityData[], incoming: EntityData[]): EntityData[] {
   const by = new Map(current.map((e) => [e.domain, e]));
   for (const row of incoming) {
     if (!row?.domain) continue;
