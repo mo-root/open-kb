@@ -50,7 +50,7 @@ const UNKNOWN = "run";
 /** One short line for a tool call, because the full input is routinely a whole
  *  document and the point here is to follow the agent, not to re-read the
  *  corpus it is reading. */
-function summarise(v: unknown, max = 130): string {
+export function summarise(v: unknown, max = 130): string {
   if (v == null) return "";
   if (typeof v === "string") return v.length > max ? `${v.slice(0, max)}…` : v;
   try {
