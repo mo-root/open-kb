@@ -65,6 +65,11 @@ export default defineConfig({
       "packages/web/app/**/*.test.{ts,tsx}",
       "packages/web/lib/**/*.test.{ts,tsx}",
       "packages/web/components/**/*.test.{ts,tsx}",
+      // Direct children of `packages/web/` itself — not recursive, so it does
+      // not widen into any of the three trees above. `middleware.ts` is the
+      // first test to live here (see `middleware.test.ts`'s own doc comment
+      // for how this gap was found: `check-test-collection.mjs` named it).
+      "packages/web/*.test.{ts,tsx}",
     ],
   },
 })
