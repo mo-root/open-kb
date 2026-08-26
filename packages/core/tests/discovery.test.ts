@@ -78,4 +78,75 @@ describe("discover", () => {
     expect(out.products.length).toBeGreaterThan(0)
     expect(out.sells).toContain("did not summarise")
   })
+
+  /**
+   * `submitProduct` and `submitIntegration` both dedup on
+   * `name.trim().toLowerCase()` before pushing — the one guard standing
+   * between an agent that re-describes something it already found and a map
+   * that lists it twice. Neither branch had a test anywhere in the repo
+   * (checked: no test file references the "already submitted" reject path),
+   * so a rewrite of either guard could silently start doubling entries and
+   * nothing would fail.
+   */
+  it("submitProduct rejects a name that only differs by case or whitespace from one already submitted", async () => {
+    const model = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = prompt.filter((m) => m.role === "tool").length
+        const content =
+          turn === 0
+            ? call("1", "submitProduct", { name: "Widget", does: "does widget things", foundAt: "https://acme.com/widget" })
+            : turn === 1
+              ? call("2", "submitProduct", { name: "  WIDGET ", does: "same thing, reworded", foundAt: "https://acme.com/widget-2" })
+              : turn === 2
+                ? call("3", "finish", { sells: "widgets", buyer: "widget buyers", coinages: [] })
+                : [{ type: "text" as const, text: "done" }]
+        return {
+          content,
+          finishReason: { unified: turn >= 3 ? ("stop" as const) : ("tool-calls" as const), raw: undefined },
+          usage,
+          warnings: [],
+        }
+      },
+    })
+
+    const out = await discover({ anchor: "acme.com", model, fetch: new FakeFetch({}), maxSteps: 6 })
+
+    // The near-duplicate never landed: still one product, the first one.
+    expect(out.products).toEqual([{ name: "Widget", does: "does widget things", foundAt: "https://acme.com/widget" }])
+
+    // And it was refused, not silently ignored — the model saw why.
+    const results = (out._steps ?? []).flatMap((s) => s.toolResults ?? [])
+    const rejected = results.find((r) => r.toolCallId === "2")
+    expect(rejected?.output).toEqual({ ok: false, reason: expect.stringContaining("already submitted") })
+  })
+
+  it("submitIntegration rejects a name that only differs by case or whitespace from one already submitted", async () => {
+    const model = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = prompt.filter((m) => m.role === "tool").length
+        const content =
+          turn === 0
+            ? call("1", "submitIntegration", { with: "PagerDuty", does: "pages on-call", foundAt: "https://acme.com/docs" })
+            : turn === 1
+              ? call("2", "submitIntegration", { with: " pagerduty ", does: "reworded", foundAt: "https://acme.com/docs/2" })
+              : turn === 2
+                ? call("3", "finish", { sells: "widgets", buyer: "widget buyers", coinages: [] })
+                : [{ type: "text" as const, text: "done" }]
+        return {
+          content,
+          finishReason: { unified: turn >= 3 ? ("stop" as const) : ("tool-calls" as const), raw: undefined },
+          usage,
+          warnings: [],
+        }
+      },
+    })
+
+    const out = await discover({ anchor: "acme.com", model, fetch: new FakeFetch({}), maxSteps: 6 })
+
+    expect(out.integrations).toEqual([{ with: "PagerDuty", does: "pages on-call", foundAt: "https://acme.com/docs" }])
+
+    const results = (out._steps ?? []).flatMap((s) => s.toolResults ?? [])
+    const rejected = results.find((r) => r.toolCallId === "2")
+    expect(rejected?.output).toEqual({ ok: false, reason: expect.stringContaining("already submitted") })
+  })
 })
