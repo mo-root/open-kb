@@ -26,13 +26,19 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 export type UrlView = { tab: string; note: string | null };
 
-function readUrl(fallbackTab: string): UrlView {
+// Exported so the query-string encode/decode can be tested directly: the hook
+// itself needs React's render lifecycle (useState/useEffect/useCallback), and
+// this repo has no jsdom/RTL harness to drive that (see GraphCanvas.tsx's
+// zero-entity guard, B4 in the former docs/overnight-backlog.md, for the same
+// limitation). readUrl and writeUrl take and touch only `window`, so a stub
+// object is enough — no renderer required.
+export function readUrl(fallbackTab: string): UrlView {
   if (typeof window === "undefined") return { tab: fallbackTab, note: null };
   const q = new URLSearchParams(window.location.search);
   return { tab: q.get("tab") || fallbackTab, note: q.get("note") };
 }
 
-function writeUrl(view: UrlView, mode: "push" | "replace") {
+export function writeUrl(view: UrlView, mode: "push" | "replace") {
   const q = new URLSearchParams(window.location.search);
   // Defaults are absent, not spelled out: a link to the Overview of a KB should
   // be the bare KB URL, the same address the gallery card points at.
