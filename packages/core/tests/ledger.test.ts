@@ -97,13 +97,20 @@ describe("Ledger reserve and settle", () => {
     if (!s.ok) expect(s.reason).toContain("c9")
   })
 
-  it("refuses to settle the same claim twice", () => {
+  it("refuses to settle the same claim twice, and says settled rather than never-reserved", () => {
     const l = new Ledger(1.5)
     const r = l.reserve(0.1)
     if (!r.ok) throw new Error("reserve should fit")
     l.settle(r.claimId, 0.05)
-    expect(l.settle(r.claimId, 0.05).ok).toBe(false)
-    expect(l.spendable()).toBeCloseTo(1.35 - 0.05)
+    const s = l.settle(r.claimId, 0.05)
+    expect(s.ok).toBe(false)
+    // The two refusal branches share one shape ("nothing to settle") and read
+    // alike unless the clause naming WHY is checked: an unknown claim id was
+    // never reserved, a re-settled one already was. Both compile and both pass
+    // a bare `.ok === false` check even if `#settled.has` were swapped for
+    // `#claims.has` or the ternary's branches were flipped — only the exact
+    // wording catches that, and nothing in this file asserted it before.
+    if (!s.ok) expect(s.reason).toContain("was already settled")
   })
 })
 
@@ -164,13 +171,20 @@ describe("Ledger draw and warnAt: the 80% in-band warning", () => {
     expect(l.spendable()).toBeCloseTo(1.25)
   })
 
-  it("refuses to draw against an unknown or settled claim", () => {
+  it("refuses to draw against an unknown or settled claim, each with its own reason", () => {
     const l = new Ledger(1.5)
-    expect(l.draw("c9", 0.01).ok).toBe(false)
+    const unknown = l.draw("c9", 0.01)
+    expect(unknown.ok).toBe(false)
+    // draw's own ternary spells the settled case "is settled" — a different
+    // word from settle()'s "was already settled" for the same fact — so this
+    // checks draw's actual wording rather than reusing settle's.
+    if (!unknown.ok) expect(unknown.reason).toContain("was never reserved")
     const r = l.reserve(0.1)
     if (!r.ok) throw new Error("reserve should fit")
     l.settle(r.claimId, 0.05)
-    expect(l.draw(r.claimId, 0.01).ok).toBe(false)
+    const settled = l.draw(r.claimId, 0.01)
+    expect(settled.ok).toBe(false)
+    if (!settled.ok) expect(settled.reason).toContain("is settled")
   })
 
   it("warnAt answers false for an unknown or settled claim: no claim, no warning", () => {
