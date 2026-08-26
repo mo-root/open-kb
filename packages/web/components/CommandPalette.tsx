@@ -72,8 +72,9 @@ export function usePalette() {
 
 /* ------------------------------------------------------------------ matching */
 
-/** Subsequence score, or -1 for no match. Lower is better. */
-function score(needle: string, hay: string): number {
+/** Subsequence score, or -1 for no match. Lower is better. Exported so it can
+ *  be tested as the pure ranking rule it is — see CommandPalette.test.ts. */
+export function score(needle: string, hay: string): number {
   if (!needle) return 0;
   const h = hay.toLowerCase();
   if (h.startsWith(needle)) return 0;
