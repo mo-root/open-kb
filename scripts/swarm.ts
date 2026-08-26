@@ -93,6 +93,42 @@ Object.assign(globalThis, {
   },
 })
 
+/**
+ * The wall clock, in ms, off `OPENKB_SWARM_WALL` — pulled out of the inline
+ * `Number(...) || fallback` the same way `readCapUsd`/`capUsdOrExit` split in
+ * scripts/spend-caps.ts, so the fallback-on-non-positive arithmetic has a
+ * place to be asserted without importing the whole module: at top level this
+ * file reads credentials and spends real money, which is exactly what the
+ * `invokedDirectly` guard below exists to keep out of a test process.
+ */
+export function wallClockMsFromEnv(raw: string | undefined): number {
+  const n = Number(raw ?? 600_000)
+  return Number.isFinite(n) && n > 0 ? n : 600_000
+}
+
+/**
+ * The family floor, off `OPENKB_SWARM_FAMILIES` — same split as
+ * `wallClockMsFromEnv` above. `undefined` keeps the library default (ON at
+ * 4); "0"/"off"/"false" disables; "1"-"5" sizes it (the library clamps to its
+ * 5-template deck); anything else unrecognised also keeps the library default.
+ */
+export function familyFloorFromEnv(raw: string | undefined): boolean | number | undefined {
+  const s = (raw ?? "").trim().toLowerCase()
+  if (s === "") return undefined
+  if (s === "off" || s === "false") return false
+  if (s === "on" || s === "true") return true
+  return Number.isFinite(Number(s)) ? Number(s) : undefined
+}
+
+/* --------------------------------------------------------------------- main */
+
+// Body left un-indented after the `invokedDirectly` guard, the same choice
+// bench.ts/batch.ts made wrapping a pre-existing body: re-indenting the whole
+// thing would bury this diff's real change (the extraction above) under a
+// column shift on every line.
+const invokedDirectly = process.argv[1] ? import.meta.url.endsWith(process.argv[1].split("/").pop() ?? "\0") : false
+if (invokedDirectly) {
+
 const argv = fromSweepArgv(process.argv.slice(2))
 if (argv.problem) {
   console.error(argv.problem)
@@ -133,25 +169,14 @@ if (argv.path) {
  * latency with 25-40s SERP waves inside them; the measured tier deadlines
  * (60/180/300s) need a wall that can hold a dig plus the lead's own closing.
  */
-const wallRaw = Number(process.env.OPENKB_SWARM_WALL ?? 600_000)
-const wallClockMs = Number.isFinite(wallRaw) && wallRaw > 0 ? wallRaw : 600_000
+const wallClockMs = wallClockMsFromEnv(process.env.OPENKB_SWARM_WALL)
 
 /**
  * The family floor, from the environment. Undefined keeps the library default
  * (ON at 4); "0"/"off"/"false" disables; a number 1-5 sizes it (the library
  * clamps to its 5-template deck).
  */
-const famRaw = (process.env.OPENKB_SWARM_FAMILIES ?? "").trim().toLowerCase()
-const familyFloor: boolean | number | undefined =
-  famRaw === ""
-    ? undefined
-    : famRaw === "off" || famRaw === "false"
-      ? false
-      : famRaw === "on" || famRaw === "true"
-        ? true
-        : Number.isFinite(Number(famRaw))
-          ? Number(famRaw)
-          : undefined
+const familyFloor = familyFloorFromEnv(process.env.OPENKB_SWARM_FAMILIES)
 
 const LEAD = process.env.OPENKB_SWARM_LEAD_MODEL ?? "deepseek/deepseek-v4-flash-0731"
 const PEEK = process.env.OPENKB_SWARM_PEEK_MODEL ?? "deepseek/deepseek-v4-flash-0731"
@@ -361,3 +386,5 @@ console.log(`\nwrote ${path}`)
 const spansPath = path.replace(/\.json$/, ".spans.jsonl")
 writeFileSync(spansPath, spanRows.map((s) => JSON.stringify(s)).join("\n") + "\n")
 console.log(`wrote ${spansPath} (${spanRows.length} spans)`)
+
+}
