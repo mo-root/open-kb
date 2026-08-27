@@ -50,13 +50,28 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 
 /* Entity kinds share the node-type palette so a `company` reads the same colour
    here as it does everywhere else. Relations get the neutral blue ramp — they
-   are a magnitude, not an identity. */
-const KIND_COLOR: Record<string, string> = {
+   are a magnitude, not an identity.
+ *
+ * Hand-copied from `JUDGED_KINDS` (`@open-kb/core`), which has SEVEN members —
+ * this used to list five. `noise` is rightly absent: `onMap()`
+ * (packages/sweep/src/sweep.ts) filters `kind === "noise"` out of `keep`
+ * before a report's `kinds` tally is built, so it can never reach this donut.
+ * `unknown` is not filtered — `onMap`'s own doc comment says so ("NOT unknown
+ * ... stays", a host the judge found but could not place) — and every kept
+ * `unknown` fell through to the `?? "#7C8BA8"` fallback below, the exact
+ * colour already spoken for by `directory`, so an unplaced host was
+ * indistinguishable from a directory listing in the one chart meant to tell
+ * a reader what kind of thing came back. Exported, and pinned by
+ * ResultPanel.test.ts against the real union, the same fix as SELF-105's
+ * `FAMILY_TONE` and B3's `RELATION_ORDER` — same shape of gap, a closed union
+ * absorbed by a fallback instead of erroring. */
+export const KIND_COLOR: Record<string, string> = {
   company: "var(--type-player, #EB368C)",
   product: "var(--type-product, #3D7FFC)",
   community: "var(--type-community, #D95926)",
   publisher: "var(--type-core, #9DB2D6)",
   directory: "#7C8BA8",
+  unknown: "#64748B",
 };
 
 function Composition({ r }: { r: RunResult }) {
