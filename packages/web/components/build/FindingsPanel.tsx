@@ -19,9 +19,20 @@ import { formatUsd, type TraceView } from "./types";
 export interface EntityData {
   domain: string;
   name?: string;
-  /** company · product · community · publisher · directory */
+  /** company · product · community · publisher · directory · noise · unknown —
+   *  `JUDGED_KINDS` (`@open-kb/core/judge`), SEVEN members. This comment used
+   *  to list five, the same drift SELF-106/107 found and fixed in the real
+   *  KIND maps (ui.tsx's `KIND_TONES`, ResultPanel.tsx's `KIND_COLOR`) —
+   *  `noise` and `unknown` are live values on this stream too, `KindChip`
+   *  (components/ui.tsx) already renders both. */
   kind?: string;
-  /** competitor · substitute · adjacent · dependency · integration · shaper · buyer · target · none */
+  /** competitor · substitute · adjacent · dependency · integration · shaper ·
+   *  buyer · target · covers · lists · discusses · unknown · none —
+   *  `JUDGED_RELATIONS` (`@open-kb/core/judge`), THIRTEEN members. This
+   *  comment used to list nine, the same drift SELF-108 found and fixed in
+   *  `KbOverview.tsx`'s `RELATION_ORDER`/`RELATION_COLOR` — the four missing
+   *  values (`covers`/`lists`/`discusses`/`unknown`) reach this stream
+   *  unfiltered and render as plain text below the `KindChip` (line 115). */
   relation?: string;
   what?: string;
   why?: string;
