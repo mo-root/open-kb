@@ -63,8 +63,18 @@ const REDACTED = "omitted in production builds";
  * `reset` is accepted and deliberately unused.
  */
 export default function PageError({ error }: { error: Error & { digest?: string } }) {
+  // `typeof` rather than truthiness on `error.message` directly: React's own
+  // contract for what a boundary receives is looser than the type says (see
+  // global-error.tsx, which carries the identical guard for the identical
+  // reason), and `.includes` on a non-string throws — turning this boundary
+  // into exactly the crash it exists to catch. Caught here first: this file's
+  // own test asserted a non-string `message` on the promised `Error` and
+  // `error.message.includes is not a function` came back instead of a render.
   const message =
-    error.message && !error.message.includes(REDACTED) ? error.message : null;
+    typeof error.message === "string" && !error.message.includes(REDACTED)
+      ? error.message
+      : null;
+  const digest = typeof error.digest === "string" ? error.digest : null;
 
   return (
     <div className="mx-auto max-w-6xl px-5 py-10">
@@ -73,14 +83,14 @@ export default function PageError({ error }: { error: Error & { digest?: string 
         {message && (
           <div className="mt-1 font-mono text-xs text-slate-500">{message}</div>
         )}
-        {error.digest ? (
+        {digest ? (
           // `grep <digest>` alone prints the digest line and nothing else — the
           // message sits five lines above it in the entry. Naming the flag is
           // the difference between the operator's first command working and it
           // returning a bare number.
           <div className="mt-1 font-mono text-xs text-slate-500">
-            digest {error.digest} — the server log entry carries the same value
-            (grep -B6 {error.digest})
+            digest {digest} — the server log entry carries the same value
+            (grep -B6 {digest})
           </div>
         ) : (
           !message && (
