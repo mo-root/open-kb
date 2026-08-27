@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest"
 import { readdirSync, readFileSync } from "node:fs"
 import { loadPrompt, composePrompt } from "../src/prompts.js"
 import { RELATIONS } from "../src/tools.js"
+import type { QueryFamily } from "../src/families.js"
 
 const DOCTRINE = "prompts/doctrine"
 const AGENTS = "prompts/agents"
@@ -160,5 +161,25 @@ describe("query-families doctrine", () => {
     const p = loadPrompt("assess", "prompts/agents")
     expect(p.body).toContain("{{families}}")
     expect(p.body).toContain("{{reserve}}")
+  })
+
+  /**
+   * `07-query-families.md` named only three of `QueryFamily`'s four members —
+   * "plain, debranded and branded" — though `families.ts` itself has called
+   * this "the four query families" since before this branch existed (verified
+   * at `a7bbc57:packages/core/src/families.ts`) and `rivalHand()` genuinely
+   * emits `family: "rival"` queries. Same shape of gap as `FAMILY_TONE`
+   * (`packages/web/lib/viewTypes.ts`, fixed at SELF-105): a hand-written
+   * enumeration next to a closed union, one member short. Pinned against the
+   * real union (hardcoded here, same as `viewTypes.test.ts`'s `FAMILIES` —
+   * `QueryFamily` is a type, not a runtime value) rather than the doctrine's
+   * own prose, so a fifth family added to the union and forgotten in the
+   * doctrine fails this test instead of quietly reaching the model incomplete.
+   */
+  it("teaches every QueryFamily member, not just the ones it writes itself", () => {
+    const FAMILIES: readonly QueryFamily[] = ["plain", "debranded", "branded", "rival"]
+    const doc = readFileSync("prompts/doctrine/07-query-families.md", "utf8")
+    const undocumented = FAMILIES.filter((f) => !doc.includes(`**${f}**`))
+    expect(undocumented).toEqual([])
   })
 })

@@ -18,6 +18,11 @@ missing what the other doors see.
   the family YOU write, because a template cannot know the job or the failure.
 - **branded** — the product's own name plus `alternatives` / `vs`. Finds the ecosystem that forms
   around a name. Template-written; the coinage ban is reversed for this family only, deliberately.
+- **rival** — `<rival> alternatives` and `<rival> vs <rival>`, built from names the anchor's own
+  site already published about someone else (the sitemap's comparison pages). Template-written,
+  like plain and branded: you never need to write one. The same names are handed to you separately,
+  labeled "rivals it published" — cross them in your OWN debranded queries too; the rival family's
+  formulaic pairing and your framed one are not the same query.
 
 ## Debranded means de-ANCHORED, not de-named
 

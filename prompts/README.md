@@ -27,7 +27,7 @@ order in which agents run — the run decides that.
 | `04-search-craft.md` | How to compose a query and what kind of page each shape buys. |
 | `05-reading-the-web.md` | How to read a company and a page cheaply, and when an expensive fetch earns its cost. |
 | `06-breadth.md` | Why the map is the ecosystem and not the shortlist. |
-| `07-query-families.md` | The plain, debranded and branded query families — which door each opens, and why debranded means de-anchored, not de-named. |
+| `07-query-families.md` | The four query families — plain, debranded, branded, rival — which door each opens, and why debranded means de-anchored, not de-named. |
 
 ## How composition works
 
