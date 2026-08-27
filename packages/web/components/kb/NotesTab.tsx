@@ -19,7 +19,7 @@ import { NoteView } from "./NoteView";
    what order a group reads in) lives in lib/notes-view.ts, tested — this file
    only renders it. */
 
-function groupOf(path: string): string {
+export function groupOf(path: string): string {
   const idx = path.indexOf("/");
   return idx >= 0 ? path.slice(0, idx) : "overview";
 }
