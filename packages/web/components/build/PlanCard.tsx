@@ -7,6 +7,7 @@ import {
   INTENT_LABEL,
   formatUsd,
   groupPlan,
+  plannedDropped,
   type Intent,
   type PlanView,
   type UnderstandingView,
@@ -202,8 +203,7 @@ export function PlanCard({ plan }: { plan: PlanView }) {
      between `written` and what arrived is the filter's actual yield, and unlike
      the old chip it is a number that can come back bad. */
   const delivered = plan.queries.length || plan.count;
-  const dropped =
-    plan.written !== undefined && plan.written > delivered ? plan.written - delivered : 0;
+  const dropped = plannedDropped(delivered, plan.written);
 
   return (
     <div className="rounded-lg border border-sky-500/30 bg-sky-500/[0.04] p-5">

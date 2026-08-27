@@ -7,6 +7,7 @@ import {
   formatUsd,
   groupPlan,
   initialStates,
+  plannedDropped,
   readCost,
   readPlanned,
   readProgress,
@@ -235,6 +236,25 @@ describe("groupPlan: group by intent, largest group first", () => {
     const groups = groupPlan([q("pain", "p1"), q("switching", "s1"), q("pain", "p2"), q("pain", "p3")])
     expect(groups.map((g) => g.source)).toEqual(["pain", "switching"])
     expect(groups[0].queries.map((x) => x.q)).toEqual(["p1", "p2", "p3"])
+  })
+})
+
+describe("plannedDropped: the anchor-name leak filter's yield gap", () => {
+  it("is zero when written is absent — no catalog frame to compare against", () => {
+    expect(plannedDropped(12, undefined)).toBe(0)
+  })
+
+  it("is zero when written does not exceed delivered — nothing left on the floor", () => {
+    expect(plannedDropped(12, 12)).toBe(0)
+    expect(plannedDropped(12, 8)).toBe(0)
+  })
+
+  it("is the gap when written exceeds delivered — what the filter spliced out", () => {
+    expect(plannedDropped(12, 15)).toBe(3)
+  })
+
+  it("is zero on a run with nothing delivered and nothing written", () => {
+    expect(plannedDropped(0, 0)).toBe(0)
   })
 })
 

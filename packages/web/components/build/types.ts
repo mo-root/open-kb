@@ -275,6 +275,22 @@ export function groupPlan(queries: readonly PlannedQueryView[]): PlanGroup[] {
     .sort((a, b) => b.queries.length - a.queries.length);
 }
 
+/**
+ * How many of the catalog's `written` queries never reached `delivered` — the
+ * anchor-name leak filter's real yield. PlanCard.tsx's own comment on the chip
+ * this replaced explains why: the chip re-tested the delivered set for the
+ * anchor's name, but the engine already splices leaking queries out before the
+ * frame is emitted, so that chip could only ever say "no query names the
+ * company." `written` is what the catalog produced before that splice;
+ * `delivered` is what arrived after it, so the gap is the splice's own count.
+ *
+ * Zero when `written` is absent (no catalog frame to compare against) or does
+ * not exceed `delivered` — a filter cannot have dropped queries it never had.
+ */
+export function plannedDropped(delivered: number, written: number | undefined): number {
+  return written !== undefined && written > delivered ? written - delivered : 0;
+}
+
 // -------------------------------------------------------------------- cost --
 
 export interface CostView {
