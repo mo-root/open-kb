@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { scrollProgress } from "@/lib/scrollProgress";
 
 /* The film's total runtime, from the rig itself (launch-rig.html: TOTAL). */
 const TOTAL = 32.5;
@@ -36,10 +37,7 @@ export function ScrollFilm() {
       const track = trackRef.current;
       if (!track) return;
       const span = track.offsetHeight - window.innerHeight;
-      const p =
-        span > 0
-          ? Math.min(1, Math.max(0, -track.getBoundingClientRect().top / span))
-          : 0;
+      const p = scrollProgress(track.getBoundingClientRect().top, span);
       const w = frameRef.current?.contentWindow as
         | (Window & { SEEK?: (t: number) => void })
         | null;
