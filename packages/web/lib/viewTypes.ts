@@ -53,17 +53,28 @@ export const RELATION_BLURB: Record<string, string> = {
 }
 
 /**
- * Chip tone per query family, the plain/debranded/branded triad the planner
- * asks in. Lives here, next to `RELATION_BLURB`, for the same reason: the
- * searches panel and an entity's own page both need the identical mapping,
- * and a chip that drifted color between the two surfaces would read as two
- * different facts about the same query. Unknown values (a run recorded
- * before families existed) fall through to the caller's own neutral tone.
+ * Chip tone per query family. Lives here, next to `RELATION_BLURB`, for the
+ * same reason: the searches panel and an entity's own page both need the
+ * identical mapping, and a chip that drifted color between the two surfaces
+ * would read as two different facts about the same query. Unknown values (a
+ * run recorded before families existed) fall through to the caller's own
+ * neutral tone.
+ *
+ * FOUR KEYS, NOT THREE. `QueryFamily` in `@open-kb/core/families` is
+ * `"plain" | "debranded" | "branded" | "rival"` — this map had only the first
+ * three, so every rival-family chip (`rivalHand()`'s `${name} alternatives`
+ * and `${a} vs ${b}` queries, real and measured at length in
+ * `scripts/query-yield.ts`'s own header comment) fell through to the generic
+ * fallback tone in both consumers (`SearchesPanel.tsx`, `NoteView.tsx`),
+ * indistinguishable from a query with no family at all. Same shape of gap as
+ * B3's missing `adjacent` in `KbOverview.tsx`'s `RELATION_ORDER` — a closed
+ * union with a chip map that quietly fell one member short.
  */
 export const FAMILY_TONE: Record<string, string> = {
   plain: "text-sky-300 border-sky-500/40 bg-sky-500/10",
   debranded: "text-violet-300 border-violet-400/40 bg-violet-400/10",
   branded: "text-amber-300 border-amber-500/40 bg-amber-500/10",
+  rival: "text-rose-300 border-rose-500/40 bg-rose-500/10",
 }
 
 /**
