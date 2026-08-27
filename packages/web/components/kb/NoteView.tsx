@@ -44,7 +44,7 @@ import { KindChip, RelevanceBadge, TierBadge, TypeChip } from "@/components/ui";
    styles this page without a single rule changing.
 --------------------------------------------------------------------------- */
 
-function hostOf(url: string): string {
+export function hostOf(url: string): string {
   try {
     return new URL(url).host.replace(/^www\./, "");
   } catch {
