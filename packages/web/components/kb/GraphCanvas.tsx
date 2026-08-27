@@ -253,8 +253,10 @@ const HOVER_PEEK_MS = 140;
 
 /* Deterministic seeding: same KB (+ reset count) → same starting layout, so a
    reset is a genuine re-layout (fresh node objects) rather than an in-place
-   mutation of the memoised data. */
-function hashStr(s: string): number {
+   mutation of the memoised data. Exported (with the colour/string helpers
+   below) only so GraphCanvas.test.ts can import them directly — none of them
+   had ever run under test; see that file for what each one locks. */
+export function hashStr(s: string): number {
   let h = 2166136261;
   for (let i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i);
@@ -262,7 +264,7 @@ function hashStr(s: string): number {
   }
   return h >>> 0;
 }
-function mulberry32(seed: number): () => number {
+export function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
     a = (a + 0x6d2b79f5) | 0;
@@ -280,7 +282,7 @@ function mulberry32(seed: number): () => number {
  * erases the node and on paper bleaches it, while mixing toward the surface
  * colour keeps a readable silhouette in both.
  */
-function mixHex(hex: string, toward: string, t: number): string {
+export function mixHex(hex: string, toward: string, t: number): string {
   const a = parseHex(hex);
   const b = parseHex(toward);
   if (!a || !b) return hex;
@@ -290,7 +292,7 @@ function mixHex(hex: string, toward: string, t: number): string {
 }
 
 /** `#rgb` / `#rrggbb` -> [r,g,b], or null for anything else. */
-function parseHex(hex: string): [number, number, number] | null {
+export function parseHex(hex: string): [number, number, number] | null {
   const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim());
   if (!m) return null;
   let h = m[1];
@@ -302,18 +304,18 @@ function parseHex(hex: string): [number, number, number] | null {
   ];
 }
 
-function hexToRgba(hex: string, alpha: number): string {
+export function hexToRgba(hex: string, alpha: number): string {
   const m = /^#([0-9a-f]{6})$/i.exec(hex.trim());
   if (!m) return hex;
   const v = parseInt(m[1], 16);
   return `rgba(${(v >> 16) & 255},${(v >> 8) & 255},${v & 255},${alpha})`;
 }
 
-function truncate(s: string, n: number): string {
+export function truncate(s: string, n: number): string {
   return s.length > n ? `${s.slice(0, n - 1)}…` : s;
 }
 
-function escapeHtml(s: string): string {
+export function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
