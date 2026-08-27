@@ -3,6 +3,8 @@ import {
   STAGES,
   advance,
   allDone,
+  formatDuration,
+  formatUsd,
   groupPlan,
   initialStates,
   readCost,
@@ -12,6 +14,7 @@ import {
   readRunCost,
   readTrace,
   readUnderstanding,
+  shareOf,
   stageOf,
   type Stage,
 } from "./types"
@@ -284,6 +287,65 @@ describe("readRunCost: the whole-run ledger", () => {
     expect(readRunCost({ usd: 1, partial: true })?.partial).toBe(true)
     expect(readRunCost({ usd: 1, partial: "true" })?.partial).toBe(false)
     expect(readRunCost({ usd: 1 })?.partial).toBe(false)
+  })
+})
+
+/*
+ * formatUsd / formatDuration / shareOf back every number CostBreakdown.tsx
+ * renders, and none of the three had a test anywhere in the repo (confirmed
+ * with a repo-wide grep for each name across every *.test.* file before
+ * starting). Each is a reader with the same shape as the rest of this file —
+ * a guard that fails closed on bad input rather than defaulting to a
+ * healthy-looking value — and each guard's own doc comment states the
+ * failure it exists to avoid, so the tests pin exactly that.
+ */
+describe("formatUsd: four decimal places, or a dash", () => {
+  it("renders four decimal places, per the doc comment's stated reason (a whole run is a third of a dollar, a SERP call is $0.0015)", () => {
+    expect(formatUsd(0.3)).toBe("$0.3000")
+    expect(formatUsd(0.0015)).toBe("$0.0015")
+    expect(formatUsd(0)).toBe("$0.0000")
+  })
+
+  it("is a dash for anything that is not a finite number, never a defaulted $0", () => {
+    expect(formatUsd(undefined)).toBe("—")
+    expect(formatUsd(null)).toBe("—")
+    expect(formatUsd(NaN)).toBe("—")
+    expect(formatUsd(Infinity)).toBe("—")
+  })
+})
+
+describe("formatDuration: a clock, not a decimal of minutes", () => {
+  it("stays in whole seconds under a minute", () => {
+    expect(formatDuration(0)).toBe("0s")
+    expect(formatDuration(45_000)).toBe("45s")
+  })
+
+  it("switches to minutes and seconds at 60s, zero-padding the seconds", () => {
+    expect(formatDuration(60_000)).toBe("1m 00s")
+    expect(formatDuration(754_000)).toBe("12m 34s")
+  })
+
+  it("is a dash for anything that is not a finite, non-negative number", () => {
+    expect(formatDuration(undefined)).toBe("—")
+    expect(formatDuration(null)).toBe("—")
+    expect(formatDuration(NaN)).toBe("—")
+    expect(formatDuration(Infinity)).toBe("—")
+    expect(formatDuration(-1)).toBe("—")
+  })
+})
+
+describe("shareOf: a line's percent of the bill", () => {
+  it("rounds to the nearest whole percent", () => {
+    expect(shareOf(1, 3)).toBe(33)
+    expect(shareOf(2, 3)).toBe(67)
+    expect(shareOf(0.5, 1)).toBe(50)
+  })
+
+  it("is 0 for a zero or negative total, per the doc comment (a run stopped before it spent anything still renders, rather than a NaN percent)", () => {
+    expect(shareOf(0, 0)).toBe(0)
+    expect(shareOf(5, 0)).toBe(0)
+    expect(shareOf(5, -1)).toBe(0)
+    expect(shareOf(5, NaN)).toBe(0)
   })
 })
 
