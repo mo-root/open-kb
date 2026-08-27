@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { meanRelevance } from "./KbOverview"
+import { JUDGED_RELATIONS } from "@open-kb/core"
+import { meanRelevance, RELATION_COLOR, RELATION_ORDER } from "./KbOverview"
 import type { NoteRef } from "@/lib/viewTypes"
 
 /**
@@ -71,5 +72,47 @@ describe("meanRelevance treats a falsy or malformed relevance as 0, not NaN", ()
 
   it("treats an explicit 0 the same as any other value", () => {
     expect(meanRelevance([note(0), note(100)])).toBe(50)
+  })
+})
+
+/**
+ * `RELATION_ORDER` and `RELATION_COLOR` were missing four of `JUDGED_RELATIONS`'
+ * thirteen members: `lists`, `covers`, `discusses` and `unknown`. Unlike the
+ * KIND maps elsewhere (ui.tsx's `KIND_TONES`, ResultPanel.tsx's `KIND_COLOR`),
+ * nothing filters `EcosystemPanel`'s input by relation — `place()`
+ * (lib/kb-from-run.ts) only drops entities by `kind` — so all thirteen reach
+ * `relations` (`viewOf`'s `tally(kept.map(p => p.entity.relation))`)
+ * unfiltered, and `summaryOf`'s own `voices` stat counts three of the four
+ * missing ones (`covers`, `lists`, `discusses`) separately, proving they are
+ * real, not theoretical. Every entity carrying one of the four fell through
+ * `EcosystemPanel`'s `ordered` catch-all straight to the fallback colour.
+ * Same shape as SELF-105 through SELF-107 and this map's own earlier
+ * `adjacent` gap (B3).
+ *
+ * D-scope sweep, self-discovered (A, B and C are all done or BLOCKED;
+ * docs/overnight-backlog.md itself is gone from this checkout — see
+ * 48c1eaa's note on recovering section D's scope from git history).
+ * Continuing the SELF-<n> numbering from SELF-107.
+ */
+describe("RELATION_ORDER and RELATION_COLOR cover every JUDGED_RELATIONS member", () => {
+  it("orders every relation the classifier can assign, not just nine of thirteen", () => {
+    for (const r of JUDGED_RELATIONS) expect(RELATION_ORDER).toContain(r)
+    expect(RELATION_ORDER.length).toBe(JUDGED_RELATIONS.length)
+  })
+
+  it("colours every relation the classifier can assign, not just nine of thirteen", () => {
+    for (const r of JUDGED_RELATIONS) expect(RELATION_COLOR[r]).toBeDefined()
+  })
+
+  it("does not leave the four channel/unknown relations wearing the same fallback colour", () => {
+    const FALLBACK = "var(--type-core, #9DB2D6)"
+    for (const r of ["lists", "covers", "discusses", "unknown"] as const) {
+      expect(RELATION_COLOR[r]).not.toBe(FALLBACK)
+    }
+  })
+
+  it("gives no two relations the same colour", () => {
+    const colors = JUDGED_RELATIONS.map((r) => RELATION_COLOR[r])
+    expect(new Set(colors).size).toBe(colors.length)
   })
 })

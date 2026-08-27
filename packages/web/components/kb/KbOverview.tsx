@@ -61,8 +61,25 @@ import {
    v1's equivalent map was keyed by its own six player KINDS (competitor,
    alternative, adjacent, integration, dependency, partner). The axis here is
    the RELATION the classifier assigned, which is the thing this engine actually
-   decides — the hues are carried across one-for-one where the words match. */
-const RELATION_ORDER = [
+   decides — the hues are carried across one-for-one where the words match.
+
+   `JUDGED_RELATIONS` (`@open-kb/core/judge`) is THIRTEEN members. Unlike the
+   KIND maps elsewhere in this codebase (ui.tsx's `KIND_TONES`,
+   ResultPanel.tsx's `KIND_COLOR`), nothing here filters by relation before a
+   row reaches `EcosystemPanel`: `place()` (lib/kb-from-run.ts) only drops
+   entities by `kind`, so every `kept` entity's `.relation` — whatever the
+   classifier wrote — reaches `relations` (`viewOf`'s `tally(kept.map(p =>
+   p.entity.relation))`) unfiltered. This map and `RELATION_COLOR` below listed
+   nine, missing `lists`, `covers`, `discusses` and `unknown` — the same four
+   `summaryOf`'s own `voices` stat (kb-from-run.ts) counts separately, so they
+   are not theoretical: `kb-from-run.ts`'s `RELATION_WEIGHT` already covers all
+   thirteen (its own comment cites "5,770 rows across the runs on disk" with
+   `relation: unknown`). Every entity carrying one of the four missing
+   relations fell through `ordered`'s `seen` catch-all straight to the same
+   muted fallback colour as an unrecognised relation, on the one panel meant to
+   say what kind of relation each bar is. Same shape as SELF-105 through
+   SELF-107 and B3's original `adjacent` gap in this very map. */
+export const RELATION_ORDER = [
   "competitor",
   "substitute",
   // Missing here until B3: `adjacent` fell through to the `seen` catch-all at
@@ -78,9 +95,19 @@ const RELATION_ORDER = [
   "shaper",
   "buyer",
   "target",
+  // The channel relations, ranked by RELATION_WEIGHT (lists 38, covers 35,
+  // discusses 32) — below every commercial relation, above `unknown` and
+  // `none`.
+  "lists",
+  "covers",
+  "discusses",
+  // `unknown` is a refusal, not a rejection (RELATION_WEIGHT: 20, above
+  // `none`'s 15) — see that map's own comment on why the two must not look
+  // alike either.
+  "unknown",
   "none",
 ];
-const RELATION_COLOR: Record<string, string> = {
+export const RELATION_COLOR: Record<string, string> = {
   competitor: "var(--type-player, #EB368C)",
   substitute: "#F072AC",
   // Lavender, between rival pink and partner blue — see the file header
@@ -91,6 +118,14 @@ const RELATION_COLOR: Record<string, string> = {
   shaper: "var(--accent, #3D7FFC)",
   buyer: "var(--type-core, #9DB2D6)",
   target: "#8FA3C6",
+  // The channel relations share a teal thread, distinct from the commercial
+  // blues/lavender above and the amber/grey below.
+  lists: "#2DD4BF",
+  covers: "#5EEAD4",
+  discusses: "#99F6E4",
+  // Neutral grey: neither a settled relation nor the advisory amber below —
+  // "not confirmed" is a different claim from "the run did not answer this".
+  unknown: "#94A3B8",
   // The unplaced wear the advisory amber wherever they appear, so the eye
   // learns one colour for "the run did not answer this".
   none: "#F0A441",
