@@ -1,7 +1,9 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { JUDGED_KINDS } from "@open-kb/core";
 import {
   Chip,
+  KIND_TONES,
   KindChip,
   MicroHead,
   RelevanceBadge,
@@ -56,6 +58,37 @@ describe("KindChip falls back to the neutral tone for a kind the palette never t
   it("uses the shared neutral fallback for an unrecognised kind", () => {
     const html = renderToStaticMarkup(<KindChip kind="mystery" />);
     expect(html).toContain("text-slate-300 border-slate-600/50 bg-slate-700/30");
+  });
+});
+
+/**
+ * `KIND_TONES` was missing `unknown`, one of `JUDGED_KINDS`'s seven members
+ * (`@open-kb/core/judge`). `noise` is already dead by the time a kind reaches
+ * `KindChip` — `onMap()` (packages/sweep/src/sweep.ts) filters it out before
+ * any live build frame or kept KB page carries a `kind` — but `unknown` is
+ * not filtered and is real, kept traffic (`onMap`'s own doc comment: "NOT
+ * unknown ... stays"). Every `unknown` entity fell through to the same
+ * neutral fallback `KindChip` gives an unrecognised kind — the fallback
+ * tested above — making it indistinguishable from that "never taught this
+ * kind" case rather than a kind the palette knows. Same shape of gap as
+ * SELF-105's `FAMILY_TONE`, B3's `RELATION_ORDER` and SELF-106's
+ * `KIND_COLOR`.
+ */
+describe("KIND_TONES covers every reachable JUDGED_KINDS member", () => {
+  const REACHABLE = JUDGED_KINDS.filter((k) => k !== "noise");
+  const FALLBACK = "text-slate-300 border-slate-600/50 bg-slate-700/30";
+
+  it("defines every kind onMap() can keep", () => {
+    for (const k of REACHABLE) expect(KIND_TONES[k]).toBeDefined();
+  });
+
+  it("does not leave unknown wearing KindChip's own unrecognised-kind fallback", () => {
+    // publisher and directory deliberately share the muted slate tone (see
+    // KIND_TONES's own comment) — that shared tone happens to equal the
+    // fallback, so the real regression this guards is `unknown` silently
+    // landing there too, not "every reachable kind gets a unique colour".
+    expect(KIND_TONES.unknown).toBeDefined();
+    expect(KIND_TONES.unknown).not.toBe(FALLBACK);
   });
 });
 

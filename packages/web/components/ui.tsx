@@ -16,13 +16,29 @@ import { TYPE_COLOR, type NodeType } from "@/lib/nodeTypes";
 // companies and products take the blue action ramp, communities the lavender,
 // publishers and directories the muted slate. Cyan (emerald) is reserved for
 // data-flow, rose for genuine alerts, so neither appears here.
-const KIND_TONES: Record<string, string> = {
+//
+// Hand-copied from `JUDGED_KINDS` (`@open-kb/core/judge`), which has SEVEN
+// members — this listed six, missing `unknown`. `onMap()`
+// (packages/sweep/src/sweep.ts) filters `kind === "noise"` out before any
+// entity reaches a live build stream or a kept KB page (`FindingsPanel.tsx`'s
+// `entities`, `NoteView.tsx`'s `note.kind`, `ProductsTab.tsx`'s `pl.kind` all
+// read post-filter), so `noise` above is already dead but harmless. `unknown`
+// is NOT filtered — `onMap`'s own doc comment says so ("NOT unknown, which is
+// the other empty-looking relation and stays") — so a kept `unknown` entity
+// fell through `KindChip`'s `?? "text-slate-300 border-slate-600/50
+// bg-slate-700/30"` fallback to the exact tone already worn by `publisher`/
+// `directory`, indistinguishable from a directory listing on the one chip
+// that exists to say what kind of thing this is. Same shape of gap as
+// SELF-105's `FAMILY_TONE`, B3's `RELATION_ORDER` and SELF-106's
+// `KIND_COLOR`. Exported and pinned by ui.test.tsx against the real union.
+export const KIND_TONES: Record<string, string> = {
   company: "text-amber-300 border-amber-500/40 bg-amber-500/10",
   product: "text-sky-300 border-sky-500/40 bg-sky-500/10",
   community: "text-violet-300 border-violet-400/40 bg-violet-400/10",
   publisher: "text-slate-300 border-slate-600/50 bg-slate-700/30",
   directory: "text-slate-300 border-slate-600/50 bg-slate-700/30",
   noise: "text-slate-500 border-slate-700/50 bg-slate-800/30",
+  unknown: "text-fuchsia-300 border-fuchsia-500/40 bg-fuchsia-500/10",
 };
 
 export function KindChip({ kind }: { kind: string }) {
