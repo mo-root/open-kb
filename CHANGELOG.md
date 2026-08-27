@@ -4,7 +4,7 @@ All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/); this file is
 maintained by hand from `git log`, not generated.
 
-## [Unreleased] — hardening/overnight-2026-08-21 (2026-08-21 – 2026-08-25)
+## [Unreleased] — hardening/overnight-2026-08-21 (2026-08-21 – 2026-08-27)
 
 Several nights of hardening on top of `main`, driven by measured evidence from
 real sweep runs rather than guesses. Grouped by what a user of the CLI, the
@@ -120,6 +120,18 @@ hosted web app, or the repo itself would actually notice.
   bare one-node force graph; it now shows the same "nothing on the map"
   empty state used elsewhere in the app.
 - `KbOverview` no longer treats a non-JSON error response as "unreachable".
+- Five hand-copied palettes that key off `JUDGED_KINDS`/`JUDGED_RELATIONS`/
+  `QueryFamily` were each found one or more members short of the real union
+  — the missing member always fell through to a generic fallback colour
+  rather than erroring, so it read as unclassified or as a different kind
+  entirely. Fixed: `viewTypes.ts`'s `FAMILY_TONE` (missing `rival` — every
+  rival-family query chip rendered in the same muted gray as an unrecorded
+  family), `ResultPanel.tsx`'s `KIND_COLOR` and `ui.tsx`'s `KIND_TONES`
+  (both missing `unknown`, indistinguishable from a `directory` entity),
+  and `KbOverview.tsx`'s `RELATION_ORDER`/`RELATION_COLOR` (missing
+  `lists`, `covers`, `discusses` and `unknown`). Each now carries a test
+  pinning it against the real union so a new member fails loudly instead
+  of landing in the fallback.
 
 ### Bug fixes
 
@@ -167,6 +179,11 @@ hosted web app, or the repo itself would actually notice.
 - `.env.example` was missing five dials this branch added and carried one
   stale default; the onboarding skill doc claimed all four pipeline stages
   default off when three of them now default on.
+- `prompts/doctrine/07-query-families.md` — the doctrine the `catalog` and
+  `assess` agents are taught query families from — named three of
+  `QueryFamily`'s four members, silently dropping `rival`; the `prompts/
+  README.md` doctrine index carried the identical gap. Both corrected, with
+  a test pinning the doctrine's list against the real union.
 
 ### Also in this range
 
