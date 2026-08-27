@@ -563,7 +563,7 @@ export interface HarvestReturn {
  * what a writer may not claim), and an unreadable host lands company-shaped
  * with relation `unknown` plus the reason code carrying the refusal.
  */
-const SWARM_KIND_OF: Record<string, string> = {
+export const SWARM_KIND_OF: Record<string, string> = {
   company: "company",
   product: "product",
   community: "community",
