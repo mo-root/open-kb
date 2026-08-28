@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest"
+import { INTENTS as SWEEP_INTENTS } from "@open-kb/sweep"
 import {
+  INTENTS,
   STAGES,
   advance,
   allDone,
@@ -223,6 +225,48 @@ describe("readPlanned: the plan/planned frame", () => {
     const capped = readPlanned({ kind: "planned", queries: [], ceiling: 120, clockSeconds: 45 })
     expect(capped?.ceiling).toBe(120)
     expect(capped?.clockSeconds).toBe(45)
+  })
+})
+
+/**
+ * A hand-copied vocabulary, never pinned to the copy it was copied from.
+ *
+ * `@open-kb/sweep`'s `INTENTS` (sweep.ts:204) is what the catalog agent's schema
+ * binds to (`z.enum(INTENTS)` on `PlannedQuery`, sweep.ts:889) — the only eight
+ * words a planned query's `intent` field can ever carry over the wire. This
+ * file's own `INTENTS` (types.ts:127) is a second, independent copy: the doc
+ * comment above it calls out that types.ts is "the wire contract... these are
+ * readers, not type assertions", the same deliberate decoupling `lib/
+ * viewTypes.ts` documents for the engine/reader split — so importing
+ * `@open-kb/sweep`'s copy directly and dropping this one is not the fix, the
+ * same way SELF-137 (`the-judge-and-remember-teach-one-vocabulary.test.ts`)
+ * chose a pinning test over a merge for `RELATIONS`/`JUDGED_RELATIONS`.
+ *
+ * The risk is `readPlannedQuery`'s own fallback, three lines below the second
+ * copy: `SOURCES.includes(source) ? source : "unknown"` (`SOURCES` is this
+ * file's `INTENTS`, widened). An intent the engine adds and this file does not
+ * copy would compile clean on both sides of the workspace boundary — the
+ * schema in sweep.ts accepts it, this array does not — and every query
+ * carrying it would silently render grouped under "unknown" in the plan
+ * panel, the same silent-misclassification shape SELF-105..109 and SELF-137
+ * found in every other hand-copied vocabulary in this repo. `@open-kb/web`
+ * already depends on `@open-kb/sweep` at the package level (`ResultPanel.
+ * test.tsx` pins `KIND_COLOR` against core's `JUDGED_KINDS` the same way), so
+ * nothing new is wired here — only checked. Confirmed today the two agree,
+ * eight words each.
+ */
+describe("INTENTS: this file's own copy of the catalog's wire vocabulary", () => {
+  const engine = new Set<string>(SWEEP_INTENTS)
+  const ui = new Set<string>(INTENTS)
+
+  it("every intent the catalog's schema can produce, this file's vocabulary also names", () => {
+    // Named rather than counted: a failure has to say WHICH word is missing,
+    // so the fix is obvious — add it to this file's own INTENTS.
+    expect([...engine].filter((i) => !ui.has(i))).toEqual([])
+  })
+
+  it("and nothing this file names is a word the catalog's schema does not accept", () => {
+    expect([...ui].filter((i) => !engine.has(i))).toEqual([])
   })
 })
 
