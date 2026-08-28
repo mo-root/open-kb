@@ -9,6 +9,7 @@ import {
   recallTool,
   rememberTool,
   commercialDowngradeHint,
+  directoryDowngradeHint,
   linksOf,
   SLICE,
   type MapNode,
@@ -660,9 +661,7 @@ describe("rememberTool", () => {
     expect(r.downgraded).toHaveLength(1)
     expect(r.downgraded[0]).toMatchObject({ key: "listicle.com", relation: "competitor" })
     expect(r.downgraded[0]!.because).toContain("15 distinct vendor domains")
-    expect(r.downgraded[0]!.hint).toBe(
-      "a page that enumerates vendors maps as a directory; open the vendors it names and record them instead",
-    )
+    expect(r.downgraded[0]!.hint).toBe(directoryDowngradeHint)
   })
 
   it("with a threshold, a company whose own page enumerates vendors becomes a directory", () => {
