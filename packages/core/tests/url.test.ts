@@ -11,6 +11,33 @@ describe("canonicalUrl", () => {
     expect(canonicalUrl("https://a.com/x?utm_source=g&id=7")).toBe("https://a.com/x?id=7")
   })
 
+  it("drops every non-utm_ tracking key TRACKING names, individually", () => {
+    // TRACKING (url.ts:1) is `/^(utm_|fbclid$|gclid$|mc_cid$|mc_eid$|ref$|source$)/i` — five
+    // exact-match alternatives beside the `utm_` prefix, none of them exercised on their own
+    // (the one existing test above only drives `utm_source`). Each dropped here to pin that
+    // the whole list, not just the `utm_` branch, actually fires.
+    for (const key of ["fbclid", "gclid", "mc_cid", "mc_eid"]) {
+      expect(canonicalUrl(`https://a.com/x?${key}=1&id=7`), key).toBe("https://a.com/x?id=7")
+    }
+  })
+
+  it("drops the bare keys 'ref' and 'source', not only their utm_-prefixed spellings", () => {
+    // `ref$` and `source$` are anchored on the whole key, not `utm_ref$`/`utm_source$` — so a
+    // page that tags its own affiliate/referral link with the bare param name (a real, common
+    // spelling this repo does not control) loses it here exactly as if it had been `utm_ref` or
+    // `utm_source`. Worth pinning on its own: `ref$|source$` reads at a glance like a typo for
+    // the `utm_` forms, and anchoring it that way instead would silently start keeping the two
+    // most common non-utm tracking spellings — the opposite of what a URL-identity function is
+    // for. Measured with the regex directly: `ref`/`source` test true, `referrer`/`sourceid` test
+    // false, so the anchor is doing real, narrow work, not swallowing every param that mentions
+    // either word.
+    expect(canonicalUrl("https://a.com/x?ref=abc&id=7")).toBe("https://a.com/x?id=7")
+    expect(canonicalUrl("https://a.com/x?source=abc&id=7")).toBe("https://a.com/x?id=7")
+    // Neither is a prefix match: a longer key that merely contains the word survives.
+    expect(canonicalUrl("https://a.com/x?referrer=abc&id=7")).toBe("https://a.com/x?id=7&referrer=abc")
+    expect(canonicalUrl("https://a.com/x?sourceid=abc&id=7")).toBe("https://a.com/x?id=7&sourceid=abc")
+  })
+
   it("treats the bare root and the slashed root as the same url", () => {
     expect(canonicalUrl("https://a.com")).toBe(canonicalUrl("https://a.com/"))
   })
