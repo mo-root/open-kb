@@ -373,6 +373,44 @@ describe("an untiered run says nothing about tiers", () => {
     expect(skill).toContain("own-page > page > snippet")
     expect(tiered.find((f) => f.path === "AGENTS.md")?.content).toContain("**tier** is where the evidence came from")
   })
+
+})
+
+describe("a tiered relation list sorts by tier first, ahead of seenIn", () => {
+  it("orders own-page before page before snippet, even against a higher seenIn", () => {
+    /**
+     * `relations/*.md` heads a tiered list with "Ordered by evidence tier,
+     * strongest first," but every fixture in this file that carries mixed
+     * tiers puts one entity per relation, and every fixture with more than
+     * one same-relation entity leaves tier unset (the seenIn tie-break
+     * tests above, in "an untiered run says nothing about tiers"). Grepped
+     * this file for "Ordered by evidence tier" and "strongest first" before
+     * this test: no match — tierSort's own tier-first key had never been
+     * exercised, only its seenIn/slug tie-breaks. The snippet row here
+     * carries the highest seenIn of the three, so a regression that sorted
+     * by seenIn ahead of tier (or a typo that priced tiers the other way
+     * round, own-page ranking after snippet) would still pass every other
+     * test in this file.
+     */
+    const files = exportKbFiles({
+      anchor: "clerk.com",
+      entities: [
+        { name: "Gamma", domain: "gamma-snippet.example", kind: "company", relation: "competitor", what: "A rival.", why: "Same buyer.", tier: "snippet", seenIn: 50 },
+        { name: "Alpha", domain: "alpha-own.example", kind: "company", relation: "competitor", what: "A rival.", why: "Same buyer.", tier: "own-page", seenIn: 1 },
+        { name: "Beta", domain: "beta-page.example", kind: "company", relation: "competitor", what: "A rival.", why: "Same buyer.", tier: "page", seenIn: 1 },
+      ],
+    })
+    const list = files.find((f) => f.path === "relations/competitor.md")?.content ?? ""
+    expect(list).toContain("Ordered by evidence tier, strongest first.")
+    const iOwn = list.indexOf("alpha-own-example")
+    const iPage = list.indexOf("beta-page-example")
+    const iSnippet = list.indexOf("gamma-snippet-example")
+    expect(iOwn).toBeGreaterThan(-1)
+    expect(iPage).toBeGreaterThan(-1)
+    expect(iSnippet).toBeGreaterThan(-1)
+    expect(iOwn).toBeLessThan(iPage)
+    expect(iPage).toBeLessThan(iSnippet)
+  })
 })
 
 describe("a segment says its own shape", () => {
