@@ -1,5 +1,7 @@
+import { readFileSync } from "node:fs"
+import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
-import { COMPANY_TYPES, groupLabel, nodeTypeOf } from "./nodeTypes"
+import { COMPANY_TYPES, groupLabel, nodeTypeOf, TYPE_COLOR } from "./nodeTypes"
 
 /**
  * `nodeTypeOf` and `groupLabel` had zero direct test coverage anywhere,
@@ -48,5 +50,54 @@ describe("groupLabel: the reader-facing spelling of a group", () => {
 describe("COMPANY_TYPES: which node types are a company on the map", () => {
   it("is exactly product and player — core and community are deliberately out", () => {
     expect(COMPANY_TYPES).toEqual(["product", "player"])
+  })
+})
+
+/**
+ * TYPE_COLOR vs globals.css: two hand-copied hex tables, never pinned to each
+ * other. nodeTypes.ts's own doc comment states the invariant twice — "the
+ * hexes must stay identical to app/globals.css's --type-* tokens" for
+ * product/player/core (fixed across both themes), and community "kept in
+ * sync with --type-community's DARK step" — but nothing checked either
+ * claim. Same shape as SELF-105..109's drifted enums: a real coupling, stated
+ * only in a comment, with no test standing behind it. Read out of the actual
+ * stylesheet rather than restated, so a future edit to one side only fails
+ * here instead of drifting silently — theme.test.ts's layout.tsx extraction
+ * is the precedent for reading a real source file this way.
+ */
+const GLOBALS_CSS = readFileSync(
+  fileURLToPath(new URL("../app/globals.css", import.meta.url)),
+  "utf8",
+)
+
+/** First `--type-<name>` hex at or after `fromIndex`, lower-cased. */
+function typeHex(name: string, fromIndex = 0): string {
+  const re = /--type-([a-z]+):\s*(#[0-9a-fA-F]{6})/g
+  re.lastIndex = fromIndex
+  let m: RegExpExecArray | null
+  while ((m = re.exec(GLOBALS_CSS))) {
+    if (m[1] === name) return m[2].toLowerCase()
+  }
+  throw new Error(`no --type-${name} found in globals.css from index ${fromIndex}`)
+}
+
+describe("TYPE_COLOR: pinned to globals.css's --type-* tokens", () => {
+  it("product, player and core match the light block, fixed across both themes", () => {
+    expect(TYPE_COLOR.product.toLowerCase()).toBe(typeHex("product"))
+    expect(TYPE_COLOR.player.toLowerCase()).toBe(typeHex("player"))
+    expect(TYPE_COLOR.core.toLowerCase()).toBe(typeHex("core"))
+  })
+
+  it("community matches the DARK step, not the light paper step — the one --type-* that steps per theme", () => {
+    // The bare string ':root[data-theme="dark"]' also appears in this file's
+    // opening doc comment (prose explaining the theme toggle), well before the
+    // real selector — anchoring on that alone would find the comment, not the
+    // dark block, and silently compare the light value against itself.
+    const darkBlockAt = GLOBALS_CSS.search(/:root\[data-theme="dark"\]\s*\{/)
+    expect(darkBlockAt).toBeGreaterThan(-1)
+    const lightCommunity = typeHex("community")
+    const darkCommunity = typeHex("community", darkBlockAt)
+    expect(lightCommunity).not.toBe(darkCommunity) // sanity: the steps really differ
+    expect(TYPE_COLOR.community.toLowerCase()).toBe(darkCommunity)
   })
 })
