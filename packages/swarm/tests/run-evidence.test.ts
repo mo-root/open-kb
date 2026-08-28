@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { textDigest, addressKey, echoFoldedDigest, strongerTier, originKey } from "../src/run-evidence.js"
+import { textDigest, addressKey, echoFoldedDigest, strongerTier, originKey, RunEvidence, MAX_STORED_BYTES } from "../src/run-evidence.js"
 
 /**
  * `RunEvidence`'s five pure key functions had zero direct test coverage
@@ -94,5 +94,42 @@ describe("originKey: the registrable host a URL's bytes came from", () => {
 
   it("is empty, not a throw, when the URL does not parse", () => {
     expect(originKey("not a url")).toBe("")
+  })
+})
+
+/**
+ * SELF-134, D-scope, self-discovered. `record`'s own comment states the
+ * invariant: "`rec.text` is already the MAX_STORED_BYTES slice, and `hasText`
+ * asks about the same slice: a capped page must not digest one way going in
+ * and another coming out." Nothing in this repo hands either method text at
+ * or past the 4MB cap — every fixture across packages/swarm/tests tops out at
+ * a few KB (`tools-paid.test.ts`'s largest is 2,000 repeats of "real words ",
+ * a few tens of KB) — so the slice-consistency the comment promises had never
+ * actually run.
+ */
+describe("RunEvidence.record + hasText: an over-cap page digests the same way going in and coming back out", () => {
+  it("caps stored text at MAX_STORED_BYTES and recognizes a re-read of the identical over-cap bytes", () => {
+    const url = "https://huge.example.com/page"
+    // Content past the cap boundary that would leak into the digest if record()
+    // and hasText() ever sliced to different lengths.
+    const overCap = "a".repeat(MAX_STORED_BYTES) + "TAIL THAT MUST NEVER BE DIGESTED"
+    const evidence = new RunEvidence()
+    const rec = evidence.record({ url, text: overCap, status: "found", tier: "page" })
+
+    expect(rec.text.length).toBe(MAX_STORED_BYTES)
+    // A re-fetch handing back the same over-cap bytes under the same url is the
+    // exact case the comment is about: without matching slices this returns false
+    // and the run pays to re-read a giant page it already holds.
+    expect(evidence.hasText(overCap, url)).toBe(true)
+  })
+
+  it("still tells two over-cap pages apart when they differ before the cap boundary", () => {
+    const url = "https://huge.example.com/page"
+    const evidence = new RunEvidence()
+    evidence.record({ url, text: "a".repeat(MAX_STORED_BYTES), status: "found", tier: "page" })
+
+    // Proves the pass above isn't vacuous — hasText does not just return true for
+    // any text this long, only for the ones whose first MAX_STORED_BYTES bytes match.
+    expect(evidence.hasText("b".repeat(MAX_STORED_BYTES), url)).toBe(false)
   })
 })
