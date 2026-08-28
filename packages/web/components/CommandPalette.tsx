@@ -12,6 +12,7 @@ import {
   useState,
 } from "react";
 import { NodeGlyph, type GlyphKind } from "@/components/icons";
+import { isTypingTarget } from "@/lib/typingGuard";
 
 /* ⌘K — one way to reach everything.
    ---------------------------------------------------------------------------
@@ -130,9 +131,7 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = document.activeElement;
-      const typing =
-        el instanceof HTMLElement &&
-        (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+      const typing = el instanceof HTMLElement && isTypingTarget(el.tagName, el.isContentEditable);
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setOpen((v) => !v);

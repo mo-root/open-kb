@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { NodeGlyph, TYPE_GLYPH } from "@/components/icons";
 import { TYPE_CSS, type NodeType } from "@/lib/nodeTypes";
+import { isTypingTarget } from "@/lib/typingGuard";
 
 /* Finding one node on a map of three hundred.
    ---------------------------------------------------------------------------
@@ -50,9 +51,7 @@ export function GraphSearch({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = document.activeElement;
-      const typing =
-        el instanceof HTMLElement &&
-        (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+      const typing = el instanceof HTMLElement && isTypingTarget(el.tagName, el.isContentEditable);
       if (e.key === "/" && !typing && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
         boxRef.current?.focus();
