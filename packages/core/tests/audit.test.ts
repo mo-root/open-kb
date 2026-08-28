@@ -314,6 +314,29 @@ describe("scoreAuditPacket scoring", () => {
     }
   })
 
+  it("says κ is undefined when both readers are constant, rather than dropping the sentence silently", () => {
+    // cohenKappa returns null when chance agreement pe=1 — both raters constant
+    // (line 196 above) — but scoreAuditPacket never fed that value back through
+    // with a non-empty gold set: every other scoring test that supplies
+    // goldVerdict deliberately splits verdicts to keep κ defined (see the two
+    // tests above). A gold set where the auditor's own verdicts were themselves
+    // constant against a constant gold label — e.g. a stratum rubber-stamped
+    // "right" that the gold set also calls "right" — is a real, reachable
+    // packet, and the specific sentence string (audit.ts:287) had no test.
+    const p = fill(build(pool(20, 10), { n: 30 }), { secondReview: "both" }, (r) => ({
+      ...r,
+      verdict: "right",
+      goldVerdict: "right",
+    }))
+    const out = scoreAuditPacket(p)
+    expect(out.scored).toBe(true)
+    if (out.scored) {
+      expect(out.kappa?.value).toBeNull()
+      expect(out.kappa?.goldN).toBe(30)
+      expect(out.sentences).toContain("gold set of 30 rows, but κ is undefined — both readers were constant")
+    }
+  })
+
   it("drops the too-small warning at 50 gold rows and up", () => {
     const p = fill(build(pool(80, 40), { n: 60 }), { secondReview: "both" }, (r, i) => ({
       ...r,
