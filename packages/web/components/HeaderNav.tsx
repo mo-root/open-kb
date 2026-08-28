@@ -20,7 +20,7 @@ import { DEMO_REPO } from "@/lib/demo";
    390px screen and shoved the whole nav out of the header's 56px row — the one
    place the chrome must not move. The full label returns at `sm`, where it
    fits, so nothing is permanently abbreviated for the sake of the small case. */
-const ITEMS: {
+export const ITEMS: {
   href: string;
   label: string;
   short: string;
