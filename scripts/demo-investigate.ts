@@ -7,6 +7,58 @@ import { EvidenceStore, SpanStream, investigate } from "../packages/core/src/ind
 import { brightDataSearch, brightDataFetch, priceForModel } from "../packages/providers/src/index.js"
 import { openrouter } from "@openrouter/ai-sdk-provider"
 
+/** The run record written to `runs/demo-<slug>-<stamp>.json`, pulled out of
+ *  the `investigate()` call it used to sit directly after so it can be
+ *  exercised without one — this whole file ran at import time (a live
+ *  BrightData/OpenRouter call via top-level `await investigate`), so nothing
+ *  in it was reachable from a test process, the same gap discover.ts's
+ *  costBreakdown and the rest of `scripts/*.ts beyond sweep.ts` were already
+ *  swept for. No disk access here (that stays in the `invokedDirectly` body
+ *  below, next to `writeFileSync`) — this only shapes what gets written.
+ *  `stats` is a plain re-count of `spanLog`, not `out` itself, so an empty
+ *  run (a refusal before any span lands) is all zeros here rather than the
+ *  NaN-on-an-empty-population class discover.ts's costBreakdown was fixed
+ *  for — there is no division here to produce one, and the test locks that
+ *  it stays that way. */
+export function demoRunRecord(opts: {
+  anchor: string
+  out: { nodes: number; edges: number; usd: number; summary: unknown }
+  elapsed: number
+  pagesFetched: number
+  spanLog: readonly { kind: string; ok: boolean }[]
+  nodes: unknown[]
+  edges: unknown[]
+}) {
+  return {
+    anchor: opts.anchor,
+    stats: {
+      nodes: opts.out.nodes,
+      edges: opts.out.edges,
+      usd: opts.out.usd,
+      seconds: opts.elapsed,
+      pagesFetched: opts.pagesFetched,
+      spans: opts.spanLog.length,
+      searches: opts.spanLog.filter((s) => s.kind === "search").length,
+      fetches: opts.spanLog.filter((s) => s.kind === "fetch").length,
+      failures: opts.spanLog.filter((s) => !s.ok).length,
+    },
+    nodes: opts.nodes,
+    edges: opts.edges,
+    spans: opts.spanLog,
+    summary: opts.out.summary,
+  }
+}
+
+// Body left un-indented after the `invokedDirectly` guard, the same choice
+// batch.ts/bench.ts/bakeoff.ts made wrapping a pre-existing body: re-indenting
+// the whole thing would bury this diff's real change (the demoRunRecord
+// extraction above) under a column shift on every line — and packages/web/
+// lib/runs.test.ts's writer-shape scan matches `const stamp = new Date` and
+// the `outPath` template literal at column 0, so an indented copy would stop
+// being the writer that guard finds.
+const invokedDirectly = process.argv[1] ? import.meta.url.endsWith(process.argv[1].split("/").pop() ?? "\0") : false
+if (invokedDirectly) {
+
 const anchor = process.argv[2] ?? "resend.com"
 const MODEL = process.env.OPENKB_MODEL ?? "deepseek/deepseek-v4-flash-0731"
 
@@ -108,26 +160,19 @@ const outPath = `runs/demo-${anchor.replace(/\W+/g, "-")}-${stamp}.json`
 writeFileSync(
   outPath,
   JSON.stringify(
-    {
+    demoRunRecord({
       anchor,
-      stats: {
-        nodes: out.nodes,
-        edges: out.edges,
-        usd: out.usd,
-        seconds: elapsed,
-        pagesFetched: ctx.evidence.size(),
-        spans: spanLog.length,
-        searches: spanLog.filter((s) => s.kind === "search").length,
-        fetches: spanLog.filter((s) => s.kind === "fetch").length,
-        failures: spanLog.filter((s) => !s.ok).length,
-      },
+      out,
+      elapsed,
+      pagesFetched: ctx.evidence.size(),
+      spanLog,
       nodes: [...ctx.graph.nodes.values()],
       edges: ctx.graph.edges,
-      spans: spanLog,
-      summary: out.summary,
-    },
+    }),
     null,
     2,
   ),
 )
 console.log(`\nwrote ${outPath}`)
+
+}
