@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
-import { COMPANY_TYPES, groupLabel, nodeTypeOf, TYPE_COLOR } from "./nodeTypes"
+import { COMPANY_TYPES, groupLabel, nodeTypeOf, TYPE_COLOR, TYPE_ORDER } from "./nodeTypes"
 
 /**
  * `nodeTypeOf` and `groupLabel` had zero direct test coverage anywhere,
@@ -99,5 +99,25 @@ describe("TYPE_COLOR: pinned to globals.css's --type-* tokens", () => {
     const darkCommunity = typeHex("community", darkBlockAt)
     expect(lightCommunity).not.toBe(darkCommunity) // sanity: the steps really differ
     expect(TYPE_COLOR.community.toLowerCase()).toBe(darkCommunity)
+  })
+})
+
+/**
+ * TYPE_ORDER is a plain `NodeType[]`, unlike its four siblings in this file
+ * (TYPE_COLOR, TYPE_CSS, TYPE_LABEL, TYPE_ICON), which are all
+ * `Record<NodeType, ...>` — a shape tsc itself rejects if a member goes
+ * missing. TYPE_ORDER carries no such guarantee: it is the same "hand-copied
+ * array, not compiler-checked against the real union" shape as FAMILY_TONE
+ * and RELATION_ORDER/RELATION_COLOR (SELF-105..108), and it isn't a cosmetic
+ * miss if it drifts — KbOverview.tsx's totalTyped (line 861) sums
+ * `TYPE_ORDER.reduce((n, t) => n + counts[t], 0)`, so a NodeType missing from
+ * this array would silently undercount the map's own total. TYPE_COLOR's
+ * keys are the tsc-enforced canonical member set (Object.keys on any of the
+ * four Records would do equally) to pin it against.
+ */
+describe("TYPE_ORDER: every NodeType member exactly once", () => {
+  it("matches TYPE_COLOR's key set, with no member missing or repeated", () => {
+    expect(new Set(TYPE_ORDER)).toEqual(new Set(Object.keys(TYPE_COLOR)))
+    expect(TYPE_ORDER.length).toBe(Object.keys(TYPE_COLOR).length)
   })
 })
