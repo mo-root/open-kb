@@ -92,8 +92,13 @@ function Toggle({
 
 /* Three named starting points, because dialling a dozen controls to reach a
    look you can describe in one word is a chore. They write the same settings
-   any hand could; nothing here is hidden or unreachable by the sliders. */
-const PRESETS: { key: string; label: string; hint: string; patch: Partial<Settings> }[] = [
+   any hand could; nothing here is hidden or unreachable by the sliders.
+   Exported so a test can check every numeric field a preset sets actually
+   falls inside the slider range that field owns in lib/graph/settings.ts —
+   nothing but `Partial<Settings>` ties this table to RANGES today, so a
+   preset edited to a value outside its own slider's bounds would compile
+   clean and only show up as a control with its thumb off the track. */
+export const PRESETS: { key: string; label: string; hint: string; patch: Partial<Settings> }[] = [
   {
     key: "quiet",
     label: "Quiet",
