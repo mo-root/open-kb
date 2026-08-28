@@ -1,6 +1,14 @@
 import { format } from "node:util"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { faultNotice, faultRef, faultResponse, guarded, logFault, namedFaults } from "./api-error"
+import {
+  faultNotice,
+  faultRef,
+  faultResponse,
+  guarded,
+  isNamedFault,
+  logFault,
+  namedFaults,
+} from "./api-error"
 
 /**
  * The exact string measured escaping lib/runs.ts on a `next start` with
@@ -317,6 +325,39 @@ describe("faultNotice — what a page is allowed to say", () => {
     expect(ladder(new Error(""))).toBe("could not list")
     expect(ladder("")).toBe("could not list")
     expect(ladder(undefined)).toBe("could not list")
+  })
+})
+
+describe("isNamedFault", () => {
+  // The one caller is `failRun` in lib/runs.ts (runs.test.ts exercises it end
+  // to end, through `runCostCeiling` plus an aborted signal), but the boolean
+  // itself — the thing that decides "Stopped." versus a stated reason — had
+  // no direct test of its own in this file, unlike every other export here.
+
+  it("is true for a fault this app named", () => {
+    expect(isNamedFault(namedFaults.runsDirIsRoot("/", "/"))).toBe(true)
+  })
+
+  it("is false for an ordinary error, even with the same words", () => {
+    // Same message as a named fault, but never passed through `NamedFault` —
+    // proves the brand is checked, not the text.
+    expect(isNamedFault(new Error(REAL_FAULT.message))).toBe(false)
+  })
+
+  it("is false for anything that is not an Error at all", () => {
+    expect(isNamedFault("kaboom")).toBe(false)
+    expect(isNamedFault({ code: 500 })).toBe(false)
+    expect(isNamedFault(null)).toBe(false)
+    expect(isNamedFault(undefined)).toBe(false)
+  })
+
+  it("recognises the brand across a duplicated module, same as faultNotice", () => {
+    // The exact hazard `faultNotice`'s own test above is written against:
+    // `instanceof NamedFault` is false between two copies of this module, so
+    // the brand has to be the well-known symbol, not the class alone.
+    const fromAnotherCopy = new Error(REAL_FAULT.message)
+    Object.defineProperty(fromAnotherCopy, Symbol.for("open-kb.named-fault"), { value: true })
+    expect(isNamedFault(fromAnotherCopy)).toBe(true)
   })
 })
 
