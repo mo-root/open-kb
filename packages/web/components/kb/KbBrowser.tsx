@@ -15,7 +15,7 @@ import { NotesTab } from "./NotesTab";
 import { ProductsTab } from "./ProductsTab";
 import { TabBar, type TabDef } from "./TabBar";
 
-type Tab = "overview" | "notes" | "products" | "graph";
+export type Tab = "overview" | "notes" | "products" | "graph";
 
 // Each tab carries its bureau glyph so the bar is scannable by mark, not just
 // text: overview→company (the hub), notes→docs, products→product,
@@ -37,6 +37,36 @@ const TAB_IDS = new Set<string>(TABS.map((t) => t.id));
 /* Tabs that opt into the full pane width. Everything else stays at content
    width, so this cannot regress a surface that was not designed for it. */
 const PANE_TABS: ReadonlySet<Tab> = new Set<Tab>(["graph"]);
+
+/**
+ * The entity a bare KB URL opens on: the anchor, the one page that explains
+ * what every other page is measured against. `company.md` wins by convention
+ * wherever it sits in the list; the first note otherwise, so a map that
+ * somehow shipped without an anchor note still opens on something rather than
+ * a blank pane. Exported (not a component-local closure) so this fallback
+ * order can be pinned by a test without a render harness — same shape as
+ * HeaderNav's `active()`, extracted for the same reason.
+ */
+export function pickDefaultNote(notes: Pick<NoteRef, "path">[]): string | null {
+  return notes.find((n) => n.path === "company.md")?.path ?? notes[0]?.path ?? null;
+}
+
+/** A hand-typed `?tab=` is untrusted input: an unknown id falls back to
+ *  Overview rather than rendering a page with no panel in it. */
+export function resolveTab(requested: string, ids: ReadonlySet<string>): Tab {
+  return (ids.has(requested) ? requested : "overview") as Tab;
+}
+
+/** `?note=` deep links land here; a path this map never wrote (a stale link,
+ *  a typo, a note the run dropped since the link was shared) falls back to
+ *  the default note rather than a dead view. */
+export function resolveNote(
+  requested: string | null,
+  notes: Pick<NoteRef, "path">[],
+  defaultNote: string | null,
+): string | null {
+  return requested && notes.some((n) => n.path === requested) ? requested : defaultNote;
+}
 
 export function KbBrowser({
   slug,
@@ -84,25 +114,15 @@ export function KbBrowser({
   readPages?: string[];
   initialNote?: string;
 }) {
-  // The entity a bare KB URL opens on: the anchor, the one page that explains
-  // what every other page is measured against.
-  const defaultNote = useMemo(
-    () => notes.find((n) => n.path === "company.md")?.path ?? notes[0]?.path ?? null,
-    [notes],
-  );
+  const defaultNote = useMemo(() => pickDefaultNote(notes), [notes]);
 
   const [view, go] = useUrlView({
     tab: "overview",
-    // ?note= deep links land here; unknown paths fall back to the anchor rather
-    // than a dead view.
-    note: initialNote && notes.some((n) => n.path === initialNote) ? initialNote : null,
+    note: resolveNote(initialNote ?? null, notes, null),
   });
 
-  // A hand-typed ?tab= is untrusted input: an unknown one falls back to
-  // Overview rather than rendering a page with no panel in it.
-  const tab: Tab = (TAB_IDS.has(view.tab) ? view.tab : "overview") as Tab;
-  const selected =
-    view.note && notes.some((n) => n.path === view.note) ? view.note : defaultNote;
+  const tab: Tab = resolveTab(view.tab, TAB_IDS);
+  const selected = resolveNote(view.note, notes, defaultNote);
 
   const setTab = useCallback((id: Tab) => go({ tab: id }), [go]);
   const setSelected = useCallback((path: string) => go({ note: path }, "push"), [go]);
