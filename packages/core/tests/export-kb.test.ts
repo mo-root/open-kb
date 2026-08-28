@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { exportDrop, exportKbFiles, receiptSource, slugOf } from "../src/export-kb.js"
+import { exportDrop, exportKbFiles, receiptSource, slugOf, withoutStolenNames } from "../src/export-kb.js"
 
 /** A tiered run (the swarm shape): every kept row carries a provenance tier, so
  *  the export is allowed to explain what a tier is. Also carries one row per
@@ -601,6 +601,108 @@ describe("a name the stored map never owned", () => {
       entities: [{ name: "X", domain: "other.example", kind: "company", relation: "competitor", what: "A rival.", why: "Same buyer." }],
     })
     expect(files.find((f) => f.path === "entities/other-example.md")?.content ?? "").toContain("# X")
+  })
+})
+
+/**
+ * `withoutStolenNames` itself, not just `exportKbFiles`'s markdown around it.
+ * Every existing case above drives it only through the rendered vault, so the
+ * function's own return contract — `entities`, `edges`, and `stripped` — has
+ * never been asserted directly, in either of its two callers: this file's
+ * `exportKbFiles` (line 528) and `packages/web/lib/kb-from-run.ts`'s `place`
+ * (line 404), which reads `.entities`/`.edges` and drops `.stripped` on the
+ * floor — so `stripped`, the one field neither caller touches, had zero
+ * coverage of any kind anywhere in the repo.
+ */
+describe("withoutStolenNames", () => {
+  const anchor = "stripe.com" // label "stripe", 6 chars — well past the 3-char floor
+
+  it("repairs a host wearing the anchor's name, and names it in stripped", () => {
+    const result = withoutStolenNames({
+      anchor,
+      entities: [
+        {
+          name: "Stripe",
+          domain: "aws.amazon.com",
+          kind: "product",
+          relation: "competitor",
+          what: "Payments infrastructure.",
+          why: "Sells the same thing.",
+          spans: ["accept payments in minutes"],
+          descGrounded: 0.6,
+          descSpans: { verified: 1, claimed: 1 },
+        },
+      ],
+    })
+    expect(result.stripped).toEqual(["aws.amazon.com"])
+    expect(result.entities).toEqual([
+      {
+        name: "aws.amazon.com",
+        domain: "aws.amazon.com",
+        kind: "unknown",
+        relation: "unknown",
+        what: "",
+        why: "",
+        because: "the stored map gave this host the anchor's own identity, so nothing it said about it stands",
+        spans: undefined,
+        descGrounded: undefined,
+        descSpans: undefined,
+      },
+    ])
+  })
+
+  it("spares a host whose own name spells the anchor", () => {
+    // "stripe.ie" -> identityKey "stripeie", which includes anchorLabel "stripe":
+    // the anchor reached another way, not a theft.
+    const result = withoutStolenNames({
+      anchor,
+      entities: [{ name: "Stripe", domain: "stripe.ie", kind: "company", relation: "competitor", what: "The anchor's Irish site.", why: "Same brand." }],
+    })
+    expect(result.stripped).toEqual([])
+    expect(result.entities[0]?.name).toBe("Stripe")
+  })
+
+  it("leaves a nameless-host row untouched — no host, nothing to fall back to", () => {
+    const result = withoutStolenNames({
+      anchor,
+      entities: [{ name: "Stripe", kind: "company", relation: "competitor", what: "No domain on this row." }],
+    })
+    expect(result.stripped).toEqual([])
+    expect(result.entities[0]?.what).toBe("No domain on this row.")
+  })
+
+  it("only strips an edge whose why quotes the exact stolen name, into the stolen host", () => {
+    const result = withoutStolenNames({
+      anchor,
+      entities: [
+        { name: "Stripe", domain: "aws.amazon.com", kind: "product", relation: "competitor", what: "x", why: "y" },
+        { name: "Neighbour", domain: "n.example", kind: "company", relation: "competitor", what: "A rival.", why: "Same shortlist." },
+      ],
+      edges: [
+        // Minted by the stolen name, `to` the stolen host: dropped.
+        { from: "n.example", to: "aws.amazon.com", why: 'a page on n.example names "Stripe"' },
+        // Touches the stolen host but was minted by a different name: kept.
+        { from: "x.example", to: "aws.amazon.com", why: "a page on x.example discusses payments" },
+        // `to` a different host entirely: kept regardless of wording.
+        { from: "aws.amazon.com", to: "n.example", why: 'a page on aws.amazon.com names "Neighbour"' },
+      ],
+    })
+    expect(result.edges).toEqual([
+      { from: "x.example", to: "aws.amazon.com", why: "a page on x.example discusses payments" },
+      { from: "aws.amazon.com", to: "n.example", why: 'a page on aws.amazon.com names "Neighbour"' },
+    ])
+  })
+
+  it("declines below the 3-char floor, unchanged and with nothing stripped", () => {
+    const entities = [{ name: "X", domain: "other.example", kind: "company", relation: "competitor", what: "A rival.", why: "Same buyer." }]
+    const result = withoutStolenNames({ anchor: "x.com", entities })
+    expect(result.stripped).toEqual([])
+    expect(result.entities).toEqual(entities)
+  })
+
+  it("defaults edges to an empty array when the run carries none", () => {
+    const result = withoutStolenNames({ anchor, entities: [] })
+    expect(result.edges).toEqual([])
   })
 })
 
