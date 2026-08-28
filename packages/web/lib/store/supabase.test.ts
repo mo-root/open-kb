@@ -38,6 +38,29 @@ describe("the supabase store", () => {
   })
 
   /**
+   * `config()`'s `url.replace(/\/+$/, "")` had no test anywhere — every other
+   * test in this file stubs `SUPABASE_URL` bare, with no trailing slash, so
+   * the strip could be deleted and the whole suite would stay green. A
+   * Supabase project's dashboard shows the URL as
+   * `https://xyz.supabase.co/`, one click from a copy-paste into `.env`, and
+   * `rest()` builds every request as `${cfg.url}/rest/v1/${path}` — without
+   * the strip that becomes `https://xyz.supabase.co//rest/v1/runs`, which
+   * PostgREST does not treat as the same route as the single-slash form.
+   * Coverage gap found sweeping web/lib/store (D-scope: "areas nobody has
+   * swept"), same file SELF-12/139-adjacent tests already covered other
+   * branches of.
+   */
+  it("strips trailing slashes from SUPABASE_URL so the REST path never doubles up", async () => {
+    vi.stubEnv("SUPABASE_URL", "https://x.supabase.co///")
+    vi.stubEnv("SUPABASE_SECRET_KEY", "k")
+    const f = vi.fn(async () => new Response("[]", { status: 200 }))
+    vi.stubGlobal("fetch", f)
+    await (await load()).listRuns()
+    const url = (f.mock.calls[0] as unknown as [string])[0]
+    expect(url).toBe("https://x.supabase.co/rest/v1/runs?select=*&order=started_at.desc&limit=100")
+  })
+
+  /**
    * The whole fallback contract. Every call site does `if (db.configured())`,
    * but a store that threw on an unset key would still take a route down
    * through any path that forgot to ask.
