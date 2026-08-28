@@ -14,7 +14,14 @@
  * `runs/stopped-<domain>-<stamp>.json` with its spans, and exits 6.
  */
 import { openrouter } from "@openrouter/ai-sdk-provider"
-import { SpanStream, withSpendCap, queriesThatFit, type Span, type SpendTrip } from "../packages/core/src/index.js"
+import {
+  SpanStream,
+  withSpendCap,
+  queriesThatFit,
+  disablesFlag,
+  type Span,
+  type SpendTrip,
+} from "../packages/core/src/index.js"
 import { priceForModel } from "../packages/providers/src/index.js"
 import { sweep, readUi, onMap } from "../packages/sweep/src/index.js"
 import { EXIT, fatal } from "./fatal.js"
@@ -26,14 +33,6 @@ import {
   cappedReason,
   stoppedRun,
 } from "./spend-caps.js"
-
-/** `"0"`/`"false"` (case-insensitive) reads as an explicit disable; unset or
- *  anything else leaves a default-on flag standing. Mirrors the "0"/"off"/
- *  "false" disable shape `OPENKB_SWARM_FAMILIES` already uses in swarm.ts. */
-const disablesFlag = (raw: string | undefined) => {
-  const v = (raw ?? "").trim().toLowerCase()
-  return v === "0" || v === "false"
-}
 
 // A user's first run is currently a
 // ~28-minute wait (runs/sweep-cursor-com-20260821105321.json) before they see

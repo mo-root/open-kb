@@ -1,4 +1,5 @@
 export { canonicalUrl, registrableHost, isReservedHost, isIpLiteral } from "./url.js"
+export { disablesFlag } from "./flags.js"
 export type { ModelPricing } from "./pricing.js"
 export {
   diffMaps,

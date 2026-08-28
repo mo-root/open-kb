@@ -5,6 +5,7 @@ import {
   queriesThatFit,
   runSeconds,
   withSpendCap,
+  disablesFlag,
   type SpanStream,
   type SpendCapOpts,
 } from "@open-kb/core"
@@ -25,15 +26,6 @@ import { LIMIT_VARS, MEASURED_RUN_COST, noteRunEnded, spendGate } from "@/lib/sp
  * request that waits for it is a request that times out, and worse, it is a
  * request whose failure destroys work that had already been paid for.
  */
-
-/** `"0"`/`"false"` (case-insensitive) reads as an explicit disable for
- *  `triage`/`secondLook`/`listicleHarvest` below — the same env-disable
- *  shape `scripts/sweep.ts` uses, so the hosted "Try the beta" path and a
- *  local clone default to the same stages and are turned off the same way. */
-const disablesFlag = (raw: string | undefined) => {
-  const v = (raw ?? "").trim().toLowerCase()
-  return v === "0" || v === "false"
-}
 
 /** Node, not Edge: the run outlives the request that started it, and the engine
  *  reads credentials off `process.env`. */
