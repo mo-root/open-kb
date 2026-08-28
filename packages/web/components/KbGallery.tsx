@@ -24,7 +24,7 @@ import type { KbSummary } from "@/lib/viewTypes";
    engine's leftovers stay off the marquee, so the third slot now surfaces
    the maps whose graphs are densest instead. */
 
-type Sort = "recent" | "size" | "linked";
+export type Sort = "recent" | "size" | "linked";
 
 const SORTS: { id: Sort; label: string; hint: string }[] = [
   { id: "recent", label: "Newest", hint: "Most recently finished run first" },
@@ -32,30 +32,34 @@ const SORTS: { id: Sort; label: string; hint: string }[] = [
   { id: "linked", label: "Most linked", hint: "Densest graphs first — the maps with the most recorded relations" },
 ];
 
-function domainOf(kb: KbSummary): string {
+export function domainOf(kb: KbSummary): string {
   return manifestStr(kb.manifest, "brand", "root", "input") ?? kb.slug;
+}
+
+/** The filter box and the sort buttons, in one place: a substring match over
+ *  the domain and the slug, then one of three comparators. Pulled out pure so
+ *  the filter's case-folding and the "recent" tie-break (a run with no
+ *  recorded finish time sorts last, not first — an empty string would
+ *  otherwise beat every real timestamp) are each exercised without rendering
+ *  the grid. */
+export function sortedGallery(kbs: KbSummary[], q: string, sort: Sort): KbSummary[] {
+  const needle = q.trim().toLowerCase();
+  const rows = needle
+    ? kbs.filter((k) => `${domainOf(k)} ${k.slug}`.toLowerCase().includes(needle))
+    : kbs.slice();
+  rows.sort((a, b) => {
+    if (sort === "size") return b.notes - a.notes;
+    if (sort === "linked") return b.edges - a.edges;
+    return (builtAtOf(b.manifest) ?? "").localeCompare(builtAtOf(a.manifest) ?? "");
+  });
+  return rows;
 }
 
 export function KbGallery({ kbs }: { kbs: KbSummary[] }) {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<Sort>("recent");
 
-  const shown = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    const rows = needle
-      ? kbs.filter((k) =>
-          `${domainOf(k)} ${k.slug}`.toLowerCase().includes(needle),
-        )
-      : kbs.slice();
-    rows.sort((a, b) => {
-      if (sort === "size") return b.notes - a.notes;
-      if (sort === "linked") return b.edges - a.edges;
-      // A run with no recorded finish time sorts last rather than first: an
-      // empty string would otherwise beat every real timestamp.
-      return (builtAtOf(b.manifest) ?? "").localeCompare(builtAtOf(a.manifest) ?? "");
-    });
-    return rows;
-  }, [kbs, q, sort]);
+  const shown = useMemo(() => sortedGallery(kbs, q, sort), [kbs, q, sort]);
 
   // The same domain mapped more than once is the norm here, so say how many
   // distinct domains are behind the count — that is the number a reader means
