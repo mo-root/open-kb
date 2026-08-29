@@ -740,8 +740,18 @@ export const RELATIONS = [
  * Same words as the anchor vocabulary, read from `from` to `to`. Direction is
  * load-bearing and is not symmetric for the channel relations: a publisher
  * covers a vendor, never the reverse.
+ *
+ * A DELIBERATE SUBSET of `RELATIONS`, not the full thing: `adjacent`,
+ * `shaper`, `buyer`, `target` and `none` describe how an entity stands to the
+ * ANCHOR and have no sense between two peers (nobody is "target" of a vendor
+ * they were not found searching for), so they are left out on purpose. That
+ * makes it a hand-written list next to the one it is a subset of, exported so
+ * `peer-relations-stay-inside-relations.test.ts` can pin the one property that
+ * has to hold even so: every word here is still a word `RELATIONS` knows,
+ * because this array is not derived from it and nothing else would catch
+ * `RELATIONS` renaming or dropping one of these eight out from under it.
  */
-const PEER_RELATIONS = [
+export const PEER_RELATIONS = [
   "competitor",
   "substitute",
   "dependency",
