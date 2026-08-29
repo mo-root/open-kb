@@ -11,8 +11,12 @@ import {
   type SearchPort,
 } from "@open-kb/core"
 import {
+  DEFAULT_CEILING_USD,
   DEFAULT_FAMILY_FLOOR,
+  DEFAULT_GRACE_MS,
   DEFAULT_LANES,
+  DEFAULT_STILLBORN_MS,
+  DEFAULT_WALL_MS,
   runSwarm,
   seedMission,
   serializeSwarmRun,
@@ -147,6 +151,27 @@ const mission = (dedupeKey: string, priority: number, tier: string) => ({
   priority,
   tier,
   dedupeKey,
+})
+
+// ── the config defaults ─────────────────────────────────────────────────────
+
+describe("orchestrator: the config defaults every omitting test leans on", () => {
+  // DEFAULT_LANES already gets pinned inline, twice below ("at DEFAULT lanes"),
+  // because so many calls below build `over` without `lanes` and the test's
+  // own assertions only hold at the fallback's actual value. The same is true
+  // of its four siblings — MEASURED by grepping this file: of 24
+  // `runSwarm(mkOpts(...))` calls, only 5 set `ceilingUsd`, 4 set `wallClockMs`,
+  // 2 set `graceMs`, and 1 sets `stillbornWindowMs`, so the rest silently run
+  // on whatever orchestrator.ts's `?? DEFAULT_*` falls back to — yet unlike
+  // DEFAULT_LANES, none of the four had a single pin anywhere in this suite.
+  // A change to any of them would pass every test here and only surface as a
+  // behavior change in production.
+  it("pins the ceiling, wall, grace and stillborn-window fallbacks", () => {
+    expect(DEFAULT_CEILING_USD).toBe(1.5)
+    expect(DEFAULT_WALL_MS).toBe(300_000)
+    expect(DEFAULT_GRACE_MS).toBe(30_000)
+    expect(DEFAULT_STILLBORN_MS).toBe(30_000)
+  })
 })
 
 // ── the seed ────────────────────────────────────────────────────────────────
