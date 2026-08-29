@@ -3,7 +3,7 @@ import { z } from "zod"
 import { EvidenceStore } from "../src/evidence.js"
 import { SpanStream } from "../src/spans.js"
 import { FakeSearch, FakeFetch } from "../src/testing/fake-provider.js"
-import { makeTools, anchorNode, nodeId, NODE_KINDS, type StoredNode, type StoredEdge } from "../src/tools.js"
+import { makeTools, anchorNode, nodeId, NODE_KINDS, NODE_KIND_GUIDE, type StoredNode, type StoredEdge } from "../src/tools.js"
 
 const ctx = () => ({
   evidence: new EvidenceStore(() => "2026-08-03T10:00:00.000Z"),
@@ -312,6 +312,20 @@ describe("remember, the kinds the model is told about", () => {
     for (const kind of NODE_KINDS) {
       expect(field.enum, `"${kind}" is a node kind the model is never offered`).toContain(kind)
       expect(described, `"${kind}" is offered but nothing says what to put in it`).toContain(kind)
+    }
+  })
+
+  it("actually says what each kind is for, not just its name", () => {
+    // The check above can never catch a regression to the exact bug it describes: `described`
+    // is built as `${kind} — ${NODE_KIND_GUIDE[kind]}`, so `toContain(kind)` passes off the
+    // template's own key, even if NODE_KIND_GUIDE[kind] were emptied back to "". Pin the guide
+    // text itself, and pin it into the spliced description, so an empty or dropped entry fails
+    // here instead of silently reproducing the capability/buyer bug this file documents.
+    const field = kindField()
+    const described = `${makeTools(ctx()).remember.description ?? ""} ${field.description ?? ""}`
+    for (const kind of NODE_KINDS) {
+      expect(NODE_KIND_GUIDE[kind].length, `NODE_KIND_GUIDE.${kind} is empty`).toBeGreaterThan(kind.length)
+      expect(described, `NODE_KIND_GUIDE.${kind}'s text never reaches the model`).toContain(NODE_KIND_GUIDE[kind])
     }
   })
 
