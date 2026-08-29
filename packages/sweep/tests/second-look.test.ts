@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { mostCorroboratedFirst, SECOND_LOOK_CAP } from "../src/sweep.js"
+import { mostCorroboratedFirst, SECOND_LOOK_CAP, SECOND_LOOK_UNLOCK_BUDGET } from "../src/sweep.js"
 import type { SearchHit } from "@open-kb/core"
 import {
   runFixture,
@@ -327,6 +327,71 @@ describe("second look", () => {
     expect(
       (h.result.report as { secondLook: { asked: number } }).secondLook.asked,
     ).toBe(SECOND_LOOK_CAP)
+  }, 30_000)
+
+  it("SECOND_LOOK_UNLOCK_BUDGET caps how many blocked second-look fetches spend an unlocker retry", async () => {
+    // SECOND_LOOK_UNLOCK_BUDGET (sweep.ts:522) had zero grep hits in any test —
+    // the `secondLookUnlocked < SECOND_LOOK_UNLOCK_BUDGET` gate at sweep.ts:5769
+    // was never exercised past whatever a plain fixture run earns an unlock for,
+    // which is at most 1 (the single-host unlocker test above).
+    //
+    // 30 fresh hosts, corroborated in TWO queries each (folded onto both
+    // "log search alternatives" and "Log Search Cloud alternatives", the way
+    // the CAP test above folds one query's worth onto a single query) so every
+    // one clears `earnedUnlock`'s `row.seenIn >= 2` bar on its own, with no
+    // rank needed. Each gets a real fetchable FRONT page (reaches classify
+    // rather than 404ing into a predicate settlement) and a `/pricing` page —
+    // the SERP hit's own url, so `topHit` is a distinct page from the front
+    // door — that comes back 403 walled on BOTH the direct read and the
+    // unlocker retry. 30 is five past SECOND_LOOK_UNLOCK_BUDGET (25), so the
+    // budget has something real to cut: every one of the 30 earns an unlock,
+    // but only the first 25 the pool gets to actually spend one.
+    const fillerFrontPage = (i: number) =>
+      `<html><head><title>Second Look Unlock Filler ${i}</title></head><body><h1>Second Look Unlock Filler ${i}</h1>` +
+      `<p>A page with nothing to do with log search or uptime monitoring, kept only to push the ` +
+      `second-look unlock population past SECOND_LOOK_UNLOCK_BUDGET so the budget has something real ` +
+      `to cut.</p></body></html>`
+    const host = (i: number) => `second-look-unlock-filler-${i}.example`
+    const extra: SearchHit[] = Array.from({ length: 30 }, (_, i) => ({
+      url: `https://${host(i)}/pricing`,
+      title: `Second Look Unlock Filler ${i}`,
+      description: "Unrelated to log search or uptime alerts.",
+    }))
+    const fetchTable = Object.fromEntries([
+      ...extra.map((h, i) => [
+        `https://${host(i)}/`,
+        { httpStatus: 200, contentType: "text/html", body: fillerFrontPage(i) },
+      ]),
+      ...extra.map((h, i) => [
+        `https://${host(i)}/pricing`,
+        { httpStatus: 403, body: "", unlocked: { httpStatus: 403, body: "" } },
+      ]),
+    ])
+
+    const h = await runFixture({
+      sweepOptions: { secondLook: true },
+      serp: {
+        ...SERP,
+        "log search alternatives": [...SERP["log search alternatives"]!, ...extra],
+        "Log Search Cloud alternatives": [...SERP["Log Search Cloud alternatives"]!, ...extra],
+      },
+      fetchTable,
+    })
+
+    const unplacedEntities = h.result.entities.filter(
+      (e) => e.settledBy === "model" && e.relation === "unknown",
+    )
+    expect(unplacedEntities.length).toBe(30)
+    expect((h.result.report as { secondLook: unknown }).secondLook).toEqual({
+      unplaced: 30,
+      asked: 30,
+      rescued: 0,
+      failed: 30,
+      unlocked: SECOND_LOOK_UNLOCK_BUDGET,
+    })
+    expect(
+      h.says.some((s) => s.includes(`${SECOND_LOOK_UNLOCK_BUDGET} escalated through the unlocker`)),
+    ).toBe(true)
   }, 30_000)
 })
 
