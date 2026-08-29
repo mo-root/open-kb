@@ -8,6 +8,7 @@ import {
   fetchTool,
   readTool,
   MAX_QUERIES,
+  MAX_URLS,
   SLICE,
   type PaidCtx,
   type SearchTrace,
@@ -382,7 +383,12 @@ describe("fetchTool", () => {
     if (!read.ok) expect(read.reason).toContain("fetch-failed: tunnel collapsed")
   })
 
-  it("url seven is not run; a malformed url is a sentence; a throwing port is contained", async () => {
+  it("the url past MAX_URLS is not run; a malformed url is a sentence; a throwing port is contained", async () => {
+    // MAX_URLS was hand-copied here as a literal 6/7 before this change — the
+    // same "hand-copied, unpinned" shape SELF-105..109 kept finding elsewhere
+    // in this codebase. Importing the export means a future change to the cap
+    // moves this test with it instead of silently drifting from what fetchTool
+    // actually enforces.
     const port: FetchPort = {
       async get(url) {
         if (url.includes("boom")) throw new Error("getaddrinfo ENOTFOUND boom.com")
@@ -393,17 +399,17 @@ describe("fetchTool", () => {
     const urls = [
       "https://boom.com/",
       "not a url at all",
-      ...Array.from({ length: 4 }, (_, i) => `https://ok${i}.com/`),
-      "https://seventh.com/",
+      ...Array.from({ length: MAX_URLS - 2 }, (_, i) => `https://ok${i}.com/`),
+      "https://overflow.com/",
     ]
     const r = await fetchTool(ctx, { urls, mode: "direct", why: "t" })
-    expect(r.docs).toHaveLength(7)
+    expect(r.docs).toHaveLength(MAX_URLS + 1)
     expect(r.docs[0]).toMatchObject({ ok: false, reason: "fetch-failed" })
     expect((r.docs[0] as FetchDocFail).hint).toContain("ENOTFOUND")
     expect(r.docs[1]).toMatchObject({ ok: false, reason: "bad-url" })
     expect(r.docs[2]).toMatchObject({ ok: true })
-    expect(r.docs[6]).toMatchObject({ ok: false, reason: "not-run" })
-    expect((r.docs[6] as FetchDocFail).hint).toContain("only 6 urls fit")
+    expect(r.docs[MAX_URLS]).toMatchObject({ ok: false, reason: "not-run" })
+    expect((r.docs[MAX_URLS] as FetchDocFail).hint).toContain(`only ${MAX_URLS} urls fit`)
   })
 
   // The dead-end taxonomy, swarm side. `reason` has always spoken the
