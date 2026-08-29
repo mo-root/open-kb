@@ -20,6 +20,7 @@ import {
   spawnTool,
   estimateTokens,
   LEAD_TURN_CAP,
+  LEAD_EST_OUT_TOKENS,
   INVESTIGATOR_TURN_CAP,
   TIER_DEADLINE_MS,
   DIGEST_TOKEN_CAP,
@@ -229,6 +230,53 @@ describe("runLead", () => {
     // The turn's real cost is 50 output tokens at $75/M. Pricing the drawn
     // total against the WIDE figure here settled at actuals + a phantom $0.03.
     expect(h.ledger.spentUsd()).toBeCloseTo((50 * 75) / 1e6, 6)
+  })
+
+  it("LEAD_EST_OUT_TOKENS is the exact headroom affordTurn prices a turn against", async () => {
+    // The two tests above both explain their ceilings in prose as "the
+    // 800-token output headroom" without importing LEAD_EST_OUT_TOKENS, so a
+    // change to the constant would move nothing and the comments would just
+    // go stale — the "hand-copied, not pinned" shape SELF-105..109 kept
+    // finding elsewhere in this codebase (tools-paid.test.ts's MAX_URLS test).
+    //
+    // At $1,250/M output, LEAD_EST_OUT_TOKENS costs exactly $1.00
+    // (800 * 1250 / 1e6) — a round number chosen so the two ceilings below
+    // can sit one cent to either side of it without floating-point noise
+    // anywhere near that margin.
+    const pricePerMTokOut = 1_250
+    const estUsd = (LEAD_EST_OUT_TOKENS * pricePerMTokOut) / 1e6
+    expect(estUsd).toBe(1)
+
+    const model = new MockLanguageModelV4({
+      doGenerate: async () => reply([{ type: "text" as const, text: "noted." }], true),
+    })
+
+    // Ceiling $1.13: finish reserve floors at $0.12 (10% of $1.13 is $0.113,
+    // under the floor), so spendable is $1.01 — one cent MORE than estUsd.
+    // affordTurn's own check (costUsd <= spendable) is what decides this, so
+    // the turn is affordable regardless of which reserve (wide or tight)
+    // then lands.
+    const above = harness(1.13)
+    const leadAbove = runLead({
+      ...above,
+      domain: "anchor.com",
+      model,
+      pricing: { inUsdPerM: 0, outUsdPerM: pricePerMTokOut },
+    })
+    expect((await leadAbove.leadTurn()).kind).toBe("turn")
+
+    // Ceiling $1.11: same $0.12 floor, spendable $0.99 — one cent LESS than
+    // estUsd. A LEAD_EST_OUT_TOKENS off by as little as ~8 tokens either
+    // direction moves estUsd across this cent and flips the outcome below.
+    const below = harness(1.11)
+    const leadBelow = runLead({
+      ...below,
+      domain: "anchor.com",
+      model,
+      pricing: { inUsdPerM: 0, outUsdPerM: pricePerMTokOut },
+    })
+    const closing = await leadBelow.leadTurn()
+    expect(closing.kind).toBe("closing")
   })
 
   it("a paid draw inside a lead turn lands in that turn's settle", async () => {
