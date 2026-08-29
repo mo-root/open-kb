@@ -77,8 +77,17 @@ vi.mock("@open-kb/sweep", async (importOriginal) => {
 
 const { POST } = await import("./route")
 const { getRun } = await import("@/lib/runs")
-const { LIMIT_VARS, MEASURED_RUN_COST, clientIp, defaultRunCapUsd, resetLedger, runUsd, tripAtUsd, visitorOf } =
-  await import("@/lib/spend-limits")
+const {
+  LIMIT_VARS,
+  MEASURED_RUN_COST,
+  UNKNOWN_VISITOR,
+  clientIp,
+  defaultRunCapUsd,
+  resetLedger,
+  runUsd,
+  tripAtUsd,
+  visitorOf,
+} = await import("@/lib/spend-limits")
 
 /* ─────────────────────────────────────────────────────────────── a tiny market
  *
@@ -826,6 +835,16 @@ describe("who is asking — reading an address off a chain", () => {
     expect(h).not.toContain("203")
     process.env.OPENKB_VISITOR_SALT = "pepper"
     expect(visitorOf(new Headers({ "x-real-ip": "203.0.113.9" }))).not.toBe(h)
+  })
+
+  it("has no address to go on: every such request lands in the same bucket, not a fresh one each time", () => {
+    // spend-limits.ts's own doc comment on UNKNOWN_VISITOR: "a request that
+    // arrives with nothing identifying it must not count as a fresh visitor
+    // every time, or the limit is off by default on exactly the hosts where
+    // headers cannot be trusted." Untested until now — every other case in
+    // this describe block supplies an IP. This is the one that supplies none.
+    expect(visitorOf(new Headers())).toBe(UNKNOWN_VISITOR)
+    expect(visitorOf(new Headers({ "user-agent": "curl/8.0" }))).toBe(UNKNOWN_VISITOR)
   })
 })
 
