@@ -77,7 +77,7 @@ vi.mock("@open-kb/sweep", async (importOriginal) => {
 
 const { POST } = await import("./route")
 const { getRun } = await import("@/lib/runs")
-const { LIMIT_VARS, clientIp, defaultRunCapUsd, resetLedger, runUsd, tripAtUsd, visitorOf } =
+const { LIMIT_VARS, MEASURED_RUN_COST, clientIp, defaultRunCapUsd, resetLedger, runUsd, tripAtUsd, visitorOf } =
   await import("@/lib/spend-limits")
 
 /* ─────────────────────────────────────────────────────────────── a tiny market
@@ -1056,5 +1056,44 @@ describe("a deployment with no store counts in this process and says so in the l
     // Held at $0.30 each while running and settled at $0.05 each after, so far
     // more than three fit — which they would not if the hold were permanent.
     for (let i = 0; i < 6; i++) expect((await map()).status).toBe(200)
+  })
+})
+
+/* ══════════════════════════════ 7. a dearer model is said, not just measured */
+
+describe("a model swap is warned about in the log, not just measured", () => {
+  // route.ts:501-505 — `MEASURED_RUN_COST` is fit to one model's per-call price;
+  // a dearer one bills 6-8x as much per query (two runs in `runs/` prove it),
+  // so the derived run cap silently under-covers a run and it stops early. The
+  // warning is the only place that surfaces before an operator notices maps
+  // cutting off — nothing before this suite drove `OPENKB_MODEL` off its
+  // default and read `console.warn`, on either branch of the guard.
+  it("names the measured model, the running one, and the fix once they diverge", async () => {
+    process.env.OPENKB_MODEL = "anthropic/claude-3-haiku"
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    expect((await map()).status).toBe(200)
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(MEASURED_RUN_COST.model))
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("anthropic/claude-3-haiku"))
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(LIMIT_VARS.runCap))
+  })
+
+  it("stays silent once the operator has set their own run cap", async () => {
+    process.env.OPENKB_MODEL = "anthropic/claude-3-haiku"
+    process.env.OPENKB_RUN_CAP_USD = "5"
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    expect((await map()).status).toBe(200)
+
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it("stays silent on the measured model itself, the default for every deployment", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    expect((await map()).status).toBe(200)
+
+    expect(warn).not.toHaveBeenCalled()
   })
 })
