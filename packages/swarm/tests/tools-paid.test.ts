@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi } from "vitest"
 import { existsSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { BreakerTable, Ledger, ALLOWANCES, canonicalUrl, type FetchPort, type SearchPort } from "@open-kb/core"
@@ -9,6 +9,7 @@ import {
   readTool,
   MAX_QUERIES,
   MAX_URLS,
+  PENDING_AFTER_MS,
   SLICE,
   type PaidCtx,
   type SearchTrace,
@@ -363,6 +364,39 @@ describe("fetchTool", () => {
     expect(room.remainingUsd).toBeCloseTo(ALLOWANCES.read - 0.008)
     // And the quote proves against them.
     expect(ctx.evidence.cite("https://slow.com/", "scraping API to developers").ok).toBe(true)
+  })
+
+  it("with no ctx override, the real PENDING_AFTER_MS is what races the fetch — not just the fixture's 5ms", async () => {
+    // Every other pending test in this file sets pendingAfterMs: 5 so the
+    // suite stays fast, which means PENDING_AFTER_MS itself (the value
+    // `ctx.pendingAfterMs ?? PENDING_AFTER_MS` falls back to for every real
+    // caller) had no grep hits anywhere in tests — the fallback path was
+    // never actually driven. Fake timers exercise the real 3s constant
+    // without a real 3s sleep: the port's own timer lands 1ms after it, so
+    // only a correctly-wired default wins the race and returns pending.
+    vi.useFakeTimers()
+    try {
+      const port: FetchPort = {
+        get: (url) =>
+          new Promise((resolve) => {
+            setTimeout(
+              () => resolve({ url, httpStatus: 200, body: vendorHtml, contentType: "text/html", ms: 1, usd: 0.008 }),
+              PENDING_AFTER_MS + 1,
+            )
+          }),
+      }
+      const landings: Promise<void>[] = []
+      const { ctx } = paidCtx({ fetch: port, trackPending: (p) => landings.push(p) })
+      const pending = fetchTool(ctx, { urls: ["https://slow-default.com/"], mode: "direct", why: "t" })
+      await vi.advanceTimersByTimeAsync(PENDING_AFTER_MS)
+      const r = await pending
+      const doc = r.docs[0] as FetchDocPending
+      expect(doc.status).toBe("pending")
+      await vi.advanceTimersByTimeAsync(1)
+      await Promise.all(landings)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("a slow fetch that ultimately fails lands as a readable explanation, not a hang", async () => {
