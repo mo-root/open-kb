@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest"
-import { mostCorroboratedFirst } from "../src/sweep.js"
+import { mostCorroboratedFirst, SECOND_LOOK_CAP } from "../src/sweep.js"
+import type { SearchHit } from "@open-kb/core"
 import {
   runFixture,
   defaultScript,
@@ -272,6 +273,61 @@ describe("second look", () => {
       unlocked: 0,
     })
   })
+
+  it("SECOND_LOOK_CAP caps how many unplaced hosts one run re-reads a page for", async () => {
+    // SECOND_LOOK_CAP (sweep.ts:432) had zero grep hits in any test — the
+    // `.slice(0, SECOND_LOOK_CAP)` at sweep.ts:5717 that bounds `lookAt` was
+    // never exercised past whatever a plain fixture run leaves unplaced,
+    // which is 0: every one of HOSTS.grepstack/tailwatch/loglens/forum/
+    // adtrash classifies with a real relation, and HOSTS.walled never
+    // reaches the model at all (its front page 404s, settled by predicate).
+    //
+    // 65 fresh hosts, folded onto "log search alternatives" the same way
+    // DROP_CONFIRM_CAP's test folds extra rows onto that query — each given
+    // a real fetchable FRONT page (so it reaches classify rather than
+    // 404ing into a predicate settlement) and left OUT of CLASSIFY, so the
+    // fixture's own `unknownHost()` default answers `kind:"unknown",
+    // relation:"unknown"` — exactly the shape `unplaced` filters for. Each
+    // hit's url points at a `/pricing` page rather than the front door, so
+    // `topHit` is a distinct page and `frontDoorAgain` does not exclude it
+    // from the ranked population (the second look never fetches this deep
+    // page here — it 404s too — which is fine: `secondLookAsked` counts the
+    // attempt, not the outcome). 65 hosts is five past SECOND_LOOK_CAP (60),
+    // so the slice has to actually cut something.
+    const fillerFrontPage = (i: number) =>
+      `<html><head><title>Second Look Cap Filler ${i}</title></head><body><h1>Second Look Cap Filler ${i}</h1>` +
+      `<p>A page with nothing to do with log search or uptime monitoring, kept only to push the ` +
+      `second-look candidate pool past SECOND_LOOK_CAP so the cap has something real to cut.</p>` +
+      `</body></html>`
+    const extra: SearchHit[] = Array.from({ length: 65 }, (_, i) => ({
+      url: `https://second-look-cap-filler-${i}.example/pricing`,
+      title: `Second Look Cap Filler ${i}`,
+      description: "Unrelated to log search or uptime alerts.",
+    }))
+    const fetchTable = Object.fromEntries(
+      extra.map((h, i) => [
+        `https://second-look-cap-filler-${i}.example/`,
+        { httpStatus: 200, contentType: "text/html", body: fillerFrontPage(i) },
+      ]),
+    )
+
+    const h = await runFixture({
+      sweepOptions: { secondLook: true },
+      serp: { ...SERP, "log search alternatives": [...SERP["log search alternatives"]!, ...extra] },
+      fetchTable,
+    })
+
+    const unplacedEntities = h.result.entities.filter(
+      (e) => e.settledBy === "model" && e.relation === "unknown",
+    )
+    expect(unplacedEntities.length).toBe(65)
+    expect(
+      (h.result.report as { secondLook: { unplaced: number; asked: number } }).secondLook.unplaced,
+    ).toBe(65)
+    expect(
+      (h.result.report as { secondLook: { asked: number } }).secondLook.asked,
+    ).toBe(SECOND_LOOK_CAP)
+  }, 30_000)
 })
 
 /**
