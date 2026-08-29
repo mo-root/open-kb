@@ -20,13 +20,18 @@ import { describe, expect, it } from "vitest"
  * from GraphCanvas's `makeClusterForce`" — a duplicated recipe, not an
  * import of one, because `bake-layouts.ts` runs `readdirSync`/`mkdirSync`
  * against `demo/maps` at module scope, so importing it in a test would run
- * the whole bake. Four numbers are hand-copied this way: the two named lobe
+ * the whole bake. Five numbers are hand-copied this way: the two named lobe
  * constants (`CLUSTER_PAD_SEATS`, `CLUSTER_SHOVE`), the unnamed `0.06`
  * cohesion coefficient in both files' cluster-force closures, the hub-score
- * formula deciding which node anchors the layout, and the node-radius
- * formula. All four currently agree, but nothing fails if one drifts: if
- * GraphCanvas's copy is retuned later (its own comments show this has
- * already happened once, with measured before/after ratios), the baked
+ * formula deciding which node anchors the layout, the node-radius formula,
+ * and the collide force's `.strength(0.9).iterations(3)` pair — the same
+ * `forceCollide()` recipe, present exactly once per file (confirmed with
+ * `grep -n "iterations("` on both before writing the regex below). All five
+ * currently agree, but nothing fails if one drifts: if GraphCanvas's copy is
+ * retuned later (its own comments show this has already happened once, with
+ * measured before/after ratios — including a note that raising collide
+ * strength above ~1 visibly jitters, which is exactly the kind of retune
+ * that would silently orphan the bake's copy), the baked
  * `public/layouts/*.json` seeds would silently start from the wrong lobe
  * recipe with no test to catch it. Same shape as `nodeTypes.test.ts`'s
  * TYPE_COLOR-vs-globals.css pin: read both real source files as text rather
@@ -80,5 +85,21 @@ describe("bake-layouts.ts's lobe force: pinned to GraphCanvas's makeClusterForce
     const canvas = CANVAS.match(re)?.[0].replace(/rel \/ [\w.]+\)/, "rel / X)")
     expect(bake).toBeDefined()
     expect(bake).toBe(canvas)
+  })
+
+  it("the collide force's strength and iterations match", () => {
+    // `forceCollide()...strength(0.9).iterations(3)` — GraphCanvas's own
+    // comment there says raising strength toward 1 "visibly jitters" and
+    // that iterations was raised from a lower value to clear overlaps a
+    // single pass left; the bake copy has neither comment, so a future
+    // retune of either number in GraphCanvas is the exact silent-drift risk
+    // this test exists to catch, same as the other four pins above.
+    const re = /\.strength\(([\d.]+)\)\s*\.iterations\((\d+)\)/
+    const bake = BAKE.match(re)
+    const canvas = CANVAS.match(re)
+    expect(bake).not.toBeNull()
+    expect(canvas).not.toBeNull()
+    expect(bake![1]).toBe(canvas![1])
+    expect(bake![2]).toBe(canvas![2])
   })
 })
