@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest"
-import { runFixture, defaultScript, HOSTS } from "./fixture.js"
+import { runFixture, defaultScript, HOSTS, SERP } from "./fixture.js"
+import { DROP_CONFIRM_CAP } from "../src/sweep.js"
+import type { SearchHit } from "@open-kb/core"
 
 /**
  * The drop-confirm stage: a second, batched opinion on every model-settled
@@ -201,4 +203,62 @@ describe("drop-confirm", () => {
       confirmed: 1,
     })
   })
+
+  it("DROP_CONFIRM_CAP caps how many model-settled none hosts one run re-asks about", async () => {
+    // DROP_CONFIRM_CAP (sweep.ts) had zero grep hits in any test — the
+    // `.slice(0, DROP_CONFIRM_CAP)` at sweep.ts:6019 that bounds `candidates`
+    // was never exercised past the plain fixture's own single candidate
+    // (adtrash.example, confirmed by the describe-block comment above and by
+    // this suite's other cases, all of which see exactly one). Sixty-one
+    // hosts under the cap is nothing this fixture has ever produced.
+    //
+    // 65 fresh hosts, folded onto "log search alternatives" the same way
+    // TRIAGE_BATCH's test folds extra rows onto that query (one of the
+    // rival-family templates fired from Log Search Cloud's own terms, no
+    // sweepOptions override needed) — each given a real fetchable page so it
+    // reaches classify rather than 404ing into a predicate settlement, and a
+    // classify override that judges it `noise`/`none`, the same shape
+    // adtrash's own default verdict already wears. Together with adtrash that
+    // is 66 model-settled `none` candidates, six past DROP_CONFIRM_CAP (60),
+    // so the slice has to actually cut something.
+    const fillerPage = (i: number) =>
+      `<html><head><title>Drop Cap Filler ${i}</title></head><body><h1>Drop Cap Filler ${i}</h1>` +
+      `<p>A page with nothing to do with log search or uptime monitoring, kept only to push the ` +
+      `drop-confirm candidate pool past DROP_CONFIRM_CAP so the cap has something real to cut.</p>` +
+      `</body></html>`
+    const extra: SearchHit[] = Array.from({ length: 65 }, (_, i) => ({
+      url: `https://drop-cap-filler-${i}.example/`,
+      title: `Drop Cap Filler ${i}`,
+      description: "Unrelated to log search or uptime alerts.",
+    }))
+    const fetchTable = Object.fromEntries(
+      extra.map((h, i) => [h.url, { httpStatus: 200, contentType: "text/html", body: fillerPage(i) }]),
+    )
+
+    const h = await runFixture({
+      sweepOptions: { dropConfirm: true },
+      serp: { ...SERP, "log search alternatives": [...SERP["log search alternatives"]!, ...extra] },
+      fetchTable,
+      script: {
+        // Only the cap is under test, so every filler host settles the same
+        // way adtrash already does by default — `defaultScript().classify`
+        // covers every other host unchanged.
+        classify: (host, prompt) =>
+          host.startsWith("drop-cap-filler-")
+            ? {
+                name: host,
+                kind: "noise",
+                what: "",
+                relation: "none",
+                why: "no connection to this market",
+                spans: ["nothing to do with log search or uptime monitoring"],
+              }
+            : defaultScript().classify(host, prompt),
+      },
+    })
+
+    const noneSettled = h.result.entities.filter((e) => e.settledBy === "model" && e.relation === "none")
+    expect(noneSettled.length).toBe(66)
+    expect((h.result.report as { dropConfirm: { asked: number } }).dropConfirm.asked).toBe(DROP_CONFIRM_CAP)
+  }, 30_000)
 })
