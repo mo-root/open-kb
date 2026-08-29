@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest"
 import { runFixture, SERP } from "./fixture.js"
-import { ROUNDUP_SHAPE } from "../src/sweep.js"
+import { ROUNDUP_SHAPE, LISTICLE_MAX_ROWS } from "../src/sweep.js"
 import type { SearchHit } from "@open-kb/core"
 
 /**
@@ -220,4 +220,27 @@ describe("listicle harvest", () => {
     }
     expect(ROUNDUP_SHAPE.test("Grepstack pricing and docs")).toBe(false)
   })
+
+  it("LISTICLE_MAX_ROWS caps how many roundup-shaped rows one call reads", async () => {
+    // LISTICLE_MAX_ROWS (sweep.ts) had zero grep hits in any test — the cap
+    // its own `.slice(0, LISTICLE_MAX_ROWS)` enforces on `roundupRows`
+    // (sweep.ts:4881) was never driven past. Sixty-five distinct roundup-shaped
+    // rows, five over the cap, are folded onto "log search alternatives" —
+    // a query the default catalog already fires, the same trick
+    // `serpWithRoundup` above uses, so this does not depend on which queries
+    // get planned.
+    const overflow: SearchHit[] = Array.from({ length: LISTICLE_MAX_ROWS + 5 }, (_, i) => ({
+      url: `https://roundup-${i}.example/`,
+      title: `Best log tool alternatives, pick ${i}`,
+      description: "One line among many in a roundup this run never asked for.",
+    }))
+    const h = await runFixture({
+      serp: { ...SERP, "log search alternatives": [...SERP["log search alternatives"]!, ...overflow] },
+      // No vendor extraction needed — only the read-side cap is under test.
+      script: { listicle: () => ({ vendors: [] }) },
+    })
+    const stats = (h.result.report as { listicleHarvest: { rowsScanned: number } }).listicleHarvest
+    // 65 roundup rows were on offer; the call read only LISTICLE_MAX_ROWS of them.
+    expect(stats.rowsScanned).toBe(LISTICLE_MAX_ROWS)
+  }, 30_000)
 })
