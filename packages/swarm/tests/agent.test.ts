@@ -20,6 +20,7 @@ import {
   spawnTool,
   estimateTokens,
   LEAD_TURN_CAP,
+  INVESTIGATOR_TURN_CAP,
   TIER_DEADLINE_MS,
   DIGEST_TOKEN_CAP,
   type LeadDeps,
@@ -566,6 +567,39 @@ describe("runInvestigator", () => {
     const room = h.ledger.draw(held.claimId, 0)
     if (!room.ok) throw new Error("claim gone")
     expect(room.remainingUsd).toBeCloseTo(ALLOWANCES.read - 0.16, 6)
+  })
+
+  it("INVESTIGATOR_TURN_CAP bounds the loop but, unlike LEAD_TURN_CAP, hits it silently", async () => {
+    // agent.ts's investigator loop (`for (turn <= INVESTIGATOR_TURN_CAP)`) has no
+    // post-loop branch, unlike the lead's `if (turnsUsed >= LEAD_TURN_CAP)` a few
+    // tests up, which sets loopDetected and refuses loudly. Running a model that
+    // never stops calling tools past the cap: the loop simply falls out with
+    // `status` still at its initial "done" — indistinguishable from a mission that
+    // genuinely finished with nothing left to do. Pinning that shape here, same as
+    // the lead's own cap test, so a future change to either loop is a deliberate
+    // choice, not a silent drift between two constants documented as "the same
+    // detector".
+    const h = harness(50)
+    const held = h.ledger.reserve(ALLOWANCES.read)
+    if (!held.ok) throw new Error("reserve failed")
+
+    const model = new MockLanguageModelV4({
+      doGenerate: async () => reply(call("1", "recall", { op: "stats", why: "looping" }), false),
+    })
+
+    const digest = await runInvestigator(mission, {
+      ...investigatorDeps(h, model, held.claimId),
+      pricing: {
+        peek: { inUsdPerM: 0, outUsdPerM: 0 },
+        read: { inUsdPerM: 0, outUsdPerM: 0 },
+        dig: { inUsdPerM: 0, outUsdPerM: 0 },
+      },
+    })
+
+    expect(model.doGenerateCalls.length).toBe(INVESTIGATOR_TURN_CAP)
+    expect(digest.status).toBe("done")
+    expect(digest.added).toEqual({ nodes: 0 })
+    expect(digest.findings).toEqual([])
   })
 })
 
