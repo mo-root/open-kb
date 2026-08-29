@@ -175,6 +175,7 @@ describe("namedFaults — the whole shelf", () => {
     expect(Object.keys(namedFaults).sort()).toEqual([
       "demoMapsMissing",
       "runCostCeiling",
+      "runDeadline",
       "runsDirIsRoot",
       "runsDirUnreadable",
     ])
@@ -204,6 +205,25 @@ describe("namedFaults — the whole shelf", () => {
     // are dollars, so there is no string for a provider's prose to arrive in,
     // and the types are what keep it that way.
     expect(namedFaults.runCostCeiling(1.5, 1.2).message).not.toContain("Error")
+  })
+
+  it("lets a run stopped by the host's own clock say why instead of handing a visitor a ref", () => {
+    // The sibling of the capped-run test above, same reader, same three things
+    // to say, this time counting seconds instead of dollars: MEASURED, before
+    // this entry existed, `withDeadline` in the map route handed `failRun` a
+    // plain `new Error(...)`, which is exactly the unbranded shape this test
+    // would have caught — `faultNotice` returns the fixed "quote this ref"
+    // sentence for anything that fails `isNamedFault`.
+    const timedOut = namedFaults.runDeadline(270)
+    const shown = faultNotice(timedOut, "run test")
+    expect(shown).toBe(timedOut.message)
+    expect(shown).toContain("270s")
+    expect(shown).toContain("kept")
+    expect(shown).not.toMatch(/[0-9a-f]{12}/)
+  })
+
+  it("holds runDeadline's hole to a number this app computed", () => {
+    expect(namedFaults.runDeadline(270).message).not.toContain("Error")
   })
 
   it("mints the exact string that was measured escaping the pages", () => {

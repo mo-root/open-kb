@@ -718,13 +718,12 @@ function withDeadline(
           )
           try {
             // Before the abort, deliberately. See the note above.
-            await failRun(
-              record.id,
-              new Error(
-                `run exceeded this deployment's ${maxDuration}s function limit and was stopped ` +
-                  `${DEADLINE_MARGIN_S}s early so the failure could be recorded`,
-              ),
-            )
+            //
+            // NAMED, not a plain `Error`, for the reason `namedFaults.runCostCeiling`'s
+            // own comment gives: unbranded, `faultNotice` printed "something went
+            // wrong, quote this ref" for a stop this app caused on purpose and could
+            // fully explain — measured on this exact call before `runDeadline` existed.
+            await failRun(record.id, namedFaults.runDeadline(CLOCK_S))
           } finally {
             record.abort.abort()
             resolve()

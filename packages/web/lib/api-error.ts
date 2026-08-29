@@ -438,8 +438,9 @@ export const namedFaults = {
    * every failure through `faultNotice`, deliberately, because a sweep's throw
    * is an OpenRouter or Bright Data error that can carry a request id or a
    * fragment of a key. An app-authored sentence handed to it unbranded comes
-   * back out as "something went wrong, quote this ref" — which is what the
-   * deadline watchdog's own message does today.
+   * back out as "something went wrong, quote this ref" — the deadline
+   * watchdog below made exactly this mistake (a plain `new Error(...)`) until
+   * `runDeadline` gave it a shelf entry of its own, same fix, same reason.
    *
    * Both holes are numbers this app computed from its own configuration:
    * `capUsd` is the ceiling in force, `spentUsd` the span stream's running
@@ -453,6 +454,33 @@ export const namedFaults = {
         `about is not the problem: the limit is deliberate, and it is what stops a single map ` +
         `spending a whole day's budget. Clone the repo and run it on your own keys for a map with ` +
         `no ceiling on it.`,
+    )
+  },
+
+  /**
+   * A run reached the host's own time limit and was stopped just short of it —
+   * thrown by `withDeadline` in app/api/map/route.ts, the sibling watchdog to
+   * `runCostCeiling` above, counting seconds instead of dollars.
+   *
+   * WHY IT IS ON THE SHELF. Same shape as `runCostCeiling`, same three things a
+   * reader staring at a map that stopped partway through needs to hear: it is
+   * not broken, what it found is kept, and a run with no clock on it exists.
+   * MEASURED: before this entry, `withDeadline` handed `failRun` a plain
+   * `new Error(...)` — unbranded, so `faultNotice` printed "something went
+   * wrong, quote this ref" for a stop this app caused on purpose and could
+   * fully explain. A reader whose run ran out the clock got the least
+   * informative sentence in the whole app for the most explicable ending.
+   *
+   * The one hole is `clockSeconds` (`CLOCK_S` at the call site): a number this
+   * app derived from `maxDuration`, not the host's own wording of the limit.
+   */
+  runDeadline(clockSeconds: number): Error {
+    return new NamedFault(
+      `This map ran for ${clockSeconds}s, which is the longest this deployment lets one map run, ` +
+        `and it was stopped there. Everything it had already found is kept and is on the page. ` +
+        `Nothing is broken and the domain you asked about is not the problem: the limit is how ` +
+        `long this deployment can host one request, not a fact about the market. Clone the repo ` +
+        `and run it on your own keys for a map with no time limit on it.`,
     )
   },
 

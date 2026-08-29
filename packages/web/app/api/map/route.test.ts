@@ -59,7 +59,7 @@ vi.mock("@open-kb/sweep", () => ({
   sweep: (opts: SweepOpts) => hoisted.sweepImpl!(opts),
 }))
 
-const { POST } = await import("./route")
+const { POST, maxDuration } = await import("./route")
 const { getRun } = await import("@/lib/runs")
 
 /* ------------------------------------------------------------------ fixtures */
@@ -336,5 +336,44 @@ describe("POST /api/map — the run is not over until it is durable", () => {
 
     releaseSweep()
     await task
+  })
+
+  it("stops a run that outlives the host's own clock, and records why in words a reader can use", async () => {
+    // `withDeadline`'s `setTimeout` had never fired under any test: budget.test.ts
+    // pins the arithmetic that sizes `CLOCK_S` and limits.test.ts pins the spend
+    // watchdog's own trip, but nothing had driven a sweep past the clock this
+    // route hands it. A stuck provider call is exactly what "past the clock"
+    // looks like from here — the sweep below never settles on its own.
+    //
+    // It is also the regression api-error.ts's `runDeadline` entry exists to
+    // catch: before that entry, this path handed `failRun` a plain `new
+    // Error(...)`, which `faultNotice` cannot tell from a raw provider throw and
+    // replaces with "something went wrong, quote this ref" — the least useful
+    // sentence in the app for the one stop this app causes on purpose and can
+    // fully explain.
+    vi.useFakeTimers()
+    try {
+      hoisted.sweepImpl = () => new Promise(() => {})
+
+      const res = await POST(post({ domain: "resend.com" }))
+      const { runId } = (await res.json()) as { runId: string }
+      const task = hoisted.afterTasks[0] as Promise<void>
+
+      // The same margin the route derives `CLOCK_S` with; see route.ts's own
+      // `DEADLINE_MARGIN_S` comment for why 30s is reserved off `maxDuration`.
+      await vi.advanceTimersByTimeAsync((maxDuration - 30) * 1000)
+      await task
+
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining(`${maxDuration - 30}s`))
+      const record = getRun(runId)
+      expect(record?.status).toBe("failed")
+      expect(record?.error).toContain(`${maxDuration - 30}s`)
+      expect(record?.error).toContain("kept")
+      // The regression itself: a named fault's own sentence, not the ref this
+      // route used to hand back for the exact same stop.
+      expect(record?.error).not.toContain("something went wrong")
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
