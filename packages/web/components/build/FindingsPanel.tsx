@@ -93,10 +93,18 @@ function CallsTab({ calls }: { calls: TraceView[] }) {
   );
 }
 
+/** The widest bar in the breadth column, floored at 1 so a map where every
+ *  entity has `breadth` 0 or undefined (e.g. relation-only rows, still early
+ *  in a run) divides by 1 rather than 0 and renders empty bars instead of
+ *  `NaN%` width. */
+export function maxBreadth(entities: EntityData[]): number {
+  return Math.max(...entities.map((e) => e.breadth ?? 0), 1);
+}
+
 function MapTab({ entities }: { entities: EntityData[] }) {
   if (!entities.length)
     return <Empty text="the map fills as each batch of hosts is classified…" />;
-  const max = Math.max(...entities.map((e) => e.breadth ?? 0), 1);
+  const max = maxBreadth(entities);
   return (
     <div className="max-h-80 overflow-y-auto">
       <table className="w-full text-left text-xs">
