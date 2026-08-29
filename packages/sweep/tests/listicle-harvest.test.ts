@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest"
 import { runFixture, SERP } from "./fixture.js"
+import { ROUNDUP_SHAPE } from "../src/sweep.js"
 import type { SearchHit } from "@open-kb/core"
 
 /**
@@ -203,5 +204,20 @@ describe("listicle harvest", () => {
     // hits contained. The identical zeros with `starved: true` mean it never
     // looked, which is a fact about the budget.
     expect(stats).toEqual({ starved: false, rowsScanned: 0, vendorsFound: 0, queriesFired: 0 })
+  })
+
+  it("ROUNDUP_SHAPE's four other alternatives fire on their own, not only alongside 'alternatives'", () => {
+    // ROUNDUP_SHAPE (sweep.ts) is `/alternatives|top \d+|best|vs\.?|comparison/i` — five
+    // alternatives. Every roundup-shaped row fed through the fixture above (ROUNDUP, the two
+    // rows in "puts the vendor several roundups agree on ahead...") reads "...alternatives" in
+    // its title, so `top \d+`, `best`, `vs\.?` and `comparison` have never been the thing that
+    // made the regex match; a title matching only via one of those four would still be classed
+    // roundup-shaped, but nothing here proved it. Driven directly against the exported regex,
+    // the same level `runFixture`'s filter (`.filter((h) => ROUNDUP_SHAPE.test(h.title) ||
+    // ROUNDUP_SHAPE.test(h.description ?? ""))`) calls it at.
+    for (const title of ["Top 5 log search tools", "Grepstack vs Tailwatch", "Grepstack vs. Tailwatch", "A deep comparison of log tools", "The best log search tool for teams"]) {
+      expect(ROUNDUP_SHAPE.test(title), title).toBe(true)
+    }
+    expect(ROUNDUP_SHAPE.test("Grepstack pricing and docs")).toBe(false)
   })
 })
