@@ -70,6 +70,11 @@ export default defineConfig({
       // first test to live here (see `middleware.test.ts`'s own doc comment
       // for how this gap was found: `check-test-collection.mjs` named it).
       "packages/web/*.test.{ts,tsx}",
+      // Same story one level deeper: `packages/web/scripts/` sat outside
+      // every glob above until `bake-layouts.test.ts` needed it (see that
+      // file's own doc comment). Non-recursive for the same reason as the
+      // line above — `scripts/` holds one file today, not a tree.
+      "packages/web/scripts/*.test.{ts,tsx}",
     ],
   },
 })
