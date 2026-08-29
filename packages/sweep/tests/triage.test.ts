@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest"
-import { runFixture, HOSTS } from "./fixture.js"
+import { runFixture, HOSTS, SERP } from "./fixture.js"
+import { TRIAGE_BATCH } from "../src/sweep.js"
+import type { SearchHit } from "@open-kb/core"
 
 /**
  * The triage stage: batched keep/skip verdicts from search metadata, before
@@ -111,6 +113,43 @@ describe("triage", () => {
     expect(forum!.kind).toBe("community")
     expect(h.calls.filter((c) => c.phase === "classify").map((c) => c.subject)).toContain(HOSTS.forum)
   })
+
+  it("TRIAGE_BATCH caps how many hosts one triage call is handed", async () => {
+    // TRIAGE_BATCH (sweep.ts) had zero grep hits in any test — the chunking
+    // loop it drives, `for (let i = 0; i < hostList.length; i += TRIAGE_BATCH)
+    // batches.push(hostList.slice(i, i + TRIAGE_BATCH))` (sweep.ts:5228-5229),
+    // was never exercised past a single, undersized batch: the plain fixture's
+    // hostList is 6 hosts (confirmed by reading `report.triage.hosts` off an
+    // unmodified run), nowhere near the cap of 30.
+    //
+    // 40 fresh hosts, folded onto "log search alternatives" — the same query
+    // listicle-harvest's tests fold extra rows onto, because it is one the
+    // rival-family templates fire from Log Search Cloud's own terms without
+    // any sweepOptions override — bring hostList to 46, sixteen past the cap,
+    // so the loop has to split it into two batches.
+    const extra: SearchHit[] = Array.from({ length: 40 }, (_, i) => ({
+      url: `https://triage-batch-${i}.example/`,
+      title: `Triage Batch Vendor ${i}`,
+      description: "A fresh host that exists only to push hostList past TRIAGE_BATCH.",
+    }))
+    const batchSizes: number[] = []
+    const h = await runFixture({
+      serp: { ...SERP, "log search alternatives": [...SERP["log search alternatives"]!, ...extra] },
+      script: {
+        // Only the chunking is under test, so every host is skipped — nothing
+        // downstream (fetch, classify) needs a contract for 40 fake hosts.
+        triage: (hosts) => {
+          batchSizes.push(hosts.length)
+          return { verdicts: hosts.map((host) => ({ host, keep: false, why: "batch-cap test" })) }
+        },
+      },
+    })
+    const triage = (h.result.report as { triage: { hosts: number; calls: number } }).triage
+    expect(triage.hosts).toBe(46)
+    expect(triage.calls).toBe(2)
+    // One full batch at the cap, the rest in the second.
+    expect(batchSizes.sort((a, b) => b - a)).toEqual([TRIAGE_BATCH, 46 - TRIAGE_BATCH])
+  }, 30_000)
 
   it("fails open on a verdict for a host that was never asked about", async () => {
     const h = await runFixture({
