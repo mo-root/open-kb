@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest"
 import { runFixture, SERP } from "./fixture.js"
-import { ROUNDUP_SHAPE, LISTICLE_MAX_ROWS } from "../src/sweep.js"
+import { ROUNDUP_SHAPE, LISTICLE_MAX_ROWS, LISTICLE_MAX_QUERIES } from "../src/sweep.js"
 import type { SearchHit } from "@open-kb/core"
 
 /**
@@ -242,5 +242,23 @@ describe("listicle harvest", () => {
     const stats = (h.result.report as { listicleHarvest: { rowsScanned: number } }).listicleHarvest
     // 65 roundup rows were on offer; the call read only LISTICLE_MAX_ROWS of them.
     expect(stats.rowsScanned).toBe(LISTICLE_MAX_ROWS)
+  }, 30_000)
+
+  it("LISTICLE_MAX_QUERIES caps how many fresh queries the harvest fires in total", async () => {
+    // LISTICLE_MAX_QUERIES (sweep.ts) had zero grep hits in any test — the cap
+    // `rivalHand(fresh, LISTICLE_MAX_QUERIES)` (sweep.ts:4996) puts on the
+    // whole hand was never driven past. Thirty distinct unsurfaced vendor
+    // names, ten over the cap, all fresh (no known host matches any of them)
+    // so none are filtered by `knownLabel` before the hand is dealt.
+    const names = Array.from({ length: LISTICLE_MAX_QUERIES + 10 }, (_, i) => `Zorbex${i}`)
+    const h = await runFixture({
+      serp: serpWithRoundup(),
+      // Only the query-firing cap is under test, not extraction accuracy.
+      script: { listicle: () => ({ vendors: names }) },
+    })
+    const stats = (h.result.report as { listicleHarvest: { queriesFired: number } }).listicleHarvest
+    // 30 fresh names were on offer, uncapped run (no maxQueries); the hand
+    // dealt only LISTICLE_MAX_QUERIES of them.
+    expect(stats.queriesFired).toBe(LISTICLE_MAX_QUERIES)
   }, 30_000)
 })
