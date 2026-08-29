@@ -208,7 +208,6 @@ interface D3Force {
    at a size that still shows a map and gets out of the way on a short screen. */
 const PANE_H = "h-[min(78dvh,900px)] min-h-[min(70dvh,520px)]";
 const FALLBACK_H = 520; // only if clientHeight reads 0 mid-transition
-const HUB_DEGREE_FRAC = 0.3; // node counts as a hub above this share of node count
 const STAR_EDGE_FRAC = 0.4; // banner threshold: one node carrying > this share of edges
 /* Screen radius a node must reach before it may claim a label. This IS the
    zoom reveal: `r * scale` grows as the reader zooms in, so a lobe that was
