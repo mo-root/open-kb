@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest"
 import { runFixture, HOSTS, SERP } from "./fixture.js"
-import { TRIAGE_BATCH } from "../src/sweep.js"
+import { TRIAGE_BATCH, TRIAGE_MAX_OUTPUT_TOKENS } from "../src/sweep.js"
 import type { SearchHit } from "@open-kb/core"
 
 /**
@@ -150,6 +150,17 @@ describe("triage", () => {
     // One full batch at the cap, the rest in the second.
     expect(batchSizes.sort((a, b) => b - a)).toEqual([TRIAGE_BATCH, 46 - TRIAGE_BATCH])
   }, 30_000)
+
+  it("pins the triage answer's size — its own comment says call() floors it anyway", () => {
+    // TRIAGE_MAX_OUTPUT_TOKENS had zero grep hits in any test, unlike its
+    // sibling CLASSIFY_MAX_OUTPUT_TOKENS (pinned in prompts.test.ts). Read
+    // sweep.ts:2192, `call()`'s wire ceiling is `Math.max(6_000, opts.
+    // maxOutputTokens ?? 8_192)` — 2,000 never lowers it, so this constant
+    // cannot be exercised through a fixture call's actual token ceiling; it
+    // only documents the verdict rows' expected size, same standing as
+    // CLASSIFY_MAX_OUTPUT_TOKENS's own comment says of that constant.
+    expect(TRIAGE_MAX_OUTPUT_TOKENS).toBe(2_000)
+  })
 
   it("fails open on a verdict for a host that was never asked about", async () => {
     const h = await runFixture({
