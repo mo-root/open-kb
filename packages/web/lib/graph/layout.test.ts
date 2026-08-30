@@ -17,6 +17,7 @@ import {
   cooldownTicks,
   ALPHA_MIN,
   ALPHA_DECAY,
+  VELOCITY_DECAY,
 } from "./layout"
 
 const node = (over: Partial<Parameters<typeof chargeStrength>[0]> = {}) => ({
@@ -237,6 +238,19 @@ describe("settling schedule", () => {
     // With no alpha floor, cooldownTicks is the only thing that stops the
     // engine, so it has to outlast the decay rather than cut it off early.
     expect(Math.pow(1 - ALPHA_DECAY, cooldownTicks(849))).toBeLessThan(0.01)
+  })
+
+  /* VELOCITY_DECAY MUST STAY ABOVE THE FLOATY 0.28 IT REPLACED.
+     d3-force's own README states the exact tradeoff this file's comment
+     describes: "less velocity decay may converge on a better solution, but
+     risks numerical instabilities and oscillation" — the coasting-past-target
+     wobble 0.28 produced here. 0.42 sits just past d3's own default of 0.4,
+     which is what "lands with weight" means. A future edit sliding this back
+     toward 0.28 would reintroduce the wobble with nothing here to catch it. */
+  it("damps harder than the floaty 0.28 it replaced, within d3's valid [0,1] range", () => {
+    expect(VELOCITY_DECAY).toBeGreaterThan(0.28)
+    expect(VELOCITY_DECAY).toBeLessThanOrEqual(1)
+    expect(VELOCITY_DECAY).toBe(0.42)
   })
 })
 
