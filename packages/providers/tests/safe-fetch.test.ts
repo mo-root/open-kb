@@ -200,6 +200,78 @@ describe("publicOnlyFetch checks every redirect hop, not just the first", () => 
   })
 })
 
+describe("publicOnlyFetch accepts every input shape `typeof fetch` promises", () => {
+  // `guarded`'s own href line is `typeof input === "string" ? input : input
+  // instanceof URL ? input.href : input.url` — three branches, and every test
+  // above this one only ever drives the first. The other two are not
+  // hypothetical: this function's whole reason to exist is standing in for
+  // the raw `fetch` at `brightdata.ts`'s `directFetch` call site, and its own
+  // doc comment claims "shaped as `typeof fetch` so it drops in wherever the
+  // raw one was" — a claim a caller can only rely on if a `URL` and a
+  // `Request` are proven, not assumed, to reach the guard and the transport
+  // the same way a string does.
+
+  it("takes a URL object, guards it by the same host, and hands it to the transport unchanged", async () => {
+    const socket = okSocket()
+    const f = publicOnlyFetch({ fetchImpl: socket as unknown as typeof fetch, lookup: resolver({ "resend.com": [PUBLIC] }) })
+    const url = new URL("https://resend.com/llms.txt")
+    const res = await f(url)
+    expect(res.status).toBe(200)
+    // Passed straight through on hop 0, same as a string is — not re-spelled
+    // via `.href` into a different object the caller no longer recognises.
+    expect(socket.mock.calls[0]![0]).toBe(url)
+  })
+
+  it("refuses a URL object whose host resolves privately, the same as it would a string", async () => {
+    const socket = okSocket()
+    const f = publicOnlyFetch({
+      fetchImpl: socket as unknown as typeof fetch,
+      lookup: resolver({ "127.0.0.1.nip.io": ["127.0.0.1"] }),
+    })
+    await expect(f(new URL("https://127.0.0.1.nip.io/"))).rejects.toBeInstanceOf(BlockedHostError)
+    expect(socket).not.toHaveBeenCalled()
+  })
+
+  it("takes a Request object, guards it by its own .url, and hands the same Request to the transport", async () => {
+    const socket = okSocket()
+    const f = publicOnlyFetch({ fetchImpl: socket as unknown as typeof fetch, lookup: resolver({ "resend.com": [PUBLIC] }) })
+    const req = new Request("https://resend.com/llms.txt")
+    const res = await f(req)
+    expect(res.status).toBe(200)
+    expect(socket.mock.calls[0]![0]).toBe(req)
+  })
+
+  it("refuses a Request object whose host resolves privately, the same as it would a string", async () => {
+    const socket = okSocket()
+    const f = publicOnlyFetch({
+      fetchImpl: socket as unknown as typeof fetch,
+      lookup: resolver({ "127.0.0.1.nip.io": ["127.0.0.1"] }),
+    })
+    const err = await f(new Request("https://127.0.0.1.nip.io/")).catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(BlockedHostError)
+    expect(socket).not.toHaveBeenCalled()
+  })
+
+  it("re-checks a redirect hop reached via a Request object, same as it would starting from a string", async () => {
+    // Hop 0 forwards the Request object itself (proven above), so a socket
+    // that reads it with `String(input)` sees "[object Request]", not the
+    // url — this reads `.url` instead, the way a real transport would.
+    const socket = vi.fn(async (input: unknown) => {
+      const url = input instanceof Request ? input.url : String(input)
+      if (url === "https://evil.com/") return new Response("", { status: 302, headers: { location: "http://169.254.169.254/latest/meta-data/" } })
+      return new Response("reached the inside", { status: 200 })
+    })
+    const f = publicOnlyFetch({
+      fetchImpl: socket as unknown as typeof fetch,
+      lookup: resolver({ "evil.com": [PUBLIC] }),
+    })
+    const err = await f(new Request("https://evil.com/"), { redirect: "follow" }).catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(BlockedHostError)
+    expect((err as BlockedHostError).host).toBe("169.254.169.254")
+    expect(socket).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe("publicOnlyFetch leaves the honest case alone", () => {
   it("fetches an ordinary public domain, passing the caller's url through unchanged", async () => {
     const socket = okSocket()
