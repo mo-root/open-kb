@@ -80,6 +80,17 @@ For the small end: a 10-query probe on `clerk.com` returned 449 entities for $0.
 
 **Say the cost before spending it.** These are real dollars.
 
+**A cheaper option than picking a query count:** `pnpm sweep <domain> --quick` seals the search
+once ~90 hosts are in view and skips the paid link pass, trading reach for cost rather than making
+you guess an opening query count. Measured on resend.com: $0.40 and 6 min for 411 entities and 106
+competitors, against ~$1.14 and ~25 min for ~1,150 entities and ~240 competitors on the same
+anchor's full run (`scripts/sweep.ts`'s own doc comment carries the receipts). The first few rivals
+held in that measurement; ranks 6-10 and the tail did not — which is roughly how much a full run's
+own ranking already moves between two full runs of the same anchor, so `--quick` is not introducing
+new instability, it is buying less of the reach a full run gets past the head. Reach for it for a
+gallery entry or "who's up against them"; drop it when the order past the first handful has to be
+right.
+
 The other levers, all optional and all documented in `references/onboarding.md`: `OPENKB_PAGES`
 (result pages per query), `OPENKB_MIN_WAVES`, `OPENKB_MAX_HOSTS`, and four stage flags — `OPENKB_TRIAGE`,
 `OPENKB_SECOND_LOOK`, `OPENKB_LISTICLE_HARVEST` (all three on by default, `0` disables) and
