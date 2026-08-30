@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest"
 import { INTENTS as SWEEP_INTENTS } from "@open-kb/sweep"
 import {
+  INTENT_BLURB,
+  INTENT_LABEL,
   INTENTS,
+  STAGE_BLURB,
+  STAGE_LABELS,
   STAGES,
   advance,
   allDone,
@@ -19,6 +23,7 @@ import {
   readUnderstanding,
   shareOf,
   stageOf,
+  type Intent,
   type Stage,
 } from "./types"
 
@@ -145,6 +150,34 @@ describe("allDone: seals every stage regardless of where it stood", () => {
 })
 
 /**
+ * `STAGE_LABELS` and `STAGE_BLURB` had zero test references anywhere — found
+ * sweeping this package for exported constants no test file names (D-scope,
+ * self-discovered; docs/overnight-backlog.md is gone from this checkout, same
+ * recovery prior SELF-<n> commits used). Both are already typed
+ * `Record<Stage, string>` off `STAGES` itself, so a stage this file forgot is
+ * already a compile error — unlike `TIER_BLURB`'s gap in `viewTypes.test.ts`.
+ * What no test catches is two stages quietly sharing a label or blurb (a
+ * copy-paste that still type-checks and still runs), which on the rail
+ * (`STAGE_LABELS`) or under the active stage (`STAGE_BLURB`, "shown under the
+ * active stage, because 'Sweep' alone does not tell anyone anything" per its
+ * own doc comment) reads as two phases collapsing into one. Same shape of
+ * guard as `FAMILY_TONE`'s "no two families share a tone" test.
+ */
+describe("STAGE_LABELS and STAGE_BLURB: one distinct line per stage", () => {
+  it("gives every stage a label, and no two stages the same label", () => {
+    for (const s of STAGES) expect(STAGE_LABELS[s]).toBeTruthy()
+    const labels = STAGES.map((s) => STAGE_LABELS[s])
+    expect(new Set(labels).size).toBe(labels.length)
+  })
+
+  it("gives every stage a blurb, and no two stages the same blurb", () => {
+    for (const s of STAGES) expect(STAGE_BLURB[s]).toBeTruthy()
+    const blurbs = STAGES.map((s) => STAGE_BLURB[s])
+    expect(new Set(blurbs).size).toBe(blurbs.length)
+  })
+})
+
+/**
  * The stage machine above is one concern; the wire readers below are a
  * distinct one — 9e65be8 left them for a future item on purpose. Every one
  * of `readPlanned`, `groupPlan`, `readCost`, `readRunCost`, `readProgress`,
@@ -267,6 +300,32 @@ describe("INTENTS: this file's own copy of the catalog's wire vocabulary", () =>
 
   it("and nothing this file names is a word the catalog's schema does not accept", () => {
     expect([...ui].filter((i) => !engine.has(i))).toEqual([])
+  })
+})
+
+/**
+ * `INTENT_LABEL` and `INTENT_BLURB` had zero test references anywhere, same
+ * sweep that found the `STAGE_LABELS`/`STAGE_BLURB` gap above. Both are typed
+ * `Record<Intent, string>` off `INTENTS` plus `"unknown"`, so a missing key is
+ * already a compile error; what's unguarded is two intents sharing a label or
+ * blurb. The plan panel groups queries by intent (`groupPlan`, tested below)
+ * precisely so a reader can tell the eight questions apart — `INTENT_BLURB`'s
+ * own doc comment calls this "the catalog's own thesis, in the panel" — so two
+ * groups reading the same blurb would defeat the one thing this axis is for.
+ */
+describe("INTENT_LABEL and INTENT_BLURB: one distinct line per intent, including 'unknown'", () => {
+  const ALL_INTENTS: readonly Intent[] = [...INTENTS, "unknown"]
+
+  it("gives every intent a label, and no two intents the same label", () => {
+    for (const i of ALL_INTENTS) expect(INTENT_LABEL[i]).toBeTruthy()
+    const labels = ALL_INTENTS.map((i) => INTENT_LABEL[i])
+    expect(new Set(labels).size).toBe(labels.length)
+  })
+
+  it("gives every intent a blurb, and no two intents the same blurb", () => {
+    for (const i of ALL_INTENTS) expect(INTENT_BLURB[i]).toBeTruthy()
+    const blurbs = ALL_INTENTS.map((i) => INTENT_BLURB[i])
+    expect(new Set(blurbs).size).toBe(blurbs.length)
   })
 })
 
