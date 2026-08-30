@@ -5,10 +5,14 @@
  *         npx tsx scripts/batch.ts list.txt --concurrency 2 --queries 60 --timeout 1800
  *         npx tsx scripts/batch.ts list.txt --resume runs/batch-20260810T151102.jsonl
  *         OPENKB_BATCH_CAP_USD=310 npx tsx scripts/batch.ts scripts/gallery-domains.txt
+ *         npx tsx scripts/batch.ts list.txt --retries 0
  *
  * The list stops itself at $50.00 and each run inside it at $8.00; both are
  * argued in `scripts/spend-caps.ts`, and the fourth form above is what the
- * 79-domain gallery list wants if it is to finish in one go.
+ * 79-domain gallery list wants if it is to finish in one go. Every non-capped
+ * failure is retried once by default (`readFlag`'s own fallback for
+ * `--retries` is 1); the fifth form above turns that off, for a list where a
+ * second attempt is not worth doubling the cost of every real failure.
  *
  * WHY THIS IS NOT A SHELL LOOP. Building a gallery means fifty sweeps back to
  * back — about ten hours and eighty dollars at the rates in `runs/`. Three
