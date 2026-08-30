@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { exportDrop, exportKbFiles, receiptSource, slugOf, withoutStolenNames } from "../src/export-kb.js"
+import type { ExportEntity } from "../src/export-kb.js"
 
 /** A tiered run (the swarm shape): every kept row carries a provenance tier, so
  *  the export is allowed to explain what a tier is. Also carries one row per
@@ -200,6 +201,30 @@ describe("what leaves the app is the map, not the crawl", () => {
     expect(exportDrop(byHost("unexplained.example"))).toBe("unexplained")
     expect(exportDrop(byHost("oxylabs.io"))).toBeNull()
     expect(exportDrop(byHost("maybe.example"))).toBeNull()
+  })
+
+  // `withdrawn` is exportDrop's one gate this fixture's "one per gate" run
+  // cannot cover: it only fires on a row `withoutStolenNames` has already
+  // repaired (a stolen-name row turned into a bare host, `because: WITHDRAWN`),
+  // which is a shape this file's `run` never carries. Untested until now —
+  // confirmed with `grep -n "exportDrop"` across every test file before writing
+  // this. The function's own doc comment calls out exactly the risk this closes:
+  // "[withdrawn] reaches `silent`'s test... but it is not the same thing and
+  // must not be counted as it" — silent's check (`!what && !why && !spans`) is
+  // true of a withdrawn row too, since the repair clears all three, so this
+  // pins that `withdrawn` is checked first in exportDrop's own ordering and
+  // wins. Built from the real `withoutStolenNames` output, not a hand-copied
+  // WITHDRAWN string, so a wording change to that constant cannot desync this.
+  it("a name-stolen row reads as `withdrawn`, not `silent`, though it matches silent's own test too", () => {
+    const repaired = withoutStolenNames<ExportEntity, never>({
+      anchor: "stripe.com",
+      entities: [{ name: "Stripe", domain: "aws.amazon.com", kind: "product", relation: "competitor", what: "x", why: "y" }],
+    })
+    const row = repaired.entities[0]!
+    expect(row.what).toBe("")
+    expect(row.why).toBe("")
+    expect(row.spans).toBeUndefined()
+    expect(exportDrop(row)).toBe("withdrawn")
   })
 
   it("gives no page to a row that could only say a named host refused us", () => {
