@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { FamilyLedger, MapState, type MapNode } from "../src/index.js"
+import { FamilyLedger, MapState, type MapNode, type FamilyEvent } from "../src/index.js"
 
 /**
  * The family ledger: the run's planned questions as rows, orchestrator-side
@@ -139,5 +139,31 @@ describe("FamilyLedger.rows: pageTierNodes read lazily from the map's stamps", (
     expect(fam.rows(map)[0]!.pageTierNodes).toBe(1)
     map.nodes.get("rival-one.com")!.retracted = { why: "a listicle, not a vendor" }
     expect(fam.rows(map)[0]!.pageTierNodes).toBe(0)
+  })
+})
+
+// apply() is the only entry point tools-control and orchestrator actually call
+// (onFamilyEvent: (e) => families.apply(e), never .opened/.killed directly),
+// but every test above drives opened()/killed() straight — grepping this repo
+// for ".apply(" against a FamilyLedger turns up zero calls anywhere, so the
+// dispatch itself, both branches, has never run under test.
+describe("FamilyLedger.apply: the tools-control seam, dispatched", () => {
+  it("routes an 'opened' event to opened() — queues a new row", () => {
+    const fam = new FamilyLedger()
+    const event: FamilyEvent = { kind: "opened", lens: "rivals", dedupeKey: "m-rivals", priority: 90 }
+    fam.apply(event)
+    expect(fam.rows(emptyMap())).toEqual([
+      { lens: "rivals", dedupeKey: "m-rivals", priority: 90, status: "queued", nodesAdded: 0, pageTierNodes: 0 },
+    ])
+  })
+
+  it("routes a 'killed' event to killed() — an unopened key stays a no-op, same as calling killed() directly", () => {
+    const fam = new FamilyLedger()
+    fam.apply({ kind: "opened", lens: "rivals", dedupeKey: "m-rivals", priority: 90 })
+    fam.apply({ kind: "killed", dedupeKey: "m-rivals", because: "duplicate of orientation" })
+    fam.apply({ kind: "killed", dedupeKey: "never-opened", because: "board hygiene" })
+    const rows = fam.rows(emptyMap())
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ status: "killed", because: "duplicate of orientation" })
   })
 })
