@@ -1691,6 +1691,63 @@ describe("runSwarm: the finish gate", () => {
     expectEndingShape(run.ending, run.ledger)
   }, 20_000)
 
+  // ── whose MONEY it is when both open ─────────────────────────────────────
+  //
+  // from-sweep.ts states this as doctrine, never tested until now: "when the
+  // floor and the handoff both open (the caller set familyFloor explicitly
+  // beside fromSweep), they share the shelf and the orchestrator funds the
+  // handoff first: at equal priority the board's insertion tie-break runs the
+  // targeted question before the generic one." Every other handoff test above
+  // runs at the DEFAULT floor (off, per orchestrator.ts's own doc comment on
+  // `familyFloor`), and every family-floor test above runs with no handoff —
+  // this is the one case with both funded explicitly. A loose pool would fund
+  // everything and never show which went first, so the budget has to be tight
+  // enough that only one side can be paid.
+
+  it("with the floor forced on beside a handoff, the handoff spends first — a tight pool starves the floor, not the handoff", async () => {
+    const logs: string[] = []
+    const lead = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = leadTurnOf(prompt)
+        if (turn === 1) return reply(call("n1", "next", { after: { landings: 1 }, why: "wait for the seed" }), false)
+        return reply(call("f1", "finish", { reason: "mapped", summary: "let the pool decide", unresolved: [], why: "d" }), false)
+      },
+    })
+
+    // $0.60 ceiling: finishReserveUsd is max($0.12, 10%) = $0.12, so $0.48 is
+    // spendable once the seed's own $0.25 dig reservation returns at its
+    // measured-here $0.000 actual (orientingSeed's one fetch and one remember
+    // cost nothing under the zero-priced tiers and fakeFetch's $0 default).
+    // The handoff's ten missions (8 peek @ $0.03 + 2 read @ $0.10 = $0.44)
+    // fit inside that $0.48 with exactly $0.04 left over — enough for none of
+    // the family floor's four read missions at $0.10 each, if and only if the
+    // handoff really did reserve first.
+    const run = await runSwarm(
+      mkOpts({
+        lead,
+        tiers: { dig: orientingSeed() },
+        logs,
+        over: { fromSweep: tenMissionSweep(), familyFloor: true, ceilingUsd: 0.6 },
+      }),
+    )
+
+    const sweepFunded = logs.filter((l) => /sweep handoff: p\d+ \S+ funded \(/.test(l))
+    const sweepRefused = logs.filter((l) => /sweep handoff: \S+ not funded —/.test(l))
+    const floorFunded = logs.filter((l) => /family floor: p\d+ family:\S+ funded \(/.test(l))
+    const floorRefused = logs.filter((l) => /family floor: family:\S+ not funded —/.test(l))
+
+    expect(sweepFunded).toHaveLength(10) // the whole handoff: every peek and both reads
+    expect(sweepRefused).toHaveLength(0)
+    expect(floorFunded).toHaveLength(0) // starved — nothing left once the handoff spent
+    expect(floorRefused).toHaveLength(4) // DEFAULT_FAMILY_FLOOR, every one of them
+    // spawnTool's own refusal sentence (tools-control.ts), not the ledger's —
+    // the family floor never sees the ledger's own "$0.04 is spendable" text.
+    expect(floorRefused.every((l) => l.includes("the pool no longer funds a read; re-tier it or drop it"))).toBe(true)
+    expect(run.control.commissionedBy.get("verify:rival0.com")).toBe("sweep")
+    expect([...run.control.commissionedBy.values()]).not.toContain("family-floor")
+    expectEndingShape(run.ending, run.ledger)
+  }, 20_000)
+
   // ── what the receipt says ──────────────────────────────────────────────
 
   it("a lead-commissioned lane that CRASHES still pays, and the receipt says so", async () => {
