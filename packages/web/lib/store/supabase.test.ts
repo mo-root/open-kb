@@ -133,6 +133,32 @@ describe("the supabase store", () => {
     expect(out[0]!.seq).toBe(8)
   })
 
+  /**
+   * `getSpans` had its unconfigured path (line 78) and its network-throw path
+   * (line 96) under test, but never the non-2xx branch — `if (!res || !res.ok)
+   * return []` reads as one line and only half of it had a test driving it.
+   * Same shape as `listRuns`'s and `countRunsSince`'s own non-2xx tests above.
+   *
+   * The body carries a real span rather than an empty or malformed one:
+   * `quiet()` catches a `.json()` parse failure too, so a body of `"nope"` or
+   * `"[]"` would read [] from EITHER branch and pass whether `.ok` is checked
+   * or not. Only a well-formed body with content makes the two branches
+   * disagree — checked `.ok` drops it, an unchecked one would return it — so
+   * this is the one shape that actually exercises the status check rather
+   * than `quiet`'s catch-all.
+   *
+   * Coverage gap found sweeping web/lib/store (D-scope: "areas nobody has
+   * swept").
+   */
+  it("returns an empty list rather than the body, when the store answers non-2xx", async () => {
+    vi.stubEnv("SUPABASE_URL", "https://x.supabase.co")
+    vi.stubEnv("SUPABASE_SECRET_KEY", "k")
+    vi.stubGlobal("fetch", vi.fn(async () =>
+      new Response(JSON.stringify([{ span: span(8) }]), { status: 500 }),
+    ))
+    expect(await (await load()).getSpans("r1")).toEqual([])
+  })
+
   /** A row without a result is a run that has not finished. Listing it would
    *  put a card in the gallery that opens onto nothing. */
   it("does not present an unfinished run as a readable one", async () => {
