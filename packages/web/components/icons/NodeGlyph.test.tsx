@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server"
 import { describe, expect, it } from "vitest"
-import NodeGlyph, { GLYPH_KINDS, glyphForNotePath } from "./NodeGlyph"
+import { TYPE_ORDER } from "@/lib/nodeTypes"
+import NodeGlyph, { GLYPH_KINDS, glyphForNotePath, TYPE_GLYPH } from "./NodeGlyph"
 
 /**
  * NodeGlyph.tsx had zero test coverage anywhere: neither `glyphForNotePath`
@@ -106,6 +107,40 @@ describe("NodeGlyph: sizes at or under 13px thicken the stroke and grow the acce
   it("an explicit strokeWidth overrides the size-derived default even when small", () => {
     const html = renderToStaticMarkup(<NodeGlyph kind="hiring" size={13} strokeWidth={3} />)
     expect(html).toContain('stroke-width="3"')
+  })
+})
+
+/**
+ * TYPE_GLYPH had zero test coverage anywhere — flagged and left for a future
+ * item by the commit that covered this file's other three sibling maps
+ * (STAGE_LABELS/STAGE_BLURB/INTENT_LABEL/INTENT_BLURB in
+ * packages/web/components/build/types.test.ts). Its key set is already
+ * compile-time safe: it's typed `Record<NodeType, GlyphKind>`, so a NodeType
+ * this map forgot is a tsc error, same as those three. What tsc does NOT
+ * catch is two node types quietly sharing one glyph — a copy-paste that still
+ * compiles and still runs, and on the map, the legend or the composition bar
+ * (GraphLegend, KbOverview, GraphSearch, GraphCanvas's card — every consumer
+ * `TYPE_GLYPH` has per this file's own header comment) reads as two of the
+ * four semantic types becoming visually indistinguishable. This file's own
+ * doc comment on `TYPE_GLYPH` calls it "the bureau glyph" shared so "all
+ * surfaces draw the same mark for the same type" — the whole point breaks if
+ * two types draw the SAME mark. Same shape of gap, and same fix, as the
+ * STAGE_LABELS/INTENT_LABEL "no two share" test this follows.
+ */
+describe("TYPE_GLYPH: one glyph per node type, and no two share one", () => {
+  it("covers every NodeType exactly once", () => {
+    expect(new Set(Object.keys(TYPE_GLYPH))).toEqual(new Set(TYPE_ORDER))
+  })
+
+  it("gives no two node types the same glyph", () => {
+    const kinds = Object.values(TYPE_GLYPH)
+    expect(new Set(kinds).size).toBe(kinds.length)
+  })
+
+  it("only ever names a real declared glyph kind", () => {
+    for (const kind of Object.values(TYPE_GLYPH)) {
+      expect(GLYPH_KINDS).toContain(kind)
+    }
   })
 })
 
