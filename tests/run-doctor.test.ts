@@ -75,6 +75,17 @@ describe("run-doctor over the runs on disk", () => {
     expect(starvedNote.detail).toContain("ceiling")
   })
 
+  it("gives second look a note even when it ran and asked nobody", () => {
+    // `sl.asked === 0` (every host placed on the first pass) used to fall
+    // through every branch — not `ok`, not `unknown`, no note printed at
+    // all, unlike every other zero-but-recorded case in this file.
+    const notes = diagnose({ secondLook: { asked: 0, rescued: 0, failed: 0 } }, {})
+    const note = notes.find((n) => n.what === "second look")
+    expect(note).toBeDefined()
+    expect(note!.level).toBe("ok")
+    expect(note!.detail).toContain("0 asked")
+  })
+
   it("reads a rival channel cut by a ceiling differently from one that failed", () => {
     // The rival family is dealt last, so under a ceiling "names found, no
     // queries" is the budget working. Uncapped, the same pair is a real gap.

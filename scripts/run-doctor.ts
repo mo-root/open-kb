@@ -144,7 +144,16 @@ export function diagnose(r: Record<string, any>, stats: Record<string, any>): No
   const sl = r.secondLook
   if (sl === null) out.push({ level: "ok", what: "second look", detail: "flag off" })
   else if (!sl) absent("second look", "run predates report.secondLook")
-  else if (sl.asked) {
+  else if (!sl.asked) {
+    // `sl` is present and on, but `asked` is 0 — every host was placed on the
+    // first pass, so there was nothing to rescue. Falling through the branch
+    // below with `sl.asked` used as the truthiness test dropped this case
+    // entirely: not `ok`, not `unknown`, no note at all, the exact silent
+    // omission the file's own opening comment warns a "not recorded" zero
+    // must never become — except here nothing was even printed, which is
+    // worse than misreading a zero.
+    out.push({ level: "ok", what: "second look", detail: "0 asked — every host placed on the first pass" })
+  } else {
     const failRate = (sl.failed ?? 0) / sl.asked
     out.push({
       level: failRate > 0.5 ? "watch" : "ok",
