@@ -102,4 +102,21 @@ describe("bake-layouts.ts's lobe force: pinned to GraphCanvas's makeClusterForce
     expect(bake![1]).toBe(canvas![1])
     expect(bake![2]).toBe(canvas![2])
   })
+
+  it("the charge force's distanceMin matches", () => {
+    // GraphCanvas: `?.distanceMin?.(2)` right after the same comment's own
+    // `distanceMax` (already recipe-derived via chargeDistanceMax, not
+    // hand-copied) — this is the one literal in that chain with no source
+    // of truth but the two call sites. bake-layouts.ts: `.distanceMin(2)`
+    // on the same forceManyBody chain. One occurrence of the real call in
+    // each file (confirmed with `grep -n "distanceMin"` — GraphCanvas's
+    // other hit is the `D3Force` type's own method signature, not a call),
+    // so the regex needs no further anchoring.
+    const re = /distanceMin\??\.?\(([\d.]+)\)/
+    const bake = BAKE.match(re)
+    const canvas = CANVAS.match(re)
+    expect(bake).not.toBeNull()
+    expect(canvas).not.toBeNull()
+    expect(bake![1]).toBe(canvas![1])
+  })
 })
