@@ -167,6 +167,15 @@ hosted web app, or the repo itself would actually notice.
   had a dedicated `runCostCeiling` fault to avoid. Given its own
   `namedFaults.runDeadline` entry with the same three things a reader needs:
   not broken, kept, and the uncapped alternative.
+- `run-doctor`'s second-look check vanished from the report entirely — not
+  `ok`, not `unknown`, not `gap`, just missing — whenever second-look ran
+  and placed everyone on the first pass (`sl.asked === 0`), the one shape
+  its `if (sl === null) … else if (!sl) … else if (sl.asked) …` chain never
+  matched. Worse than the misread-zero bug this file exists to catch, since
+  even a wrong level would have been visible. Now reports `ok` with "0
+  asked — every host placed on the first pass", matching how the
+  `triage`/`listicleHarvest` blocks already treat "ran, found nothing to
+  do" as a clean result.
 
 ### Repo and docs
 
