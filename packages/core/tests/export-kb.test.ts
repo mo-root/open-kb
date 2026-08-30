@@ -809,6 +809,42 @@ describe("an edge to a gated entity is labeled, never deleted", () => {
     expect(page).not.toContain("trash.example")
   })
 
+  // TAINTED (line 566 in export-kb.ts) names three reasons, but the fixture
+  // above only ever puts "noise" through the filter it guards — "withdrawn"
+  // and "personal" were never combined with an edge anywhere in this file
+  // (confirmed with `grep -n "edges:"` across every describe block before
+  // writing this). That leaves the export's one stated third-party promise —
+  // "a personal end must not be named anywhere" (the comment right above
+  // TAINTED) — resting on a branch nothing exercises: a future edit that
+  // dropped "personal" or "withdrawn" from the set would start rendering a
+  // half-edge naming a private individual's blog, or an anchor-imposter's
+  // stolen identity, on a surviving page, and every test here would stay
+  // green. Built the same way the `withdrawn`-vs-`silent` test above builds
+  // its row: through the real `withoutStolenNames` repair, not a hand-set
+  // `because` string.
+  it("still deletes an edge whose end is withdrawn or personal, not merely gated", () => {
+    const tainted = {
+      anchor: "anchor.example",
+      entities: [
+        { name: "Kept", domain: "kept.example", kind: "company", relation: "competitor", what: "A rival.", why: "Same shortlist." },
+        // Wears the anchor's own name over a host that isn't it — repaired to
+        // `because: WITHDRAWN` by withoutStolenNames before exportDrop sees it.
+        { name: "Anchor", domain: "aws.amazon.com", kind: "product", relation: "competitor", what: "x", why: "y" },
+        // Matches PERSONAL_PROSE on its own words, same as the "personal, not
+        // a market entity" fixture above.
+        { name: "Dev", domain: "adeveloper.example", kind: "publisher", relation: "unknown", what: "A personal blog about the market." },
+      ],
+      edges: [
+        { from: "kept.example", to: "aws.amazon.com", relation: "discusses", why: "a memory", confidence: "inferred" },
+        { from: "kept.example", to: "adeveloper.example", relation: "discusses", why: "a memory", confidence: "inferred" },
+      ],
+    }
+    const files = exportKbFiles(tainted)
+    const page = files.find((f) => f.path === "entities/kept-example.md")?.content ?? ""
+    expect(page).not.toContain("aws.amazon.com")
+    expect(page).not.toContain("adeveloper.example")
+  })
+
   it("prints the roads on a page whose entity carries them", () => {
     const files = exportKbFiles({
       anchor: "anchor.example",
