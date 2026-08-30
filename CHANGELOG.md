@@ -4,7 +4,7 @@ All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/); this file is
 maintained by hand from `git log`, not generated.
 
-## [Unreleased] — hardening/overnight-2026-08-21 (2026-08-21 – 2026-08-29)
+## [Unreleased] — hardening/overnight-2026-08-21 (2026-08-21 – 2026-08-30)
 
 Several nights of hardening on top of `main`, driven by measured evidence from
 real sweep runs rather than guesses. Grouped by what a user of the CLI, the
@@ -159,6 +159,14 @@ hosted web app, or the repo itself would actually notice.
   had no gate, so it could fail silently.
 - `package.json` had no `packageManager` field, an item C3 named as open and
   never closed.
+- The web app's deadline watchdog (`withDeadline`, the ceiling that stops a
+  run at the deployment's own `maxDuration`) reported an unbranded `Error`
+  instead of a `NamedFault`, so a run the app itself stopped on schedule
+  rendered the generic "the server could not handle this request" message —
+  the exact ref-only fallback its sibling, the spend-cap watchdog, already
+  had a dedicated `runCostCeiling` fault to avoid. Given its own
+  `namedFaults.runDeadline` entry with the same three things a reader needs:
+  not broken, kept, and the uncapped alternative.
 
 ### Repo and docs
 
@@ -193,9 +201,11 @@ between `remember`'s edge schema and the investigator prompt, a `discover()`
 call that computed whether the agent finished and then discarded it, a
 case-sensitivity bug in `nodeKey`'s scheme stripping, an overpromising
 harvest tool description, a `read` script that opened its newest-run match
-twice, and new direct tests for `anchorIdentityTheft`, the breaker's
-word-list fallback past six strikes, and `fatal()`'s provider-message
-classifier.
+twice, a dead `HUB_DEGREE_FRAC` constant in `GraphCanvas.tsx` left behind by
+an earlier fix that replaced its formula with `isHubDegree` but never
+removed the superseded declaration, and new direct tests for
+`anchorIdentityTheft`, the breaker's word-list fallback past six strikes,
+and `fatal()`'s provider-message classifier.
 
 A long tail of further self-discovered work followed the same pattern: one
 concrete gap or fix per commit, each tagged `Backlog item: SELF-<n>` in its
