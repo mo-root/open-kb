@@ -62,6 +62,25 @@ describe("answerKeyRecall", () => {
     expect(r.probes.length).toBeGreaterThan(0)
     expect(r.probes.every((p) => Number.isFinite(p.recall))).toBe(true)
   })
+  // The host-exclusion pass only runs when anchorAliases is set (sweep.ts and
+  // orchestrator.ts both always pass it, which is why this line reads
+  // covered in the full suite despite this file never exercising it on its
+  // own — but answerKeyRecall is exported public API, and probePages' url is
+  // not always the `https://${host}/` shape judgeHosts constructs: nothing
+  // stops a future or test caller from handing it something new URL() can't
+  // parse. The catch's own comment says the contract for that case: "nothing
+  // to exclude by host" — nothing crashes, and the page is just not excluded
+  // by host, not silently dropped.
+  it("does not throw on an unparseable probe url, and does not exclude it by host", () => {
+    const r = answerKeyRecall([{ url: "not a valid url", html: page(["a.com", "b.com", "c.com", "d.com", "e.com"]).html }], {
+      anchor: "anchor.com",
+      mapHosts: new Set(["a.com"]),
+      minVendors: 5,
+      anchorAliases: new Set(["alias.com"]),
+    })
+    expect(r.probes).toHaveLength(1)
+    expect(r.probes[0]!.url).toBe("not a valid url")
+  })
 })
 
 /**
