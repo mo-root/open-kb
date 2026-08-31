@@ -336,4 +336,68 @@ describe("investigate", () => {
       expect(ctx.graph.nodes.has(e.to)).toBe(true)
     }
   })
+
+  it("does not re-seed an anchor a prior investigator already enriched", async () => {
+    // The seed guard (`if (!ctx.graph.nodes.has(seed.id)) ...`) only ever ran its
+    // true branch in this file's other tests — a fresh graph, first arrival, seed
+    // written. Its whole reason to exist, per its own comment ("an unguarded write
+    // would also discard citations a previous agent proved against the anchor's
+    // own id"), is the false branch: a second investigator reaching an anchor a
+    // first one already enriched. `remember` (tools.ts ~line 565-578) merges into
+    // an existing node by pushing onto `alsoWhat`/`alsoWhyHere` rather than
+    // replacing it, so that is exactly the shape a live multi-investigator run
+    // leaves behind — proven here directly on the graph rather than by re-running
+    // the tool, since the guard itself doesn't care how the enrichment arrived.
+    const seededAnchor = {
+      id: "company:example.com",
+      kind: "company" as const,
+      name: "example.com",
+      what: "Not established by this run — no page was fetched to describe the anchor itself.",
+      whyHere: "This is the anchor. The map exists to explain this company's position, and every other node here is stated against it.",
+      howFound: "Seeded as the anchor of this run, before any search ran. Not discovered, and carries no evidence.",
+      evidence: [] as StoredNode["evidence"],
+      alsoWhat: ["a prior investigator's remember call found this about the anchor itself"],
+      alsoWhyHere: [] as string[],
+      isAnchor: true as const,
+    }
+
+    const ctx = {
+      evidence: new EvidenceStore(),
+      spans: new SpanStream(),
+      search: new FakeSearch({}),
+      fetch: new FakeFetch({}),
+      runId: "r3",
+      agentId: "inv2",
+      parentId: null,
+      graph: {
+        nodes: new Map<string, StoredNode>([[seededAnchor.id, seededAnchor]]),
+        edges: [] as StoredEdge[],
+      },
+    }
+
+    const model = new MockLanguageModelV4({
+      doGenerate: async () => ({
+        content: [{ type: "text" as const, text: "Nothing new to report." }],
+        finishReason: { unified: "stop" as const, raw: undefined },
+        usage: {
+          inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 },
+          outputTokens: { total: 5, text: 5, reasoning: 0 },
+        },
+        warnings: [],
+      }),
+    })
+
+    const out = await investigate({ anchor: "example.com", mission: "find head-on rivals", ctx, model, maxSteps: 6 })
+
+    // The guard fired: the already-there anchor is the exact same object, untouched,
+    // not replaced by `anchorNode("example.com")`'s bare seed. A regression to an
+    // unguarded `.set()` would pass an equality check on the plain fields but wipe
+    // `alsoWhat` back to `[]` — asserted on directly, not inferred from object identity.
+    const anchor = ctx.graph.nodes.get("company:example.com")!
+    expect(anchor.alsoWhat).toEqual(["a prior investigator's remember call found this about the anchor itself"])
+    expect(ctx.graph.nodes.size).toBe(1)
+    // The anchor was already on the map before this investigator started, so it
+    // contributes nothing to this run's own delta.
+    expect(out.nodes).toBe(0)
+  })
 })
