@@ -152,6 +152,34 @@ describe("sweepSeedMissions: the recall-gap mission", () => {
     expect(missions.some((m) => m.dedupeKey === "gap:recall")).toBe(false)
   })
 
+  it("a pooled recall exactly AT the threshold mints nothing — the gate is strictly below it", () => {
+    // The gate reads `pooled < recallThreshold`. DEFAULT_RECALL_GAP_THRESHOLD's own
+    // comment says this line "has never not fired" on real data — pooled recall
+    // across the 40 sweep runs on disk tops out at 0.45, so no fixture anywhere
+    // in this file sits AT the boundary: the one above is 0.234 against 0.5 (far
+    // under) or 0.234 against a lowered 0.2 (held above by margin). A `<`
+    // regressed to `<=` would pass both and still mint a mission that should not
+    // exist for a run that met the line exactly.
+    //
+    // The probe below names a real unmet vendor so a wrongly-minted mission
+    // would actually have something to say (`missed.length > 0`) — an empty
+    // `probes` array would pass this assertion for the wrong reason, since the
+    // mission is skipped either way once nothing is missed.
+    const atThreshold: SweepRunLike = {
+      anchor: "anchor.com",
+      entities: [{ name: "r", domain: "rival.com", kind: "company", relation: "competitor", why: "same job" }],
+      report: {
+        recall: {
+          pooled: 0.5,
+          probes: [{ url: "https://roundup.example/best", vendors: ["missed-vendor.com"], found: [] }],
+        },
+      },
+    }
+    expect(sweepSeedMissions(atThreshold, { anchor: "anchor.com" }).some((m) => m.dedupeKey === "gap:recall")).toBe(
+      false,
+    )
+  })
+
   it("a run with no recall report, or a null pooled figure, mints no recall mission", () => {
     const bare: SweepRunLike = {
       anchor: "anchor.com",
