@@ -110,4 +110,46 @@ describe("run-doctor over the runs on disk", () => {
     expect(uncapped.level).toBe("gap")
     expect(uncapped.detail).toContain("no ceiling explains it")
   })
+
+  it("tells apart the three ways the link phase can lose pairs", () => {
+    // Link was measured at 43% of wall time (the finding P0-2 through P0-4
+    // exist to fix), and this `if / else if` chain — the only place a run's
+    // diagnosis reports it — had zero test coverage of its own before this:
+    // every branch below ran unverified. The three causes are distinct facts
+    // sweep.ts goes out of its way to keep separate (see its comment at
+    // `report.budget.unlinkedPairs`, "two different facts and a reader needs
+    // both"), so a chain that collapsed them or picked the wrong one would
+    // have nothing here to catch it.
+
+    // 1. Declined before it started — the clock ruled it out entirely.
+    const skipped = diagnose({ budget: { linkingSkipped: true } }, {}).find((n) => n.what === "linking")!
+    expect(skipped.level).toBe("gap")
+    expect(skipped.detail).toContain("no model-made edges")
+
+    // 2. Started and cut off mid-flight by the deadline. Checked first in
+    // the chain, so it must win even when `truncatedPairs`/`linking.truncated`
+    // also carry a number for the same run.
+    const midFlight = diagnose(
+      { budget: { linkingSkipped: false, unlinkedPairs: 7, truncatedPairs: 3 }, linking: { truncated: 3 } },
+      {},
+    ).find((n) => n.what === "linking")!
+    expect(midFlight.level).toBe("gap")
+    expect(midFlight.detail).toBe("7 pairs started and cut off mid-flight")
+
+    // 3. Neither declined nor cut off — PAIR_CAP simply qualified more pairs
+    // than the paid pass was allowed to ask, a busy-market fact rather than a
+    // clock or a failure, so it is only a `watch`.
+    const capBound = diagnose({ budget: { linkingSkipped: false, unlinkedPairs: 0 }, linking: { truncated: 51_919 } }, {}).find(
+      (n) => n.what === "linking",
+    )!
+    expect(capBound.level).toBe("watch")
+    expect(capBound.detail).toBe("51919 pairs qualified and were never asked")
+
+    // A clean run — every pair answered, none cut — gets no note at all,
+    // unlike every other check in this file. Confirms that is deliberate
+    // (a chain of `if`/`else if` with no final `else`) and not a fall-through
+    // nobody noticed, matching this section's problems-only shape.
+    const clean = diagnose({ budget: { linkingSkipped: false, unlinkedPairs: 0 }, linking: { truncated: 0 } }, {})
+    expect(clean.find((n) => n.what === "linking")).toBeUndefined()
+  })
 })
