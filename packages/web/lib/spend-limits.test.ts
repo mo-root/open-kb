@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
-import { LIMIT_VARS, noteRunEnded, resetLedger, spendGate } from "@/lib/spend-limits"
+import { LIMIT_VARS, noteRunEnded, readLimits, resetLedger, spendGate } from "@/lib/spend-limits"
 
 /**
  * `noteRunStarted` (via `spendGate`'s in-memory path) and `noteRunEnded` had no
@@ -66,5 +66,98 @@ describe("a run reserves its ledger entry at the cap and settles it at cost", ()
 
   it("is a no-op for an id nothing reserved, rather than throwing or fabricating an entry", () => {
     expect(() => noteRunEnded("nobody-claimed-this-id", 0.05)).not.toThrow()
+  })
+})
+
+/**
+ * `readLimits`'s "cap too small to buy anything" refusal (spend-limits.ts
+ * around line 327) had no test anywhere: `one-spend-cap-not-two.test.ts`
+ * exercises `reserveUsd` at $0.10 and asserts the floor reserve it returns,
+ * with a comment that this is "what keeps `readLimits` able to refuse a cap
+ * too small to buy anything" — but nothing ever calls `readLimits` itself to
+ * check that the refusal actually fires, or that a cap just above the line
+ * does not. A regression here (an off-by-one in the comparison, a wrong
+ * operand) would only surface as a demo that silently aborts every run on
+ * its first span, with an operator who believes they set a working cap.
+ */
+describe("readLimits refuses a run cap too small to buy anything", () => {
+  afterEach(() => {
+    delete process.env[LIMIT_VARS.runCap]
+  })
+
+  it("refuses a cap whose trip point cannot clear a single query's cost", () => {
+    process.env[LIMIT_VARS.runCap] = "0.05"
+    const reading = readLimits(18)
+    expect(reading.ok).toBe(false)
+    if (!reading.ok) {
+      expect(reading.why).toContain(LIMIT_VARS.runCap)
+      expect(reading.why).toContain("no map can be built")
+    }
+  })
+
+  it("leaves a cap comfortably above that line alone", () => {
+    process.env[LIMIT_VARS.runCap] = "0.10"
+    const reading = readLimits(18)
+    expect(reading.ok).toBe(true)
+    if (reading.ok) expect(reading.limits.runCapUsd).toBe(0.1)
+  })
+})
+
+/**
+ * The in-memory `claimInMemory`'s "at-once" refusal (spend-limits.ts around
+ * line 770) had no test either. `app/api/map/limits.test.ts` drives the
+ * at-once limit thoroughly, but always with `SUPABASE_URL` set, so every one
+ * of those claims goes through the Postgres `claimRun` path, not this one —
+ * and this is the path a storeless deployment (`next dev`, a bare box, the
+ * Dockerfile) actually runs. A break here would leave exactly that
+ * deployment with no concurrency limit at all, silently.
+ */
+describe("the in-memory at-once limit refuses a concurrent claim", () => {
+  const headers = new Headers({ "x-real-ip": "203.0.113.60" })
+  const T0 = Date.parse("2026-08-27T12:00:00Z")
+
+  beforeEach(() => {
+    resetLedger()
+    delete process.env.SUPABASE_URL
+    delete process.env.SUPABASE_SECRET_KEY
+    process.env[LIMIT_VARS.runCap] = "off"
+    process.env[LIMIT_VARS.dayCap] = "off"
+    process.env[LIMIT_VARS.perVisitor] = "off"
+    process.env[LIMIT_VARS.atOnce] = "1"
+  })
+
+  afterEach(() => {
+    delete process.env[LIMIT_VARS.runCap]
+    delete process.env[LIMIT_VARS.dayCap]
+    delete process.env[LIMIT_VARS.perVisitor]
+    delete process.env[LIMIT_VARS.atOnce]
+  })
+
+  it("admits the first run in flight and refuses a second at the same instant", async () => {
+    const first = await spendGate({
+      id: "at-once-1",
+      domain: "meterco.example",
+      headers,
+      budgetQueries: 18,
+      runWindowMs: 300_000,
+      aboutSeconds: 250,
+      now: T0,
+    })
+    expect(first.ok).toBe(true)
+
+    const second = await spendGate({
+      id: "at-once-2",
+      domain: "meterco.example",
+      headers,
+      budgetQueries: 18,
+      runWindowMs: 300_000,
+      aboutSeconds: 250,
+      now: T0 + 1_000,
+    })
+    expect(second.ok).toBe(false)
+    if (!second.ok) {
+      expect(second.status).toBe(429)
+      expect(second.log).toContain(LIMIT_VARS.atOnce)
+    }
   })
 })
