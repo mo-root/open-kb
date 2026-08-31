@@ -1797,9 +1797,20 @@ describe("runSwarm: the finish gate", () => {
     // lead finishes on the woken turn, and the gate must not fight the wall.
     // The seed stays in flight past the warning so no dry-board wake can hand
     // the lead an earlier (still-armed) turn.
+    //
+    // Also the one place WALL_WARN_BEFORE_MS's own two message strings get
+    // pinned: `say()`'s log line and the pendingNotes sentence handed to the
+    // lead (orchestrator.ts ~1152-1153). Every other test near this constant
+    // (the "below WALL_WARN_BEFORE_MS" and "600s wall" cases above) only
+    // proves the warning does NOT fire, so the text on the firing side had no
+    // test anywhere pinning it — a wording edit at either site would pass the
+    // whole suite silently.
+    const turns: Record<number, string> = {}
+    const logs: string[] = []
     const lead = new MockLanguageModelV4({
       doGenerate: async ({ prompt }) => {
         const turn = leadTurnOf(prompt)
+        turns[turn] = JSON.stringify(prompt.filter((m) => m.role === "user").at(-1)?.content ?? "")
         if (turn === 1) return reply(call("n1", "next", { after: { seconds: 600 }, why: "quiet" }), false)
         return reply(call("f1", "finish", { reason: "the wall says close", summary: "s", unresolved: [], why: "w" }), false)
       },
@@ -1813,13 +1824,15 @@ describe("runSwarm: the finish gate", () => {
       },
     })
 
-    const run = await runSwarm(mkOpts({ lead, inv, over: { wallClockMs: 45_100 } }))
+    const run = await runSwarm(mkOpts({ lead, inv, logs, over: { wallClockMs: 45_100 } }))
 
     expect(run.ending.reason).toBe("lead-finished")
     expect(run.seconds).toBeLessThan(40) // ended at the warning, not the wall
     expect(run.tally.leadTurns).toBe(2) // no refusal turn
     expect(run.control.gate!.refusals).toBe(0)
     expect(run.control.gate!.objections.length).toBeGreaterThan(0)
+    expect(logs.some((l) => l.includes("45 seconds left on the wall clock; the lead is told to close"))).toBe(true)
+    expect(turns[2]).toContain("45 seconds left; call finish") // the woken turn, not the seed turn
     expectEndingShape(run.ending, run.ledger)
   })
 })
