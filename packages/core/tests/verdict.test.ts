@@ -61,6 +61,19 @@ describe("admit", () => {
       expect(out.because).toContain("23")
     }
   })
+  it("the aggregator threshold is >=, not >: the boundary count trips it and one below does not", () => {
+    // Every other fixture in this file is 23 against a threshold of 12 — far
+    // enough above that a regression from `>=` to `>` would never fail it.
+    // This is the actual line `admit` draws.
+    const page = (n: number) => ({
+      url: "https://x.com/",
+      readable: true,
+      outboundHosts: Array.from({ length: n }, (_, i) => `vendor${i}.com`),
+    })
+    const claim = { host: "x.com", kind: "company", relation: "competitor" }
+    expect(admit(claim, page(CTX.aggregatorThreshold), CTX).ok).toBe(false)
+    expect(admit(claim, page(CTX.aggregatorThreshold - 1), CTX).ok).toBe(true)
+  })
   it("does not fire the aggregator rule on non-company kinds", () => {
     const page = { url: "https://forum.com/", readable: true, outboundHosts: Array.from({ length: 30 }, (_, i) => `v${i}.com`) }
     expect(admit({ host: "forum.com", kind: "community", relation: "discusses" }, page, CTX)).toEqual({ ok: true })
