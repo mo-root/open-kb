@@ -111,6 +111,49 @@ describe("run-doctor over the runs on disk", () => {
     expect(uncapped.detail).toContain("no ceiling explains it")
   })
 
+  it("reports the wire's own plan: unsearched products named, and the strip-terms-fired rate", () => {
+    // `r.wire` is the FIRST check in `diagnose()` (~line 77) and, before this,
+    // had zero test coverage of its own — both branches below ran unverified.
+    // sweep.ts's own comment on this field (~line 7295) says why it exists:
+    // "whether each product and each strip term got a query bought for it, or
+    // was written down and abandoned" — shopify.com searched 22 of 50 planned
+    // products, dropping whole markets from a map claiming completeness.
+
+    // 1. Every planned product got a search — ok, no name list appended.
+    const full = diagnose(
+      { wire: { products: 3, productsSearched: 3, productsUnsearched: [], termsFired: 5, termsWritten: 10 } },
+      {},
+    )
+    const fullNote = full.find((n) => n.what === "products searched")!
+    expect(fullNote.level).toBe("ok")
+    expect(fullNote.detail).toBe("3/3")
+
+    // 2. A product the plan named but never searched — the missed COUNT is
+    // not the finding, the NAME is (sweep.ts's own comment: "the names are
+    // the whole finding"), so it must appear in the detail, not just tally.
+    const missed = diagnose(
+      { wire: { products: 3, productsSearched: 2, productsUnsearched: ["Widgets"], termsFired: 5, termsWritten: 10 } },
+      {},
+    )
+    const missedNote = missed.find((n) => n.what === "products searched")!
+    expect(missedNote.level).toBe("gap")
+    expect(missedNote.detail).toBe("2/3 — never asked about: Widgets")
+
+    // 3. Strip terms fired below the 30% threshold — watch, at the norm this
+    // file cites (32%-65% across the 8 runs carrying wire, so 20% is a real
+    // gap the norm itself would flag).
+    const starved = diagnose({ wire: { products: 1, productsSearched: 1, termsFired: 2, termsWritten: 10 } }, {})
+    const starvedNote = starved.find((n) => n.what === "strip terms fired")!
+    expect(starvedNote.level).toBe("watch")
+    expect(starvedNote.detail).toBe("2/10 (20%)")
+
+    // 4. Exactly at the 30% boundary — the check is `< 0.3`, so 3/10 must NOT
+    // trip watch. Pins the boundary, not just a value comfortably past it.
+    const boundary = diagnose({ wire: { products: 1, productsSearched: 1, termsFired: 3, termsWritten: 10 } }, {})
+    const boundaryNote = boundary.find((n) => n.what === "strip terms fired")!
+    expect(boundaryNote.level).toBe("ok")
+  })
+
   it("tells apart the three ways the link phase can lose pairs", () => {
     // Link was measured at 43% of wall time (the finding P0-2 through P0-4
     // exist to fix), and this `if / else if` chain — the only place a run's
