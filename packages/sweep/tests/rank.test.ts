@@ -914,5 +914,34 @@ describe("judgeHosts blocked-page recovery", () => {
     // the point: a wrong door is withdrawn on BOTH judging paths.
     expect(e.unreadableReason).toBeDefined()
   })
+
+  it("withdraws a name whose home is a different registrable domain, read from a full page", async () => {
+    // Same wrongDoor pairing as the test above, but the page reads fine —
+    // padded past sniff's 200-char THIN_TEXT floor so this goes down the
+    // page-judged road instead, the sibling branch coverage never reached
+    // (v8 coverage on packages/core/src/judge.ts alone showed the SERP-judged
+    // call site at line ~453 exercised and the page-judged one at line ~860
+    // cold — same guard, only one of its two call sites tested).
+    const resellerHtml = `<html><body><h1>SendGrid Japan</h1><p>Email delivery for the Japanese
+      market, operated by KKE. SendGrid features and pricing in Japanese, with
+      local support and billing for teams here. KKE handles onboarding,
+      invoicing in yen, and a Japanese-language support desk so local teams
+      never deal with SendGrid's own US billing or support channels.</p></body></html>`
+    const out = await judgeHosts([{ ...rich("sendgrid.kke.co.jp"), seenIn: 3 }], {
+      fetcher: fakeFetcher({ "https://sendgrid.kke.co.jp/": resellerHtml }),
+      classify: async () => ({
+        name: "SendGrid", kind: "company", what: "a transactional email API",
+        relation: "competitor", why: "same job", spans: ["Email delivery"],
+      }),
+      anchor: "anchor.com",
+      aggregatorThreshold: null,
+    })
+    const e = out.entities[0]!
+    expect(e.kind).toBe("unknown")
+    expect(e.because).toContain("whose home is not kke.co.jp")
+    expect(e.name).toBe("sendgrid.kke.co.jp")
+    // The page was read fine this time — no caveat to wear.
+    expect(e.unreadableReason).toBeUndefined()
+  })
 })
 
