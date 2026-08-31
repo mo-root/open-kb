@@ -72,12 +72,23 @@ export const MODEL_PRICES: Record<string, ModelPricing> = {
  * The floor is a number this module asserts on its own, so the fallback can
  * only ever be raised by the table, never lowered by it.
  */
-const FLOOR: ModelPricing = { inUsdPerM: 1.5, outUsdPerM: 9.0 }
-const rows = Object.values(MODEL_PRICES)
-const DEFAULT_PRICING: ModelPricing = {
-  inUsdPerM: Math.max(FLOOR.inUsdPerM, ...rows.map((r) => r.inUsdPerM)),
-  outUsdPerM: Math.max(FLOOR.outUsdPerM, ...rows.map((r) => r.outUsdPerM)),
+export const FLOOR: ModelPricing = { inUsdPerM: 1.5, outUsdPerM: 9.0 }
+
+/**
+ * The column-wise, floor-guarded max, pulled out so a test can drive it with
+ * a `rows` list that is not today's live `MODEL_PRICES` — DEFAULT_PRICING
+ * below is computed once, at import time, off whatever the table held then,
+ * so mutating `MODEL_PRICES` from a test after the fact never reaches this
+ * arithmetic at all. Exported for that reason alone; no caller needs it, one
+ * still calls it with the live table below.
+ */
+export function defaultPricingFor(rows: readonly ModelPricing[]): ModelPricing {
+  return {
+    inUsdPerM: Math.max(FLOOR.inUsdPerM, ...rows.map((r) => r.inUsdPerM)),
+    outUsdPerM: Math.max(FLOOR.outUsdPerM, ...rows.map((r) => r.outUsdPerM)),
+  }
 }
+const DEFAULT_PRICING: ModelPricing = defaultPricingFor(Object.values(MODEL_PRICES))
 
 /** The only way to turn a model id into money. Callers pass the id they are
  *  actually about to send to the provider, never a price of their own. */

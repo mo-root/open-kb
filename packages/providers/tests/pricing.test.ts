@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { MODEL_PRICES, priceForModel } from "../src/pricing.js"
+import { defaultPricingFor, FLOOR, MODEL_PRICES, priceForModel } from "../src/pricing.js"
 import type { DiscoverOptions, InvestigateOptions, ModelPricing } from "@open-kb/core"
 
 /** What every script and both engines default to. Written out here on purpose:
@@ -62,6 +62,44 @@ describe("priceForModel", () => {
       expect(p.inUsdPerM).toBeGreaterThan(0)
       expect(p.outUsdPerM).toBeGreaterThan(0)
     }
+  })
+})
+
+/**
+ * `priceForModel`'s own "prices an id it has not met at the dearest number in
+ * every column" test above re-derives its expectation as `Math.max(...rows)`
+ * off the LIVE table, so it would stay green even if `defaultPricingFor` lost
+ * its floor entirely — a table whose dearest row happens to be its own
+ * highest number can't tell "guarded by FLOOR" apart from "guarded by
+ * nothing". `DEFAULT_PRICING` is computed once, at import time
+ * (pricing.ts:91), off whatever `MODEL_PRICES` held then, so a test cannot
+ * reach the real regression by mutating the live table after the fact
+ * either — the module has already computed and closed over the number.
+ * `defaultPricingFor` is exported for exactly this: it takes its own `rows`,
+ * unconnected to the table this file happens to ship today, so the floor's
+ * independence from the table is the thing under test rather than an
+ * accident of today's numbers.
+ */
+describe("defaultPricingFor: the floor guards the fallback independently of the table", () => {
+  it("holds at FLOOR when every row it is given sits under it", () => {
+    // pricing.ts's own comment names this exact regression: retiring
+    // gemini-3.5-flash (1.5/9.0, today's dearest row and equal to FLOOR)
+    // would leave gemini-3-flash-preview's 0.5/3.0 as the new max — a
+    // threefold cut a plain `Math.max(...rows)` would not catch.
+    expect(defaultPricingFor([{ inUsdPerM: 0.5, outUsdPerM: 3.0 }])).toEqual(FLOOR)
+    expect(defaultPricingFor([])).toEqual(FLOOR)
+  })
+
+  it("rises to a row that genuinely prices above FLOOR", () => {
+    const dearer: ModelPricing = { inUsdPerM: FLOOR.inUsdPerM + 1, outUsdPerM: FLOOR.outUsdPerM + 1 }
+    expect(defaultPricingFor([dearer])).toEqual(dearer)
+  })
+
+  it("never lowers FLOOR — the two columns are floored independently, not paired", () => {
+    // A row dearer on one column and cheaper on the other must not drag the
+    // cheaper column below its own floor by averaging or pairing the two.
+    const mixed: ModelPricing = { inUsdPerM: FLOOR.inUsdPerM + 1, outUsdPerM: 0.01 }
+    expect(defaultPricingFor([mixed])).toEqual({ inUsdPerM: mixed.inUsdPerM, outUsdPerM: FLOOR.outUsdPerM })
   })
 })
 
