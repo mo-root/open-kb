@@ -86,6 +86,20 @@ describe("run-doctor over the runs on disk", () => {
     expect(note!.detail).toContain("0 asked")
   })
 
+  it("gives triage skip a clean note when the run found no hosts at all, not NaN%", () => {
+    // `t.hosts === 0` (a dead search, nothing to triage) used to compute
+    // `t.skipped / t.hosts` as 0/0 = NaN and print the literal text
+    // "(NaN%)" in the detail — the same zero-that-means-two-things trap the
+    // second-look fix above exists to catch, just visible garbage instead
+    // of a missing note.
+    const notes = diagnose({ triage: { hosts: 0, skipped: 0, kept: 0, calls: 0, failed: 0 } }, {})
+    const note = notes.find((n) => n.what === "triage skip")
+    expect(note).toBeDefined()
+    expect(note!.level).toBe("ok")
+    expect(note!.detail).not.toContain("NaN")
+    expect(note!.detail).toContain("0/0")
+  })
+
   it("reads a rival channel cut by a ceiling differently from one that failed", () => {
     // The rival family is dealt last, so under a ceiling "names found, no
     // queries" is the budget working. Uncapped, the same pair is a real gap.

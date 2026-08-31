@@ -125,7 +125,16 @@ export function diagnose(r: Record<string, any>, stats: Record<string, any>): No
   const t = r.triage
   if (t === null) out.push({ level: "ok", what: "triage", detail: "flag off — kept all hosts" })
   else if (!t) absent("triage", "run predates report.triage")
-  else {
+  else if (!t.hosts) {
+    // `t` is present and on, but `hosts` is 0 — the run found no candidate
+    // hosts at all before triage ever ran (a dead search), so there was
+    // nothing to skip. `t.skipped / t.hosts` below is 0/0 = NaN, which used
+    // to print as the literal text "(NaN%)" in the detail — the same zero
+    // that means two things this file's own opening comment warns against,
+    // just visible garbage instead of the silent omission the second-look
+    // branch above once had (`sl.asked === 0`, fixed the same way).
+    out.push({ level: "ok", what: "triage skip", detail: "0/0 hosts — nothing found to triage" })
+  } else {
     const rate = t.skipped / t.hosts
     out.push({
       // 0.14, not 0.13: the norm's own ceiling is 13.3%, so a 0.13 threshold
