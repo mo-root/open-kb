@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest"
 import { execFileSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
 import { CALL_TIMEOUT_MS, LINK_CALL_TIMEOUT_MS, RANK_CALL_TIMEOUT_MS, UNDERSTAND_CALL_TIMEOUT_MS } from "../src/sweep.js"
+import { heldDeadline } from "../src/deadline.js"
 
 /**
  * A model call that never answers used to be a run that never ends.
@@ -164,4 +165,27 @@ describe("the deadline survives a garbage collection", () => {
     // caller tell a host that stopped answering from a visitor who left.
     expect(r.runAborted).toBe(false)
   }, 30_000)
+})
+
+/**
+ * `heldDeadline`'s second parameter (`signal?: AbortSignal`, deadline.ts:22)
+ * is optional on the exported type, but every actual caller always supplies
+ * one: `sweep()`'s own `withDeadline` closes over `signal` from `SweepOptions`
+ * (sweep.ts:2143), and both places that build `SweepOptions` pass a real
+ * `AbortSignal` — `scripts/sweep.ts:287` (`signal: abort.signal`) and
+ * `packages/web/app/api/map/route.ts:586` (`signal: record.abort.signal`).
+ * Checked with `grep -rn "heldDeadline(" packages/`: the only other call site
+ * is this file's gc probe above, which also always passes a signal. So
+ * `deadline.ts:25`'s `signal ? ... : timeout` false branch — the bare
+ * `AbortSignal.timeout` returned with nothing composed in — has never run
+ * anywhere in the codebase or its tests, though it is reachable by anyone
+ * calling `heldDeadline` with one argument, exactly as the type allows.
+ */
+describe("heldDeadline with no run signal", () => {
+  it("returns a bare timeout signal that still fires on its own", async () => {
+    const held = heldDeadline(30)
+    expect(held.aborted).toBe(false)
+    await new Promise((r) => setTimeout(r, 120))
+    expect(held.aborted).toBe(true)
+  })
 })
