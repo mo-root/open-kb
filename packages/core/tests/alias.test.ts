@@ -93,6 +93,14 @@ describe("aliasSignals", () => {
       canonical: null,
     })
   })
+  it("never throws when an href is absolute-looking but malformed, even against a valid page URL", () => {
+    // "not a url" above short-circuits before targetHost ever runs (aliasSignals'
+    // own try/catch returns early on an unparseable pageUrl) — this page URL
+    // parses fine, so the href has to fail inside targetHost's own try/catch
+    // (measured: 0% branch coverage on that catch before this test existed).
+    const s = aliasSignals(`<link rel="canonical" href="http://[bad">`, "https://example.com/p")
+    expect(s.canonical).toBeNull()
+  })
 })
 
 describe("aliasSets", () => {
@@ -143,6 +151,15 @@ describe("aliasSets", () => {
     // Order of the input pages must not change the answer.
     const reversed = aliasSets([e, d, c, b, a]).map((s) => [...s].sort())
     expect(reversed).toEqual(sets)
+  })
+  it("skips a page whose own url fails to parse, without touching anyone else's assertions", () => {
+    // A page list is upstream content, not validated input — one page.url that
+    // fails `new URL()` must not crash the whole run or block the other
+    // pages' reciprocity (measured: the catch that drops it had 0% branch
+    // coverage before this test existed).
+    const garbage = page("not a url", `<link rel="canonical" href="https://example.es/">`)
+    const sets = aliasSets([ANCHOR_HOME, ES_HOME, garbage]).map((s) => [...s].sort())
+    expect(sets).toEqual([["brightdata.com", "brightdata.es"]])
   })
   it("a NON-alias pair sharing a CDN never merges", () => {
     const a = page(
