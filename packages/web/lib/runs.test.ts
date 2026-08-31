@@ -4,6 +4,7 @@ import path from "node:path"
 import { format } from "node:util"
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 import { faultNotice, namedFaults } from "./api-error"
+import * as db from "./store/supabase"
 import {
   cancelRun,
   createRun,
@@ -1382,6 +1383,70 @@ describe("a failed run, as another instance would find it", () => {
     await failRun(record.id, new Error("aborted at wave 3 (request_id 0f3c9ab2)"))
 
     expect(failedRow()?.error).toBe("Stopped. Everything found before you stopped it is kept.")
+  })
+})
+
+describe("the span pump, when the store's own write breaks its promise", () => {
+  beforeEach(() => {
+    process.env.SUPABASE_URL = "https://store.test"
+    process.env.SUPABASE_SECRET_KEY = "k"
+    vi.spyOn(console, "error").mockImplementation(() => {})
+    // Only `upsertRun` needs a live socket here — `appendSpans` is spied below
+    // — so this stub only has to answer, not record anything.
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 201 })))
+  })
+
+  afterEach(() => {
+    delete process.env.SUPABASE_URL
+    delete process.env.SUPABASE_SECRET_KEY
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  /* `pump` (lib/runs.ts) wraps its stream loop in a try/catch that
+     `lib/store/supabase.ts`'s own `appendSpans` doc comment says can never
+     fire: every write there goes through `quiet()`, which never throws. That
+     makes the catch defend against `quiet` itself breaking, or a future store
+     client that skips it — and nothing in this file, or anywhere else, had
+     ever made it run: `appendSpans`, `pump` and `pumped` do not appear in a
+     single `grep` of this suite. Spying past `quiet` — replacing the exported
+     function outright, the same way `db/kb/[id]/page.test.tsx` already does
+     for `getRunRow` — is the only way to make that promise false and watch
+     the catch actually fire. */
+  it("logs the stop and gives up on the stream, rather than leaving `pumped` unsettled", async () => {
+    const appendSpans = vi.spyOn(db, "appendSpans").mockRejectedValueOnce(new Error("connection reset"))
+
+    const record = createRun("resend.com", 12)
+    // FLUSH_SPANS is 25 (lib/runs.ts): the batch crosses it on the last of
+    // these and `flush()` runs from inside the loop, where the catch can see
+    // it — not the trailing `flush()` after the stream closes, which sits
+    // outside the try entirely and would let a rejection escape `pumped`.
+    for (let i = 0; i < 25; i++) {
+      record.spans.emit({
+        runId: record.id,
+        agentId: "sweep",
+        parentId: null,
+        kind: "search",
+        name: "serp",
+        argsDigest: `q${i}`,
+        ms: 5,
+        ok: true,
+        usd: 0.001,
+      })
+    }
+
+    await record.pumped
+
+    expect(console.error).toHaveBeenCalledWith(
+      `[runs] span pump for ${record.id} stopped:`,
+      expect.any(Error),
+    )
+    // One attempt, not a retry: the throw ends the loop, so the fix is aware
+    // its own batch is gone rather than silently re-sent.
+    expect(appendSpans).toHaveBeenCalledTimes(1)
+
+    // Left tidy: an open run holds a subscriber on its span stream.
+    await failRun(record.id, new Error("cleanup"))
   })
 })
 
