@@ -124,6 +124,17 @@ describe("driftSentences", () => {
     )
   })
 
+  it("reads a relation-only move with no tier clause, when neither run carries a tier", () => {
+    // changedSentence's `else if (relation)` branch (drift.ts) never ran: the only prior
+    // relation-move test through driftSentences paired it with a tier move, which always
+    // takes the `if (relation && tier)` branch above it instead.
+    const d = diffMaps(
+      map([company("a.com", { relation: "competitor" })]),
+      map([company("a.com", { relation: "substitute" })]),
+    )
+    expect(driftSentences(d)).toContain("a.com stayed; its relation moved competitor -> substitute")
+  })
+
   it("reads a tier-only move with its direction, and a weakening as weaker", () => {
     const stronger = diffMaps(map([company("a.com", { tier: "page" })]), map([company("a.com", { tier: "own-page" })]))
     expect(driftSentences(stronger)).toContain("a.com stayed; its tier moved to a stronger rung: page -> own-page")
