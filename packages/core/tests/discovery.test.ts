@@ -149,4 +149,132 @@ describe("discover", () => {
     const rejected = results.find((r) => r.toolCallId === "2")
     expect(rejected?.output).toEqual({ ok: false, reason: expect.stringContaining("already submitted") })
   })
+
+  /**
+   * `mapProductPages` and `readPage` are the two tools that actually touch a
+   * company's site — sitemap/nav discovery and page fetching — and neither had
+   * ever been invoked by any test in the repo: the tests above only ever
+   * script `submitProduct`/`submitIntegration`/`finish`, and the sweep's
+   * agent-mode fixture (packages/sweep/tests/discovery-agent-mode.test.ts)
+   * only ever scripts `findDocs` and the same three. Confirmed with
+   * `vitest run --coverage`: both `execute` bodies read 0 for function count
+   * (fn 3 and fn 4 in coverage/coverage-final.json's fnMap for this file),
+   * i.e. zero statements of either had ever run.
+   */
+  it("mapProductPages merges the sitemap with the homepage nav, dropping a link the sitemap already gave it", async () => {
+    const sitemap =
+      `<?xml version="1.0"?><urlset>` +
+      `<loc>https://acme.com/products/gadget</loc>` +
+      `<loc>https://acme.com/products/widget</loc>` +
+      `<loc>https://acme.com/blog/post-1</loc>` +
+      `</urlset>`
+    // The nav repeats /products/widget (already in the sitemap) and adds
+    // /pricing, which the sitemap did not carry.
+    const home = `<html><body><a href="/products/widget">Widget</a><a href="/pricing">Pricing</a></body></html>`
+
+    const model = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = prompt.filter((m) => m.role === "tool").length
+        const content =
+          turn === 0
+            ? call("1", "mapProductPages", {})
+            : turn === 1
+              ? call("2", "finish", { sells: "widgets", buyer: "widget buyers", coinages: [] })
+              : [{ type: "text" as const, text: "done" }]
+        return {
+          content,
+          finishReason: { unified: turn >= 2 ? ("stop" as const) : ("tool-calls" as const), raw: undefined },
+          usage,
+          warnings: [],
+        }
+      },
+    })
+
+    const out = await discover({
+      anchor: "acme.com",
+      model,
+      fetch: new FakeFetch({
+        "https://acme.com/sitemap.xml": { httpStatus: 200, body: sitemap },
+        "https://acme.com/": { httpStatus: 200, body: home },
+      }),
+      maxSteps: 6,
+    })
+
+    const results = (out._steps ?? []).flatMap((s) => s.toolResults ?? [])
+    const mapped = results.find((r) => r.toolCallId === "1")
+    // Sitemap candidates first (gadget before widget, alphabetical within the
+    // same tier/depth), then the one nav link the sitemap did not already
+    // supply — /products/widget from the nav is dropped as a repeat.
+    expect(mapped?.output).toEqual({
+      urls: ["https://acme.com/products/gadget", "https://acme.com/products/widget", "https://acme.com/pricing"],
+    })
+  })
+
+  it("readPage fetches a batch concurrently and reports a page that came back empty, direct and then unlocked", async () => {
+    const model = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = prompt.filter((m) => m.role === "tool").length
+        const content =
+          turn === 0
+            ? call("1", "readPage", { urls: ["https://acme.com/products/widget", "https://acme.com/dead"] })
+            : turn === 1
+              ? call("2", "readPage", { urls: ["https://acme.com/dead"], unlock: true })
+              : turn === 2
+                ? call("3", "finish", { sells: "widgets", buyer: "widget buyers", coinages: [] })
+                : [{ type: "text" as const, text: "done" }]
+        return {
+          content,
+          finishReason: { unified: turn >= 3 ? ("stop" as const) : ("tool-calls" as const), raw: undefined },
+          usage,
+          warnings: [],
+        }
+      },
+    })
+
+    const out = await discover({
+      anchor: "acme.com",
+      model,
+      fetch: new FakeFetch({
+        "https://acme.com/products/widget": {
+          httpStatus: 200,
+          body:
+            "<title>Widget</title><h1>Widget</h1><meta name='description' content='does widget things'>" +
+            "the widget page's own body text",
+        },
+        // "https://acme.com/dead" is absent from the table, so FakeFetch
+        // answers it 404/empty under either fetch mode.
+      }),
+      maxSteps: 6,
+    })
+
+    const results = (out._steps ?? []).flatMap((s) => s.toolResults ?? [])
+
+    // The direct batch: one page read, one page empty with the direct-mode
+    // reason (which points at the unlock:true retry).
+    const direct = results.find((r) => r.toolCallId === "1")?.output as { pages: unknown[] }
+    expect(direct.pages).toEqual([
+      {
+        url: "https://acme.com/products/widget",
+        ok: true,
+        title: "Widget",
+        heading: "Widget",
+        description: "does widget things",
+        text: expect.stringContaining("widget page's own body text"),
+      },
+      {
+        url: "https://acme.com/dead",
+        ok: false,
+        reason: "returned nothing (blocked or empty) — worth one unlock:true retry if this page matters",
+      },
+    ])
+
+    // The unlocked retry of the same dead page: a different reason, since the
+    // caller already paid for the escalation.
+    const unlocked = results.find((r) => r.toolCallId === "2")?.output as { pages: unknown[] }
+    expect(unlocked.pages).toEqual([{ url: "https://acme.com/dead", ok: false, reason: "even the unlocker got nothing usable" }])
+
+    // Both fetches — one answer, one empty — count toward pages read; a
+    // failed read is still a read.
+    expect(out.pagesRead).toBe(2)
+  })
 })
