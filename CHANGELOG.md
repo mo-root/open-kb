@@ -176,6 +176,12 @@ hosted web app, or the repo itself would actually notice.
   asked — every host placed on the first pass", matching how the
   `triage`/`listicleHarvest` blocks already treat "ran, found nothing to
   do" as a clean result.
+- `run-doctor`'s triage-skip check hit the same 0/0 trap from the other
+  side: a run whose search returned no candidate hosts at all (`t.hosts
+  === 0`) computed `t.skipped / t.hosts` as `NaN` and printed the literal
+  text "0/0 (NaN%) in 0 calls" instead of the "nothing found to triage"
+  the case actually means. Now reports `ok` with "0/0 hosts — nothing
+  found to triage", the same fix shape as the second-look gap above.
 
 ### Repo and docs
 
