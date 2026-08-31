@@ -400,4 +400,67 @@ describe("investigate", () => {
     // contributes nothing to this run's own delta.
     expect(out.nodes).toBe(0)
   })
+
+  it("prices a model turn against the rate the caller supplies, instead of reporting it free", async () => {
+    // onStepFinish (investigator.ts ~94-117) runs on every turn of every test above, but
+    // every one of them calls investigate() without `pricing`, so `rate` is always falsy
+    // there: `usd` always takes the `: 0` branch and `error` always takes the "no model
+    // pricing supplied" branch. The truthy side — an actual caller charging real tokens
+    // at a real rate — had never run once (coverage: investigator.ts branch 37.5%, the
+    // only file lines it names, 98-114, are exactly this block). That is the one path
+    // that turns tokens into dollars, so a broken rate formula would ship silent.
+    const ctx = {
+      evidence: new EvidenceStore(),
+      spans: new SpanStream(),
+      search: new FakeSearch({}),
+      fetch: new FakeFetch({}),
+      runId: "r4",
+      agentId: "inv1",
+      parentId: null,
+      graph: { nodes: new Map<string, StoredNode>(), edges: [] as StoredEdge[] },
+    }
+
+    // One turn, no tool calls, straight to a close — the pricing math is the point here,
+    // the tool loop itself is already exercised above. Omitting `maxSteps` also covers the
+    // `opts.maxSteps ?? 24` default (investigator.ts:75), safe because this model stops
+    // on its first turn regardless of the cap.
+    const model = new MockLanguageModelV4({
+      doGenerate: async () => ({
+        content: [{ type: "text" as const, text: "Nothing to report." }],
+        finishReason: { unified: "stop" as const, raw: undefined },
+        usage: {
+          inputTokens: { total: 500_000, noCache: 500_000, cacheRead: 0, cacheWrite: 0 },
+          outputTokens: { total: 100_000, text: 100_000, reasoning: 0 },
+        },
+        warnings: [],
+      }),
+    })
+
+    const out = await investigate({
+      anchor: "example.com",
+      mission: "find head-on rivals",
+      ctx,
+      model,
+      pricing: { inUsdPerM: 2, outUsdPerM: 10 },
+      modelName: "test-model",
+    })
+
+    // (500_000 / 1e6) * 2 + (100_000 / 1e6) * 10 = 1.0 + 1.0
+    expect(out.usd).toBeCloseTo(2, 6)
+    expect(ctx.spans.totalUsd()).toBeCloseTo(2, 6)
+
+    ctx.spans.close()
+    const spans = []
+    for await (const s of ctx.spans.stream()) spans.push(s)
+    expect(spans).toHaveLength(1)
+    const span = spans[0]!
+    expect(span.kind).toBe("model")
+    expect(span.name).toBe("test-model")
+    expect(span.tokensIn).toBe(500_000)
+    expect(span.tokensOut).toBe(100_000)
+    expect(span.usd).toBeCloseTo(2, 6)
+    // Priced, so no "unpriced run" complaint — the opposite of what every other test in
+    // this file gets, since none of them supply a rate.
+    expect(span.error).toBeUndefined()
+  })
 })
