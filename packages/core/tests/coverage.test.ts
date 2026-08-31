@@ -81,6 +81,21 @@ describe("answerKeyRecall", () => {
     expect(r.probes).toHaveLength(1)
     expect(r.probes[0]!.url).toBe("not a valid url")
   })
+  // aliasHosts.length === 1 ? "it" : "them" (coverage.ts:108) had only ever
+  // seen the singular side: every other caller of anchorAliases in this file
+  // and in alias.test.ts passes exactly one alias host (the brightdata.com/.es
+  // ccTLD pair), so "them" had never run anywhere in the suite.
+  it("says \"them\", not \"it\", when the alias set excludes more than one host", () => {
+    const r = answerKeyRecall([page(["a.com", "b.com", "c.com", "d.com", "e.com"])], {
+      anchor: "anchor.com",
+      mapHosts: new Set(["a.com"]),
+      minVendors: 5,
+      anchorAliases: new Set(["alias1.com", "alias2.com"]),
+    })
+    expect(r.aliasExclusion?.hosts).toEqual(["alias1.com", "alias2.com"])
+    expect(r.aliasExclusion?.note).toContain("them")
+    expect(r.aliasExclusion?.note).not.toMatch(/\bit\b/)
+  })
 })
 
 /**
