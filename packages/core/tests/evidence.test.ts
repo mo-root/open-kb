@@ -61,6 +61,17 @@ describe("EvidenceStore", () => {
     expect(() => s.cite(rec.handle, "could not be found")).toThrow(CitationError)
   })
 
+  it("drops the parenthetical when a non-found record carries no reason", () => {
+    // `reason` is optional on FetchRecord (every production sniff.ts path fills it, but the
+    // type does not require it), and the message builds it as `${status}${reason ? " (...)" : ""}`.
+    // Every other status-gate test above supplies a reason, so this ternary's false side had
+    // never run: nothing pinned that an omitted reason renders as a bare status, not "undefined"
+    // or a dangling " ()".
+    const s = new EvidenceStore(NOW)
+    const rec = s.record({ url: "https://a.com/missing", text: "gone", status: "not_found" })
+    expect(() => s.cite(rec.handle, "anything")).toThrow(`cannot cite ${rec.handle}: page was not_found`)
+  })
+
   it("normalises whitespace when matching so wrapped quotes still verify", () => {
     const s = new EvidenceStore(NOW)
     const rec = s.record({ url: "https://a.com/p", text: "we assemble\n  printed circuit  boards", status: "found" })
