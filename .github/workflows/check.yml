@@ -117,25 +117,33 @@ jobs:
       # WHAT THIS RUN DID NOT COVER, on the run's front page.
       #
       # A runner is a clean checkout, so `runs/` — gitignored, megabytes of paid
-      # output — is absent, and three suites that assert counts from real runs
-      # skip themselves. No count is written here on purpose: the pair was
-      # hardcoded and went stale three times in a day, silently each time, while
-      # the sentence around it kept sounding authoritative. The census below
-      # derives the real number every run from `vitest list`, which omits skipped
-      # tests — so read it there rather than trusting a comment. CI's green is
-      # the weaker green,
-      # and the default reporter barely says so — one of those three files gets
-      # a down-arrow and the other two get a green tick with `| 1 skipped` in
-      # the parenthetical. Three of the four missing tests are behind a tick.
+      # output — is absent, and four suites that assert counts from real runs
+      # skip themselves: dead-end-smoke, drift, kb-from-run, and run-doctor.
+      # This paragraph said "three" from the day it was written until now —
+      # 5002544 (SELF-38) gave run-doctor its own gate the same night, growing
+      # GATES to 7, and never came back to fix the prose beside it. The same
+      # class of silent staleness this paragraph is busy warning about, caught
+      # here by re-deriving every number from check-skips.mjs's GATES and a
+      # local `pnpm test` rather than trusting the old sentence. No count is
+      # written here on purpose: the pair was hardcoded and went stale three
+      # times in a day, silently each time, while the sentence around it kept
+      # sounding authoritative. The census below derives the real number every
+      # run from `vitest list`, which omits skipped tests — so read it there
+      # rather than trusting a comment. CI's green is the weaker green,
+      # and the default reporter barely says so — one of those four files gets
+      # a down-arrow and the other three get a green tick with `| 1 skipped` in
+      # the parenthetical. Four of the five missing tests are behind a tick.
       #
       # None of that is fixable from a workflow file and this does not pretend
       # to fix it. It writes the gap down where the next person will read it.
       # `pnpm check` already ran this script and already failed the job if a
       # suite had gone dark undeclared; this only re-prints the census.
       # `always()` because the census is read hardest on a RED run — "a green
-      # here is a green over 3 of 5 gated suites" matters most when something
-      # failed. Without it the implicit `success()` drops the step exactly then,
-      # and the run's front page is blank.
+      # here is a green over 0 of 7 gated suites" matters most when something
+      # failed — 0 of 7 every time on this trigger, since OPENKB_LIVE is never
+      # set here (see the permissions comment above) and a clean checkout never
+      # has `runs/`. Without it the implicit `success()` drops the step exactly
+      # then, and the run's front page is blank.
       - name: what this run did not cover
         if: always()
         run: |
