@@ -44,4 +44,22 @@ describe("recallProbePool with structural aliases", () => {
     expect([...pool.anchorAliases]).toEqual(["anchor.com"])
     expect(pool.pages.map((p) => p.url)).toEqual(["https://roundup.example/best"])
   })
+
+  // record()'s canonicalUrl() call falls back to the raw string on a parse
+  // failure (url.ts:12), so nothing stops a page from entering the store under
+  // a URL that will not parse. recallProbePool's own `new URL(p.url)` call
+  // (run-evidence.ts:498) is the only place this run re-parses it, and until
+  // now nothing ever fed it a string that fails there — every other test file
+  // and aliasSets' own try/catch (alias.ts:163-167) sidestep it by skipping
+  // (not excluding) an unparseable page. Excluding is the safer of the two
+  // readings a filter can give a thing it cannot evaluate, so it is pinned.
+  it("excludes a page whose URL will not parse, rather than throwing", () => {
+    const ev = new RunEvidence()
+    ev.record({ url: "https://anchor.com/", text: pad, raw: ANCHOR_HTML, status: "found", tier: "page" })
+    ev.record({ url: "not a url", text: pad, raw: "<html><body>junk</body></html>", status: "found", tier: "page" })
+    expect(ev.pages().map((p) => p.url)).toContain("not a url")
+    expect(() => recallProbePool(ev, "anchor.com")).not.toThrow()
+    const pool = recallProbePool(ev, "anchor.com")
+    expect(pool.pages.map((p) => p.url)).toEqual([])
+  })
 })
