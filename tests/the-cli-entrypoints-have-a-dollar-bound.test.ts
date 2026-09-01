@@ -148,6 +148,23 @@ describe("a cap an operator cannot act on is refused rather than ignored", () =>
       }
     }
   })
+
+  it("truncates a value over 40 chars rather than echoing it whole", () => {
+    // spend-caps.ts:212 branches on `text.length > 40` before quoting the value
+    // back — every case above is short and never took that branch. An operator
+    // who pastes a secret into the wrong variable (an OpenRouter key, say)
+    // deserves a refusal that doesn't then echo the whole thing to their
+    // terminal and their shell history.
+    const bad = "sk-or-v1-abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGH"
+    expect(bad.length).toBeGreaterThan(40)
+    process.env[CLI_LIMIT_VARS.runCap] = bad
+    const reading = readCapUsd(CLI_LIMIT_VARS.runCap, 8)
+    expect(reading.ok).toBe(false)
+    if (!reading.ok) {
+      expect(reading.why).toContain(JSON.stringify(`${bad.slice(0, 40)}…`))
+      expect(reading.why).not.toContain(bad)
+    }
+  })
 })
 
 /**
