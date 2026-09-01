@@ -1956,6 +1956,49 @@ describe("runSwarm: the ledger stays honest", () => {
     expectEndingShape(run.ending, run.ledger)
   })
 
+  it("the LEAD's own pending fetch landing drains too — agent.ts's trackPending closure and leadLandings are a separate wire from the mission's", async () => {
+    // The test above proves the mission side: runInvestigator hands paidTools
+    // deps.trackPending directly (agent.ts never wraps it for a mission), and
+    // orchestrator.ts's missionLandings (:738) drains it. runLead is the other
+    // caller of paidTools — it wraps deps.trackPending in its OWN local
+    // `trackPending` closure (agent.ts:910-913, which also feeds the turn's
+    // own `landings` await at :953) before handing it down, and orchestrator.ts
+    // wires a second, separate array for it: leadLandings (:613). Nothing above
+    // exercises a lead-initiated fetch slow enough to still be pending when its
+    // turn ends, so that closure and that wire had never run.
+    const lead = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = leadTurnOf(prompt)
+        if (turn === 1)
+          return reply(call("f1", "fetch", { urls: ["https://slow-lead.example"], mode: "direct", why: "a slow page" }), false)
+        // Wall-clock ends the run instead of a clean finish, so the late
+        // landing's drain is provably the endRun path's settleWithin(leadLandings)
+        // (orchestrator.ts:1079), not a lead turn that happened to still be open.
+        return reply(call("n1", "next", { after: { seconds: 600 }, why: "the wall will end this" }), false)
+      },
+    })
+
+    const run = await runSwarm(
+      mkOpts({
+        lead,
+        over: {
+          pendingAfterMs: 10,
+          wallClockMs: 40,
+          graceMs: 200,
+          fetch: fakeFetch({ "https://slow-lead.example": { httpStatus: 200, body: rivalHtml, delayMs: 60, usd: 0.02 } }),
+        },
+      }),
+    )
+
+    expect(run.ending.reason).toBe("wall-clock")
+    // $0.001 seed-mission search (the default quick investigator's orient
+    // call) + $0.02 the lead's own late fetch: only present if the lead's
+    // pending landing was awaited before spentUsd was read, not abandoned at
+    // the hard cancel.
+    expect(run.ending.spentUsd).toBeCloseTo(0.021, 3)
+    expectEndingShape(run.ending, run.ledger)
+  })
+
   it("a mission killed while QUEUED settles its claim at $0 and ships as residue", async () => {
     const lead = new MockLanguageModelV4({
       doGenerate: async ({ prompt }) => {
