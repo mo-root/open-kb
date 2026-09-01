@@ -810,6 +810,44 @@ describe("judgeHosts blocked-page recovery", () => {
     expect(e.because).toBeUndefined()
   })
 
+  it("swallows the unlocked retry's own throw and still settles the host from its SERP text", async () => {
+    // judge.ts's `catch {}` around the unlocker retry (the one right after
+    // `deps.fetcher.get(url, "unlocked", ...)`) had never run anywhere in the
+    // suite — every other unlock test either has the retry resolve to a page
+    // (the 403-recovery case above) or never reaches the unlocker at all.
+    // deps.fetcher.get carries no stronger contract on the retry than on the
+    // first attempt, so a network throw there is exactly as legitimate as
+    // the `fetch-failed` throw the direct fetch is already tested against.
+    const calls: string[] = []
+    const out = await judgeHosts([rich("flaky.com")], {
+      fetcher: {
+        async get(url, mode) {
+          calls.push(mode)
+          if (mode === "unlocked") throw new Error("socket hang up")
+          return { url, httpStatus: 403, body: "", ms: 100, usd: 0 }
+        },
+      },
+      classify: async () => ({
+        name: "Flaky", kind: "directory",
+        what: "a directory ranking hosted log search vendors for platform teams",
+        relation: "lists", why: "enumerates the vendors in this market",
+        spans: ["hosted log search"],
+      }),
+      anchor: "anchor.com",
+      aggregatorThreshold: null,
+      unlockSeenIn: 3,
+    })
+    expect(calls).toEqual(["direct", "unlocked"])
+    // The throw happens before `stats.unlocked += 1`, which sits past the
+    // await — a swallowed failure must not count as a successful escalation.
+    expect(out.stats.unlocked).toBe(0)
+    // The 403 stands and the host still settles from the SERP text the run
+    // already paid for, same as any other unrecovered block.
+    expect(out.stats.serpJudged).toBe(1)
+    expect(out.entities[0]!.kind).toBe("directory")
+    expect(out.entities[0]!.relation).toBe("lists")
+  })
+
   it("spends nothing on a thin-render page, however corroborated", async () => {
     // `thin-render` recovered 2 of 12 pages against 10 of 11 for 4xx, and
     // only one of the two was usable. The page rendered and had nothing in
