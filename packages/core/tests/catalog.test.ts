@@ -303,6 +303,20 @@ describe("reading a page", () => {
     // The whole argument for this strategy: it is small.
     expect(out.length).toBeLessThan(200)
   })
+
+  /**
+   * The `new URL(f.url).pathname` catch had never run: every fixture above
+   * hands it a well-formed absolute url. `PageFacts.url` is never re-validated
+   * after `readPageFacts` builds it, so a caller assembling facts by hand (or
+   * a future producer) can still hand this an unparseable one; the fallback
+   * prints the raw url instead of throwing and losing every line behind it.
+   */
+  it("falls back to the raw url when it can't be parsed", () => {
+    const out = renderPageFacts([
+      { url: "not-a-url", title: "A", heading: "A", description: "does a" },
+    ])
+    expect(out).toContain("not-a-url")
+  })
 })
 
 describe("spending the budget", () => {
