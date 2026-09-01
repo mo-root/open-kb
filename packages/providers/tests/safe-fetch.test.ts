@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest"
+import dns from "node:dns"
 import { publicOnlyFetch, BlockedHostError, type HostLookup } from "../src/safe-fetch.js"
 
 /**
@@ -129,6 +130,46 @@ describe("publicOnlyFetch refuses the host that only RESOLVES private", () => {
     const res = await f("https://8.8.8.8/llms.txt")
     expect(res.status).toBe(200)
     expect(lookup).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * Every test above injects `opts.lookup`, because a test must not depend on
+ * what a real name resolves to today — but that means `systemLookup`, the
+ * fallback `publicOnlyFetch` reaches for when a caller omits `lookup` (the
+ * only shape `brightDataFetch` actually constructs it with in production),
+ * had never run once in this suite. `vitest run --coverage` showed it at 0%,
+ * the one wholly-uncovered function in this file.
+ *
+ * `systemLookup` reaches the resolver through `await import("node:dns/promises")`
+ * rather than a static import, specifically so a bundle that never calls this
+ * path never pays for `node:dns` — see the file-level comment. Patching
+ * `dns.promises.lookup` (from a static `import dns from "node:dns"`) reaches
+ * that dynamic import's binding too, the same technique that already keeps
+ * real DNS out of the sweep fixtures (packages/sweep/tests/fixture.ts's
+ * `blockTheNetwork`) — but only the FIRST dynamic import of
+ * "node:dns/promises" in a given test file observes a patch; this project's
+ * transform caches the module after that, so a second `it()` re-patching
+ * `dns.promises.lookup` was confirmed directly to keep observing the first
+ * test's answer, not its own. One test only, then, covering every line
+ * `systemLookup` has (the import, the destructure, the call, and the address
+ * map) in a single pass — the refusal branch a private answer would take is
+ * `assertPublic`'s, already exercised above with an injected lookup.
+ */
+describe("publicOnlyFetch's default lookup — no `opts.lookup` given", () => {
+  it("falls back to the system resolver, and asks it for every address (all: true, verbatim: true)", async () => {
+    const real = dns.promises.lookup
+    const fakeLookup = vi.fn(async () => [{ address: PUBLIC, family: 4 }]) as never
+    dns.promises.lookup = fakeLookup
+    try {
+      const socket = okSocket()
+      const f = publicOnlyFetch({ fetchImpl: socket as unknown as typeof fetch })
+      const res = await f("https://system-resolved.example/llms.txt")
+      expect(res.status).toBe(200)
+      expect(fakeLookup).toHaveBeenCalledWith("system-resolved.example", { all: true, verbatim: true })
+    } finally {
+      dns.promises.lookup = real
+    }
   })
 })
 
