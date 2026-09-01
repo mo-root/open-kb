@@ -802,6 +802,30 @@ describe("rememberTool", () => {
     expect(miss.rejected[0]!.reason).toContain('nothing named "ghost.com" is on this map')
   })
 
+  it("retract by edge takes only the named relation off the map; a miss and an empty retraction are both sentences", () => {
+    const s = populated()
+    // Naming the wrong relation is a miss, not a match against any edge on that pair.
+    const wrongRelation = rememberTool(s.ctx, {
+      retract: [{ edge: { from: "third.com", to: "rival.com", relation: "shaper" }, why: "wrong relation" }],
+      why: "critic pass",
+    })
+    expect(wrongRelation.added.retractions).toBe(0)
+    expect(wrongRelation.rejected[0]!.reason).toContain('no live edge joins "third.com" to "rival.com"')
+    expect(s.map.entityEdges()).toHaveLength(1)
+
+    const r = rememberTool(s.ctx, {
+      retract: [{ edge: { from: "third.com", to: "rival.com" }, why: "the roundup was reclassified" }],
+      why: "critic pass",
+    })
+    expect(r.added.retractions).toBe(1)
+    expect(s.map.entityEdges()).toEqual([])
+    expect(s.map.retractions.at(-1)).toMatchObject({ target: "third.com->rival.com" })
+
+    // A retract entry naming neither a node nor an edge is refused, not a silent no-op.
+    const empty = rememberTool(s.ctx, { retract: [{ why: "oops" }], why: "critic pass" })
+    expect(empty.rejected[0]!.reason).toBe("say what to retract: a node's domain, or an edge's two ends")
+  })
+
   it("a claim with an empty evidence array is refused with the snippet route named", () => {
     const s = seeded()
     const r = rememberTool(ctxOf(s), {
