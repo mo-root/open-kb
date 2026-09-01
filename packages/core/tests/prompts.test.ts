@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest"
 import { readdirSync, readFileSync } from "node:fs"
-import { loadPrompt, composePrompt } from "../src/prompts.js"
+import { loadPrompt, composePrompt, render } from "../src/prompts.js"
 import { RELATIONS } from "../src/tools.js"
 import type { QueryFamily } from "../src/families.js"
 
@@ -109,6 +109,34 @@ describe("prompt files", () => {
     // because the ladder had no other word for "real business here, not a rival". Same rule as
     // both prior raises: it earns its length or it does not get raised for it.
     expect(composed.length).toBeLessThan(24_000)
+  })
+})
+
+/**
+ * `render()` is the only place `{{name}}` placeholders in a prompt body turn into the text
+ * a paid model call actually sees, called from `sweep.ts`'s per-host classify compose and
+ * `swarm/agent.ts`'s per-turn template fill. Its own doc comment states the reason for the
+ * two throws — "Both mean the prompt sent to a paid model call differs from the one the
+ * caller wrote" — but neither had ever run: every existing prompts.test.ts case exercises
+ * `loadPrompt`/`composePrompt` only, and grepping the two throw messages across every test
+ * file in the repo (`packages/sweep/tests/prompts.test.ts` included, which tests `sweep.ts`'s
+ * own `prompt()` wrapper around this same `render`) finds them nowhere but this file's source
+ * (coverage, isolated to `packages/core/tests/prompts.test.ts`: prompts.ts 76.47%/76.92% branch,
+ * the whole `render` body at 48-58 dark).
+ */
+describe("render", () => {
+  it("fills every placeholder from the vars it's given", () => {
+    expect(render("hello {{name}}, you sell {{product}}", { name: "Acme", product: "widgets" })).toBe(
+      "hello Acme, you sell widgets",
+    )
+  })
+
+  it("throws naming the placeholder when a var is missing, rather than rendering it blank", () => {
+    expect(() => render("hello {{name}}", {})).toThrow("prompt is missing values for: name")
+  })
+
+  it("throws naming the var when the body has no matching placeholder", () => {
+    expect(() => render("hello there", { name: "Acme" })).toThrow("prompt has no placeholder for: name")
   })
 })
 
