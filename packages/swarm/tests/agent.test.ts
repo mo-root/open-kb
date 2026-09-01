@@ -513,6 +513,33 @@ describe("runInvestigator", () => {
     expect(h.map.nodes.get("rival.com")).toBeDefined()
   })
 
+  it("a caller signal that is already aborted before the first turn trips the wall's pre-fired branch, not the deadline timer", async () => {
+    const h = harness(5)
+    const held = h.ledger.reserve(ALLOWANCES.read)
+    if (!held.ok) throw new Error("reserve failed")
+
+    const onModel = vi.fn()
+    const model = new MockLanguageModelV4({
+      // Never resolves — if the model call raced the wall fairly, this test would hang.
+      doGenerate: () => new Promise(() => {}),
+    })
+
+    const outer = new AbortController()
+    outer.abort()
+
+    const digest = await runInvestigator(
+      mission,
+      investigatorDeps(h, model, held.claimId, { signal: outer.signal, hooks: { onModel } }),
+    )
+
+    expect(digest.status).toBe("timeout")
+    expect(digest.added).toEqual({ nodes: 0 })
+    expect(digest.spentUsd).toBe(0)
+    expect(onModel).toHaveBeenCalledWith(
+      expect.objectContaining({ role: "investigator", ok: false, tokensIn: 0, tokensOut: 0, usd: 0 }),
+    )
+  })
+
   it("crossing 80% of the allowance injects the write-down line into the next model input, once", async () => {
     const h = harness(5)
     const held = h.ledger.reserve(ALLOWANCES.peek)
