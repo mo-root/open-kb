@@ -89,6 +89,20 @@ describe("save and load", () => {
     expect(loadLayout(key)?.get("a")).toEqual({ x: 3, y: 4 })
     expect(loadLayout(other)).toBeNull()
   })
+
+  it("gives up quietly when storage is unavailable even after eviction", () => {
+    // Every setItem throws, so the post-eviction retry fails too — the
+    // innermost catch (never exercised by the single-failure quota test
+    // above) has to swallow that second throw without the caller noticing.
+    const store = fakeStorage()
+    withStorage(store)
+    store.api.setItem = () => {
+      throw new Error("SecurityError")
+    }
+    const key = layoutKey("m", 1, true)
+    expect(() => saveLayout(key, [{ id: "a", x: 1, y: 2 }])).not.toThrow()
+    expect(store.rows.size).toBe(0)
+  })
 })
 
 describe("importLayout", () => {
@@ -99,6 +113,16 @@ describe("importLayout", () => {
     importLayout(key, { a: [10, 20], b: [-3.5, 7] })
     const back = loadLayout(key)
     expect(back?.get("b")).toEqual({ x: -3.5, y: 7 })
+  })
+
+  it("degrades to a no-op when storage refuses the write", () => {
+    // Unlike saveLayout, importLayout has no eviction retry — one throw is
+    // the whole story, and it had never been driven through this catch.
+    const store = fakeStorage({ failNextSet: true })
+    withStorage(store)
+    const key = layoutKey("baked", 1, false)
+    expect(() => importLayout(key, { a: [1, 2] })).not.toThrow()
+    expect(loadLayout(key)).toBeNull()
   })
 })
 
