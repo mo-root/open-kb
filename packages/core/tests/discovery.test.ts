@@ -277,4 +277,59 @@ describe("discover", () => {
     // failed read is still a read.
     expect(out.pagesRead).toBe(2)
   })
+
+  /**
+   * `findDocs`' own execute body had no test in this package (grepped: only
+   * the comment above mentions it by name), and the one place it does run —
+   * packages/sweep/tests/discovery-agent-mode.test.ts's "reads the docs" test
+   * — only ever hands it a docs-index page whose hrefs all parse. That leaves
+   * `docLinks`' own try/catch around `new URL(m[1]!, base)` (discovery.ts,
+   * inside findDocs) unexercised anywhere in the repo: nothing had ever
+   * handed a docs index a href `new URL()` rejects. A docs page is
+   * third-party markup the run does not control, same class of input as the
+   * sitemap `<loc>` fixed for `pathOf` in catalog.ts (SELF-231).
+   */
+  it("findDocs drops a docs-index href that isn't a url instead of throwing, and keeps the ones that are", async () => {
+    const docsHtml =
+      `<html><head><title>Docs</title></head><body><h1>Acme Docs</h1>` +
+      `<a href="/guide">Guide</a><a href="http://[bad">Bad</a>` +
+      `<p>Padding text so this docs index clears the two-hundred-byte floor findDocs requires before treating a probe as a real answer.</p></body></html>`
+
+    const model = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = prompt.filter((m) => m.role === "tool").length
+        const content =
+          turn === 0
+            ? call("1", "findDocs", {})
+            : turn === 1
+              ? call("2", "finish", { sells: "widgets", buyer: "widget buyers", coinages: [] })
+              : [{ type: "text" as const, text: "done" }]
+        return {
+          content,
+          finishReason: { unified: turn >= 2 ? ("stop" as const) : ("tool-calls" as const), raw: undefined },
+          usage,
+          warnings: [],
+        }
+      },
+    })
+
+    const out = await discover({
+      anchor: "acme.com",
+      model,
+      fetch: new FakeFetch({
+        "https://docs.acme.com/": { httpStatus: 200, body: docsHtml },
+      }),
+      maxSteps: 6,
+    })
+
+    const results = (out._steps ?? []).flatMap((s) => s.toolResults ?? [])
+    const found = results.find((r) => r.toolCallId === "1")?.output as {
+      ok: boolean
+      surfaces: Array<{ url: string; kind: string; heading: string; links: string[] }>
+    }
+    expect(found.ok).toBe(true)
+    expect(found.surfaces).toEqual([
+      { url: "https://docs.acme.com/", kind: "docs-index", heading: "Acme Docs", links: ["https://docs.acme.com/guide"] },
+    ])
+  })
 })
