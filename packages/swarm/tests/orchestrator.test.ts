@@ -21,6 +21,7 @@ import {
   seedMission,
   serializeSwarmRun,
   sweepSeedMissions,
+  type GateRecord,
   type SwarmEnding,
   type SwarmOptions,
   type SwarmRun,
@@ -515,6 +516,29 @@ describe("runSwarm: endings", () => {
     expect(run.ending.nodes).toBe(0)
     expect(run.ending.spentUsd).toBeLessThan(0.03)
     expectEndingShape(run.ending, run.ledger)
+
+    // The lead's `next` is the only tool call this script ever makes — finish
+    // is never reached before the stillborn window cuts the run off — so
+    // `control.gate` stays at its initial `null` all the way to the ending.
+    // serialize.ts's `run.control.gate ?? { ...zero record }` (the ONLY place
+    // that reads `control.gate`) exists for exactly this run, and nothing had
+    // exercised it: every other gate assertion in this file finishes at least
+    // once, which always leaves `control.gate` non-null (tools-control.ts sets
+    // it the first time `finishTool` runs, refused or accepted alike).
+    expect(run.control.gate).toBeNull()
+    const out = serializeSwarmRun(run)
+    const report = out.report as { finish: unknown; scorecard: { gate: GateRecord & { carriedObjections: string[] } } }
+    expect(report.finish).toBeNull()
+    expect(report.scorecard.gate).toEqual({
+      refusals: 0,
+      objections: [],
+      carriedObjections: [],
+      refusedFinish: null,
+      workAtRefusal: null,
+      workAnswered: 0,
+      answeredBy: [],
+      stood: null,
+    })
   })
 
   it("lead-fault: two consecutive model failures end the run; the landed mission's writes stand", async () => {
