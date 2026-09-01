@@ -212,6 +212,19 @@ describe("candidate selection", () => {
     expect(out).toHaveLength(12)
     expect(out).not.toContain("https://x.com/blog/sitemap.xml")
   })
+
+  /**
+   * `contentNamed`'s `new URL(u).pathname` catch had never run: every fixture
+   * above hands it well-formed absolute urls. A `<loc>` a dirty sitemap can
+   * still contain — not a url at all — treats it as content-named (sorted
+   * last) rather than throwing and losing every child behind it.
+   */
+  it("sorts an unparseable loc entry to the back rather than throwing", () => {
+    const out = sitemapChildren(
+      sitemap(["not a valid url", "https://x.com/migrate/sitemap.xml"]),
+    )
+    expect(out).toEqual(["https://x.com/migrate/sitemap.xml", "not a valid url"])
+  })
 })
 
 describe("candidates from links", () => {
@@ -233,6 +246,22 @@ describe("candidates from links", () => {
   it("stays on the company's own origin", () => {
     const out = candidatesFromLinks(`<a href="https://competitor.com/products/x">x</a>`, "https://x.com/")
     expect(out).toEqual([])
+  })
+
+  /** The `new URL(base).origin` catch had never run: every fixture above passes
+   *  an absolute base. A base that is not itself a valid url can't anchor
+   *  anything, so the function returns no candidates rather than throwing. */
+  it("returns nothing when the base itself is not a valid url", () => {
+    const out = candidatesFromLinks(`<a href="/products/one">One</a>`, "not-a-url")
+    expect(out).toEqual([])
+  })
+
+  /** The per-href catch had never run either: one bad href among good ones is
+   *  dropped, not fatal to the rest of the page's nav. */
+  it("skips a href that fails to resolve against the base, keeping the rest", () => {
+    const html = `<a href="http://">Bad</a><a href="/products/one">One</a>`
+    const out = candidatesFromLinks(html, "https://x.com/")
+    expect(out.map((c) => new URL(c.url).pathname)).toEqual(["/products/one"])
   })
 })
 
