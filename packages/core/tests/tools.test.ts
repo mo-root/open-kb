@@ -148,6 +148,37 @@ describe("fetch tool", () => {
     const spans = await drainSpans(c)
     expect(spans[0]!.error).toContain("requested site was blocked")
   })
+
+  it("tells the model an unlocked fetch may help when the page is a thin render", async () => {
+    // tools.ts:466-470 branches the hint on s.reason with three arms, and only
+    // "empty-body" had a test above; "thin-render" and the trailing else were
+    // both dark. sniff.ts:221-222 fires "thin-render" on any 200 whose
+    // extracted text is under THIN_TEXT (200 chars) — a page short enough that
+    // an app shell, not a refusal, is the likely cause.
+    const c = ctx()
+    c.fetch = new FakeFetch({ "https://rival.com/app": { httpStatus: 200, body: "<div id='root'></div>" } })
+    const t = makeTools(c)
+    const out = await t.fetch.execute!({ urls: ["https://rival.com/app"], mode: "direct", why: "read it" }, {} as never)
+    const r = out.results[0]!
+    expect(r.reason).toBe("thin-render")
+    expect(r.hint).toContain("assembled in the browser")
+    expect(r.hint).toContain("unlocked fetch may work")
+  })
+
+  it("falls back to the generic hint for a dead end neither empty-body nor thin-render names", async () => {
+    // The same ternary's final else (tools.ts:470): a transport failure never
+    // reaches "the site refused us" or "assembled in the browser" since
+    // neither describes it. sniff.ts:197 gives "no-response" this shape —
+    // httpStatus 0, the shipped port's spelling of a transport failure before
+    // any bytes arrived.
+    const c = ctx()
+    c.fetch = new FakeFetch({ "https://rival.com/down": { httpStatus: 0, body: "" } })
+    const t = makeTools(c)
+    const out = await t.fetch.execute!({ urls: ["https://rival.com/down"], mode: "direct", why: "read it" }, {} as never)
+    const r = out.results[0]!
+    expect(r.reason).toBe("no-response")
+    expect(r.hint).toBe("nothing usable came back")
+  })
 })
 
 describe("read tool", () => {
