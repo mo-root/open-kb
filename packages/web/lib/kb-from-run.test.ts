@@ -136,6 +136,24 @@ describe("graphOf, entity-to-entity edges", () => {
   })
 })
 
+/** `dedupe`'s own doc comment: "First placement wins, except that any real
+ *  relation beats `none`." Every existing fixture that hits two rows for one
+ *  host (`reports a pair once...` above, the gallery-map fixtures below) keeps
+ *  both rows on the same relation, so the override half of that sentence had
+ *  never run — coverage showed the `else if` in `dedupe` as the one uncovered
+ *  branch in this file. */
+describe("dedupe, a real relation beats a placeholder `none`", () => {
+  it("keeps the later real relation when `none` was placed first", () => {
+    const n = noteOf(run([entity("a.com", "none"), entity("a.com", "competitor")]), "players/a.com.md")
+    expect(n?.relation).toBe("competitor")
+  })
+
+  it("keeps the first relation when it was already real — the override is one-directional", () => {
+    const n = noteOf(run([entity("a.com", "competitor"), entity("a.com", "none")]), "players/a.com.md")
+    expect(n?.relation).toBe("competitor")
+  })
+})
+
 describe("graphOf, prominence — the search's own count, apart from placement", () => {
   const nodeFor = (g: ReturnType<typeof graphOf>, id: string) =>
     g.nodes.find((n) => n.id.includes(id))!
