@@ -69,6 +69,15 @@ describe("echoFoldedDigest: the digest a soft-404 template cannot escape", () =>
     expect(echoFoldedDigest(text, "not a url")).toBe(textDigest(text))
   })
 
+  it("still masks by the raw token when a path segment's percent-encoding can't be decoded", () => {
+    // `new URL()` accepts a lone "%" in a path segment; decodeURIComponent()
+    // does not (measured: `decodeURIComponent("/100%/x")` throws "URI
+    // malformed"). echoWords' inner catch falls back to the raw segment, so
+    // masking still runs on "100%" itself instead of losing the whole digest.
+    const got = echoFoldedDigest("before 100% after", "https://a.com/100%/x")
+    expect(got).toBe(textDigest("before after"))
+  })
+
   it("leaves an unrelated body untouched — it masks the echo, not the content", () => {
     const text = "totally unrelated content"
     expect(echoFoldedDigest(text, "https://a.com/some/path")).toBe(textDigest(text))
