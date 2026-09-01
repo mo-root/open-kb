@@ -127,4 +127,27 @@ describe("makeHarvestClassify over the real composed classify.md", () => {
     // text itself was never recorded — the honest middle the fix committed to.
     expect(intentsOnly.seen[0]).toContain("surfaced by rival, pain searches this run (query text not recorded)")
   })
+
+  it("bills and reports ok:true on a landed call, and ok:false-then-rethrows on a failed one", async () => {
+    // Both branches of the closure's own try/catch (agent.ts's makeHarvestClassify)
+    // report through deps.hooks.onModel — but every test above left hooks unset,
+    // so `deps.hooks?.onModel?.(...)` short-circuited before ever building the
+    // report object, on both the landed AND the failed path. Neither had run once.
+    const seen: Array<{ role: string; label: string; ok: boolean; tokensIn: number; tokensOut: number; usd: number }> = []
+    const hooks = { onModel: (info: (typeof seen)[number]) => seen.push(info) }
+
+    const { model } = scripted()
+    const landed = makeHarvestClassify({ template: template(), model, pricing: { inUsdPerM: 10, outUsdPerM: 10 }, map: new MapState("anchor.com"), hooks })
+    const h: HostCandidate = { host: "rival.example", seenIn: 1, intents: [], titles: [], desc: "" }
+    await landed(h, PAGE)
+    expect(seen).toHaveLength(1)
+    expect(seen[0]).toMatchObject({ role: "investigator", label: "classify rival.example", ok: true, tokensIn: 1000, tokensOut: 50, usd: 0.0105 })
+
+    const boom = new Error("the classify model API failed")
+    const failing = new MockLanguageModelV4({ doGenerate: async () => { throw boom } })
+    const crashed = makeHarvestClassify({ template: template(), model: failing, pricing: { inUsdPerM: 10, outUsdPerM: 10 }, map: new MapState("anchor.com"), hooks })
+    await expect(crashed(h, PAGE)).rejects.toBe(boom) // the original error, not swallowed
+    expect(seen).toHaveLength(2)
+    expect(seen[1]).toMatchObject({ role: "investigator", label: "classify rival.example", ok: false, tokensIn: 0, tokensOut: 0, usd: 0 })
+  })
 })
