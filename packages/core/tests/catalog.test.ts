@@ -158,6 +158,20 @@ describe("candidate selection", () => {
     expect(out).toHaveLength(1)
   })
 
+  /**
+   * `pathOf`'s catch branch, never fed a bad entry before this. Every other
+   * fixture in this file is a well-formed absolute url, so the one line that
+   * keeps one dirty `<loc>` in a dirty sitemap from crashing the whole read
+   * — `new URL(url)` throwing on a string that is not a url at all — had
+   * never actually run.
+   */
+  it("drops a <loc> entry that new URL() can't parse, instead of throwing", () => {
+    const out = candidatesFromSitemap(
+      sitemap(["not a url at all", "https://x.com/products/real"]),
+    )
+    expect(out.map((c) => new URL(c.url).pathname)).toEqual(["/products/real"])
+  })
+
   it("recognises a sitemap index so the caller follows it rather than folding it", () => {
     expect(isSitemapIndex(sitemap(["https://x.com/sitemap-1.xml", "https://x.com/sitemap-2.xml"]))).toBe(true)
     expect(isSitemapIndex(sitemap(["https://x.com/products/a"]))).toBe(false)
