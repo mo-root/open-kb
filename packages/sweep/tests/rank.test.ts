@@ -858,7 +858,7 @@ describe("judgeHosts blocked-page recovery", () => {
   it("judges an unreadable host from its SERP presence, wearing the caveat", async () => {
     // `lists` rather than `competitor`: the relation has to be one the
     // snippet gate admits, or this exercises the withholding path instead
-    // of the caveat path it is named for. The two tests above cover that.
+    // of the caveat path it is named for. The test below covers that one.
     const out = await judgeHosts([{ ...rich("dark.com"), seenIn: 1 }], {
       fetcher: fakeFetcher({}),
       classify: async (_h, text) => ({
@@ -878,6 +878,39 @@ describe("judgeHosts blocked-page recovery", () => {
     // Spans still verified — against the SERP text, same containment check.
     expect(e.descSpans).toEqual({ verified: 1, claimed: 2 })
     expect(e.spans).toEqual(["hosted log search"])
+  })
+
+  it("withholds an unreadable host's SERP-guessed relation when the snippet gate refuses it", async () => {
+    // SNIPPET_MAY_SAY (judge.ts) admits only `lists`/`discusses` — measured
+    // there at 82-88% agreement with the page-judged verdict, against 59%
+    // for `competitor` (the page says `lists` 13% of the time instead). This
+    // `overreach` branch had never run through judgeHosts itself anywhere in
+    // the suite (checked by grepping every test file for the branch's
+    // `because` text and for a non-admitted relation reaching judgeHosts
+    // through an unreadable host): export-kb.test.ts pins the same sentence,
+    // but against a hand-built Judged fixture, not this decision.
+    const out = await judgeHosts([{ ...rich("dark.com"), seenIn: 1 }], {
+      fetcher: fakeFetcher({}),
+      classify: async () => ({
+        name: "Dark", kind: "company",
+        what: "a directory ranking hosted log search vendors for platform teams",
+        relation: "competitor", why: "same job",
+        spans: ["hosted log search", "not on the serp text at all"],
+      }),
+      anchor: "anchor.com",
+      aggregatorThreshold: null,
+    })
+    const e = out.entities[0]!
+    expect(out.stats.serpJudged).toBe(1)
+    // Only relation and why are wiped — kind and what survive the withdrawal.
+    expect(e.kind).toBe("company")
+    expect(e.what).toBe("a directory ranking hosted log search vendors for platform teams")
+    expect(e.relation).toBe("unknown")
+    expect(e.why).toBe("")
+    expect(e.because).toContain("the search results read as competitor")
+    expect(e.because).toContain("bears out less than 80% of the time")
+    expect(e.unreadableReason).toBeDefined()
+    expect(e.descSpans).toEqual({ verified: 1, claimed: 2 })
   })
 
   it("leaves the honest blank when even the SERP said nearly nothing", async () => {
