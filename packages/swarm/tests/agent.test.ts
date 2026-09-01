@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi } from "vitest"
 import { MockLanguageModelV4 } from "ai/test"
 import type { LanguageModel } from "ai"
 import {
@@ -360,6 +360,48 @@ describe("runLead", () => {
       expect(out.because).toContain(`${LEAD_TURN_CAP} turns`)
     }
     expect(model.doGenerateCalls.length).toBe(LEAD_TURN_CAP)
+  })
+
+  it("the free read tool's own wire: a re-read of an already-fetched page reaches the model and the onTool hook, no provider call spent", async () => {
+    const h = harness(5)
+    const rec = h.evidence.record({
+      url: "https://rival.com/",
+      text: "Rival sells a fraud scoring API to online merchants.",
+      status: "found",
+      tier: "page",
+    })
+    const onTool = vi.fn()
+    const model = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = prompt.filter((m) => m.role === "tool").length
+        return turn === 0
+          ? reply(
+              call("1", "read", { handle: rec.handle, why: "re-check what rival.com claims before writing it up" }),
+              false,
+            )
+          : reply([{ type: "text" as const, text: "done." }], true)
+      },
+    })
+    const lead = runLead({
+      ...h,
+      domain: "anchor.com",
+      model,
+      pricing: { inUsdPerM: 0, outUsdPerM: 0 },
+      hooks: { onTool },
+    })
+    await lead.leadTurn()
+    await lead.leadTurn()
+
+    // The re-read's own bytes, projected free of charge, reached the model's next turn.
+    const second = JSON.stringify(model.doGenerateCalls[1]!.prompt)
+    expect(second).toContain("Rival sells a fraud scoring API")
+    expect(second).toContain("poolLeftUsd")
+    // The read tool's execute wire reported through onTool the same as every paid tool does.
+    expect(onTool).toHaveBeenCalledWith(
+      expect.objectContaining({ tool: "read", ok: true, why: "re-check what rival.com claims before writing it up" }),
+    )
+    // Free: no ledger draw beyond the turn's own (zero-priced here) model tokens.
+    expect(h.ledger.spentUsd()).toBe(0)
   })
 })
 
