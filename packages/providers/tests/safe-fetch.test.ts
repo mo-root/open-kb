@@ -335,6 +335,28 @@ describe("publicOnlyFetch leaves the honest case alone", () => {
     expect(socket).not.toHaveBeenCalled()
   }, 2_000)
 
+  it("refuses immediately when the caller's signal is already aborted, without ever waiting on the resolver", async () => {
+    // `underSignal` has two ways to see an abort: told about one while it's
+    // waiting (the tar-pit case above, via the event listener), or handed a
+    // signal that was ALREADY aborted before this call even started — a
+    // deadline that elapsed while the caller sat queued, say. That second path
+    // returns synchronously and never calls `addEventListener`, which matters:
+    // an abort event that already fired will never fire again, so a listener
+    // attached after the fact would wait forever. Only the mid-wait path had a
+    // test; this pins the pre-aborted one, using a resolver that never answers
+    // so a regression back to the listener-only path hangs instead of silently
+    // passing.
+    const socket = okSocket()
+    const f = publicOnlyFetch({
+      fetchImpl: socket as unknown as typeof fetch,
+      lookup: () => new Promise<string[]>(() => {}),
+    })
+    const ctl = new AbortController()
+    ctl.abort(new Error("deadline already elapsed"))
+    await expect(f("https://a.com/", { signal: ctl.signal })).rejects.toThrow("deadline already elapsed")
+    expect(socket).not.toHaveBeenCalled()
+  }, 2_000)
+
   it("hands back a 3xx that carries no Location, and one whose Location is unparseable, instead of inventing a hop", async () => {
     const bare = vi.fn(async () => new Response("", { status: 302 }))
     const nonsense = vi.fn(async () => new Response("", { status: 302, headers: { location: "http://" } }))
