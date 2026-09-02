@@ -392,4 +392,45 @@ describe("discover", () => {
       { url: "https://docs.acme.com/", kind: "docs-index", heading: "Acme Docs", links: ["https://docs.acme.com/guide"] },
     ])
   })
+
+  /**
+   * `findDocs`'s failure branch had never run. A `vitest --coverage` pass over
+   * the whole repo (looking for what 263 nights of self-discovered work had
+   * missed) put discovery.ts at 51/65 branches (78.46%) with exactly one
+   * uncovered statement: line 280's `{ ok: false, reason: "no documentation
+   * surface answered..." }`. Every existing findDocs test, including the one
+   * above, hands it at least one probe that answers; nothing had ever handed
+   * it silence on all seven (llms.txt x2, docs-subdomain llms.txt and root,
+   * /docs, /developers, /api).
+   */
+  it("findDocs reports ok: false when none of its seven probes answer", async () => {
+    const model = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = prompt.filter((m) => m.role === "tool").length
+        const content =
+          turn === 0
+            ? call("1", "findDocs", {})
+            : turn === 1
+              ? call("2", "finish", { sells: "widgets", buyer: "widget buyers", coinages: [] })
+              : [{ type: "text" as const, text: "done" }]
+        return {
+          content,
+          finishReason: { unified: turn >= 2 ? ("stop" as const) : ("tool-calls" as const), raw: undefined },
+          usage,
+          warnings: [],
+        }
+      },
+    })
+
+    const out = await discover({
+      anchor: "acme.com",
+      model,
+      fetch: new FakeFetch({}), // every probe 404s — FakeFetch's default for an unlisted url
+      maxSteps: 6,
+    })
+
+    const results = (out._steps ?? []).flatMap((s) => s.toolResults ?? [])
+    const found = results.find((r) => r.toolCallId === "1")?.output as { ok: boolean; reason: string }
+    expect(found).toEqual({ ok: false, reason: "no documentation surface answered — work from the marketing pages" })
+  })
 })
