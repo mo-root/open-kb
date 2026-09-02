@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { summarise } from "./AgentPanel"
+import { buildEntries, summarise } from "./AgentPanel"
 
 /**
  * AgentPanel.tsx had zero test coverage anywhere. D-scope sweep, self-discovered
@@ -15,6 +15,19 @@ import { summarise } from "./AgentPanel"
  * `JSON.stringify` cannot serialize (a circular tool result, a BigInt) throws
  * instead of rendering something. Nothing in the repo had ever imported this
  * function directly — it was module-private before this commit.
+ *
+ * `buildEntries` (module-private as `entries`'s `useMemo` body until this
+ * commit, same move as `summarise`) is the rest of the file's untested surface:
+ * `grep -rln "AgentPanel" packages/web --include=*.test.*` found only this file,
+ * and it named nothing but `summarise`. The tool-call/tool-result branches carry
+ * their own "Kept, deliberately" comment saying today's `generateObject` engine
+ * never feeds them — true, and also why a regression there would ship silently:
+ * nothing runs them, so nothing would notice one of the two chunk-type spellings
+ * (`tool-input-available` vs `tool-call`, an SDK version difference this file
+ * accepts either of) stop matching, or `toolName`/`input`/`output` being read
+ * off the wrong field. The text-merge rule (THE SWARM CORRECTION) and the
+ * `UNKNOWN` agent fallback were equally untested — a concurrency bug in exactly
+ * the shape that comment describes fixing once already.
  */
 
 describe("summarise: null and undefined render as nothing", () => {
@@ -77,5 +90,88 @@ describe("summarise: falls back to String(v) when JSON.stringify throws", () => 
 
   it("does not throw on a BigInt, which JSON.stringify refuses to serialize", () => {
     expect(summarise(10n)).toBe("10")
+  })
+})
+
+describe("buildEntries: text deltas merge only into the same agent's own last entry", () => {
+  it("merges consecutive text-delta chunks from one agent into a single entry", () => {
+    const out = buildEntries([
+      { type: "text-delta", delta: "Hello, ", agent: "discover" },
+      { type: "text-delta", delta: "world.", agent: "discover" },
+    ])
+    expect(out).toEqual([{ id: 0, kind: "text", body: "Hello, world.", agent: "discover" }])
+  })
+
+  it("does not merge across a different agent's frame in between", () => {
+    const out = buildEntries([
+      { type: "text-delta", delta: "one", agent: "discover" },
+      { type: "text-delta", delta: "two", agent: "rank" },
+      { type: "text-delta", delta: "three", agent: "discover" },
+    ])
+    expect(out.map((e) => ({ body: e.body, agent: e.agent }))).toEqual([
+      { body: "one", agent: "discover" },
+      { body: "two", agent: "rank" },
+      { body: "three", agent: "discover" },
+    ])
+  })
+
+  it("drops a text chunk with no delta and no text instead of pushing an empty entry", () => {
+    expect(buildEntries([{ type: "text-delta", agent: "discover" }])).toEqual([])
+  })
+
+  it("falls back to the UNKNOWN agent when a chunk carries no agent field", () => {
+    const out = buildEntries([{ type: "text", text: "hi" }])
+    expect(out[0].agent).toBe("run")
+  })
+})
+
+describe("buildEntries: tool-call chunks become a tool entry", () => {
+  it("reads either SDK spelling of a tool call the same way", () => {
+    const byNewName = buildEntries([
+      { type: "tool-input-available", toolName: "fetch", input: { url: "https://example.com" }, agent: "discover" },
+    ])
+    const byOldName = buildEntries([
+      { type: "tool-call", toolName: "fetch", input: { url: "https://example.com" }, agent: "discover" },
+    ])
+    const want = [
+      {
+        id: 0,
+        kind: "tool",
+        tool: "fetch",
+        body: '{"url":"https://example.com"}',
+        agent: "discover",
+      },
+    ]
+    expect(byNewName).toEqual(want)
+    expect(byOldName).toEqual(want)
+  })
+
+  it("names the tool 'tool' when toolName is absent", () => {
+    const out = buildEntries([{ type: "tool-call", input: "x", agent: "discover" }])
+    expect(out[0].tool).toBe("tool")
+  })
+})
+
+describe("buildEntries: tool-result chunks become a result entry", () => {
+  it("reads either SDK spelling of a tool result the same way", () => {
+    const byNewName = buildEntries([
+      { type: "tool-output-available", toolName: "fetch", output: { ok: true }, agent: "discover" },
+    ])
+    const byOldName = buildEntries([
+      { type: "tool-result", toolName: "fetch", output: { ok: true }, agent: "discover" },
+    ])
+    const want = [{ id: 0, kind: "result", tool: "fetch", body: '{"ok":true}', agent: "discover" }]
+    expect(byNewName).toEqual(want)
+    expect(byOldName).toEqual(want)
+  })
+})
+
+describe("buildEntries: everything else is protocol noise, dropped", () => {
+  it("ignores a chunk type it does not recognise", () => {
+    expect(buildEntries([{ type: "start-step", agent: "discover" }])).toEqual([])
+  })
+
+  it("ignores a chunk with no type at all", () => {
+    expect(buildEntries([{ agent: "discover" }])).toEqual([])
   })
 })

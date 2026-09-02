@@ -35,7 +35,7 @@ export interface AgentChunk {
   [k: string]: unknown;
 }
 
-interface Entry {
+export interface Entry {
   id: number;
   kind: "text" | "tool" | "result";
   body: string;
@@ -61,60 +61,70 @@ export function summarise(v: unknown, max = 130): string {
   }
 }
 
+/** Chunks in, rendered entries out. Pulled out of the component so the
+ *  tool-call/tool-result branches can be driven directly under test — same
+ *  move as exporting `summarise` above, and for the same reason: nothing in
+ *  the repo has ever rendered `AgentPanel` with a real chunk stream (no
+ *  `@testing-library/react` in this workspace), so these branches, the
+ *  swarm-correction merge rule, and the `UNKNOWN` fallback were exercised by
+ *  nothing at all. Extracted verbatim; the component's behaviour is
+ *  unchanged. */
+export function buildEntries(chunks: readonly AgentChunk[]): Entry[] {
+  const out: Entry[] = [];
+  let id = 0;
+  for (const c of chunks) {
+    const t = String(c.type ?? "");
+    const agent = typeof c.agent === "string" && c.agent ? c.agent : UNKNOWN;
+    // Consecutive text deltas are one thought, not one line each — a token
+    // stream rendered as rows is unreadable.
+    //
+    // THE SWARM CORRECTION. This used to merge into whatever the previous
+    // entry was, full stop. With one agent at a time that was right. With
+    // several in flight it welded two different models' answers into one
+    // paragraph — `Promise.all` over concurrent calls interleaves their
+    // frames, and the join was silent, so the panel read as a single
+    // confused voice. Text now merges only into the same agent's own last
+    // entry, which is the narrowest rule that still collapses a token
+    // stream.
+    if (t === "text-delta" || t === "text") {
+      const piece = String(c.delta ?? c.text ?? "");
+      if (!piece) continue;
+      const last = out[out.length - 1];
+      if (last?.kind === "text" && last.agent === agent) last.body += piece;
+      else out.push({ id: id++, kind: "text", body: piece, agent });
+    } else if (t === "tool-input-available" || t === "tool-call") {
+      /* Kept, deliberately. Nothing in the repo fed these branches while the
+         engine called `generateObject`, and they read as dead code — but
+         `packages/core/src/discovery.ts` is a `ToolLoopAgent` with real tool
+         definitions, and phase one of the swarm is exactly an agent choosing
+         which pages to read. This is the surface that shows it choosing. */
+      out.push({
+        id: id++,
+        kind: "tool",
+        tool: String(c.toolName ?? "tool"),
+        body: summarise(c.input),
+        agent,
+      });
+    } else if (t === "tool-output-available" || t === "tool-result") {
+      out.push({
+        id: id++,
+        kind: "result",
+        tool: String(c.toolName ?? "tool"),
+        body: summarise(c.output),
+        agent,
+      });
+    }
+  }
+  return out;
+}
+
 export function AgentPanel({ chunks }: { chunks: readonly AgentChunk[] }) {
   const [pinned, setPinned] = useState(true);
   const boxRef = useRef<HTMLDivElement>(null);
 
   const [only, setOnly] = useState<string | null>(null);
 
-  const entries = useMemo(() => {
-    const out: Entry[] = [];
-    let id = 0;
-    for (const c of chunks) {
-      const t = String(c.type ?? "");
-      const agent = typeof c.agent === "string" && c.agent ? c.agent : UNKNOWN;
-      // Consecutive text deltas are one thought, not one line each — a token
-      // stream rendered as rows is unreadable.
-      //
-      // THE SWARM CORRECTION. This used to merge into whatever the previous
-      // entry was, full stop. With one agent at a time that was right. With
-      // several in flight it welded two different models' answers into one
-      // paragraph — `Promise.all` over concurrent calls interleaves their
-      // frames, and the join was silent, so the panel read as a single
-      // confused voice. Text now merges only into the same agent's own last
-      // entry, which is the narrowest rule that still collapses a token
-      // stream.
-      if (t === "text-delta" || t === "text") {
-        const piece = String(c.delta ?? c.text ?? "");
-        if (!piece) continue;
-        const last = out[out.length - 1];
-        if (last?.kind === "text" && last.agent === agent) last.body += piece;
-        else out.push({ id: id++, kind: "text", body: piece, agent });
-      } else if (t === "tool-input-available" || t === "tool-call") {
-        /* Kept, deliberately. Nothing in the repo fed these branches while the
-           engine called `generateObject`, and they read as dead code — but
-           `packages/core/src/discovery.ts` is a `ToolLoopAgent` with real tool
-           definitions, and phase one of the swarm is exactly an agent choosing
-           which pages to read. This is the surface that shows it choosing. */
-        out.push({
-          id: id++,
-          kind: "tool",
-          tool: String(c.toolName ?? "tool"),
-          body: summarise(c.input),
-          agent,
-        });
-      } else if (t === "tool-output-available" || t === "tool-result") {
-        out.push({
-          id: id++,
-          kind: "result",
-          tool: String(c.toolName ?? "tool"),
-          body: summarise(c.output),
-          agent,
-        });
-      }
-    }
-    return out;
-  }, [chunks]);
+  const entries = useMemo(() => buildEntries(chunks), [chunks]);
 
   /** Who has spoken, in the order they first spoke. Doubles as the filter row:
    *  with a swarm the useful question is "what is discover doing", and reading
