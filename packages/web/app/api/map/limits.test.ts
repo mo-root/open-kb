@@ -845,6 +845,25 @@ describe("who is asking — reading an address off a chain", () => {
     expect(one).not.toBe(elsewhere)
   })
 
+  it("expands a '::' that collapses zero groups inside the /64 itself, not only past it", () => {
+    // Every case above elides groups 5-8 (or later), so `bucket` (spend-limits.ts:429)
+    // has only ever been driven with `at` landing at index 4 or beyond — the
+    // network half it reads off `expanded.slice(0, 4)` was always already
+    // written out in full. A real allocation can have a zero group inside the
+    // network half too (a `::` right after the first two groups is common
+    // shorthand for that), which is the one place a miscounted expansion would
+    // silently fold two different /64s into one bucket or split one /64 in two.
+    // "2001:db8::abcd:1234:5678:9abc" collapses groups 3-4 (both zero) and
+    // expands to 2001:db8:0:0:abcd:1234:5678:9abc — the same /64 prefix as the
+    // fully-written form below, and a different one from a fully-written
+    // address one hextet over.
+    const collapsed = visitorOf(new Headers({ "x-real-ip": "2001:db8::abcd:1234:5678:9abc" }))
+    const writtenOut = visitorOf(new Headers({ "x-real-ip": "2001:db8:0:0:1111:2222:3333:4444" }))
+    const differentPrefix = visitorOf(new Headers({ "x-real-ip": "2001:db9::abcd:1234:5678:9abc" }))
+    expect(collapsed).toBe(writtenOut)
+    expect(collapsed).not.toBe(differentPrefix)
+  })
+
   it("is a hash and not an address, and the salt changes it", () => {
     const h = visitorOf(new Headers({ "x-real-ip": "203.0.113.9" }))
     expect(h).toMatch(/^[0-9a-f]{16}$/)
