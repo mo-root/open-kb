@@ -229,6 +229,29 @@ describe("publicOnlyFetch checks every redirect hop, not just the first", () => 
     expect(socket).toHaveBeenCalledTimes(4) // the first request plus three followed hops
   })
 
+  it("discards a hop's body even when cancelling it throws, and still follows the redirect", async () => {
+    // `discard()`'s own catch (safe-fetch.ts:161-163) exists for exactly this:
+    // `res.body?.cancel()` can reject — a body already consumed, or a stub
+    // whose stream throws — and that must not abort the redirect loop, only
+    // the network problem cancelling is trying to avoid would do that. Never
+    // exercised until now: every other redirect test in this file builds its
+    // Response as `new Response("", {...})`, whose `.body` is a fresh,
+    // unlocked stream (or null, via the `?.`) that cancels cleanly either way.
+    const throwingBody = { cancel: () => Promise.reject(new Error("already consumed")) }
+    const socket = vi.fn(async (input: unknown) => {
+      const url = String(input)
+      if (url === "https://a.com/") {
+        const res = new Response("", { status: 302, headers: { location: "https://a.com/next" } })
+        Object.defineProperty(res, "body", { value: throwingBody })
+        return res
+      }
+      return new Response("landed", { status: 200 })
+    })
+    const f = publicOnlyFetch({ fetchImpl: socket as unknown as typeof fetch, lookup: resolver({ "a.com": [PUBLIC] }) })
+    const res = await f("https://a.com/")
+    expect(await res.text()).toBe("landed")
+  })
+
   it("never delegates redirect following to the transport", async () => {
     // `redirect: "manual"` on every hop is what makes the per-hop check
     // possible at all. A transport left on "follow" would make the connection
