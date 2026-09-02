@@ -18,15 +18,30 @@ import type { Span } from "@open-kb/core"
  * `public-runs.test.ts`'s mock of the same module, one directory further
  * from it, so the specifier here is the alias the route itself imports
  * rather than that file's relative one; both resolve to the same module.
+ *
+ * `@/lib/stream-adapter`'s `adapterFor` is wrapped rather than replaced —
+ * `vi.fn(actual.adapterFor)` — so every test but one below gets the real
+ * fold, and the one that wants a mid-stream throw can override it with
+ * `mockImplementationOnce` without disturbing the rest. Confirmed the
+ * catch it targets (route.ts's `catch (err)` in the live `start()`) never
+ * ran by temporarily marking it and running `pnpm test`: nothing in this
+ * file, `stream-adapter.test.ts`, or `runs.test.ts` ever feeds `toFrame` a
+ * span shape it throws on — `readUi` (packages/sweep/src/ui.ts) already
+ * swallows its own JSON.parse failures rather than letting one escape.
  */
 
 const configured = vi.fn<() => boolean>()
 const getSpans = vi.fn<(id: string) => Promise<Span[]>>()
 const getRunRow = vi.fn<(id: string) => Promise<unknown>>()
 vi.mock("@/lib/store/supabase", () => ({ configured, getSpans, getRunRow }))
+vi.mock("@/lib/stream-adapter", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/stream-adapter")>()
+  return { ...actual, adapterFor: vi.fn(actual.adapterFor) }
+})
 
 const { GET } = await import("./route")
 const { createRun } = await import("@/lib/runs")
+const { adapterFor } = await import("@/lib/stream-adapter")
 
 function span(seq: number, overrides: Partial<Span> = {}): Span {
   return {
@@ -149,5 +164,38 @@ describe("GET /api/run/[id]/stream — a run still in this process", () => {
     expect(res.status).toBe(400)
     expect(await res.json()).toEqual({ error: 'unknown namespace "bogus"' })
     run.spans.close()
+  })
+
+  it("logs a real mid-stream fault and still closes the response, rather than crashing it", async () => {
+    // The header's own comment: once the 200 and the first frame are gone,
+    // nothing can change the status or the body — the catch in start() can
+    // only mint a ref into the log and close. `req.signal.aborted` stays
+    // false throughout (a plain `new Request`, never `.abort()`-ed), so this
+    // is the genuine-fault half of that branch, not the disconnect half
+    // route.test.ts's other tests never exercise either.
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    let calls = 0
+    vi.mocked(adapterFor).mockImplementationOnce(() => (span: Span) => {
+      calls += 1
+      if (calls === 2) throw new Error("adapter blew up")
+      return { seq: span.seq }
+    })
+
+    const run = createRun("acme.com", 12)
+    run.spans.emit({ runId: run.id, agentId: "sweep", parentId: null, kind: "search", name: "serp", argsDigest: "acme rivals", ms: 5, ok: true, usd: 0.001 })
+    run.spans.emit({ runId: run.id, agentId: "sweep", parentId: null, kind: "search", name: "serp", argsDigest: "acme substitutes", ms: 5, ok: true, usd: 0.001 })
+    run.spans.close()
+
+    const res = await GET(...req(run.id, "?ns=trace"))
+    expect(res.status).toBe(200)
+    const rows = await frames(res)
+    // Only the frame minted before the throw reached the client — there is
+    // no way to retract a byte already sent, so a partial stream is the
+    // truthful answer rather than a crashed one.
+    expect(rows).toEqual([{ seq: 1 }])
+    expect(errorSpy).toHaveBeenCalledTimes(1)
+    expect(errorSpy.mock.calls[0]?.[0]).toContain("[api] fault")
+
+    errorSpy.mockRestore()
   })
 })
