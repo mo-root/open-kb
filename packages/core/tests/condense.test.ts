@@ -49,6 +49,18 @@ describe("condense", () => {
     expect(condense(t, 6_000)).toHaveLength(6_000)
   })
 
+  it("drops a link the markdown regex captures but the URL parser rejects, instead of throwing", () => {
+    // The regex only requires "https?://" plus non-paren, non-space chars, which
+    // admits strings `new URL()` refuses — an unclosed IPv6-literal bracket, here.
+    // Confirmed this is otherwise live: collapsing sniff.ts's try/catch around
+    // `new URL(href).pathname` to a bare call turned this into an uncaught throw.
+    const good = Array.from({ length: 45 }, (_, i) => `- [page ${i}](https://example.com/section/area/page-${i})`)
+    const t = [...good, "- [broken](https://[)"].join("\n") + "x".repeat(20_000)
+    const out = condense(t, 6_000)
+    expect(out).toContain("section/area (45)")
+    expect(out.length).toBeLessThanOrEqual(6_000)
+  })
+
   /**
    * THE BUDGET IS A BOUND, NOT A SUGGESTION.
    *
