@@ -68,6 +68,16 @@ describe("save and load", () => {
     expect(back?.has("ghost")).toBe(false)
   })
 
+  it("writes nothing when every node lacks live coordinates", () => {
+    // The all-filtered case behind saveLayout's `n` staying empty — the test
+    // above always leaves one valid node, so this early return had never run.
+    const store = fakeStorage()
+    withStorage(store)
+    const key = layoutKey("m", 2, true)
+    saveLayout(key, [{ id: "ghost" }, { id: "nan", x: NaN, y: 1 }])
+    expect(store.rows.has(key)).toBe(false)
+  })
+
   it("answers null for a corrupt row instead of throwing at the canvas", () => {
     const store = fakeStorage()
     withStorage(store)
@@ -75,6 +85,39 @@ describe("save and load", () => {
     store.rows.set(key, "{not json")
     expect(loadLayout(key)).toBeNull()
     store.rows.set(key, JSON.stringify({ n: { a: [1, "x"] } }))
+    expect(loadLayout(key)).toBeNull()
+  })
+
+  // Coverage run on this branch (2026-09-02) showed layoutCache.ts:51,54,60
+  // as the file's only uncovered lines: every prior corrupt-row test threw
+  // before reaching them (bad JSON) or failed one step later (a numeric
+  // entry, past the shape checks). Each case below is the shape check that
+  // catches it instead, one line short of where the tests above already stop.
+  it("answers null when the row has no node map at all", () => {
+    const store = fakeStorage()
+    withStorage(store)
+    const key = layoutKey("m", 1, true)
+    store.rows.set(key, "null")
+    expect(loadLayout(key)).toBeNull()
+    store.rows.set(key, JSON.stringify({ n: "not-an-object" }))
+    expect(loadLayout(key)).toBeNull()
+  })
+
+  it("answers null when a stored position is not a two-element array", () => {
+    const store = fakeStorage()
+    withStorage(store)
+    const key = layoutKey("m", 1, true)
+    store.rows.set(key, JSON.stringify({ n: { a: "1,2" } }))
+    expect(loadLayout(key)).toBeNull()
+    store.rows.set(key, JSON.stringify({ n: { a: [1, 2, 3] } }))
+    expect(loadLayout(key)).toBeNull()
+  })
+
+  it("answers null for a node map that parses but names no nodes", () => {
+    const store = fakeStorage()
+    withStorage(store)
+    const key = layoutKey("m", 1, true)
+    store.rows.set(key, JSON.stringify({ n: {} }))
     expect(loadLayout(key)).toBeNull()
   })
 
