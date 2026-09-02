@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest"
 import { existsSync } from "node:fs"
 import { fileURLToPath } from "node:url"
-import { BreakerTable, Ledger, ALLOWANCES, canonicalUrl, type FetchPort, type SearchPort } from "@open-kb/core"
+import { BreakerTable, Ledger, ALLOWANCES, canonicalUrl, sniff, type FetchPort, type SearchPort } from "@open-kb/core"
 import {
   RunEvidence,
   searchTool,
@@ -1189,6 +1189,40 @@ describe("harvestTool: span discipline through the harvest path", () => {
     expect(node.evidence[0]!.url).toBe("https://quanticdata.io/")
     const cite = ctx.evidence.cite("https://quanticdata.io/", node.evidence[0]!.quote)
     expect(cite.ok).toBe(true)
+  })
+
+  /**
+   * The quanticdata test above already runs this same fallback (vendorHtml
+   * sniffs to 283 chars, well past the cap) but only asserts the citation is
+   * valid — `cite.ok` holds whether the quote is 20 chars or the full page,
+   * so a regression that widened or dropped `MECHANICAL_QUOTE`'s slice
+   * entirely would pass it unnoticed. MECHANICAL_QUOTE itself is not
+   * exported (tools-paid.ts:577), so the 160 here is re-derived from the
+   * fixture's own sniffed text rather than duplicated as an untethered
+   * literal.
+   */
+  it("the mechanical page quote is capped at 160 chars, not the whole page", async () => {
+    const { ctx } = harvestCtx({ fetch: fakeFetcher({ "https://acme.com/": vendorHtml }) })
+    ctx.classify = async () => ({
+      out: {
+        name: "Acme",
+        kind: "company",
+        what: "a scraping api",
+        relation: "competitor",
+        why: "same job",
+        spans: [], // no verified span: forces the mechanical opening-quote fallback
+      },
+      usd: 0,
+    })
+    await harvestTool(ctx, { hosts: ["acme.com"], why: "t" })
+    const node = ctx.map.nodes.get("acme.com")!
+
+    const sniffed = sniff({ url: "https://acme.com/", httpStatus: 200, body: vendorHtml, contentType: "text/html" })
+    if (sniffed.status !== "found") throw new Error("fixture expected to sniff as found")
+    expect(sniffed.text.length).toBeGreaterThan(160) // otherwise this test cannot tell a cap from a coincidence
+
+    expect(node.evidence).toHaveLength(1)
+    expect(node.evidence[0]!.quote).toBe(sniffed.text.slice(0, 160))
   })
 
   it("verified spans ARE the node's quotes — the receipts land on the map", async () => {
