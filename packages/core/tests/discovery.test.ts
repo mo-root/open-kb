@@ -210,6 +210,66 @@ describe("discover", () => {
     })
   })
 
+  /**
+   * `mapProductPages`' `isSitemapIndex` branch (discovery.ts:180-183: fetch
+   * every child, join their bodies, then run `candidatesFromSitemap` on the
+   * joined text) had never run anywhere in the repo. Confirmed with `vitest
+   * run --coverage`: discovery.ts reported those three lines uncovered
+   * (98.25% stmts) while `isSitemapIndex` and `sitemapChildren` themselves
+   * are unit-tested in catalog.test.ts as pure functions — the integration
+   * that actually follows an index down to its children was untested. The
+   * merge test above only ever hands the tool a leaf `<urlset>`.
+   */
+  it("mapProductPages follows a sitemap index down to its children and reads candidates out of the merged body", async () => {
+    const index =
+      `<?xml version="1.0"?><sitemapindex>` +
+      `<loc>https://acme.com/sitemap-blog.xml</loc>` +
+      `<loc>https://acme.com/sitemap-products.xml</loc>` +
+      `</sitemapindex>`
+    const products = `<?xml version="1.0"?><urlset><loc>https://acme.com/products/widget</loc></urlset>`
+    // A child sitemap the reorder pushes last (CONTENT-named) — present to
+    // prove both children are fetched and merged, not just the first.
+    const blog = `<?xml version="1.0"?><urlset><loc>https://acme.com/blog/post-1</loc></urlset>`
+
+    const model = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = prompt.filter((m) => m.role === "tool").length
+        const content =
+          turn === 0
+            ? call("1", "mapProductPages", {})
+            : turn === 1
+              ? call("2", "finish", { sells: "widgets", buyer: "widget buyers", coinages: [] })
+              : [{ type: "text" as const, text: "done" }]
+        return {
+          content,
+          finishReason: { unified: turn >= 2 ? ("stop" as const) : ("tool-calls" as const), raw: undefined },
+          usage,
+          warnings: [],
+        }
+      },
+    })
+
+    const fetch = new FakeFetch({
+      "https://acme.com/sitemap.xml": { httpStatus: 200, body: index },
+      "https://acme.com/sitemap-products.xml": { httpStatus: 200, body: products },
+      "https://acme.com/sitemap-blog.xml": { httpStatus: 200, body: blog },
+      "https://acme.com/": { httpStatus: 200, body: "<html><body></body></html>" },
+    })
+
+    const out = await discover({ anchor: "acme.com", model, fetch, maxSteps: 6 })
+
+    const results = (out._steps ?? []).flatMap((s) => s.toolResults ?? [])
+    const mapped = results.find((r) => r.toolCallId === "1")
+    // The product from the products child made it through; the blog child
+    // was fetched too (both children's urls are in fetch.calls below) but
+    // its /blog/ path is dropped by rank()'s own CONTENT filter, same as a
+    // leaf sitemap would drop it.
+    expect(mapped?.output).toEqual({ urls: ["https://acme.com/products/widget"] })
+    expect(fetch.calls.map((c) => c.url)).toEqual(
+      expect.arrayContaining(["https://acme.com/sitemap-products.xml", "https://acme.com/sitemap-blog.xml"]),
+    )
+  })
+
   it("readPage fetches a batch concurrently and reports a page that came back empty, direct and then unlocked", async () => {
     const model = new MockLanguageModelV4({
       doGenerate: async ({ prompt }) => {
