@@ -255,6 +255,15 @@ interface Row {
 let rows: Row[]
 /** Set to make the store fail the way a down store fails. */
 let storeStatus = 200
+/** Drives `GET https://openrouter.ai/api/v1/key`, the provider-side ceiling's
+ *  own reading (route.ts:289's `spentSoFar`) — a second store this file's
+ *  fetch stub never answered, so every request that reached it fell through
+ *  to the "REAL NETWORK CALL" throw below. Untestable until now because
+ *  nothing ever set `OPENKB_CEILING_USD` to a real number: the misconfigured-
+ *  value test at "still refuses on a malformed OPENKB_CEILING_USD" refuses
+ *  before `spentSoFar` is ever called. */
+let openrouterUsage = 0
+let openrouterMode: "ok" | "error-status" | "throws" = "ok"
 
 function serveStore(url: string, init?: RequestInit): Response | null {
   if (!url.includes("/rest/v1/")) return null
@@ -426,6 +435,8 @@ beforeEach(() => {
   hoisted.model = scriptedModel()
   rows = []
   storeStatus = 200
+  openrouterUsage = 0
+  openrouterMode = "ok"
   resetLedger()
 
   process.env.OPENKB_RUNS_DIR = dir
@@ -456,8 +467,13 @@ beforeEach(() => {
       const url = String(input)
       const served = serveStore(url, init)
       if (served) return served
-      // Anything else is a real request — the OpenRouter usage endpoint, a
-      // provider, a page. It must explode, not bill someone.
+      if (url.includes("openrouter.ai/api/v1/key")) {
+        if (openrouterMode === "throws") throw new Error("getaddrinfo ENOTFOUND openrouter.ai")
+        if (openrouterMode === "error-status") return new Response("boom", { status: 500 })
+        return Response.json({ data: { usage: openrouterUsage } })
+      }
+      // Anything else is a real request — a provider, a page. It must
+      // explode, not bill someone.
       throw new Error(`REAL NETWORK CALL ATTEMPTED FROM THE LIMITS TEST: ${url}`)
     }),
   )
@@ -1114,5 +1130,54 @@ describe("a model swap is warned about in the log, not just measured", () => {
     expect((await map()).status).toBe(200)
 
     expect(warn).not.toHaveBeenCalled()
+  })
+})
+
+/* ═══════════════════ 8. the provider-side ceiling reads OpenRouter's own usage */
+
+describe("the provider-side ceiling (route.ts's spentSoFar) reads OpenRouter's usage", () => {
+  // OPENKB_CEILING_USD stayed "" or unset in every other describe in this file
+  // (dollarsOrBad's own no-ceiling reading, route.ts:276), which parses to
+  // `ceiling.usd === 0` and skips the `if (ceiling.usd > 0)` block at
+  // route.ts:476 entirely. Nothing before this block had ever set it to a real
+  // number, so `spentSoFar` — its GET to openrouter.ai/api/v1/key, both the
+  // `!res.ok` early return and the `catch`, and the two guards that read its
+  // result — had zero coverage. Confirmed by grep: this file's only other two
+  // `OPENKB_CEILING_USD =` assignments are "" (off) and "$5" (refused before
+  // spentSoFar runs, at the `"bad" in ceiling` check three lines above it).
+
+  it("lets a run through once OpenRouter's usage reads comfortably under the ceiling", async () => {
+    process.env.OPENKB_CEILING_USD = "10"
+    openrouterUsage = 5
+    expect((await map()).status).toBe(200)
+  })
+
+  it("refuses with 429 once OpenRouter's usage reaches the ceiling", async () => {
+    process.env.OPENKB_CEILING_USD = "10"
+    openrouterUsage = 10
+    const refused = await map()
+    expect(refused.status).toBe(429)
+    expect(refused.error).toContain("$10")
+    expect(refused.error).toContain("ceiling")
+  })
+
+  it("fails closed with a 503 when the usage endpoint answers with a non-2xx", async () => {
+    // The `!res.ok` branch inside spentSoFar's try — a null reading, same as
+    // the catch below, but reached without ever throwing.
+    process.env.OPENKB_CEILING_USD = "10"
+    openrouterMode = "error-status"
+    const refused = await map()
+    expect(refused.status).toBe(503)
+    expect(refused.error).toContain("cannot reach the model provider")
+  })
+
+  it("fails closed with a 503 when the usage request itself throws", async () => {
+    // spentSoFar's own catch: a null reading, same refusal as the branch
+    // above, reached by a rejected fetch instead of a non-2xx response.
+    process.env.OPENKB_CEILING_USD = "10"
+    openrouterMode = "throws"
+    const refused = await map()
+    expect(refused.status).toBe(503)
+    expect(refused.error).toContain("cannot reach the model provider")
   })
 })
