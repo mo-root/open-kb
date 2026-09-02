@@ -966,6 +966,36 @@ describe("judgeHosts blocked-page recovery", () => {
     expect(e.because).toContain("could not be read")
   })
 
+  it("swallows a classify throw on the SERP-judged path and settles the honest blank", async () => {
+    // judge.ts wraps the SERP-snippet classify call (judge.ts:451-744, the
+    // branch above this one takes when a host's page never opened but its
+    // titles/desc are long enough to judge from) in its own `try { ... }
+    // catch { /* falls through to the blank the host would have gotten
+    // anyway */ }`. Every serpJudged test in this file (the two above, plus
+    // "withholds an unreadable host's SERP-guessed relation" and "judges an
+    // unreadable host from its SERP presence") drives a classify that
+    // resolves; every classify-that-throws test in this file (223, 599, 763)
+    // fetches a readable page instead, which lands in the sibling catch at
+    // judge.ts:791, not this one. Grepped the whole suite for a throwing
+    // classify paired with an unreadable, corroborated host and found none —
+    // same class of gap as SELF-235 (a try/catch around a call this run does
+    // not control, never exercised on the failure side).
+    const out = await judgeHosts([{ ...rich("dark.com"), seenIn: 1 }], {
+      fetcher: fakeFetcher({}),
+      classify: async () => { throw new Error("model down") },
+      anchor: "anchor.com",
+      aggregatorThreshold: null,
+    })
+    const e = out.entities[0]!
+    expect(out.stats.serpJudged).toBe(1)
+    expect(e.kind).toBe("unknown")
+    expect(e.relation).toBe("unknown")
+    expect(e.because).toContain("could not be read this run")
+    expect(e.settledBy).toBe("predicate")
+    expect(e.unreadableReason).toBeDefined()
+    expect("spans" in e).toBe(false)
+  })
+
   it("withdraws a name whose home is a different registrable domain", async () => {
     const resellerHtml = `<html><body><h1>SendGrid Japan</h1><p>Email delivery for the Japanese market, operated by KKE. SendGrid features and pricing in Japanese, with local support and billing for teams here.</p></body></html>`
     const out = await judgeHosts([{ ...rich("sendgrid.kke.co.jp"), seenIn: 2 }], {
