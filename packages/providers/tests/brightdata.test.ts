@@ -724,6 +724,14 @@ describe("brightDataSearch error reporting", () => {
     expect(r!.error).toContain("empty body")
   })
 
+  it("says the body was unparseable when it is non-empty but not JSON", async () => {
+    const fetchImpl = vi.fn(async (..._: FetchArgs) => new Response("<html>rate limited</html>", { status: 200 }))
+    const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 1, retryMs: 0 })
+    const [r] = await s.search(["anything"])
+    expect(r!.ok).toBe(false)
+    expect(r!.error).toContain("unparseable body")
+  })
+
   it("carries the reason through on a non-2xx too", async () => {
     const fetchImpl = vi.fn(
       async () => new Response("nope", { status: 429, headers: { "x-brd-error": "cooldown, retry after 15 seconds" } }),
