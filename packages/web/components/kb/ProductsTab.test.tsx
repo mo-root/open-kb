@@ -118,6 +118,29 @@ describe("the catalog — what the company says it sells", () => {
     )
     expect(html).toContain("docs/templates")
   })
+
+  /**
+   * The catalog and strip cases above leave the OTHER two `try { new
+   * URL(x).pathname } catch { return x }` copies in this same 181-292 block
+   * unexercised: the "read from:" link (line 205) walks `readPages`, a plain
+   * `string[]` kept verbatim from `report.readPages` in kb-from-run.ts:685 —
+   * no URL validation, same unchecked-model-output shape as `foundAt`.
+   * Confirmed by dropping this catch (`new URL(u).pathname || "/"`, no try)
+   * and re-running: "Invalid URL" escaped uncaught, taking the tab down.
+   * Restored before committing.
+   */
+  it("falls back to the raw string when a read-from page is not a valid URL", () => {
+    const html = renderToStaticMarkup(
+      <ProductsTab
+        notes={notes}
+        catalog={[{ name: "Email Templates", does: "Design emails in React." }]}
+        readPages={["docs/pricing"]}
+        brand="Resend"
+        openNote={() => {}}
+      />,
+    )
+    expect(html).toContain("docs/pricing")
+  })
 })
 
 describe("what the company published about itself", () => {
@@ -137,6 +160,27 @@ describe("what the company published about itself", () => {
     // An entry the run recorded without a url is still a claim worth showing;
     // it simply carries no link.
     expect(html).toContain("Automate emails using Zapier.")
+  })
+
+  /**
+   * The fourth of the four sibling `try { new URL(x).pathname } catch {
+   * return x }` copies SELF-249 named but did not itself drive: the
+   * integration card's link (line 334). `integrations[].foundAt` is kept
+   * verbatim by kb-from-run.ts:287 (a trim check, no URL validation), the
+   * same unchecked-model-output shape as the catalog/strip `foundAt`s SELF-249
+   * covered. Confirmed by dropping this catch and re-running: "Invalid URL"
+   * escaped uncaught from inside the render. Restored before committing.
+   */
+  it("falls back to the raw string, not a thrown error, when an integration's link is not a valid URL", () => {
+    const html = renderToStaticMarkup(
+      <ProductsTab
+        notes={notes}
+        integrations={[{ with: "Docs Site", does: "Reads its own docs.", foundAt: "docs/integrations" }]}
+        brand="Resend"
+        openNote={() => {}}
+      />,
+    )
+    expect(html).toContain("docs/integrations")
   })
 
   it("states the rival count off the list it is printing, and links every lead", () => {
