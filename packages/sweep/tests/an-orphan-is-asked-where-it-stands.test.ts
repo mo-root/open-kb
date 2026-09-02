@@ -66,4 +66,32 @@ describe("an orphan is asked where it stands", () => {
     })
     expect((h.result.edges ?? []).some((e) => e.to === "ghost.example")).toBe(false)
   })
+
+  // No fixture test ever made the orphan call itself throw (`grep -rn "orphan
+  // batch.*produced nothing" packages/sweep/src` finds only the catch's own
+  // message), so sweep.ts:6920-6925's `catch (err) { say(...); return }` had
+  // never run — a genuine model-down fault, distinct from "answered nobody"
+  // (covered above) and from a stand naming an off-map host (covered above).
+  // Unlike second-look's own fail-open catch, this one does NOT count the
+  // attempt: `stats.asked` is incremented only after `call()` returns, so a
+  // thrown batch leaves both `asked` and `linked` at zero, not just `linked`.
+  //
+  // walled.example, not forum, is this fixture's actual resident orphan —
+  // confirmed by printing the orphan prompt: forum already carries a pair
+  // edge to tailwatch (co-occurs with it in 2 searches, the pair batch's own
+  // dispatch threshold), so `inEdge` already holds it before this phase runs.
+  it("fails open: a batch that throws leaves the orphan standing alone, asked or not", async () => {
+    const h = await runFixture({
+      script: {
+        orphan: () => {
+          throw new Error("the model is down")
+        },
+      },
+    })
+    expect((h.result.edges ?? []).some((e) => e.from === HOSTS.walled || e.to === HOSTS.walled)).toBe(false)
+    const stats = (h.result.report.linking as { orphans: { orphans: number; asked: number; linked: number } }).orphans
+    expect(stats.orphans).toBeGreaterThan(0)
+    expect(stats.asked).toBe(0)
+    expect(stats.linked).toBe(0)
+  })
 })
