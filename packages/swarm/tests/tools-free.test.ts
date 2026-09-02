@@ -119,6 +119,34 @@ describe("readTool", () => {
     expect(r.text).toContain("https://twitter.com/acme — tw")
   })
 
+  // Both tests above project a record with `raw` set to HTML, so `raw !==
+  // undefined && isHtml(raw)` always took its true branch — the markdown/
+  // plain-text fallback in projectHeadings and projectLinks had zero coverage
+  // anywhere in the repo, yet it is the ONLY path a search snippet ever takes:
+  // `RunEvidence.record` is never called with `raw` for a snippet-tier hit,
+  // only for a fetched page (tools-paid.ts:677 vs 685), and this run's own
+  // `s.snippet` fixture above is exactly that shape.
+  it("projects headings and links from markdown when there is no raw html", () => {
+    const evidence = new RunEvidence()
+    const rec = evidence.record({
+      url: "https://third.com/roundup",
+      text:
+        "# Roundup: best scraping tools\n" +
+        "Acme leads with proxy rotation and IP diversity.\n" +
+        "## Runner-up\n" +
+        "See the [full comparison](https://roundup.example/scraping) for pricing.",
+      status: "found",
+      tier: "snippet",
+    })
+    const ctx: ReadCtx = { evidence, ledger: ledger() }
+    const headings = readTool(ctx, { handle: rec.handle, project: "headings" })
+    if (!headings.ok) throw new Error(headings.reason)
+    expect(headings.text).toBe("# Roundup: best scraping tools\n## Runner-up")
+    const links = readTool(ctx, { handle: rec.handle, project: "links" })
+    if (!links.ok) throw new Error(links.reason)
+    expect(links.text).toBe("https://roundup.example/scraping — full comparison")
+  })
+
   // linksOf's own catch/continue (an href that `new URL(href, baseUrl)` cannot
   // resolve, e.g. an empty authority) has zero coverage anywhere in the repo —
   // both fixture anchors above resolve cleanly, so `projectLinks` never walks
