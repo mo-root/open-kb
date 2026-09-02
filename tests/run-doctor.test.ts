@@ -195,4 +195,31 @@ describe("run-doctor over the runs on disk", () => {
     const clean = diagnose({ budget: { linkingSkipped: false, unlinkedPairs: 0 }, linking: { truncated: 0 } }, {})
     expect(clean.find((n) => n.what === "linking")).toBeUndefined()
   })
+
+  it("reads the clock model's own ratio, not just that report.clock is present", () => {
+    // `r.clock` is populated by sweep.ts (pinned in
+    // sweep-buys-the-hand-it-was-dealt.test.ts's "report.clock" describe
+    // block) and its absence is covered here by the generic "calls an absent
+    // field unknown" test above — but neither test drives THIS file's own
+    // `ratio < 1 ? "watch" : "ok"` line, so both labels and the boundary
+    // between them had never run: a doctor that always printed "ok" (or
+    // always "watch") would have passed every other test in this suite.
+
+    // 1. Under-predicted — the run took longer than the model expected, which
+    // is the case that matters: a deadline-bound run would have been cut.
+    const under = diagnose({ clock: { predictedSeconds: 50, actualSeconds: 100 } }, {}).find((n) => n.what === "clock model")!
+    expect(under.level).toBe("watch")
+    expect(under.detail).toBe("predicted 50s, actual 100s (0.50x) — UNDER-predicted, a deadline run would have been cut")
+
+    // 2. Over-predicted — the norm case (median 1.44x per this file's own
+    // citation), and the warning sentence must not leak into a clean note.
+    const over = diagnose({ clock: { predictedSeconds: 150, actualSeconds: 100 } }, {}).find((n) => n.what === "clock model")!
+    expect(over.level).toBe("ok")
+    expect(over.detail).toBe("predicted 150s, actual 100s (1.50x)")
+
+    // 3. Exactly 1x — the check is `ratio < 1`, so a tie must read `ok`, not
+    // `watch`. Pins the boundary rather than a value comfortably past it.
+    const tie = diagnose({ clock: { predictedSeconds: 100, actualSeconds: 100 } }, {}).find((n) => n.what === "clock model")!
+    expect(tie.level).toBe("ok")
+  })
 })
