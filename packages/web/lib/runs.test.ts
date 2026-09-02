@@ -201,6 +201,33 @@ describe("getStoredRun — the ids that are real", () => {
   })
 })
 
+/* Both id shapes get their own file read, wrapped in its own bare `catch {}`
+ * — the browser shape at `fileFor(id)` and the CLI shape at `sweep-<id>.json`
+ * — and neither catch had ever run: every fixture above is written with
+ * `json()`, so a JSON.parse failure was never on the table for either branch.
+ * A run half-written by a crash, or truncated by a full disk, lands exactly
+ * here: a real id, a file that opens, content that does not parse. The comment
+ * at the CLI branch says this falls through to the store rather than
+ * throwing, so the id staying readable — as a miss, not a crash — is the
+ * behavior these two pin. */
+describe("getStoredRun — a real id whose file will not parse", () => {
+  const BROWSER_ID = "0f1e2d3c-4b5a-4978-8765-4321fedcba98"
+  const CLI_ID = "corrupt-co-202609010005"
+
+  beforeAll(async () => {
+    await writeFile(path.join(dir, `run-${BROWSER_ID}.json`), "not json at all", "utf8")
+    await writeFile(path.join(dir, `sweep-${CLI_ID}.json`), "not json at all", "utf8")
+  })
+
+  it("misses rather than throws on a browser run that will not parse", async () => {
+    await expect(getStoredRun(BROWSER_ID)).resolves.toBeNull()
+  })
+
+  it("misses rather than throws on a CLI run that will not parse", async () => {
+    await expect(getStoredRun(CLI_ID)).resolves.toBeNull()
+  })
+})
+
 /* The stamp got two digits wider, and both halves of that are load bearing.
 
    Minute resolution meant two runs of one domain inside one minute overwrote
