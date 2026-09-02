@@ -137,6 +137,25 @@ describe("loadSettings", () => {
   })
 })
 
+describe("saveSettings", () => {
+  /* stubWindow's setItem never throws, so this catch (settings.ts:277) had
+     never run: every existing test only exercises the write succeeding. A
+     full or private-mode store throws QuotaExceededError from setItem, and
+     the comment above the catch says this must not break the graph — that
+     claim was never checked. */
+  it("swallows a setItem that throws instead of breaking the caller", () => {
+    ;(globalThis as { window?: unknown }).window = {
+      localStorage: {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: () => {
+          throw new DOMException("", "QuotaExceededError")
+        },
+      },
+    }
+    expect(() => saveSettings(DEFAULT_SETTINGS)).not.toThrow()
+  })
+})
+
 describe("RANGES", () => {
   it("holds every default it governs", () => {
     for (const [k, r] of Object.entries(RANGES)) {
