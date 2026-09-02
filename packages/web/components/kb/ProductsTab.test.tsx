@@ -50,6 +50,76 @@ const rivalLeads = [
   { name: "mailgun", foundAt: "https://resend.com/migrate/mailgun" },
 ]
 
+/**
+ * THE CATALOG BLOCK HAD NO TEST AT ALL. `catalog`, `readPages`, `markets` and
+ * `strips` never appeared in this file — every card, link and heading in
+ * "What <brand> sells" rendered untested, including the four sibling
+ * `try { new URL(x).pathname } catch { return x }` fallbacks the catalog,
+ * strip, integration and read-page links each carry their own copy of.
+ *
+ * `foundAt` on a catalog or strip entry is a model-written string
+ * (`decomposition.products[].foundAt`, `report.strips[].foundAt` —
+ * kb-from-run.ts keeps it verbatim, no URL validation), so a relative path or
+ * bare title reaching `new URL()` is a real shape, not a hypothetical one.
+ * Confirmed by dropping the catch on the catalog card's copy and re-running:
+ * `new URL("docs/templates")` throws "Invalid URL" uncaught, taking the whole
+ * tab down with it — restored before committing.
+ */
+describe("the catalog — what the company says it sells", () => {
+  it("renders product cards, the pages they were read from, markets and search-term strips", () => {
+    const html = renderToStaticMarkup(
+      <ProductsTab
+        notes={notes}
+        catalog={[
+          { name: "Transactional Email API", does: "Send emails from code.", foundAt: "https://resend.com/docs/send" },
+        ]}
+        readPages={["https://resend.com/pricing"]}
+        markets={[
+          {
+            name: "Transactional email",
+            does: "Send email from application code.",
+            centrality: "core",
+            covers: ["send", "deliver"],
+          },
+        ]}
+        strips={[
+          {
+            product: "Transactional Email API",
+            terms: ["email api", "smtp service"],
+            generic: false,
+            foundAt: "https://resend.com/docs/send",
+          },
+        ]}
+        brand="Resend"
+        openNote={() => {}}
+      />,
+    )
+    expect(html).toContain("What Resend sells")
+    expect(html).toContain("Transactional Email API")
+    expect(html).toContain("/docs/send")
+    expect(html).toContain("/pricing")
+    expect(html).toContain("grouped into 1 markets")
+    expect(html).toContain("Transactional email")
+    expect(html).toContain("stripped to 1 search term")
+    expect(html).toContain("email api")
+  })
+
+  it("falls back to the raw string, not a thrown error, when a catalog or strip link is not a valid URL", () => {
+    const html = renderToStaticMarkup(
+      <ProductsTab
+        notes={notes}
+        catalog={[{ name: "Email Templates", does: "Design emails in React.", foundAt: "docs/templates" }]}
+        strips={[
+          { product: "Email Templates", terms: ["email templates"], generic: false, foundAt: "docs/templates" },
+        ]}
+        brand="Resend"
+        openNote={() => {}}
+      />,
+    )
+    expect(html).toContain("docs/templates")
+  })
+})
+
 describe("what the company published about itself", () => {
   it("renders each integration as a card, with the page that claimed it", () => {
     const html = renderToStaticMarkup(
