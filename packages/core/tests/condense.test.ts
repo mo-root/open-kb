@@ -49,6 +49,20 @@ describe("condense", () => {
     expect(condense(t, 6_000)).toHaveLength(6_000)
   })
 
+  it("falls back to a cut when every link is a bare domain root, not just when links are unparseable", () => {
+    // The test above shares this one's name in spirit but not its mechanism:
+    // `not-a-url-N` never matches the `https?://` regex at all, so that
+    // fixture exits at the links.length < 40 gate — condense() never reaches
+    // the tree-building loop, and `if (!tree.size)` stayed unexercised.
+    // Here the links DO match and DO parse: every one is a bare root
+    // (`https://example.com/`), whose pathname is "/" and folds to an empty
+    // key, so the tree comes out of the loop with zero entries even though
+    // 45 links went in.
+    const t = Array.from({ length: 45 }, (_, i) => `- [row ${i}](https://example.com/)`).join("\n") + "x".repeat(30_000)
+    expect(condense(t, 6_000)).toHaveLength(6_000)
+    expect(condense(t, 6_000)).toBe(t.slice(0, 6_000))
+  })
+
   it("drops a link the markdown regex captures but the URL parser rejects, instead of throwing", () => {
     // The regex only requires "https?://" plus non-paren, non-space chars, which
     // admits strings `new URL()` refuses — an unclosed IPv6-literal bracket, here.
