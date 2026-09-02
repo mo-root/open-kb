@@ -165,6 +165,24 @@ describe("logFault", () => {
     expect(() => logFault(REAL_FAULT)).not.toThrow()
     expect(firstLoggedLine()).toContain("(no request)")
   })
+
+  it("falls back to the method alone when a genuine Request's own url will not parse", () => {
+    // whereOf's `new URL(req.url)` catch had never run: every other test here
+    // builds `req()` off an https:// literal, which the Fetch Request
+    // constructor already validated, so `new URL` on it can never throw.
+    // Confirmed the gap by printing a marker inside the catch and running
+    // this file's existing suite (reverted before committing): the marker
+    // never printed. Request.prototype.url is an own-property-shadowable
+    // accessor, so this is the one way to hand `whereOf` a real
+    // `instanceof Request` whose `.url` is not a URL, without touching
+    // anything Next itself constructs.
+    const r = req("https://kb.test/api/kb", "POST")
+    Object.defineProperty(r, "url", { value: "not a valid url", configurable: true })
+    const ref = logFault(REAL_FAULT, r)
+    expect(firstLoggedLine()).toContain(ref)
+    expect(firstLoggedLine()).toContain("POST")
+    expect(firstLoggedLine()).not.toContain("not a valid url")
+  })
 })
 
 describe("namedFaults — the whole shelf", () => {
