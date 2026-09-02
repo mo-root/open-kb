@@ -401,6 +401,13 @@ export interface FixtureOptions {
     }
   >
   sweepOptions?: Partial<SweepOptions>
+  /** Make the fixture's DNS preflight (`resolves()` in sweep.ts) answer `true`
+   *  instead of the default `false`, while `fetch` stays blocked as always. A
+   *  run's own three surfaces still have to be routed to failure through
+   *  `fetchTable` — this only changes what the DNS half of "nothing readable
+   *  and no DNS record" reports. Default `false` because every existing test
+   *  wants the network fully dead, DNS included. */
+  dnsResolves?: boolean
 }
 
 /**
@@ -583,7 +590,7 @@ export const lineOf = (rows: CostLine[], label: string): CostLine => {
  *  explodes instead of billing someone. */
 let netBlocked = false
 
-export function blockTheNetwork(): () => void {
+export function blockTheNetwork(opts: { dnsResolves?: boolean } = {}): () => void {
   // Refuses to nest rather than mis-restoring. The first draft saved whatever
   // `globalThis.fetch` was at install time, so two overlapping installs left the
   // second restoring the FIRST one's throwing stub — and the first then restored
@@ -597,16 +604,24 @@ export function blockTheNetwork(): () => void {
     throw new Error("REAL NETWORK CALL ATTEMPTED FROM A SWEEP FIXTURE")
   }) as unknown as typeof fetch
 
-  // The engine's second door, and `fetch` does not cover it: sweep.ts:1004 runs
-  // a DNS preflight when the anchor yielded no product pages, and :544 reaches
+  // The engine's second door, and `fetch` does not cover it: sweep.ts:2651 runs
+  // a DNS preflight when the anchor yielded no product pages, and :1390 reaches
   // it through `await import("node:dns/promises")`. Measured — a run that
   // escaped the ports produced `dns.promises.lookup pellucid.example` with this
   // guard installed and active. A guard that names itself after the network and
   // watches one of its two doors is a guard that will be trusted wrongly.
+  //
+  // `dnsResolves` answers that same preflight the other way, for the one test
+  // (SELF-255) that needs `resolves()` to return `true` while every fetch still
+  // throws: without it, every fixture run's anchor is DNS-dead by construction
+  // and the "found the domain, still could not read it" branch at sweep.ts:2703
+  // is unreachable by the whole suite.
   const realLookup = dns.promises.lookup
-  dns.promises.lookup = (() => {
-    throw new Error("REAL DNS LOOKUP ATTEMPTED FROM A SWEEP FIXTURE")
-  }) as never
+  dns.promises.lookup = (opts.dnsResolves
+    ? (async () => ({ address: "203.0.113.1", family: 4 }))
+    : (() => {
+        throw new Error("REAL DNS LOOKUP ATTEMPTED FROM A SWEEP FIXTURE")
+      })) as never
 
   return () => {
     globalThis.fetch = real
@@ -710,7 +725,7 @@ export async function runFixture(opts: FixtureOptions = {}): Promise<Harness> {
     },
   })
 
-  const restore = blockTheNetwork()
+  const restore = blockTheNetwork({ dnsResolves: opts.dnsResolves })
   try {
     const result = await sweep({
       domain: ANCHOR,
