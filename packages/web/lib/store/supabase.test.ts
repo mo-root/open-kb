@@ -531,6 +531,31 @@ describe("the supabase store", () => {
       expect(got).toEqual({ kind: "unavailable", why: "the store answered 500" })
     })
 
+    it("still names the status, even when the error body itself fails to read", async () => {
+      // supabase.ts:270's `res.text().catch(() => "")` is a second, inner catch
+      // nested inside the one at supabase.ts:299 — every non-2xx test above uses
+      // a real `Response` whose `.text()` always resolves, so that inner catch
+      // had never run. A body stream that errors mid-read (connection dropped
+      // after the status line but before the body finishes) is a real fetch
+      // failure, not a hypothetical one, and without its own catch the rejection
+      // would escape to the OUTER catch instead — reporting "the store could not
+      // be reached" for a request that did reach the store and answer 500, and
+      // for a 404 losing the one message an operator can act on (re-run the
+      // migration).
+      vi.stubEnv("SUPABASE_URL", "https://x.supabase.co")
+      vi.stubEnv("SUPABASE_SECRET_KEY", "k")
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+      const brokenBody = new ReadableStream({
+        start(controller) {
+          controller.error(new Error("stream broke"))
+        },
+      })
+      vi.stubGlobal("fetch", vi.fn(async () => new Response(brokenBody, { status: 500 })))
+      const got = await (await load()).claimRun(ARGS)
+      expect(got).toEqual({ kind: "unavailable", why: "the store answered 500" })
+      expect(errorSpy).toHaveBeenCalledWith("[supabase] claimRun 500: ")
+    })
+
     it("is unavailable, not claimed, when the body has no readable `ok`", async () => {
       vi.stubEnv("SUPABASE_URL", "https://x.supabase.co")
       vi.stubEnv("SUPABASE_SECRET_KEY", "k")
