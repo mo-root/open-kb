@@ -99,6 +99,7 @@ const run = {
     seconds: 4195,
     recall: { pooled: 0.4, probes: [{}], aliasExclusion: { hosts: ["brightdata.es"], note: "the rise is a bug fix in the instrument, not a coverage improvement" } },
     scorecard: { gate: { refusals: 1, objections: ["9 of 16 planned families have zero page-tier nodes"] } },
+    ending: { reason: "lead-finished", humanReason: "The lead stopped: ran out of new hosts to investigate." },
   },
 }
 
@@ -144,6 +145,7 @@ describe("exportKbFiles", () => {
     expect(readme).toContain("bug fix in the instrument")
     expect(readme).toContain("refused 1 time(s)")
     expect(readme).toContain("9 of 16 planned families")
+    expect(readme).toContain("Ending: The lead stopped: ran out of new hosts to investigate.")
   })
 
   it("manifest lists every file and every entity key", () => {
