@@ -179,6 +179,33 @@ describe("aliasSets", () => {
     const reversed = aliasSets([e, d, c, b, a]).map((s) => [...s].sort())
     expect(reversed).toEqual(sets)
   })
+  it("reparents a whole subtree, not just its root — the leaf still finds the new root", () => {
+    // UF#find's own multi-hop `while` loop (alias.ts:122) had 0% branch
+    // coverage: every existing fixture unions a fresh pair straight onto an
+    // already-known root, which `find`'s first parent lookup resolves in one
+    // hop, so the loop body never ran. It needs a node that is a CHILD when
+    // read, and later becomes a GRANDCHILD when its own root gets reparented
+    // under something smaller — union() only ever repoints the two ROOTS it
+    // is handed, so an existing child's pointer is never updated in place.
+    //
+    // hreflang runs before canonical (aliasSets calls the two passes in that
+    // order), so n-co unions onto m-co first ("m-co" < "n-co": m-co is root,
+    // n-co a direct child). Only then does m-co's mutual canonical with a-co
+    // reparent m-co itself ("a-co" < "m-co"), leaving n-co still pointing at
+    // m-co while m-co now points at a-co — n-co is a child of a child.
+    // Finding n-co has to walk n-co -> m-co -> a-co, which is the loop.
+    const a = page("https://a-co.com/", `<link rel="canonical" href="https://m-co.com/">`)
+    const m = page(
+      "https://m-co.com/",
+      `<link rel="alternate" hreflang="x" href="https://n-co.com/">` +
+        `<link rel="canonical" href="https://a-co.com/">`,
+    )
+    const n = page("https://n-co.com/", `<link rel="alternate" hreflang="y" href="https://m-co.com/">`)
+    const sets = aliasSets([a, m, n]).map((s) => [...s].sort())
+    expect(sets).toEqual([["a-co.com", "m-co.com", "n-co.com"]])
+    // Order must not matter: same chain, built with the reparenting union last.
+    expect(aliasSets([n, m, a]).map((s) => [...s].sort())).toEqual(sets)
+  })
   it("skips a page whose own url fails to parse, without touching anyone else's assertions", () => {
     // A page list is upstream content, not validated input — one page.url that
     // fails `new URL()` must not crash the whole run or block the other
