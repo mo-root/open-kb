@@ -463,4 +463,66 @@ describe("investigate", () => {
     // this file gets, since none of them supply a rate.
     expect(span.error).toBeUndefined()
   })
+
+  it("prices a turn a provider reports with no token counts at all as free, not NaN", async () => {
+    // investigator.ts:98-99 reads `step.usage?.inputTokens ?? 0` and `?.outputTokens ?? 0`.
+    // Every test above, this file's own pricing test included, has the mock model report
+    // full counts, so the `?? 0` side of both never ran (coverage: investigator.ts branch
+    // 81.81%, naming exactly these two lines). The `ai` SDK normalizes a provider's raw
+    // `doGenerate` usage (`inputTokens.total`, `outputTokens.total`, both spelled
+    // `number | undefined` in `@ai-sdk/provider` — "if reported by the provider") into the
+    // `LanguageModelUsage` this callback reads, where `inputTokens`/`outputTokens`
+    // themselves stay `number | undefined`. So a provider that does not report tokens is
+    // real input, not a hypothetical: without the fallback, `(undefined / 1e6) * rate` is
+    // `NaN`, and a `NaN` cost would poison the run's spend ceiling silently rather than
+    // just under- or over-charging it.
+    const ctx = {
+      evidence: new EvidenceStore(),
+      spans: new SpanStream(),
+      search: new FakeSearch({}),
+      fetch: new FakeFetch({}),
+      runId: "r5",
+      agentId: "inv1",
+      parentId: null,
+      graph: { nodes: new Map<string, StoredNode>(), edges: [] as StoredEdge[] },
+    }
+
+    const model = new MockLanguageModelV4({
+      doGenerate: async () => ({
+        content: [{ type: "text" as const, text: "Nothing to report." }],
+        finishReason: { unified: "stop" as const, raw: undefined },
+        usage: {
+          inputTokens: { total: undefined, noCache: undefined, cacheRead: undefined, cacheWrite: undefined },
+          outputTokens: { total: undefined, text: undefined, reasoning: undefined },
+        },
+        warnings: [],
+      }),
+    })
+
+    const out = await investigate({
+      anchor: "example.com",
+      mission: "find head-on rivals",
+      ctx,
+      model,
+      pricing: { inUsdPerM: 2, outUsdPerM: 10 },
+      modelName: "test-model",
+    })
+
+    // Both fallbacks land on 0, so the whole rate formula is 0, not NaN.
+    expect(out.usd).toBe(0)
+    expect(Number.isNaN(out.usd)).toBe(false)
+    expect(ctx.spans.totalUsd()).toBe(0)
+
+    ctx.spans.close()
+    const spans = []
+    for await (const s of ctx.spans.stream()) spans.push(s)
+    expect(spans).toHaveLength(1)
+    const span = spans[0]!
+    expect(span.tokensIn).toBe(0)
+    expect(span.tokensOut).toBe(0)
+    expect(span.usd).toBe(0)
+    // Priced (a rate was supplied), so this is the zero-tokens case, not the
+    // unpriced-run one — the span carries no complaint.
+    expect(span.error).toBeUndefined()
+  })
 })
