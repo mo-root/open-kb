@@ -67,6 +67,33 @@ describe("openingHand", () => {
     expect(all.some((q) => q.family === "branded")).toBe(false)
     expect(open.map((q) => q.q)).toEqual(["web dataset marketplace", "web dataset marketplace alternatives"])
   })
+
+  /** The cursor.com lesson this file's own comment cites: a core product's
+   *  second strip term opens with its comparison field too, not just the
+   *  bare term, because leaving it in reserve is how "ai code editor" went
+   *  unsearched against windsurf. sweep.ts passes `core: market.centrality
+   *  === "core"` for exactly this; nothing before this test called
+   *  openingHand with both a second term and `core: true` together. */
+  it("gives a core product's second term its comparison field too, not just the bare term", () => {
+    const { open } = openingHand("Cursor", ["ai coding agent", "ai code editor"], { core: true })
+    expect(open.map((q) => q.q)).toEqual([
+      "ai coding agent",
+      "ai coding agent alternatives",
+      "ai code editor",
+      "ai code editor alternatives",
+      "Cursor alternatives",
+    ])
+  })
+
+  it("leaves a non-core product's second term as the bare term alone", () => {
+    const { open } = openingHand("Cursor", ["ai coding agent", "ai code editor"], { core: false })
+    expect(open.map((q) => q.q)).toEqual([
+      "ai coding agent",
+      "ai coding agent alternatives",
+      "ai code editor",
+      "Cursor alternatives",
+    ])
+  })
 })
 
 describe("banned", () => {
