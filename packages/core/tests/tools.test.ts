@@ -322,6 +322,52 @@ describe("remember tool", () => {
     expect(edgeRejection).toBeDefined()
     expect(edgeRejection).toContain("quote not present")
   })
+
+  it("merges a second sighting of the same node instead of overwriting or duplicating it", async () => {
+    // Every test above records each node exactly once, so tools.ts:566-574 — the branch that
+    // fires when two `remember` calls name the same kind+name, the shape thirty concurrent
+    // provers produce for one company — had never run. Three calls here drive it twice: once
+    // where every field differs (each `push`/`+=` fires), once where every field repeats the
+    // node's current state (each guard's `!==`/`.includes` skips it), so both sides of all
+    // three conditions are proven, not just the merge itself.
+    const c = ctx()
+    const t = makeTools(c)
+    const f = await t.fetch.execute!({ urls: ["https://rival.com"], mode: "direct", why: "x" }, {} as never)
+    const handle = f.results[0]!.handle!
+    const quote = "Rival sells an anti-bot bypass API for developers"
+
+    const node = (what: string, whyHere: string, howFound: string) => ({
+      nodes: [{ kind: "company" as const, name: "Rival", what, whyHere, howFound, evidence: [{ handle, quote }] }],
+      edges: [],
+    })
+
+    const first = await t.remember.execute!(node("sells an anti-bot bypass API", "sells the same capability as the anchor", "anti-bot bypass api"), {} as never)
+    expect(first.written.nodes).toBe(1)
+    const stored = c.graph.nodes.get("company:rival")!
+    expect(stored.evidence).toHaveLength(1)
+    expect(stored.alsoWhat).toEqual([])
+    expect(stored.alsoWhyHere).toEqual([])
+    expect(stored.howFound).toBe("anti-bot bypass api")
+
+    // Second sighting: every field differs from what's stored, so every branch's true side runs.
+    const second = await t.remember.execute!(node("also sells bot-detection evasion", "shows up in a rival's own pricing page", "bot detection evasion"), {} as never)
+    expect(second.written.nodes).toBe(1)
+    expect(c.graph.nodes.size).toBe(1) // still one node, not two
+    expect(stored.evidence).toHaveLength(2) // evidence always accumulates
+    expect(stored.alsoWhat).toEqual(["also sells bot-detection evasion"])
+    expect(stored.alsoWhyHere).toEqual(["shows up in a rival's own pricing page"])
+    expect(stored.howFound).toBe("anti-bot bypass api · bot detection evasion")
+
+    // Third sighting: every field repeats the FIRST call's values — `existing.what`/`whyHere`
+    // are set once and never reassigned by a merge, so it is the original values, not the
+    // second call's, that make the guards' `!==`/`.includes` side false.
+    const third = await t.remember.execute!(node("sells an anti-bot bypass API", "sells the same capability as the anchor", "anti-bot bypass api"), {} as never)
+    expect(third.written.nodes).toBe(1)
+    expect(stored.evidence).toHaveLength(3) // evidence still accumulates, unconditionally
+    expect(stored.alsoWhat).toEqual(["also sells bot-detection evasion"]) // not pushed again
+    expect(stored.alsoWhyHere).toEqual(["shows up in a rival's own pricing page"]) // not pushed again
+    expect(stored.howFound).toBe("anti-bot bypass api · bot detection evasion") // not appended again
+  })
 })
 
 describe("remember, the kinds the model is told about", () => {
