@@ -98,6 +98,25 @@ describe("familyProfileFrom: the mechanical profile", () => {
     expect(p!.category.length).toBeLessThanOrEqual(60)
   })
 
+  it("a candidate with no space in its first 60 chars cuts hard, not at a word boundary that isn't there", () => {
+    // lastIndexOf(" ", 60) returns -1 here (no space that early), so the
+    // `cut > 20` branch never fires — cleanCategory falls to the hard
+    // CATEGORY_MAX slice, unlike the word-boundary cut the case above covers.
+    const map = new MapState("anchor.com")
+    map.nodes.set(
+      "rival.com",
+      node("rival.com", "company", {
+        what: "supercalifragilisticexpialidociousenterpriseinfrastructureautomation for regulated industries",
+      }),
+    )
+    const p = familyProfileFrom(map, OPTS)
+    expect(p).toEqual({
+      category: "supercalifragilisticexpialidociousenterpriseinfrastructureau",
+      source: "company",
+    })
+    expect(p!.category.length).toBe(60)
+  })
+
   it("a product's what outranks a company's what", () => {
     const map = new MapState("anchor.com")
     map.nodes.set("tool.anchor-adjacent.com", {
