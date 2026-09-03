@@ -113,6 +113,21 @@ describe("aliasSignals", () => {
     )
     expect(s).toEqual({ hreflang: [], canonical: null })
   })
+  it("drops a non-http(s) href — targetHost's protocol guard, not the URL constructor, rejects it", () => {
+    // `new URL()` parses "mailto:" and "javascript:" hrefs fine (they are
+    // absolute URLs in their own right, no base needed), so this does not hit
+    // targetHost's try/catch — it is targetHost's own `u.protocol !== "http:"
+    // && !== "https:"` guard that has to reject them. The one existing garbage-
+    // href test pairs "javascript:" with an unparseable PAGE url, which returns
+    // out of aliasSignals before targetHost ever runs (measured: 0% branch
+    // coverage on this guard's true side before this test existed).
+    const s = aliasSignals(
+      `<link rel="alternate" hreflang="es" href="mailto:es@example.com">` +
+        `<link rel="canonical" href="javascript:void(0)">`,
+      "https://example.com/",
+    )
+    expect(s).toEqual({ hreflang: [], canonical: null })
+  })
 })
 
 describe("aliasSets", () => {
