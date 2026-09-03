@@ -57,14 +57,20 @@ describe("skip census", () => {
     () => {
       // Only this branch shells out to `vitest list --json` over the whole repo
       // (the problems-found branch below exits before reaching it) — measured
-      // at ~30s here, well past vitest's 5s default.
+      // at ~30s on the machine this comment was written on, well past vitest's
+      // 5s default. Measured again directly (`time node scripts/check-skips.mjs`,
+      // no vitest harness around it) at ~70-72s across repeated runs on a
+      // 4-vCPU, ~2GB-free sandbox — the CPU/memory-constrained kind this suite
+      // also runs in unattended overnight. 60_000 was already tight against the
+      // 30s it was set for; it was flaking outright here. 150_000 keeps better
+      // than 2x headroom over the slower measurement instead of matching it.
       const { status, output } = runChecker()
       expect(status).toBe(0)
       expect(output).toContain("skip census:")
       expect(output).not.toContain("undeclared skip")
       expect(output).not.toContain("declared gate not found")
     },
-    60_000,
+    150_000,
   )
 
   it("an undeclared skip turns the guard red, and is named", () => {
