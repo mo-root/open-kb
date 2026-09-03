@@ -32,6 +32,13 @@ describe("outboundHosts", () => {
   it("stops the host at a fragment when no path precedes it", () => {
     expect(outboundHosts(`<a href="https://a.com#pricing">`, "https://self.com/")).toEqual(["a.com"])
   })
+  it("does not throw on a page URL whose scheme carries no host", () => {
+    // `new URL("mailto:...")` does not throw — mailto has no authority component,
+    // so .hostname is "" rather than an error. That takes the `registrableHost(...)
+    // || ""` fallback on the self assignment (registrableHost("") is itself ""),
+    // not the catch below it, which line 20's "not a url" case already exercises.
+    expect(outboundHosts(`<a href="https://a.com/">`, "mailto:person@example.com")).toEqual(["a.com"])
+  })
 })
 
 describe("admit", () => {
