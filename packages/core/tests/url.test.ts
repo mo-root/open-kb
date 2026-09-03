@@ -117,6 +117,20 @@ describe("isReservedHost", () => {
     }
   })
 
+  it("covers the IETF-reserved ranges that are neither RFC1918 nor CGNAT — documentation and relay blocks a probe would otherwise slip through untested", () => {
+    for (const host of [
+      "192.0.0.1", // 192.0.0.0/24 IETF protocol assignments
+      "192.0.2.1", // 192.0.2.0/24 TEST-NET-1
+      "192.88.99.1", // 192.88.99.0/24 6to4 relay anycast
+      "198.18.0.1", // 198.18.0.0/15 benchmarking
+      "198.19.255.254", // top of the same /15
+      "198.51.100.1", // 198.51.100.0/24 TEST-NET-2
+      "203.0.113.1", // 203.0.113.0/24 TEST-NET-3
+    ]) {
+      expect(isReservedHost(host), host).toBe(true)
+    }
+  })
+
   it("reads an IPv4 literal in every notation a resolver accepts, not just the dotted quad", () => {
     // All of these are 127.0.0.1 to `new URL()` and therefore to `fetch`.
     expect(isReservedHost("0177.0.0.1")).toBe(true) // octal first byte
