@@ -440,6 +440,12 @@ describe("nextTool", () => {
     expect(ctx.control.next).toBeNull()
   })
 
+  it("one landing and no seconds drops the plural and the joiner", () => {
+    const ctx = ctxOf()
+    const r = nextTool(ctx, { after: { landings: 1 }, why: "let the one wave land" })
+    expect(r).toMatchObject({ ok: true, waitingFor: "waking after 1 landing" })
+  })
+
   it("a later next replaces the earlier one", () => {
     const ctx = ctxOf()
     nextTool(ctx, { after: { landings: 3 }, why: "first" })
