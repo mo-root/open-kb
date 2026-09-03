@@ -142,6 +142,23 @@ describe("judgeExportTarget", () => {
     expect(verdict.because).toBe("unmarked")
   })
 
+  it("treats a top-level export name that is a file, not a directory, as foreign", () => {
+    // `foreignInside` assumes each of DIR_CONTENTS' four names, if present, is a
+    // directory it can `readdirSync` — `entities`, `relations`, `segments` and
+    // `evidence` are all exporter-written folders and no test had ever made one
+    // of them a plain file instead. `statSync(dir).isDirectory()` is exactly the
+    // guard against that shape, and it had never been driven false.
+    const flat = dir("kb-flat-entities", [
+      { path: "AGENTS.md", content: "# How to use this knowledge base\n" },
+      { path: "manifest.json", content: JSON.stringify({ anchor: "clerk.com", entities: [], files: [] }) },
+    ])
+    writeFileSync(join(flat, "entities"), "not a directory\n")
+    const verdict = judgeExportTarget(flat)
+    expect(verdict.writable).toBe(false)
+    expect(verdict.because).toBe("foreign-contents")
+    expect(verdict.foreign).toEqual(["entities"])
+  })
+
   it("refuses an export somebody has parked their own work inside", () => {
     // The top-level check cannot see one level down, and the delete is
     // recursive — so `entities/` and `evidence/` are exactly where a person's
