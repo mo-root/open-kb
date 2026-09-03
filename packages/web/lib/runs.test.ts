@@ -228,6 +228,43 @@ describe("getStoredRun — a real id whose file will not parse", () => {
   })
 })
 
+/* `adoptCliRun`'s two `return null` guards (runs.ts:690 and :694) had never
+ * fired in this suite: every CLI fixture above is a real `sweepResult()`, so
+ * `parsed` was always a genuine object carrying a string `anchor` and an
+ * array `entities`. The block above tests the file that will not PARSE —
+ * this is its neighbour, the file that parses fine and is the wrong shape,
+ * which is a different fact and takes a different path: no `catch`, no
+ * `console.error`, no count against `refused`. It just is not there.
+ *
+ * `null` covers the guard at :690 (falsy `parsed`, so `typeof` is never
+ * reached); `{}` covers :694 (a genuine object, so :690 falls through, then
+ * fails on the missing `anchor`). Confirmed against the branch coverage
+ * this fire measured directly: both were the only 0-hit `return null` in
+ * the function before these two fixtures existed. */
+describe("getStoredRun — a real id whose file parses but is not a sweep result", () => {
+  const NULL_ID = "nullbody-202609030005"
+  const EMPTY_ID = "emptybody-202609030006"
+
+  beforeAll(async () => {
+    await json(path.join(dir, `sweep-${NULL_ID}.json`), null)
+    await json(path.join(dir, `sweep-${EMPTY_ID}.json`), {})
+  })
+
+  it("misses on a CLI file whose JSON is not an object", async () => {
+    await expect(getStoredRun(NULL_ID)).resolves.toBeNull()
+  })
+
+  it("misses on a CLI file missing anchor and entities", async () => {
+    await expect(getStoredRun(EMPTY_ID)).resolves.toBeNull()
+  })
+
+  it("drops both from the gallery listing, silently rather than as a refusal", async () => {
+    const ids = (await listStoredRuns()).map((r) => r.id)
+    expect(ids).not.toContain(NULL_ID)
+    expect(ids).not.toContain(EMPTY_ID)
+  })
+})
+
 /* The stamp got two digits wider, and both halves of that are load bearing.
 
    Minute resolution meant two runs of one domain inside one minute overwrote
