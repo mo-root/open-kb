@@ -1477,6 +1477,44 @@ describe("the span pump, when the store's own write breaks its promise", () => {
   })
 })
 
+describe("the persist write, when the disk breaks its promise", () => {
+  let asFile: string
+
+  beforeAll(async () => {
+    asFile = path.join(root, "persist-target-is-a-file")
+    await writeFile(asFile, "not a directory", "utf8")
+  })
+
+  beforeEach(() => {
+    process.env.OPENKB_RUNS_DIR = asFile
+    vi.spyOn(console, "error").mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    process.env.OPENKB_RUNS_DIR = dir
+    vi.restoreAllMocks()
+  })
+
+  /* `settle` (lib/runs.ts) wraps `persist(r)` in its own `.catch`, and the doc
+     comment above it is explicit about why: a slow or broken disk must not fail
+     a run that succeeded — the write is best-effort and Postgres is the durable
+     copy. Nothing in this file had ever pointed OPENKB_RUNS_DIR at a path
+     `persist`'s own `mkdir(dir, { recursive: true })` cannot create through;
+     every other test here writes to a real temp directory. So the catch had
+     never run, and `finishRun` had never been proven to survive a broken write
+     rather than reject and leave the run stuck at `running`. */
+  it("logs the failed write and still finishes the run", async () => {
+    const record = createRun("resend.com", 12)
+    await finishRun(record.id, { report: { domain: "resend.com", kept: 0, usd: 0 } } as never)
+
+    expect(getRun(record.id)?.status).toBe("complete")
+    expect(console.error).toHaveBeenCalledWith(
+      `[runs] could not persist ${record.id}:`,
+      expect.any(Error),
+    )
+  })
+})
+
 describe("OPENKB_RUNS_DIR shapes the refusal must keep its hands off", () => {
   /** A read through a value that must be accepted. `null` is the right answer —
    *  the fixture uuid is nowhere near these directories — and the point is that
