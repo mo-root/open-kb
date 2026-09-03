@@ -222,6 +222,18 @@ describe("what leaves the app is the map, not the crawl", () => {
     expect(exportDrop(byHost("maybe.example"))).toBeNull()
   })
 
+  // `silent`'s own doc says it fires on "no description, no reason, no quote"
+  // — but every silent-shaped row in this fixture (and every other test file,
+  // grep -n confirms) omits `spans` entirely, so `!e.spans?.length` never once
+  // evaluated `.length` against a real array: the `?.` always short-circuited
+  // on `undefined` and the "no quote" clause went untested. A row that kept a
+  // span but never got a what/why (a judge call that captured evidence and
+  // then produced no narrative) has a quote, so it must clear the gate rather
+  // than read as silent.
+  it("a row with a captured span but no what/why is not `silent` — a quote is not nothing", () => {
+    expect(exportDrop({ name: "n", domain: "spans-only.example", kind: "company", relation: "competitor", spans: ["ships a proxy API"] })).toBeNull()
+  })
+
   // `withdrawn` is exportDrop's one gate this fixture's "one per gate" run
   // cannot cover: it only fires on a row `withoutStolenNames` has already
   // repaired (a stolen-name row turned into a bare host, `because: WITHDRAWN`),
