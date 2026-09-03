@@ -769,6 +769,21 @@ describe("rememberTool", () => {
     expect(r.rejected[0]!.reason).toContain("nodes land before edges")
   })
 
+  it("an edge needs two different ends: a domain and its own name both resolve to one node", () => {
+    // endpointOf() falls back from a key lookup to a case-insensitive name match
+    // (tools-free.ts:678-681), so a model that names one end by domain and the
+    // other by the same entity's display name — "rival.com" and "Acme" are one
+    // node in populated() — produces a same-key edge without ever typing the
+    // same string twice. This branch (tools-free.ts:714-717) had no test.
+    const s = populated()
+    const r = rememberTool(s.ctx, {
+      edges: [{ from: "rival.com", to: "Acme", relation: "competitor", why: "x" }],
+      why: "t",
+    })
+    expect(r.added.edges).toBe(0)
+    expect(r.rejected[0]!.reason).toBe("an edge needs two different ends; this one joins a node to itself")
+  })
+
   it("nodes land before edges inside one call, so a finding writes whole", () => {
     const s = seeded()
     const r = rememberTool(ctxOf(s), {
