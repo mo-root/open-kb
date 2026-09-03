@@ -142,6 +142,31 @@ describe("driftSentences", () => {
     expect(driftSentences(weaker)).toContain("a.com stayed; its tier moved to a weaker rung: own-page -> snippet")
   })
 
+  it("reads a tier move with no direction word when the tier isn't on the ladder", () => {
+    // tierDirection (drift.ts:141-146) returns null whenever either side is missing from
+    // TIER_RANK, and its `else if (tier)` call site (drift.ts:165-171) branches on that null —
+    // but every tier-only test above moves between "page", "own-page" and "snippet", all three
+    // ranked, so the no-direction arm (drift.ts:169) had never run. DriftEntityRow#tier is an
+    // unconstrained string, unlike ScorecardNode's three-value union (scorecard.ts:49), so a
+    // run carrying a tier label this ladder doesn't know is a real shape, not a hypothetical one.
+    const d = diffMaps(map([company("a.com", { tier: "page" })]), map([company("a.com", { tier: "unranked" })]))
+    expect(driftSentences(d)).toContain("a.com stayed; its tier moved page -> unranked")
+  })
+
+  it("reads a relation move at 'a different' tier when the tier isn't on the ladder", () => {
+    // Same gap as above, for the other tierDirection call site: `if (relation && tier)`
+    // (drift.ts:159-162) also ternaries on direction === null, and every relation+tier test
+    // above moved between ranked tiers, so the "a different" wearing (drift.ts:161) had never
+    // run either.
+    const d = diffMaps(
+      map([company("a.com", { relation: "competitor", tier: "own-page" })]),
+      map([company("a.com", { relation: "substitute", tier: "unranked" })]),
+    )
+    expect(driftSentences(d)).toContain(
+      "a.com stayed; its relation moved competitor -> substitute at a different tier: own-page -> unranked",
+    )
+  })
+
   it("reads a kind move plainly", () => {
     const d = diffMaps(map([company("a.com", { kind: "company" })]), map([company("a.com", { kind: "product" })]))
     expect(driftSentences(d)).toContain("a.com stayed; its kind moved company -> product")
