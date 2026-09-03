@@ -101,6 +101,18 @@ describe("aliasSignals", () => {
     const s = aliasSignals(`<link rel="canonical" href="http://[bad">`, "https://example.com/p")
     expect(s.canonical).toBeNull()
   })
+  it("skips a link tag with no href — LINK_TAG matches any <link ...>, attrOf finds nothing to resolve", () => {
+    // Every fixture above supplies href on every matched tag, so aliasSignals'
+    // `if (!href) continue` had never run (measured: 0% branch coverage on it
+    // before this test existed). `rel` alone is not enough to be skipped by
+    // the earlier `rel.includes(...)` checks — hreflang/canonical are read
+    // off `tag` regardless — so this exercises the href guard specifically.
+    const s = aliasSignals(
+      `<link rel="alternate" hreflang="es"><link rel="canonical">`,
+      "https://example.com/",
+    )
+    expect(s).toEqual({ hreflang: [], canonical: null })
+  })
 })
 
 describe("aliasSets", () => {
