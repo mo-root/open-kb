@@ -96,7 +96,7 @@ export function readFlag(
   return { ok: true, n }
 }
 
-function flag(name: string, fallback: number, min = 1): number {
+export function flag(name: string, fallback: number, min = 1): number {
   const reading = readFlag(process.argv, name, fallback, min)
   if (!reading.ok) {
     console.error(reading.why)

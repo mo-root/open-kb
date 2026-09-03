@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { EXIT } from "../scripts/fatal.js"
 import {
   computeOutcome,
   dedupeAnchors,
   doneAnchorsFromManifest,
+  flag,
   readFlag,
   stringFlag,
   type Outcome,
@@ -19,6 +20,18 @@ import {
  * `scripts/spend-caps.ts` uses: a pure reader plus a thin `process.exit`
  * wrapper around it, pulled out so the reader is reachable without a real
  * process boundary in the way.
+ *
+ * D-scope, self-discovered (docs/overnight-backlog.md is gone from this
+ * checkout, untracked by 481fa6d — recovered the same way prior SELF-<n>
+ * commits did; git log names SELF-267 as the last used, so this is SELF-268).
+ * The split above only pulled `readFlag` out for its OWN sake — `flag`, the
+ * `process.exit` wrapper it split from, was never exported and so never
+ * reached by a test at all, unlike its `capUsdOrExit` counterpart which has
+ * the exit path covered in
+ * `tests/the-cli-entrypoints-have-a-dollar-bound.test.ts`. Confirmed with an
+ * isolated coverage run (`vitest run tests/batch.test.ts --coverage
+ * --coverage.include=scripts/batch.ts`) before this file's own describe
+ * block below existed: `flag` showed 0 hits in `coverage-final.json`.
  */
 
 describe("readFlag", () => {
@@ -51,6 +64,52 @@ describe("readFlag", () => {
   it("a flag with nothing after it reads as NaN, not the next argument", () => {
     const reading = readFlag(["--concurrency"], "concurrency", 2)
     expect(reading.ok).toBe(false)
+  })
+})
+
+describe("flag", () => {
+  const savedArgv = process.argv
+
+  afterEach(() => {
+    process.argv = savedArgv
+    vi.restoreAllMocks()
+  })
+
+  it("returns the value without touching process.exit when the reading is ok", () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never)
+    process.argv = ["node", "batch.ts", "--concurrency", "5"]
+
+    expect(flag("concurrency", 2)).toBe(5)
+    expect(exitSpy).not.toHaveBeenCalled()
+  })
+
+  it("returns the fallback, untouched, when the flag is absent", () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never)
+    process.argv = ["node", "batch.ts"]
+
+    expect(flag("concurrency", 2)).toBe(2)
+    expect(exitSpy).not.toHaveBeenCalled()
+  })
+
+  it("exits 2 and prints readFlag's own refusal, verbatim, on an invalid value", () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never)
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined)
+    process.argv = ["node", "batch.ts", "--concurrency", "abc"]
+
+    flag("concurrency", 2)
+
+    expect(exitSpy).toHaveBeenCalledWith(2)
+    const reading = readFlag(["--concurrency", "abc"], "concurrency", 2)
+    expect(reading.ok).toBe(false)
+    if (!reading.ok) expect(errorSpy).toHaveBeenCalledWith(reading.why)
+  })
+
+  it("min=0 passes through to readFlag, so --retries 0 does not exit", () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never)
+    process.argv = ["node", "batch.ts", "--retries", "0"]
+
+    expect(flag("retries", 1, 0)).toBe(0)
+    expect(exitSpy).not.toHaveBeenCalled()
   })
 })
 
