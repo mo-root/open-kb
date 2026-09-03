@@ -179,6 +179,23 @@ describe("driftSentences", () => {
     )
     expect(driftSentences(d)).toContain("1 edge left the map; 1 entered")
   })
+
+  it("pluralizes edge counts past one", () => {
+    // driftSentences' edge line (drift.ts:205) ternaries on edgesLeft.length === 1 for
+    // "edge" vs "edges", the same way the entity line does — but the only prior edge test
+    // moved exactly one edge each way, so the plural arm had never run.
+    const d = diffMaps(
+      map(
+        [company("a.com")],
+        [
+          { from: "a.com", to: "b.com", relation: "competitor" },
+          { from: "a.com", to: "c.com", relation: "covers" },
+        ],
+      ),
+      map([company("a.com")], [{ from: "a.com", to: "d.com", relation: "substitute" }]),
+    )
+    expect(driftSentences(d)).toContain("2 edges left the map; 1 entered")
+  })
 })
 
 /**
