@@ -104,6 +104,17 @@ describe("banned", () => {
     expect(banned("customerio pricing", "plain", "customer.io", ["customerio"])).toBe(true)
     expect(banned("customer engagement platform", "plain", "customer.io", [])).toBe(false)
   })
+
+  it("bans nothing when there is no anchor name and no coinage to check for", () => {
+    // sweep.ts derives its ban name as `anchor.split(".")[0] ?? ""` — an
+    // anchor domain that starts with a dot (".io", a malformed input the
+    // caller does not otherwise guard against) reduces to "". With no anchor
+    // name and no coinages, `forbidden` is empty and there is nothing left
+    // for this predicate to check a query against, so every query must clear
+    // it rather than the empty alternation being asked to decide.
+    expect(banned("anything at all", "plain", "", [])).toBe(false)
+    expect(banned("", "debranded", "", [])).toBe(false)
+  })
 })
 
 describe("companyHand", () => {
