@@ -178,6 +178,23 @@ describe("exportKbFiles", () => {
     expect(bare.find((f) => f.path === "README.md")?.content).toContain("No report block")
     expect(bare.find((f) => f.path === "segments/unattributed.md")?.content).toContain("[[x-example]]")
   })
+
+  // `also` is the remember tool's same-node-merge record (tools-free.ts pushes
+  // onto it when a second mention resolves to an already-kept entity) and no
+  // fixture in this file had ever carried one, so the "Also recorded here" line
+  // — and both halves of its `a.name ? ... : a.what` ternary — had never run.
+  it("prints an 'Also recorded here' line for a row the remember tool merged", () => {
+    const merged = exportKbFiles({
+      entities: [
+        {
+          name: "X", domain: "x.example", kind: "company", relation: "competitor", what: "A rival.",
+          also: [{ name: "X Inc", what: "the same company under a second name" }, { what: "an unnamed second mention" }],
+        },
+      ],
+    })
+    const note = merged.find((f) => f.path === "entities/x-example.md")?.content ?? ""
+    expect(note).toContain("**Also recorded here:** X Inc — the same company under a second name; an unnamed second mention")
+  })
 })
 
 /**
