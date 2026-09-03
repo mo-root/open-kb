@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest"
 import { MockLanguageModelV4 } from "ai/test"
 import { FakeFetch } from "../src/testing/fake-provider.js"
 import { discover } from "../src/discovery.js"
+import { SpanStream } from "../src/spans.js"
 
 /**
  * `discover()` had no dedicated test at all — every other caller of a
@@ -432,5 +433,96 @@ describe("discover", () => {
     const results = (out._steps ?? []).flatMap((s) => s.toolResults ?? [])
     const found = results.find((r) => r.toolCallId === "1")?.output as { ok: boolean; reason: string }
     expect(found).toEqual({ ok: false, reason: "no documentation surface answered — work from the marketing pages" })
+  })
+
+  /**
+   * `onStepFinish` (discovery.ts ~361-385) prices every turn and, when `opts.spans`
+   * is supplied, emits a span for it — but every test above calls `discover()`
+   * without `spans` at all, so `opts.spans?.emit(...)` short-circuits and the whole
+   * block (the pricing ternary, the `runId`/`parentId`/`modelName` fallbacks, the
+   * "no model pricing supplied" error text) had never run once: a `vitest --coverage`
+   * pass over the whole repo put discovery.ts at 80.3% branch with exactly this block
+   * named (lines 365, 371, 375-395). That is the one path that turns discovery's own
+   * tokens into dollars and tells a run what phase-one specifically cost, so a broken
+   * rate formula — or a span silently never reaching the stream — would ship silent.
+   *
+   * Two tests, like investigator.test.ts's own fix for the identical gap: one with a
+   * rate supplied (the ternary's true side, and the caller-given runId/parentId/
+   * modelName), one without (the false side, and every `??` fallback).
+   */
+  it("prices a model turn against the rate the caller supplies, and emits a span naming the run", async () => {
+    const spans = new SpanStream()
+    const model = new MockLanguageModelV4({
+      doGenerate: async () => ({
+        content: [{ type: "text" as const, text: "Nothing to report." }],
+        finishReason: { unified: "stop" as const, raw: undefined },
+        usage: {
+          inputTokens: { total: 500_000, noCache: 500_000, cacheRead: 0, cacheWrite: 0 },
+          outputTokens: { total: 100_000, text: 100_000, reasoning: 0 },
+        },
+        warnings: [],
+      }),
+    })
+
+    const out = await discover({
+      anchor: "acme.com",
+      model,
+      fetch: new FakeFetch({}),
+      runId: "r1",
+      parentId: "lead",
+      spans,
+      pricing: { inUsdPerM: 2, outUsdPerM: 10 },
+      modelName: "test-model",
+    })
+
+    // (500_000 / 1e6) * 2 + (100_000 / 1e6) * 10 = 1.0 + 1.0
+    expect(out.usd).toBeCloseTo(2, 6)
+    expect(spans.totalUsd()).toBeCloseTo(2, 6)
+
+    spans.close()
+    const emitted = []
+    for await (const s of spans.stream()) emitted.push(s)
+    expect(emitted).toHaveLength(1)
+    const span = emitted[0]!
+    expect(span.runId).toBe("r1")
+    expect(span.parentId).toBe("lead")
+    expect(span.agentId).toBe("discover")
+    expect(span.kind).toBe("model")
+    expect(span.name).toBe("test-model")
+    expect(span.tokensIn).toBe(500_000)
+    expect(span.tokensOut).toBe(100_000)
+    expect(span.error).toBeUndefined()
+  })
+
+  it("without a rate, reports the turn as free and names why on the span — and falls back to the anchor, null, and 'model'", async () => {
+    const spans = new SpanStream()
+    const model = new MockLanguageModelV4({
+      doGenerate: async () => ({
+        content: [{ type: "text" as const, text: "Nothing to report." }],
+        finishReason: { unified: "stop" as const, raw: undefined },
+        usage: {
+          inputTokens: { total: 500_000, noCache: 500_000, cacheRead: 0, cacheWrite: 0 },
+          outputTokens: { total: 100_000, text: 100_000, reasoning: 0 },
+        },
+        warnings: [],
+      }),
+    })
+
+    // No runId, parentId, modelName or pricing — every fallback in the block at once.
+    const out = await discover({ anchor: "acme.com", model, fetch: new FakeFetch({}), spans })
+
+    expect(out.usd).toBe(0)
+    expect(spans.totalUsd()).toBe(0)
+
+    spans.close()
+    const emitted = []
+    for await (const s of spans.stream()) emitted.push(s)
+    expect(emitted).toHaveLength(1)
+    const span = emitted[0]!
+    expect(span.runId).toBe("acme.com")
+    expect(span.parentId).toBeNull()
+    expect(span.name).toBe("model")
+    expect(span.usd).toBe(0)
+    expect(span.error).toBe("no model pricing supplied — token cost not counted")
   })
 })
