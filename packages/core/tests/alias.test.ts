@@ -188,6 +188,18 @@ describe("aliasSets", () => {
     const sets = aliasSets([ANCHOR_HOME, ES_HOME, garbage]).map((s) => [...s].sort())
     expect(sets).toEqual([["brightdata.com", "brightdata.es"]])
   })
+  it("skips a page url that parses but carries no host — mailto/about have no authority to key on", () => {
+    // "not a url" above hits `new URL()`'s own throw, caught at line 165's
+    // `catch { continue }`. This is a different guard: `new URL()` accepts a
+    // "mailto:" URL fine (no authority component required) and returns ""
+    // for its hostname, so `registrableHost("")` also returns "" rather than
+    // throwing — `if (!host) continue` on line 168 is what has to catch this,
+    // not the try/catch above it (measured: 0% branch coverage on it before
+    // this test existed).
+    const mailto = page("mailto:info@brightdata.com", `<link rel="canonical" href="https://brightdata.com/">`)
+    const sets = aliasSets([ANCHOR_HOME, ES_HOME, mailto]).map((s) => [...s].sort())
+    expect(sets).toEqual([["brightdata.com", "brightdata.es"]])
+  })
   it("a NON-alias pair sharing a CDN never merges", () => {
     const a = page(
       "https://one-co.com/",
