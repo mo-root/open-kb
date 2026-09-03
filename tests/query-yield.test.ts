@@ -97,6 +97,24 @@ describe("tallyQueryYield", () => {
     // second run's first query — freshness does not leak across runs.
     expect(tally.plain).toMatchObject({ fresh: 4, market: 2 })
   })
+
+  // Every field on a `searched` entry — hits, family, platform, intent, usd —
+  // is typed optional, but every fixture above supplies all five, so none of
+  // the five `??` fallbacks below line 202 had ever run (coverage-v8, temporary
+  // local run, not committed: all five reported 0 hits). A real sweep run can
+  // legitimately omit any of them (a query the tagger skipped, a zero-hit
+  // search with no `hits` array at all), so a bug in any fallback would have
+  // shipped silent. Coverage gap found sweeping `scripts/*.ts beyond sweep.ts`
+  // (D-scope: "areas nobody has swept").
+  it("falls back to '?' for the grouping key and 0 for spend when a searched entry omits its fields", () => {
+    const bare = { searched: [{}], entities: [] }
+    expect(tallyQueryYield([bare], "family")["?"]).toMatchObject({ q: 1, usd: 0, fresh: 0, barren: 1 })
+    expect(tallyQueryYield([bare], "platform")["?"]).toMatchObject({ q: 1, barren: 1 })
+    expect(tallyQueryYield([bare], "intent")["?"]).toMatchObject({ q: 1, barren: 1 })
+    // position keys on band(i) plus family, so its own fallback is distinct
+    // from the plain-family case above.
+    expect(Object.keys(tallyQueryYield([bare], "position"))).toEqual(["  0-24 · ?"])
+  })
 })
 
 describe("cell", () => {
