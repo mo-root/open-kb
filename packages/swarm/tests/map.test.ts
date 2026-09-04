@@ -114,3 +114,40 @@ describe("landedBy", () => {
     expect(out.merged).toEqual([confirmed])
   })
 })
+
+/**
+ * entityEdges' domainOf (map.ts:207) reads `this.nodes.get(key)?.domain ||
+ * key` — a fallback to the raw key when the endpoint has no node entry.
+ * tools-free.ts's endpointOf lets an edge name the anchor itself
+ * (`nodeKey("company", "anchor.com", "anchor.com")` mints the anchor's own
+ * host, and endpointOnMap admits it via `key === this.anchor`) without ever
+ * requiring a node claim for the anchor — a model draws "rival competes
+ * with us" without first filing a claim about the site the whole map is
+ * about. Every existing entityEdges() fixture (map.test.ts, tools-free.test)
+ * only ever joins two claimed nodes, so the `|| key` arm had 0 hits in the
+ * full-suite branch map (coverage-final.json branch id 35, columns 59-72)
+ * while the left side ran every time.
+ */
+describe("MapState.entityEdges", () => {
+  it("an edge naming the anchor with no node claim for it falls back to the anchor's own key as its domain", () => {
+    const map = new MapState("anchor.com")
+    const rival: MapNode = {
+      key: "rival.com",
+      name: "Acme",
+      domain: "rival.com",
+      kind: "company",
+      what: "",
+      relation: "competitor",
+      why: "",
+      tier: "page",
+      evidence: [],
+      also: [],
+      contributions: [{ writer: "lane-1", tier: "page" }],
+    }
+    map.nodes.set(rival.key, rival)
+    map.edges.push({ from: "rival.com", to: "anchor.com", relation: "competitor", why: "x", confidence: "measured", evidence: [] })
+    expect(map.entityEdges()).toEqual([
+      { from: "rival.com", to: "anchor.com", relation: "competitor", why: "x", confidence: "measured" },
+    ])
+  })
+})
