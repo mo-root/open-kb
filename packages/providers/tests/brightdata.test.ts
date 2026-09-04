@@ -682,6 +682,38 @@ describe("brightDataFetch's default fetchImpl — no `opts.fetchImpl` given", ()
   })
 })
 
+/**
+ * `brightDataSearch`'s own `const f = opts.fetchImpl ?? fetch` (brightdata.ts:145)
+ * is the same shape of gap as `brightDataFetch`'s sibling default above (622,
+ * fixed two commits back) and `publicOnlyFetch`'s in safe-fetch.test.ts: every
+ * one of this file's `brightDataSearch(...)` calls passes `fetchImpl`
+ * explicitly, so the `?? fetch` side had never run. `vitest run --coverage`
+ * scoped to this package confirmed line 145 as the last 0%-branch line in
+ * brightdata.ts once the fetchImpl-default test above was written.
+ *
+ * No "direct"/"unlocked" split to navigate here: `f` is called straight
+ * against `API` (line 361) with no DNS-guarded wrapper in between, so patching
+ * `globalThis.fetch` proves the default without going near a socket.
+ */
+describe("brightDataSearch's default fetchImpl — no `opts.fetchImpl` given", () => {
+  it("falls back to the global fetch", async () => {
+    const real = globalThis.fetch
+    const fakeFetch = vi.fn(
+      async () => new Response(JSON.stringify({ organic: [{ link: "https://a.com", title: "A", description: "d" }] }), { status: 200 }),
+    ) as unknown as typeof fetch
+    globalThis.fetch = fakeFetch
+    try {
+      const s = brightDataSearch(creds)
+      const [r] = await s.search(["web scraping api"])
+      expect(r!.ok).toBe(true)
+      expect(r!.hits[0]!.url).toBe("https://a.com")
+      expect(fakeFetch).toHaveBeenCalled()
+    } finally {
+      globalThis.fetch = real
+    }
+  })
+})
+
 describe("brightDataSearch timeouts", () => {
   it("abandons a page that will not answer, and charges nothing for it", async () => {
     // Measured: in a worker pool, thirty of forty queries finished in 43s and
