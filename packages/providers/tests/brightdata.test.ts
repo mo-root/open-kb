@@ -650,6 +650,38 @@ describe("brightDataFetch surfaces the refusal the provider stated", () => {
   })
 })
 
+/**
+ * `brightDataFetch`'s own `const f = opts.fetchImpl ?? fetch` (brightdata.ts:622)
+ * is the same shape of gap already found and fixed for `publicOnlyFetch`'s
+ * `opts.fetchImpl ?? fetch` in safe-fetch.test.ts: every one of this file's 25
+ * `brightDataFetch(...)` calls passes `fetchImpl` explicitly, so the `?? fetch`
+ * side had never run. `vitest run --coverage` scoped to this package confirmed
+ * it as the one remaining 0%-branch line in brightdata.ts once the refusal and
+ * timeout suites above were written.
+ *
+ * Exercised through "unlocked" mode rather than "direct": the direct branch's
+ * `f` only ever reaches `publicOnlyFetch`, which patches `globalThis.fetch`
+ * itself when no `lookup` is given by resolving to the real DNS resolver —
+ * reaching the network is exactly what a fixture-only test must not do. The
+ * unlocked branch calls `f` straight against `API`, so patching
+ * `globalThis.fetch` here proves the same default without going near a socket.
+ */
+describe("brightDataFetch's default fetchImpl — no `opts.fetchImpl` given", () => {
+  it("falls back to the global fetch", async () => {
+    const real = globalThis.fetch
+    const fakeFetch = vi.fn(async () => new Response("ok", { status: 200 })) as unknown as typeof fetch
+    globalThis.fetch = fakeFetch
+    try {
+      const f = brightDataFetch(creds)
+      const r = await f.get("https://a.com", "unlocked")
+      expect(r.httpStatus).toBe(200)
+      expect(fakeFetch).toHaveBeenCalled()
+    } finally {
+      globalThis.fetch = real
+    }
+  })
+})
+
 describe("brightDataSearch timeouts", () => {
   it("abandons a page that will not answer, and charges nothing for it", async () => {
     // Measured: in a worker pool, thirty of forty queries finished in 43s and
