@@ -581,3 +581,53 @@ describe("serializeSwarmRun: the gate exchange and the ending's scorecard", () =
     expect(report.scorecard.gate.carriedObjections).toEqual([])
   })
 })
+
+// ── serialize.ts:105's `new URL(url).hostname` catch, over `run.seen` ────────
+
+/**
+ * `run.seen` is not a URL set — it is whatever `canonicalUrl` returned, and
+ * canonicalUrl's own doc comment says it "never throws: an unparseable string
+ * is its own canonical form" (packages/core/src/url.ts:5). searchTool
+ * (tools-paid.ts:209) hands every hit's `h.url` to canonicalUrl with no
+ * validation first, so a search port that returns a malformed url puts that
+ * exact string into `run.seen` untouched — and serializeSwarmRun's own
+ * `new URL(url)`, re-parsing the same string, throws the same way. A local
+ * @vitest/coverage-v8 3.2.7 run (not committed) named line 105-108's catch as
+ * never taken: every fixture anywhere in this suite only ever seeds `seen`
+ * from `https://` hits.
+ */
+describe("serializeSwarmRun: a canonical entry that is not a URL", () => {
+  it("counts nothing toward stats.hosts, and does not throw", async () => {
+    const malformedHitSearch: SearchPort = {
+      async search(queries) {
+        return [...new Set(queries)].map((query) => ({
+          query,
+          hits: [{ url: "not a url", title: "Bad", description: "unparseable" }],
+          ok: true,
+          usd: 0.001,
+          ms: 1,
+        }))
+      },
+    }
+    const lead = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = prompt.filter((m) => m.role === "user").length
+        if (turn === 1) return reply(call("n1", "next", { after: { landings: 1 }, why: "wait for the seed" }), false)
+        return reply(call("f1", "finish", { reason: "mapped", summary: "s", unresolved: [], why: "d" }), false)
+      },
+    })
+    const seed = searchingSeed()
+    const run = await runSwarm({
+      domain: "anchor.com",
+      skill: SKILL,
+      search: malformedHitSearch,
+      fetch: fetchPort,
+      models: { lead, peek: seed, read: seed, dig: seed },
+      pricing: zeroPricing,
+    })
+
+    expect(run.seen.has("not a url")).toBe(true)
+    expect(() => serializeSwarmRun(run)).not.toThrow()
+    expect(serializeSwarmRun(run).stats.hosts).toBe(0)
+  })
+})
