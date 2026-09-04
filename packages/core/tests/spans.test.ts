@@ -32,6 +32,23 @@ describe("SpanStream", () => {
     expect(s.totalUsd()).toBe(0)
   })
 
+  it("defaults cost to 0 when the caller omits usd entirely, not just when it's NaN", () => {
+    // SpanInput.usd is optional (`usd?: number`) — every call site in this repo
+    // always passes a number, so `?? 0` on line 63 had 0% branch coverage for
+    // its undefined side; the NaN test above only exercises the DEFINED
+    // (already-a-number) branch, since NaN !== undefined. A future caller that
+    // leans on the documented default, e.g. a span kind with no cost concept,
+    // must not crash on a missing field or be flagged as a reporting failure
+    // the way the non-finite case above is.
+    const s = new SpanStream()
+    const { usd: _usd, ...baseNoUsd } = base
+    const sp = s.emit({ ...baseNoUsd, kind: "read", name: "slice", argsDigest: "h1" })
+    expect(sp.usd).toBe(0)
+    expect(sp.ok).toBe(true)
+    expect(sp.error).toBeUndefined()
+    expect(s.totalUsd()).toBe(0)
+  })
+
   it("delivers spans to an async consumer and ends when closed", async () => {
     const s = new SpanStream()
     const got: number[] = []
