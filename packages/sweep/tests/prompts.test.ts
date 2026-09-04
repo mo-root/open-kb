@@ -1,7 +1,8 @@
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, afterEach } from "vitest"
 import { readFileSync, existsSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
+import { tmpdir } from "node:os"
 import { composePrompt } from "@open-kb/core"
 import { RELATIONS, ENTITY_KINDS, CLASSIFY_MAX_OUTPUT_TOKENS, makePrompt } from "../src/sweep.js"
 
@@ -260,5 +261,48 @@ describe("makePrompt (the per-run compose memo)", () => {
     })
     expect(out).toContain("rival.test")
     expect(out).not.toMatch(/\{\{\w+\}\}/)
+  })
+
+  /**
+   * `promptsRoot` (packages/sweep/src/sweep.ts:136) has three strategies, in
+   * order: `OPENKB_PROMPTS_DIR`, the walk from this module, the walk from
+   * cwd. The test above exercises the second (the only one that ever ran:
+   * `grep -rn OPENKB_PROMPTS_DIR packages/sweep/tests/` before this test
+   * matched nothing but the source file itself), which means the first —
+   * the one strategy the file's own doctoring comment calls "the only one
+   * that works when the prompts are somewhere no walk would guess," i.e.
+   * the one a serverless deploy with a nonstandard layout actually needs —
+   * had zero coverage on either of its outcomes.
+   */
+  const ENV_VAR = "OPENKB_PROMPTS_DIR"
+  const originalPromptsDir = process.env[ENV_VAR]
+
+  afterEach(() => {
+    if (originalPromptsDir === undefined) delete process.env[ENV_VAR]
+    else process.env[ENV_VAR] = originalPromptsDir
+  })
+
+  it("OPENKB_PROMPTS_DIR set to a real prompts root composes from there, not the walk", () => {
+    process.env[ENV_VAR] = root()
+    const prompt = makePrompt()
+    const out = prompt("classify", {
+      anchor: "anchor.test",
+      sells: "a scraping api",
+      buyer: "a data engineer",
+      host: "rival.test",
+      seenIn: "2",
+      foundBy: '  "scraping api alternatives" (plain, market: scraping api)',
+      page: "the page text",
+    })
+    expect(out).toContain("rival.test")
+    expect(out).not.toMatch(/\{\{\w+\}\}/)
+  })
+
+  it("OPENKB_PROMPTS_DIR set to a directory with no doctrine/ throws, naming the path", () => {
+    process.env[ENV_VAR] = tmpdir()
+    const prompt = makePrompt()
+    expect(() => prompt("classify", {})).toThrow(
+      `OPENKB_PROMPTS_DIR is set to ${tmpdir()}, which has no doctrine/ in it`,
+    )
   })
 })
