@@ -220,4 +220,18 @@ describe("isIpLiteral", () => {
       expect(isIpLiteral(host), host).toBe(false)
     }
   })
+
+  it("refuses a string shaped like IPv6 but not one — every fixture above is well-formed, so ipv6Groups' own malformed-input guards had never run", () => {
+    // Measured: `vitest --coverage` over packages/core/src put url.ts's ipv6Groups
+    // at 3 uncovered branches (lines 142, 146, 151) — every host this file or
+    // url.test.ts hands it is either a real address or has no colon at all, so
+    // none of its rejection paths, only its acceptance path, had ever run.
+    // `::` splits a string into two halves; with it present, the head+rest
+    // group count can still run over 8 (line 142).
+    expect(isIpLiteral("1:2:3:4:5::6:7:8:9")).toBe(false)
+    // A group has to be 1-4 hex digits; "gggg" is the right shape and the
+    // wrong alphabet, ahead of "::" (line 146) and after it (line 151).
+    expect(isIpLiteral("gggg::1")).toBe(false)
+    expect(isIpLiteral("1::gggg")).toBe(false)
+  })
 })
