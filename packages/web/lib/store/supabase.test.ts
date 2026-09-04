@@ -405,6 +405,25 @@ describe("the supabase store", () => {
       expect(column.startsWith(`${NOTICE}\ncause: `)).toBe(true)
       expect(column).toContain("boom")
     })
+
+    // D-scope, self-discovered: `errorColumn`'s cause branch had one test, and
+    // it only ever passed `new Error(...)`, which is `instanceof Error` AND has
+    // a `.stack` — so neither of its two other outcomes (a thrown value that is
+    // not an Error at all, or an Error whose `.stack` V8 never populated) had
+    // run. `failRun(id, error: unknown)` hands this whatever the sweep threw,
+    // and `throw` accepts any value in JS — a rejected fetch or an aborted
+    // stream can reject with a plain string or object, not only an Error.
+    it("stringifies the cause when it was never an Error", async () => {
+      const column = (await load()).errorColumn(NOTICE, "socket hang up")
+      expect(column).toBe(`${NOTICE}\ncause: socket hang up`)
+    })
+
+    it("falls back to the message when an Error has no stack", async () => {
+      const cause = new Error("boom")
+      cause.stack = undefined
+      const column = (await load()).errorColumn(NOTICE, cause)
+      expect(column).toBe(`${NOTICE}\ncause: boom`)
+    })
   })
 
   /**
