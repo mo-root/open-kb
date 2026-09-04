@@ -88,6 +88,37 @@ describe("sweepSeedMissions: verify missions from the real sweep", () => {
       "verify:scrapfly.io",
     ])
   })
+
+  it('an anchor whose own registrableHost strips to "" falls back to the raw lowercased string, not to ""', () => {
+    // registrableHost("WWW.") returns "" (the whole string is the stripped
+    // www./trailing-dot prefix; confirmed by hand via tsx) — `registrableHost(opts.anchor)
+    // || opts.anchor.toLowerCase()` exists so a malformed anchor still becomes SOMETHING
+    // every mission's brief can name, not a silently empty market.
+    const run: SweepRunLike = {
+      anchor: "WWW.",
+      entities: [{ name: "r", domain: "rival.com", kind: "company", relation: "competitor", why: "same job" }],
+    }
+    const verify = sweepSeedMissions(run, { anchor: "WWW." }).find((m) => m.dedupeKey === "verify:rival.com")
+    expect(verify!.brief).toContain("genuinely competitor to www.")
+  })
+
+  it("a searched entry without a hits array does not crash — the seenIn tally simply skips it", () => {
+    // run.searched is `Array<{ hits?: Array<{ url: string }> }>`: a row can lack
+    // `hits` entirely. `for (const h of s.hits ?? [])` is the guard; every other
+    // fixture in this file always supplies `hits`, so it had never run.
+    const run: SweepRunLike = {
+      anchor: "anchor.com",
+      entities: [
+        { name: "a", domain: "a.com", kind: "company", relation: "competitor", why: "", foundBy: ["L1"] },
+        { name: "b", domain: "b.com", kind: "company", relation: "competitor", why: "", foundBy: ["L1"] },
+      ],
+      searched: [{}, { hits: [{ url: "https://b.com" }] }],
+    }
+    const verify = sweepSeedMissions(run, { anchor: "anchor.com" }).filter((m) => m.dedupeKey.startsWith("verify:"))
+    // Equal lanes (foundBy length 1 each) — b.com's one SERP hit breaks the tie
+    // ahead of a.com; the hits-less first row contributed nothing and did not throw.
+    expect(verify.map((m) => m.dedupeKey)).toEqual(["verify:b.com", "verify:a.com"])
+  })
 })
 
 // ── gap missions: what the sweep could not decide ────────────────────────────
@@ -193,6 +224,19 @@ describe("sweepSeedMissions: the recall-gap mission", () => {
     expect(sweepSeedMissions(nullPooled, { anchor: "anchor.com" }).some((m) => m.dedupeKey === "gap:recall")).toBe(
       false,
     )
+  })
+
+  it("a recall report with a pooled figure but no probes array mints no recall mission and does not crash", () => {
+    // `report.recall.probes` is optional even when `pooled` is set — the pool
+    // gate (`pooled !== null && pooled < recallThreshold`) only reads `pooled`,
+    // so `probes` can be missing on the very run that opens this block.
+    // `for (const probe of run.report?.recall?.probes ?? [])` is the guard.
+    const run: SweepRunLike = {
+      anchor: "anchor.com",
+      entities: [{ name: "r", domain: "rival.com", kind: "company", relation: "competitor", why: "same job" }],
+      report: { recall: { pooled: 0.1 } },
+    }
+    expect(sweepSeedMissions(run, { anchor: "anchor.com" }).some((m) => m.dedupeKey === "gap:recall")).toBe(false)
   })
 })
 
