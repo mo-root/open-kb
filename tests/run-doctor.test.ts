@@ -237,6 +237,88 @@ describe("run-doctor over the runs on disk", () => {
     expect(predates.detail).toBe("not recorded — run predates report.kernel.serpJudged")
   })
 
+  it("computes recall's own answer-key overlap, not just that report.recall is present", () => {
+    // SELF-313's commit named this branch (alongside kernel's snippet-judged
+    // share, closed there, and second-look's failRate, closed by SELF-312) as
+    // the third left in the same "computed only inside the corpus-gated
+    // survives-every-run-file test, no fixture test of its own" shape. This
+    // closes the third.
+
+    // 1. Fewer than 5 probe pages — `unknown` regardless of pooled, even a
+    // pooled value that would otherwise read comfortably `ok`. Pins that the
+    // ternary checks probe count FIRST, not that a low pooled value just
+    // happens to correlate with few probes in the real corpus.
+    const fewProbes = diagnose({ recall: { pooled: 0.5, probes: ["a", "b", "c"] } }, {}).find(
+      (n) => n.what === "answer-key overlap",
+    )!
+    expect(fewProbes.level).toBe("unknown")
+    expect(fewProbes.detail).toBe(
+      "50.0% of hosts linked from 3 probe pages are on this map — too few probes to judge, see the norm",
+    )
+
+    // 2. 5+ probes, pooled under the norm's own floor (8.9%) — watch.
+    const lowPooled = diagnose({ recall: { pooled: 0.05, probes: Array(10).fill("x") } }, {}).find(
+      (n) => n.what === "answer-key overlap",
+    )!
+    expect(lowPooled.level).toBe("watch")
+    expect(lowPooled.detail).toBe("5.0% of hosts linked from 10 probe pages are on this map")
+
+    // 3. 5+ probes, pooled comfortably over the floor — ok.
+    const highPooled = diagnose({ recall: { pooled: 0.2, probes: Array(10).fill("x") } }, {}).find(
+      (n) => n.what === "answer-key overlap",
+    )!
+    expect(highPooled.level).toBe("ok")
+    expect(highPooled.detail).toBe("20.0% of hosts linked from 10 probe pages are on this map")
+
+    // 4. Exactly at the 0.089 boundary — the check is `rc.pooled < 0.089`, so
+    // a tie must read `ok`, not `watch`. Pins the boundary rather than a
+    // value comfortably past it.
+    const boundary = diagnose({ recall: { pooled: 0.089, probes: Array(10).fill("x") } }, {}).find(
+      (n) => n.what === "answer-key overlap",
+    )!
+    expect(boundary.level).toBe("ok")
+
+    // 5. Exactly 5 probes — the check is `probes < 5`, so 5 itself must NOT
+    // trip the too-few-probes gate.
+    const fiveProbes = diagnose({ recall: { pooled: 0.2, probes: Array(5).fill("x") } }, {}).find(
+      (n) => n.what === "answer-key overlap",
+    )!
+    expect(fiveProbes.level).toBe("ok")
+    expect(fiveProbes.detail).toBe("20.0% of hosts linked from 5 probe pages are on this map")
+
+    // 6. `probes` absent entirely (a run predating that array, or a pooled
+    // figure computed with none) — `rc.probes?.length ?? 0` must default to
+    // 0 rather than throw, and read as "too few" the same as an empty array.
+    const noProbesField = diagnose({ recall: { pooled: 0.5 } }, {}).find(
+      (n) => n.what === "answer-key overlap",
+    )!
+    expect(noProbesField.level).toBe("unknown")
+    expect(noProbesField.detail).toBe(
+      "50.0% of hosts linked from 0 probe pages are on this map — too few probes to judge, see the norm",
+    )
+
+    // 7. Singular vs. plural in the detail string — `probes === 1 ? "" : "s"`.
+    // A distinct print branch none of the cases above exercise (3, 10, 5, and
+    // 0 probes all take the plural arm).
+    const oneProbe = diagnose({ recall: { pooled: 0.5, probes: ["a"] } }, {}).find(
+      (n) => n.what === "answer-key overlap",
+    )!
+    expect(oneProbe.detail).toBe(
+      "50.0% of hosts linked from 1 probe page are on this map — too few probes to judge, see the norm",
+    )
+
+    // 8. `recall` present but `pooled` absent — a run recording probe pages
+    // but with no probe page ever naming the anchor. Distinct from `recall`
+    // itself being absent (covered by the generic "calls an absent field
+    // unknown" test above, where `r.recall` is undefined): here `rc` is
+    // truthy and it is `rc.pooled == null` that actually gates it.
+    const noPooled = diagnose({ recall: { probes: ["a", "b"] } }, {}).find(
+      (n) => n.what === "answer-key overlap",
+    )!
+    expect(noPooled.level).toBe("unknown")
+    expect(noPooled.detail).toBe("not recorded — run predates report.recall, or no probe page named the anchor")
+  })
+
   it("reads a rival channel cut by a ceiling differently from one that failed", () => {
     // The rival family is dealt last, so under a ceiling "names found, no
     // queries" is the budget working. Uncapped, the same pair is a real gap.
