@@ -265,6 +265,18 @@ export async function claimRun(args: {
         p_at_once: args.atOnce,
       }),
     })
+    // Unreachable today, on purpose — not a coverage gap to close. `res` can only be
+    // null when rest()'s own config() (line 58) reads no url/key, and configured()
+    // at line 250 already called that same config() (line 46) synchronously, with
+    // no `await` between the two calls to let process.env change in between; so
+    // whatever line 250 read, this reads identically, and line 250 would already
+    // have returned. It stays as a fail-closed backstop against a future edit that
+    // reorders this function past that guard, or a config() that stops being a pure
+    // read of static env vars — exactly the "second layer" spend-limits.unconfigured
+    // .test.ts (packages/web/lib/spend-limits.unconfigured.test.ts:7-17) already
+    // documents for this same pair of returns, one layer up through spendGate. A
+    // spend guard fails closed twice on purpose; deleting either return would trade
+    // that redundancy for a coverage number.
     if (!res) return { kind: "unconfigured" }
     if (!res.ok) {
       const detail = await res.text().catch(() => "")
