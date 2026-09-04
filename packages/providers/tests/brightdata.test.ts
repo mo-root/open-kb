@@ -970,6 +970,45 @@ describe("brightDataSearch obeys a stated rate limit", () => {
     expect(Math.max(...gaps)).toBeGreaterThan(50)
   })
 
+  /**
+   * `statedRate` reads a number out of the throttle sentence two ways: `N/min`
+   * first, `rate to N` as a fallback. Every other test in this file that trips
+   * THROTTLED sends a message carrying `N/min`, so `noteThrottle`'s own
+   * fallback — the flat 6-second gap it applies when NEITHER pattern finds a
+   * number — had never run. Bright Data's "auto-throttled" sentence is not
+   * guaranteed to state a rate at all (the account-suspension sentence never
+   * does), and a throttle this port cannot measure still has to back off by
+   * something rather than by nothing.
+   *
+   * Fake timers because the gap under test is the full 6s default: real ones
+   * would make this the slowest test in the file for no reason the assertion
+   * needs. `AbortSignal.timeout` cannot be reached by fake timers (see the
+   * unlocked-backstop tests above), which is fine here — `fetchImpl` never
+   * waits on the clock, so the 30s default read timeout is never in the race.
+   */
+  it("falls back to a flat 6s gap when the provider throttles without stating a rate", async () => {
+    vi.useFakeTimers()
+    try {
+      let n = 0
+      const fetchImpl = vi.fn(async (..._: FetchArgs) => {
+        n += 1
+        return n === 1
+          ? new Response("", { status: 200, headers: { "x-brd-error": "auto-throttled due to low success rate" } })
+          : new Response(JSON.stringify({ organic: [{ link: "https://a.com", title: "A", description: "" }] }), { status: 200 })
+      })
+      const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 1, retryMs: 0 })
+      const pending = s.search(["a"])
+      // The retry (THROTTLED matched, no rate parsed) waits exactly the
+      // fallback gap: `Math.max(retryMs=0, minGapMs=6_000)`.
+      await vi.advanceTimersByTimeAsync(6_000)
+      const [r] = await pending
+      expect(r!.ok).toBe(true)
+      expect(r!.pacedMs).toBe(6_000)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("does not pace at all until something reports a throttle", async () => {
     const at: number[] = []
     const fetchImpl = vi.fn(async (..._: FetchArgs) => {
