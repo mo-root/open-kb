@@ -507,6 +507,22 @@ describe("the supabase store", () => {
       expect(body).toMatchObject({ p_id: "r1", p_domain: "a.com", p_at_once: 2 })
     })
 
+    it("defaults each count to 0 rather than NaN, when a count is missing or unreadable", async () => {
+      // supabase.ts:289-291's `Number(x) || 0` guards a count that is present
+      // but not numeric — a function deployed from an older schema.sql, or any
+      // other jsonb producer, could send a string or omit a field entirely
+      // (`Number(undefined)` is NaN, same as `Number("not-a-number")`; both
+      // want the same 0). Every test above always supplies all three as real
+      // numbers, so this fallback had never run.
+      vi.stubEnv("SUPABASE_URL", "https://x.supabase.co")
+      vi.stubEnv("SUPABASE_SECRET_KEY", "k")
+      vi.stubGlobal("fetch", vi.fn(async () =>
+        new Response(JSON.stringify({ ok: true, spent_usd: "not-a-number" }), { status: 200 }),
+      ))
+      const got = await (await load()).claimRun(ARGS)
+      expect(got).toEqual({ kind: "claimed", byVisitor: 0, spentUsd: 0, inFlight: 0 })
+    })
+
     it("is refused with the limit Postgres named, when the transaction says no", async () => {
       vi.stubEnv("SUPABASE_URL", "https://x.supabase.co")
       vi.stubEnv("SUPABASE_SECRET_KEY", "k")

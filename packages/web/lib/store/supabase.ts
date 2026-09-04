@@ -285,10 +285,15 @@ export async function claimRun(args: {
     if (!body || typeof body.ok !== "boolean") {
       return { kind: "unavailable", why: "the store answered something the budget could not read" }
     }
+    // Was `Number(x ?? 0) || 0`. `Number(undefined)` is NaN and `Number(null)` is 0, and
+    // `|| 0` already turns both into 0, same as the `?? 0` it followed — every input that
+    // would take the coalesce produces the same output without it, so it never changed a
+    // result. `|| 0` alone still has real work: a count that is present but not numeric
+    // (a stale schema field, a string) reads as NaN and needs it.
     const counts: ClaimCounts = {
-      byVisitor: Number(body.by_visitor ?? 0) || 0,
-      spentUsd: Number(body.spent_usd ?? 0) || 0,
-      inFlight: Number(body.in_flight ?? 0) || 0,
+      byVisitor: Number(body.by_visitor) || 0,
+      spentUsd: Number(body.spent_usd) || 0,
+      inFlight: Number(body.in_flight) || 0,
     }
     if (body.ok) return { kind: "claimed", ...counts }
     const which = body.limit
