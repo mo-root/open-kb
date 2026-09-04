@@ -20,6 +20,20 @@ describe("nodeKey", () => {
   it("a bare hostname needs no stripping at all", () => {
     expect(nodeKey("company", "Example", "example.com")).toBe("example.com")
   })
+
+  // The doc comment above nodeKey in map.ts states a third outcome — "" when
+  // the item cannot be keyed — but nothing exercised it: every call anywhere
+  // in this repo (all four tools-free.ts sites, every fixture here) always
+  // passes a non-blank name for a domain-less kind, so `name.trim() ? ... :
+  // ""` at map.ts:164 only ever walked its truthy arm (coverage: 7/7 hits,
+  // the `""` alternate at 0). A capability/buyer/community claim with a
+  // blank or whitespace-only name and no domain is exactly the case the
+  // comment describes, and it should still come back "" rather than mint
+  // a garbage key like "capability:".
+  it("a domain-less kind with a blank name cannot be keyed at all", () => {
+    expect(nodeKey("capability", "", "")).toBe("")
+    expect(nodeKey("capability", "   ", "")).toBe("")
+  })
 })
 
 /**
