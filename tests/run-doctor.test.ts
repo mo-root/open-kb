@@ -184,6 +184,59 @@ describe("run-doctor over the runs on disk", () => {
     expect(boundary.detail).toBe("14/100 (14.0%) in 4 calls")
   })
 
+  it("computes the kernel's own snippet-judged share, not just that report.kernel is present", () => {
+    // SELF-310's commit named three branches left in the same shape as the
+    // triage-skip branch it fixed: computed only inside the corpus-gated
+    // "survives every run file" test, no fixture test of their own —
+    // second-look's failRate (closed by SELF-312), kernel's snippet-judged
+    // share, and recall's answer-key overlap. This closes the second.
+
+    // 1. Above the norm's own ceiling (15.6%) and past the 0.16 threshold —
+    // watch. The comment on this branch in run-doctor.ts explains the 0.16
+    // vs. 0.156 gap the same way the triage-skip branch explains its own:
+    // a run defining the ceiling must not flag itself.
+    const over = diagnose({ kernel: { modelJudged: 80, serpJudged: 20 } }, {}).find(
+      (n) => n.what === "snippet-judged",
+    )!
+    expect(over.level).toBe("watch")
+    expect(over.detail).toBe("20/100 hosts (20.0%) judged from a snippet, not a page")
+
+    // 2. Comfortably under the threshold — ok.
+    const under = diagnose({ kernel: { modelJudged: 90, serpJudged: 10 } }, {}).find(
+      (n) => n.what === "snippet-judged",
+    )!
+    expect(under.level).toBe("ok")
+    expect(under.detail).toBe("10/100 hosts (10.0%) judged from a snippet, not a page")
+
+    // 3. Exactly at the boundary — the check is `share > 0.16`, so a tie
+    // must read `ok`, not `watch`. Pins the boundary rather than a value
+    // comfortably past it.
+    const boundary = diagnose({ kernel: { modelJudged: 84, serpJudged: 16 } }, {}).find(
+      (n) => n.what === "snippet-judged",
+    )!
+    expect(boundary.level).toBe("ok")
+    expect(boundary.detail).toBe("16/100 hosts (16.0%) judged from a snippet, not a page")
+
+    // 4. `unlocked` present appends its own clause — a distinct print branch
+    // none of the three cases above exercise.
+    const unlocked = diagnose({ kernel: { modelJudged: 95, serpJudged: 5, unlocked: 3 } }, {}).find(
+      (n) => n.what === "snippet-judged",
+    )!
+    expect(unlocked.detail).toBe("5/100 hosts (5.0%) judged from a snippet, not a page, 3 recovered by the unlocker")
+
+    // 5. `serpJudged` absent while `modelJudged` is present and nonzero — a
+    // run predating this field but not predating `kernel` itself. `judged`
+    // (modelJudged + (serpJudged ?? 0)) is 50, not 0, so the guard that
+    // actually catches this is `k.serpJudged == null`, not `!judged` — a
+    // distinct condition from case where both are absent (covered by the
+    // generic "calls an absent field unknown" test above, where `k` itself
+    // is undefined). Removing `k.serpJudged == null` from the guard would
+    // compute `0/50 = 0%` and print `ok` instead of `unknown` here.
+    const predates = diagnose({ kernel: { modelJudged: 50 } }, {}).find((n) => n.what === "snippet-judged")!
+    expect(predates.level).toBe("unknown")
+    expect(predates.detail).toBe("not recorded — run predates report.kernel.serpJudged")
+  })
+
   it("reads a rival channel cut by a ceiling differently from one that failed", () => {
     // The rival family is dealt last, so under a ceiling "names found, no
     // queries" is the budget working. Uncapped, the same pair is a real gap.
