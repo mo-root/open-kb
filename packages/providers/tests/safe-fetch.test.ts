@@ -253,6 +253,33 @@ describe("publicOnlyFetch checks every redirect hop, not just the first", () => 
     expect(socket).toHaveBeenCalledTimes(4) // the first request plus three followed hops
   })
 
+  it("clamps a negative maxRedirects to zero and floors a fractional one, instead of trusting the caller's arithmetic", async () => {
+    // safe-fetch.ts:189 reads `Math.max(0, Math.floor(opts.maxRedirects ?? 5))`.
+    // Every other test in this file either takes the `?? 5` default or passes
+    // a whole non-negative number (3, above), so neither guard had ever taken
+    // its non-identity branch: `Math.max(0, …)` on a value already >= 0 and
+    // `Math.floor` on a value already whole both just hand back their input.
+    // publicOnlyFetch is the only place `opts.maxRedirects` is read at all, so
+    // there is nowhere else this could have run.
+    const socket = vi.fn(async () => new Response("", { status: 302, headers: { location: "https://a.com/next" } }))
+    const lookup = resolver({ "a.com": [PUBLIC] })
+
+    // -5 clamps to 0: the redirect on the very first response is already hop
+    // 0, so `hop >= maxRedirects` (0 >= 0) is true before a second request.
+    const negative = publicOnlyFetch({ fetchImpl: socket as unknown as typeof fetch, lookup, maxRedirects: -5 })
+    await expect(negative("https://a.com/")).rejects.toBeInstanceOf(BlockedHostError)
+    expect(socket).toHaveBeenCalledTimes(1)
+
+    socket.mockClear()
+
+    // 2.9 floors to 2: the first request plus two followed hops, same shape
+    // as the whole-number case above but proving the fraction was truncated
+    // rather than, say, rounded to 3.
+    const fractional = publicOnlyFetch({ fetchImpl: socket as unknown as typeof fetch, lookup, maxRedirects: 2.9 })
+    await expect(fractional("https://a.com/")).rejects.toBeInstanceOf(BlockedHostError)
+    expect(socket).toHaveBeenCalledTimes(3)
+  })
+
   it("discards a hop's body even when cancelling it throws, and still follows the redirect", async () => {
     // `discard()`'s own catch (safe-fetch.ts:161-163) exists for exactly this:
     // `res.body?.cancel()` can reject — a body already consumed, or a stub
