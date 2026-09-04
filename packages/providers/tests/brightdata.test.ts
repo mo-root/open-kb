@@ -804,6 +804,27 @@ describe("brightDataSearch error reporting", () => {
     const [r] = await s.search(["anything"])
     expect(r!.error).toContain("cooldown")
   })
+
+  /**
+   * Every other test that reaches this function's outer catch throws an
+   * error named "AbortError" or "TimeoutError" (the timeout suite below), so
+   * `timedOut ? "gave up" : "serp failed: ${message}"` had only ever taken
+   * its true side — a coverage pass over this file found the false side
+   * (line 459) and the whole-condition-false branch of the `||` above it
+   * (line 454) still at 0%. `brightDataFetch` already has this same shape of
+   * test for a connection that never opens (line ~313); `brightDataSearch`
+   * did not.
+   */
+  it("reports a connection failure by its own message, not as a timeout", async () => {
+    const fetchImpl = vi.fn(async (..._: FetchArgs) => {
+      throw new Error("getaddrinfo ENOTFOUND www.google.com")
+    })
+    const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 1, retryMs: 0 })
+    const [r] = await s.search(["anything"])
+    expect(r!.ok).toBe(false)
+    expect(r!.error).toContain("serp failed: getaddrinfo ENOTFOUND www.google.com")
+    expect(r!.usd).toBe(0)
+  })
 })
 
 describe("brightDataSearch retries", () => {
