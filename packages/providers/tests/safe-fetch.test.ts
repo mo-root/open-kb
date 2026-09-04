@@ -173,6 +173,30 @@ describe("publicOnlyFetch's default lookup — no `opts.lookup` given", () => {
   })
 })
 
+/**
+ * The other half of the same gap: `brightDataFetch` is the only production
+ * caller and it always passes `fetchImpl`, so — like `systemLookup` above —
+ * `opts.fetchImpl ?? fetch` had never taken its `?? fetch` side in this suite
+ * either. `vitest run --coverage` confirmed it as the one other 0%-branch line
+ * in the file. Patches `globalThis.fetch` rather than importing one, since
+ * that binding — not a module import — is what the default reads.
+ */
+describe("publicOnlyFetch's default fetchImpl — no `opts.fetchImpl` given", () => {
+  it("falls back to the global fetch", async () => {
+    const real = globalThis.fetch
+    const fakeFetch = vi.fn(async () => new Response("hello", { status: 200 })) as unknown as typeof fetch
+    globalThis.fetch = fakeFetch
+    try {
+      const f = publicOnlyFetch({ lookup: resolver({ "a.com": [PUBLIC] }) })
+      const res = await f("https://a.com/")
+      expect(res.status).toBe(200)
+      expect(fakeFetch).toHaveBeenCalled()
+    } finally {
+      globalThis.fetch = real
+    }
+  })
+})
+
 describe("publicOnlyFetch checks every redirect hop, not just the first", () => {
   it("refuses a public page that 302s onto the metadata endpoint", async () => {
     const socket = redirectSocket("https://evil.com/", "http://169.254.169.254/latest/meta-data/")
