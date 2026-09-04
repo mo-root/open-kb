@@ -92,6 +92,18 @@ describe("relationFacets", () => {
   it("answers nothing for an empty list rather than inventing a facet", () => {
     expect(relationFacets([])).toEqual([])
   })
+
+  it("breaks an equal-weight, equal-count tie by relation name — the last comparator on line 82", () => {
+    // Both relations appear once at the same relevance: weight and count both
+    // tie, so only `a.relation.localeCompare(b.relation)` can order them. No
+    // existing case reached this arm — the count-tiebreak test above (line
+    // 83) differs in count (1 vs 2), never in name alone.
+    const facets = relationFacets([
+      ref({ title: "A", relation: "zeta", relevance: 50 }),
+      ref({ title: "B", relation: "alpha", relevance: 50 }),
+    ])
+    expect(facets.map((f) => f.relation)).toEqual(["alpha", "zeta"])
+  })
 })
 
 describe("noteHaystack and filterNotes", () => {
@@ -112,6 +124,20 @@ describe("noteHaystack and filterNotes", () => {
     })
     expect(noteHaystack(host)).toContain("scrapy cloud")
     expect(filterNotes([host, ref({ title: "Other" })], { query: "scrapy" })).toEqual([host])
+  })
+
+  it("drops a displaced account that had no name of its own, rather than searching for 'undefined'", () => {
+    // NoteRef.also's own doc comment: "the displaced name when it had its own"
+    // — implying an entry can lack one. `?? ""` (line 93) then `filter(Boolean)`
+    // is what keeps that case from ever putting the literal string "undefined"
+    // into a haystack a reader types into; nothing had exercised the nameless
+    // branch before this.
+    const host = ref({
+      title: "Zyte",
+      domain: "zyte.com",
+      also: [{ what: "a folded-in one-liner with no name of its own" }],
+    })
+    expect(noteHaystack(host)).not.toContain("undefined")
   })
 
   it("combines the typed query with the clicked relation facet", () => {
