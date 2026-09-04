@@ -234,4 +234,46 @@ describe("isIpLiteral", () => {
     expect(isIpLiteral("gggg::1")).toBe(false)
     expect(isIpLiteral("1::gggg")).toBe(false)
   })
+
+  it("rejects ipv4Value's own malformed-address guards, none of which the notation fixtures above ever hit", () => {
+    // Measured: the same coverage run put ipv4Value at 4 more uncovered
+    // branches (lines 104, 108, 113-114) — every "0x..." fixture above has
+    // digits after the prefix, every dotted quad is in range, so the
+    // rejection side of each guard had never run.
+    //
+    // "0x" alone is the right shape for the hex branch (`/^0x[0-9a-f]*$/`
+    // allows zero digits) and takes its own `p.length === 2 ? 0` arm rather
+    // than falling through to parseInt (line 104).
+    expect(isIpLiteral("0x.0.0.1")).toBe(true)
+    // A hex run wide enough to overflow Number.isSafeInteger fails the guard
+    // right after parsing, before the range checks below it ever see it
+    // (line 108).
+    expect(isIpLiteral("0xfffffffffffffffffff.0.0.1")).toBe(false)
+    // A non-last part over 255 is caught by `nums.some` before the last
+    // part's own ceiling is even computed (line 113).
+    expect(isIpLiteral("300.0.0.1")).toBe(false)
+    // A well-formed last part that is too big for the slots the earlier
+    // parts left it — three parts consume 24 bits, leaving the last part an
+    // 8-bit ceiling of 256 — is a distinct guard from the one above (line 114).
+    expect(isIpLiteral("1.2.3.99999")).toBe(false)
+  })
+
+  it("rejects ipv6Groups' remaining guards — a bad embedded IPv4 tail, a second '::', and an unelided address with the wrong group count", () => {
+    // Same run, three more uncovered branches in ipv6Groups (lines 131, 138,
+    // 141) that the malformed-IPv6 fixtures above do not reach: those are all
+    // pure-hex shapes, none carries a dotted IPv4 tail or omits '::' entirely.
+    //
+    // `::ffff:a.b.c.d` folds a dotted tail into the address; a tail that
+    // ipv4Value itself refuses (four dotted parts, each over 255) has to be
+    // refused here too rather than silently dropped (line 131).
+    expect(isIpLiteral("::ffff:999.999.999.999")).toBe(false)
+    // '::' may appear at most once — a second one makes `split("::")` return
+    // more than two halves (line 138).
+    expect(isIpLiteral("1::2::3")).toBe(false)
+    // With no '::' to elide anything, the address has to spell all 8 groups;
+    // seven is the right notation with the wrong count (line 141) — eight is
+    // the same notation accepted, confirming the guard is on count, not shape.
+    expect(isIpLiteral("1:2:3:4:5:6:7")).toBe(false)
+    expect(isIpLiteral("1:2:3:4:5:6:7:8")).toBe(true)
+  })
 })
