@@ -100,6 +100,42 @@ describe("run-doctor over the runs on disk", () => {
     expect(note!.detail).toContain("0/0")
   })
 
+  it("computes the triage skip rate itself, not just its hosts:0 escape hatch", () => {
+    // The `t.hosts === 0` branch just above has its own test; the branch it
+    // falls out of when hosts is nonzero — `rate = t.skipped / t.hosts`, then
+    // labelled against the file's own 0.14 threshold — had never run under a
+    // synthetic fixture. Every other run-doctor.test.ts case for this file's
+    // watch/ok thresholds (clock model, snippet-judged, linking) pins its own
+    // boundary; this one, the FIRST such threshold in the file (line ~145),
+    // did not yet have one.
+
+    // 1. Above the norm's own ceiling (13.3%) — watch, and the "failed open"
+    // clause appended to the detail when t.failed is nonzero.
+    const over = diagnose({ triage: { hosts: 100, skipped: 20, calls: 4, failed: 2 } }, {}).find(
+      (n) => n.what === "triage skip",
+    )!
+    expect(over.level).toBe("watch")
+    expect(over.detail).toBe("20/100 (20.0%) in 4 calls, 2 failed open")
+
+    // 2. Comfortably inside the norm — ok, and no "failed open" clause when
+    // t.failed is 0 (falsy, not just absent).
+    const under = diagnose({ triage: { hosts: 100, skipped: 10, calls: 4, failed: 0 } }, {}).find(
+      (n) => n.what === "triage skip",
+    )!
+    expect(under.level).toBe("ok")
+    expect(under.detail).toBe("10/100 (10.0%) in 4 calls")
+
+    // 3. Exactly at the threshold — the check is `rate > 0.14`, and the
+    // threshold sits at 0.14 rather than the norm's 0.13 ceiling specifically
+    // so a run defining that ceiling (13.3%) does not flag itself (see the
+    // comment on this branch in run-doctor.ts). 14/100 must read `ok`.
+    const boundary = diagnose({ triage: { hosts: 100, skipped: 14, calls: 4, failed: 0 } }, {}).find(
+      (n) => n.what === "triage skip",
+    )!
+    expect(boundary.level).toBe("ok")
+    expect(boundary.detail).toBe("14/100 (14.0%) in 4 calls")
+  })
+
   it("reads a rival channel cut by a ceiling differently from one that failed", () => {
     // The rival family is dealt last, so under a ceiling "names found, no
     // queries" is the budget working. Uncapped, the same pair is a real gap.
