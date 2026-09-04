@@ -221,6 +221,24 @@ describe("the supabase store", () => {
       expect(listed.map((r) => r.id)).toEqual(["r1", "r3"])
       expect(listed.every((r) => r.status !== "running")).toBe(true)
     })
+
+    // toStored's guard (supabase.ts:418) is `!r.result && status !== "failed"
+    // && status !== "running"` — and RunStatus is only those three values, so
+    // the guard's one remaining shape is "complete" with no result. Every
+    // existing fixture pairs complete with a real result and running/failed
+    // with null, so this row (a write that set status before result, then
+    // never got the second write) had never reached the guard's true branch.
+    it("drops a row marked complete with no result, rather than render an empty map for it", async () => {
+      vi.stubEnv("SUPABASE_URL", "https://x.supabase.co")
+      vi.stubEnv("SUPABASE_SECRET_KEY", "k")
+      vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify([
+        { id: "r1", domain: "a.com", queries: 4, status: "complete", started_at: "2026-08-03T00:00:00Z", result: { entities: [], edges: [] } },
+        { id: "r2", domain: "b.com", queries: 2, status: "complete", started_at: "2026-08-03T00:01:00Z", result: null },
+      ]), { status: 200 })))
+      const listed = await (await load()).listRuns()
+
+      expect(listed.map((r) => r.id)).toEqual(["r1"])
+    })
   })
 
   /**
