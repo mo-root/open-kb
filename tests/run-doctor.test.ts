@@ -86,6 +86,54 @@ describe("run-doctor over the runs on disk", () => {
     expect(note!.detail).toContain("0 asked")
   })
 
+  it("computes the second look's own fail rate, not just its asked:0 escape hatch", () => {
+    // The `!sl.asked` branch just above (line 78) has its own test; the branch
+    // it falls out of when asked is nonzero — `failRate = (sl.failed ?? 0) /
+    // sl.asked`, labelled against the file's own 0.5 threshold — had zero
+    // synthetic-fixture coverage of its own. SELF-310's commit message named
+    // this exact branch, alongside kernel's snippet-judged share and recall's
+    // answer-key overlap, as left for a later fire once the triage-skip
+    // branch (the same shape, one function up) got this same treatment.
+
+    // 1. Above the norm (35% get no page, over 28 runs) and past the 0.5
+    // threshold — watch.
+    const over = diagnose({ secondLook: { asked: 10, rescued: 3, failed: 6 } }, {}).find(
+      (n) => n.what === "second look",
+    )!
+    expect(over.level).toBe("watch")
+    expect(over.detail).toBe("10 asked, 3 rescued, 6 got no page (60%)")
+
+    // 2. Comfortably under the threshold — ok.
+    const under = diagnose({ secondLook: { asked: 10, rescued: 6, failed: 3 } }, {}).find(
+      (n) => n.what === "second look",
+    )!
+    expect(under.level).toBe("ok")
+    expect(under.detail).toBe("10 asked, 6 rescued, 3 got no page (30%)")
+
+    // 3. Exactly at the boundary — the check is `failRate > 0.5`, so a tie
+    // must read `ok`, not `watch`. Pins the boundary rather than a value
+    // comfortably past it.
+    const boundary = diagnose({ secondLook: { asked: 10, rescued: 5, failed: 5 } }, {}).find(
+      (n) => n.what === "second look",
+    )!
+    expect(boundary.level).toBe("ok")
+    expect(boundary.detail).toBe("10 asked, 5 rescued, 5 got no page (50%)")
+
+    // 4. `failed` absent rather than 0 — a run predating this field, still
+    // with hosts asked. Mutation-checked which `?? 0` this actually pins:
+    // the one inside `failRate` is inert (`undefined / asked` is NaN, and
+    // `NaN > 0.5` is already false, so the level lands on `ok` with or
+    // without it) — it is the DETAIL template's own two `sl.failed ?? 0`
+    // uses that matter, the same "absent must not print as NaN%" trap this
+    // file's triage-skip branch hit once already (see its comment ~line 132).
+    // Removing either one from the detail template fails this assertion.
+    const noFailedField = diagnose({ secondLook: { asked: 10, rescued: 8 } }, {}).find(
+      (n) => n.what === "second look",
+    )!
+    expect(noFailedField.level).toBe("ok")
+    expect(noFailedField.detail).toBe("10 asked, 8 rescued, 0 got no page (0%)")
+  })
+
   it("gives triage skip a clean note when the run found no hosts at all, not NaN%", () => {
     // `t.hosts === 0` (a dead search, nothing to triage) used to compute
     // `t.skipped / t.hosts` as 0/0 = NaN and print the literal text
