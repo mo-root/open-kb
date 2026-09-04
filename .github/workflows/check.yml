@@ -1,21 +1,25 @@
 # The gate: `pnpm check` and `pnpm test`, on every push and every pull request.
 #
-# THIS FILE HAS NEVER RUN. A workflow only executes on GitHub, this branch has
-# never been pushed, and the published `origin/main` is a single squashed v0.1.0
-# commit that sits ~215 behind. Nobody has watched this go green and nobody can
-# until someone pushes. What was actually verified before committing it is
-# narrower and worth stating exactly: the YAML parses, all three actions and the
-# pinned commits exist, and the two commands below were run in a fresh `git
-# clone` of this branch into an empty directory — committed state only, no
-# gitignored files, which is the closest local imitation of a runner there is —
-# where install, check and test each exited 0. The first real run may still fail
-# on something only a runner has. Treat the first push as the experiment.
+# THIS FILE HAS RUN — repeatedly, on real GitHub runners, not just in a local
+# clone. It shipped to `main` in the v0.2.0 push (1770fca, 2026-08-10) and every
+# commit landed on `main` since has re-triggered it: 44 runs as of the most
+# recent push this comment was checked against (17d8689, 2026-08-25), read from
+# the Actions API rather than assumed — `conclusion: success` on every run a
+# later push didn't supersede, `cancelled` on the handful the concurrency group
+# above cancelled mid-flight, nothing failed. This paragraph used to claim the
+# opposite ("this branch has never been pushed... nobody has watched this go
+# green"), written back when `origin/main` really was a squashed v0.1.0 commit.
+# It stayed wrong for weeks after `main` moved past that, because nothing
+# re-checks a claim like that once it's committed — the same class of silent
+# staleness the skip-census paragraph near the bottom of this file is about.
 #
-# The purity gate, the prompt-drift tests and the byte-for-byte skill pins ARE
-# honour-system, present tense, and stay that way until this file has run on a
-# push. It is the only thing that CAN make them anything else; it has not done
-# so yet. Ten lines above this one says the file has never executed, and a
-# sentence here declaring the honour system over would contradict it.
+# Which means the purity gate, the prompt-drift tests and the byte-for-byte
+# skill pins are no longer honour-system: `pnpm check && pnpm test` is what
+# runs in this job, and both have now executed and passed on a runner. What
+# is still local-clone-only is this branch's own unpushed history — the gap
+# between `origin/main` and here is real work, not a number worth hardcoding;
+# `git log origin/main..HEAD --oneline | wc -l` gives the current count rather
+# than a comment that drifts the next time either branch moves.
 
 name: check
 
@@ -25,12 +29,17 @@ name: check
 # `refs/heads/<branch>` for the push and `refs/pull/<n>/merge` for the PR, so
 # they land in different groups and neither cancels the other.
 #
-# The `pull_request` half is inert against this repo today, and that is worth
-# knowing before someone waits on it: GitHub builds a PR from
-# `refs/pull/<n>/merge`, the merge of head into base, and `origin/main` here is
-# a squashed v0.1.0 with NO shared history with this branch — `git merge-base
-# origin/main HEAD` returns nothing. Until those histories are reconciled, the
-# push trigger is the only one that can fire.
+# The `pull_request` half was inert against this repo when this comment was
+# first written: GitHub builds a PR from `refs/pull/<n>/merge`, the merge of
+# head into base, and `origin/main` was then a squashed v0.1.0 with no shared
+# history with this branch, so `git merge-base origin/main HEAD` returned
+# nothing and a PR couldn't even build. That premise is gone — `main` has
+# since moved to 17d8689, which is itself an ancestor of this branch's HEAD
+# (`git merge-base --is-ancestor 17d8689 HEAD` exits 0), so `merge-base` now
+# resolves and a PR from this branch onto `main` would build. Whether the
+# `pull_request` trigger actually fires and passes is still untested — no PR
+# has been opened from this branch — so this only retracts the old "no shared
+# history" claim, not the conclusion drawn from it.
 on:
   push:
     branches: [main]
