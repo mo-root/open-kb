@@ -306,6 +306,22 @@ describe("reading a page", () => {
     expect(readPageFacts("https://x.com/a", "<div>no title, no heading</div>")).toBeNull()
   })
 
+  /**
+   * The description regex's second alternative — `content=` before `name=` —
+   * had never actually matched in any test. Every fixture above writes
+   * `name="description"` first, so the first regex always won and the
+   * fallback for a page that writes the attributes the other way round
+   * (`<meta content="..." name="description">`, seen on real sites) was
+   * dead weight nobody had verified still worked.
+   */
+  it("reads a description meta tag with content written before name", () => {
+    const f = readPageFacts(
+      "https://x.com/products/a",
+      `<title>A</title><h1>A</h1><meta content="does a" name="description">`,
+    )
+    expect(f!.description).toBe("does a")
+  })
+
   it("renders one short block per page, not the page", () => {
     const facts = [
       readPageFacts("https://x.com/products/a", "<title>A</title><h1>A</h1><meta name='description' content='does a'>")!,
