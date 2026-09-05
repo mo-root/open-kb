@@ -94,6 +94,19 @@ describe("forced labels", () => {
     expect(ids).not.toContain("ordinary-nod")
   })
 
+  it("wins the same tie-break with the forced node listed first", () => {
+    // The sort comparator's `a.forced ? -1 : 1` branch above is only ever
+    // exercised with the forced node as the comparator's SECOND argument by
+    // the fixtures in this file (render lists always happen to list "found"
+    // nodes after ordinary ones) — so `a.forced` true, the mirror case, had
+    // never run. Same nodes, input order flipped.
+    const forced = cand({ id: "searched-hit", forced: true, priority: 999 })
+    const ordinary = cand({ id: "ordinary-nod", priority: -999, x: 2 })
+    const ids = planLabels([forced, ordinary], opts()).map((l) => l.id)
+    expect(ids).toContain("searched-hit")
+    expect(ids).not.toContain("ordinary-nod")
+  })
+
   it("shows every forced label even when several overlap", () => {
     // Two forced labels on top of each other is worse than one, but hiding the
     // node a reader explicitly asked about is worse still.
