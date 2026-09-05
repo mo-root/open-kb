@@ -148,6 +148,32 @@ describe("withSpendCap", () => {
     await expect(result).rejects.toThrow("aborted")
   })
 
+  it("swallows a record() failure silently when onRecordFailure is not given", async () => {
+    // `onRecordFailure?.(e)` with no `onRecordFailure` had never run: every other
+    // test that makes record() throw passes one. The `.catch` that owns this
+    // call is attached synchronously at creation regardless (see the comment
+    // above it), so the failure is never an unhandled rejection either way —
+    // what this pins is the omitted-callback case itself, that the run still
+    // stops and the wrapper's own promise still settles on the task's outcome
+    // rather than hanging or throwing the record error in its place.
+    const spans = new SpanStream()
+    const abort = new AbortController()
+    const record = vi.fn(async () => {
+      throw new Error("write failed")
+    })
+    const { promise: task, reject } = deferred<string>()
+
+    const result = withSpendCap(task, { spans, capUsd: 1, abort, record })
+    spans.emit({ ...base, kind: "search", name: "serp", argsDigest: "q", usd: 0.8 })
+    await tick()
+
+    expect(record).toHaveBeenCalledTimes(1)
+    expect(abort.signal.aborted).toBe(true)
+
+    reject(new Error("aborted"))
+    await expect(result).rejects.toThrow("aborted")
+  })
+
   it("a run that succeeds on its own after tripping still surfaces its value, not the trip", async () => {
     // See the note in spend-cap.ts on `stillRunning`: a consumer can be behind the log, and a
     // healthy run's last span can land above the trip point. If the caller has no stillRunning()
