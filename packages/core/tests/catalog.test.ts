@@ -153,6 +153,19 @@ describe("candidate selection", () => {
     expect(out).toHaveLength(1)
   })
 
+  /**
+   * `pathOf`'s locale-only branch. Every other locale fixture above pairs the
+   * prefix with a product path, so stripping it always left something. Strip
+   * it from a bare "/de-de" and it collapses to "/", indistinguishable from
+   * the homepage — which the root tier below explicitly excludes (`path !==
+   * "/"`) because the homepage was already read. Without the guard this url
+   * would silently vanish instead of surfacing as its own root-tier candidate.
+   */
+  it("keeps a bare locale segment as its own path, not the homepage", () => {
+    const out = candidatesFromSitemap(sitemap(["https://x.com/de-de"]))
+    expect(out.map((c) => new URL(c.url).pathname)).toEqual(["/de-de"])
+  })
+
   it("treats a trailing slash as the same page", () => {
     const out = candidatesFromSitemap(sitemap(["https://x.com/pricing", "https://x.com/pricing/"]))
     expect(out).toHaveLength(1)
