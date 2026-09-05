@@ -732,6 +732,31 @@ describe("rememberTool", () => {
     expect(r.rejected[0]!.reason).toContain("company, product, capability, buyer, community")
   })
 
+  /**
+   * The relation half of tools-free.ts:494-497, on a node whose KIND is valid.
+   * The test above names both a bad kind and a bad relation, but the kind
+   * check (tools-free.ts:490-492) runs first and `continue`s the loop — so
+   * that test, despite its title, only ever exercises the kind branch. A
+   * scoped v8 coverage pass (`npx vitest run packages/swarm/tests/tools-free.test.ts
+   * --coverage --coverage.include='packages/swarm/src/tools-free.ts'`) named
+   * lines 494-497 uncovered even with the test above in the suite, which is
+   * what found this: the relation gate for a NODE has never actually run.
+   */
+  it("refuses a relation the skill does not teach, on a node whose kind is otherwise valid", () => {
+    const s = seeded()
+    const r = rememberTool(ctxOf(s), {
+      nodes: [{
+        name: "Acme", domain: "rival.com", kind: "company", what: "x", relation: "ally",
+        why: "a relation from nowhere the skill teaches",
+        evidence: [{ url: "https://rival.com/", quote: "sells a scraping API" }],
+      }],
+      why: "t",
+    })
+    expect(r.added.nodes).toBe(0)
+    expect(r.rejected[0]!.reason).toContain('"ally" is not a relation this map draws')
+    expect(r.rejected[0]!.reason).toContain("competitor, substitute, adjacent")
+  })
+
   it("refuses to re-record the anchor as a company", () => {
     const s = seeded()
     const anchorPage = s.evidence.record({ url: "https://anchor.com/", text: "anchor.com sells the thing this whole map is about, at scale", status: "found", tier: "page" })
@@ -767,6 +792,23 @@ describe("rememberTool", () => {
     expect(r.added.edges).toBe(0)
     expect(r.rejected[0]!.reason).toContain('"nowhere.io" is not on this map')
     expect(r.rejected[0]!.reason).toContain("nodes land before edges")
+  })
+
+  /**
+   * The edge half of the same relation gate (tools-free.ts:686-689), mirroring
+   * the node one at :494-497. No test on this file gave an edge a relation
+   * outside SWARM_RELATIONS before this one — the same scoped coverage pass
+   * that found the node gap named these three lines uncovered too.
+   */
+  it("refuses an edge whose relation the skill does not teach", () => {
+    const s = populated()
+    const r = rememberTool(s.ctx, {
+      edges: [{ from: "rival.com", to: "anchor.com", relation: "ally", why: "x" }],
+      why: "t",
+    })
+    expect(r.added.edges).toBe(0)
+    expect(r.rejected[0]!.reason).toContain('"ally" is not a relation this map draws')
+    expect(r.rejected[0]!.reason).toContain("competitor, substitute, adjacent")
   })
 
   it("an edge needs two different ends: a domain and its own name both resolve to one node", () => {
