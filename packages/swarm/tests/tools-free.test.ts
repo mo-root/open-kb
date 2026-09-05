@@ -87,6 +87,23 @@ describe("readTool", () => {
     expect(r.poolLeftUsd).toBeCloseTo(1.35)
   })
 
+  // `evidence.get(handle)` returns undefined for two different reasons the
+  // model must not confuse: a handle nobody ever minted (above), and a handle
+  // `pending()` minted for a fetch still in flight whose bytes have not
+  // `land()`-ed yet. Both prior tests only ever pass a landed record's own
+  // handle or a string nobody minted, so the isPending() branch — the only
+  // place readTool tells the model to retry rather than that it made a
+  // mistake — had never run.
+  it("a pending handle answers 'still in flight', not 'no such handle'", () => {
+    const evidence = new RunEvidence()
+    const handle = evidence.pending("https://slow.com/")
+    const r = readTool({ evidence, ledger: ledger() }, { handle })
+    expect(r).toMatchObject({
+      ok: false,
+      reason: "that fetch is still in flight; its bytes land in the store when it returns — ask again in a moment",
+    })
+  })
+
   it("a blocked record explains itself instead of returning bytes", () => {
     const evidence = new RunEvidence()
     const rec = evidence.record({ url: "https://x.com/", text: "", status: "blocked", reason: "thin-render" })
@@ -145,6 +162,22 @@ describe("readTool", () => {
     const links = readTool(ctx, { handle: rec.handle, project: "links" })
     if (!links.ok) throw new Error(links.reason)
     expect(links.text).toBe("https://roundup.example/scraping — full comparison")
+  })
+
+  // `project: "raw"` reads `raw ?? rec.text` — the wire bytes when the fetch
+  // stored any, else the same text every other projection falls back to. No
+  // test anywhere in the repo ever passed `project: "raw"`, so neither side
+  // of that fallback had run: not the HTML case (raw present, handed back
+  // untouched) nor the snippet case (raw absent, rec.text stands in).
+  it("project 'raw' returns the stored wire bytes, or rec.text when none were stored", () => {
+    const s = seeded()
+    const withRaw = readTool(rctx(s), { handle: s.page.handle, project: "raw" })
+    if (!withRaw.ok) throw new Error(withRaw.reason)
+    expect(withRaw.text).toBe(RIVAL_RAW)
+
+    const withoutRaw = readTool(rctx(s), { handle: s.snippet.handle, project: "raw" })
+    if (!withoutRaw.ok) throw new Error(withoutRaw.reason)
+    expect(withoutRaw.text).toBe(s.snippet.text)
   })
 
   // linksOf's own catch/continue (an href that `new URL(href, baseUrl)` cannot
