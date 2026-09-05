@@ -60,6 +60,11 @@ const LINK_TAG = /<link\b[^>]*>/gi
 /** One attribute's value out of a tag, any order, any quoting, any case. */
 function attrOf(tag: string, name: string): string | null {
   const m = new RegExp(`[\\s"']${name}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s"'>]+))`, "i").exec(tag)
+  // `m[4] ?? ""`: structurally unreachable. m[2]/m[3] are both nullish only when the match
+  // took the third alternative (unquoted), and that branch is `[^\s"'>]+` — one or more
+  // characters, so m[4] is always a non-empty string whenever it is the reason the first two
+  // fell through. A test would need the unquoted alternative to match zero characters, which
+  // the `+` quantifier forbids.
   return m ? (m[2] ?? m[3] ?? m[4] ?? "") : null
 }
 
@@ -196,6 +201,13 @@ export function aliasSets(pages: ReadonlyArray<{ url: string; html: string }>): 
     if (!byRoot.has(r)) byRoot.set(r, [])
     byRoot.get(r)!.push(m)
   }
+  // The `? -1 : 1` else arm below is structurally unreachable: `m` is visited in ascending
+  // order, so the first `m` to land under any given root is that group's alphabetically
+  // smallest member, pushed to array index 0. A root's entry is only ever CREATED the first
+  // time such an `m` is seen, so byRoot's insertion order — which Map preserves — already
+  // runs in ascending order of each entry's own `[0]`. `[...byRoot.values()]` inherits that
+  // order, so `x[0]! < y[0]!` holds for every pair the comparator is ever handed, regardless
+  // of which two entries or which argument order the sort implementation chooses to compare.
   return [...byRoot.values()]
     .sort((x, y) => (x[0]! < y[0]! ? -1 : 1))
     .map((xs) => new Set(xs))
