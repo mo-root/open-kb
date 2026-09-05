@@ -90,4 +90,20 @@ describe("descriptionGrounding", () => {
     const r = descriptionGrounding("proxy proxy proxy", "no such word here")
     expect(r.ungrounded).toEqual(["proxy proxy", "proxy"])
   })
+
+  it("drops a single-letter word even when it is not a stopword", () => {
+    // `STOPWORDS.has(t) || t.length < 2` short-circuits on the left disjunct
+    // for every stopword the suite exercises elsewhere ("a", "as", "or"...),
+    // so the right disjunct had never been the reason a token was dropped.
+    // "i" is a length-1 word absent from STOPWORDS: with only the length
+    // guard removed, it survives as its own term and forms the "i sell"
+    // 2-gram, moving this exact input's score from 0.5 to 1/3 (confirmed by
+    // running both versions; restored before committing).
+    const r = descriptionGrounding(
+      "i sell widgets to consumers",
+      "a company that sells widgets to consumers directly",
+    )
+    expect(r.score).toBe(0.5)
+    expect(r.ungrounded).toEqual(["sell widgets", "sell"])
+  })
 })
