@@ -81,6 +81,39 @@ describe("rivalsFromComparisonUrls", () => {
     expect(leads.map((l) => l.name)).toEqual([])
   })
 
+  /**
+   * `rivalName`'s three guards below the anchor/all-generic checks had never
+   * run: every fixture in this file names a rival in one to three plain
+   * words, so the >4-word ceiling, the leading-generic-word strip, and the
+   * two-letter floor were dead code by coverage, not by construction.
+   */
+  it("refuses a side that runs past four words, same as an essay title would", () => {
+    const leads = rivalsFromComparisonUrls(
+      [u("shopify.com", "/compare/shopify-vs-my-really-long-competitor-name-here")],
+      "shopify.com",
+    )
+    expect(leads).toEqual([])
+  })
+
+  it("strips a generic word stuck to the FRONT of a real name, not just the back", () => {
+    const leads = rivalsFromComparisonUrls(
+      [u("shopify.com", "/compare/best-globex-corp-vs-shopify")],
+      "shopify.com",
+    )
+    expect(leads.map((l) => l.name)).toEqual(["globex corp"])
+  })
+
+  it("refuses a two-letter side that is neither the anchor nor generic filler", () => {
+    // Same rule the file comment already states: "ai", "go" and other
+    // two-letter names lose here, deliberately, because a one-word search
+    // for one buys a page of noise.
+    const leads = rivalsFromComparisonUrls(
+      [u("shopify.com", "/compare/ai-vs-shopify")],
+      "shopify.com",
+    )
+    expect(leads).toEqual([])
+  })
+
   it("takes the framing off a name and leaves the name", () => {
     const leads = rivalsFromComparisonUrls(
       [
