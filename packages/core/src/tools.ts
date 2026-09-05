@@ -446,6 +446,13 @@ export function makeTools(ctx: RunContext): Tools {
             // The reason code says which dead end; the detail says who called
             // it. A refusal the provider spelled out is worth more in a span
             // than "blocked: empty-body" repeated a hundred times.
+            // `s.reason ?? "unknown"`: the fallback is structurally unreachable here, not just
+            // untested. SniffResult (sniff.ts) is a discriminated union where `reason` is
+            // required, not optional, on both non-"found" arms — this ternary's else branch
+            // narrows `s` to that shape, so `s.reason` can never be undefined without an `as
+            // any` fabricating a value the type forbids. Left as `??` anyway, matching the
+            // string the `read` tool's own status/reason report produces below, which reads
+            // through EvidenceStore's looser `reason?: string` and genuinely can be undefined.
             error: s.status === "found" ? undefined : `${s.status}: ${s.reason ?? "unknown"}${s.detail ? ` — ${s.detail}` : ""}`,
           })
           if (s.status !== "found") {

@@ -203,6 +203,22 @@ describe("read tool", () => {
     expect(out.reason).toContain("empty-body")
   })
 
+  it("falls back to 'unknown' when a blocked record carries no reason", async () => {
+    // Unlike sniff's own SniffResult (reason: SniffReason, required whenever status isn't
+    // "found"), EvidenceStore.record()'s `reason` is `reason?: string` — every in-repo caller
+    // happens to pass one through from a sniff result, but the public API allows omitting it,
+    // and every existing fixture (including the one right above) always supplies one. That left
+    // tools.ts:502's `rec.reason ?? "unknown"` never exercised; this fixture omits it honestly,
+    // through the same public record() the case above uses, rather than fabricating a seam.
+    const c = ctx()
+    const t = makeTools(c)
+    const rec = c.evidence.record({ url: "https://stripe.com/radar", text: "", status: "blocked" })
+    const out = await t.read.execute!({ handle: rec.handle, offset: 0 }, {} as never)
+    expect(out.ok).toBe(false)
+    expect(out.reason).toContain("blocked")
+    expect(out.reason).toContain("unknown")
+  })
+
   it("re-slices a genuinely fetched page from the given offset, with correct bytes and offset", async () => {
     const c = ctx()
     const t = makeTools(c)
