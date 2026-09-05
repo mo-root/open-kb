@@ -757,6 +757,35 @@ describe("rememberTool", () => {
     expect(r.rejected[0]!.reason).toContain("competitor, substitute, adjacent")
   })
 
+  /**
+   * The nodeKey-null branch (tools-free.ts:499-508), left open by SELF-324's
+   * coverage pass alongside the edge mintAll gap below it in this file.
+   * nodeKey() (map.ts:153-165) returns "" two different ways — an empty
+   * host for a company/product with no domain, or an empty host AND an
+   * empty name for any other kind — and this guard answers each with its
+   * own sentence. Neither had ever run: every other node fixture in this
+   * suite supplies at least a domain.
+   */
+  it("a node that cannot be keyed is refused: no domain for a company, no name or domain for any other kind", () => {
+    const s = seeded()
+    const r = rememberTool(ctxOf(s), {
+      nodes: [
+        {
+          name: "", domain: "", kind: "company", what: "x", relation: "competitor",
+          why: "a company with nothing to key on", evidence: [],
+        },
+        {
+          name: "", domain: "", kind: "capability", what: "x", relation: "competitor",
+          why: "a domainless kind with no name either", evidence: [],
+        },
+      ],
+      why: "t",
+    })
+    expect(r.added.nodes).toBe(0)
+    expect(r.rejected[0]!.reason).toBe("a company is its domain; say which host this is")
+    expect(r.rejected[1]!.reason).toBe("a node needs a name or a domain to be anything at all")
+  })
+
   it("refuses to re-record the anchor as a company", () => {
     const s = seeded()
     const anchorPage = s.evidence.record({ url: "https://anchor.com/", text: "anchor.com sells the thing this whole map is about, at scale", status: "found", tier: "page" })
@@ -809,6 +838,27 @@ describe("rememberTool", () => {
     expect(r.added.edges).toBe(0)
     expect(r.rejected[0]!.reason).toContain('"ally" is not a relation this map draws')
     expect(r.rejected[0]!.reason).toContain("competitor, substitute, adjacent")
+  })
+
+  /**
+   * The edge mintAll-failure branch (tools-free.ts:699-702), left open by
+   * SELF-324's coverage pass alongside the nodeKey-null gap above. Every
+   * other edge fixture in this file either omits evidence or cites a page
+   * the run actually fetched; this is the first to cite one it did not,
+   * mirroring the node-side test "rejects a quote from a url nobody
+   * fetched" at the top of this describe block.
+   */
+  it("an edge citing a url nobody fetched surfaces the mint's rejection verbatim", () => {
+    const s = populated()
+    const r = rememberTool(s.ctx, {
+      edges: [{
+        from: "rival.com", to: "anchor.com", relation: "competitor", why: "made up",
+        evidence: [{ url: "https://ghost.com/", quote: "we sell everything" }],
+      }],
+      why: "t",
+    })
+    expect(r.added.edges).toBe(0)
+    expect(r.rejected[0]!.reason).toContain("nothing was fetched from https://ghost.com/")
   })
 
   it("an edge needs two different ends: a domain and its own name both resolve to one node", () => {
