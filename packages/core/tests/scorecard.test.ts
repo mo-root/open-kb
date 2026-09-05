@@ -271,6 +271,18 @@ describe("scorecardSentences: facts a reader can disagree with", () => {
     expect(lines).toContain("1 of 2 nodes rests on a single source")
   })
 
+  it("no family is empty: no parenthetical, 'have' not 'has' — the ternary guard's true branch", () => {
+    // Every test above that asserts the full families line (run 2, the
+    // seed-only run) has at least one empty family, so `empty.length ?
+    // ... : ""` had only ever taken its truthy arm. Dropping the guard
+    // (`` `(${empty.map(...).join(", ")})` `` unconditionally) still
+    // passes every other test in this file, because `[].join(", ")` is
+    // "" — it only surfaces as a stray "()" here, on a run where nothing
+    // is empty.
+    const sc = computeScorecard(healthy())
+    expect(scorecardSentences(sc)[0]).toBe("0 of 2 planned families have zero page-tier nodes")
+  })
+
   it("uses no judgement vocabulary — the boundary is facts, never verdicts", () => {
     const forbidden = [
       "insufficient",
