@@ -151,6 +151,14 @@ function ipv6Groups(host: string): number[] | null {
     if (!/^[0-9a-f]{1,4}$/.test(p)) return null
     groups.push(parseInt(p, 16))
   }
+  // `groups.length === 8 ? groups : null`: the else arm is structurally unreachable once the
+  // guards above have passed. halves.length === 1 forces head.length === 8 (line 141) with an
+  // empty rest, so the padding loop below never runs and groups.length is already 8. halves.length
+  // === 2 forces head.length + rest.length <= 8 (line 142); the padding loop tops head up to
+  // 8 - rest.length groups before rest is appended, so the final count is
+  // max(head.length, 8 - rest.length) + rest.length, which is 8 either way that max resolves,
+  // given the <= 8 guard. A test would need input that clears both guards yet still lands short,
+  // which the guards themselves forbid.
   return groups.length === 8 ? groups : null
 }
 
