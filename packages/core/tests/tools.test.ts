@@ -625,6 +625,45 @@ describe("remember, edge endpoints", () => {
     expect(out.rejected[0]).toContain("capability:checkout")
   })
 
+  it("never claims the empty string as an endpoint spelling, even for a node whose name is empty", async () => {
+    // `name: z.string()` carries no `.min(1)` (unlike `quote`, which does), so a model that
+    // answers with an empty name is accepted input, not a schema rejection. Measured: every
+    // existing fixture names its nodes, so endpointIndex's `if (!key) return` guard
+    // (tools.ts:217) had never run — this is the fixture that reaches it, twice over, since
+    // `add` is called on the name AND on the id-without-prefix, and both normalize to "".
+    const c = ctx()
+    const t = makeTools(c)
+    const h = await pages(t)
+
+    const out = await t.remember.execute!(
+      {
+        nodes: [company("", h.checkout, CHECKOUT_QUOTE), company("adyen.com", h.adyen, ADYEN_QUOTE)],
+        edges: [
+          {
+            from: "",
+            to: "adyen.com",
+            relation: "competitor",
+            whyHere: "both process payments for the same online businesses",
+            howFound: "API-first payment gateway alternatives",
+            evidence: [{ handle: h.adyen, quote: ADYEN_QUOTE }],
+          },
+        ],
+      },
+      {} as never,
+    )
+
+    // The empty-named node still lands — an empty name is unclaimable as a SPELLING, not
+    // invalid input in its own right.
+    expect(out.written.nodes).toBe(2)
+    expect(c.graph.nodes.has("company:")).toBe(true)
+
+    // But the edge naming "" cannot resolve to it: without the guard, "" would be indexed like
+    // any other spelling, and it is exactly the one every empty-named node would collide on.
+    expect(out.written.edges).toBe(0)
+    expect(out.rejected).toHaveLength(1)
+    expect(out.rejected[0]).toContain('"" is not a node on this map')
+  })
+
   it("regression, the live stripe.com run: bare-domain endpoints connect the graph rather than dangling", async () => {
     const c = ctx()
     const t = makeTools(c)
