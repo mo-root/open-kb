@@ -210,6 +210,27 @@ describe("seedFamilyMissions: the template deck", () => {
     const ms = seedFamilyMissions({ ...profile, buyer: "fraud and risk teams" })
     expect(ms[3]!.brief).toContain('orientation named "fraud and risk teams"')
   })
+
+  // `bare`'s lookup (seed-families.ts:141) is `x.q === c` — the ONLY one of the
+  // six q() calls that tests strict equality against the raw profile.category
+  // rather than a shape (endsWith/startsWith) core's templates always satisfy.
+  // familyProfileFrom's cleanCategory always trims before a profile is built,
+  // so bare's fallback (`?? fallback`, fallback === c) never fires through that
+  // path — but seedFamilyMissions is exported and takes the interface as-is,
+  // with no re-trim of its own, so a category carrying its own whitespace (any
+  // direct caller that skips familyProfileFrom) exercises the fallback the
+  // production path never reaches: openingHand trims internally to build t0,
+  // so x.q ("widgets") no longer equals the untrimmed c (" widgets "), and only
+  // the bare template — the other five match by shape, not equality — falls
+  // back to c verbatim, whitespace and all.
+  it("bare's equality check misses on an untrimmed category; its fallback alone carries the whitespace through", () => {
+    const [market, competitors] = seedFamilyMissions({ category: " widgets ", source: "product" })
+    expect(market!.brief).toContain('" widgets "')
+    expect(market!.brief).toContain('"best widgets"')
+    expect(market!.brief).toContain('"top widgets companies"')
+    expect(competitors!.brief).toContain('"widgets alternatives"')
+    expect(competitors!.brief).toContain('"widgets vs"')
+  })
 })
 
 // ── the orchestrator wiring, offline ─────────────────────────────────────────
