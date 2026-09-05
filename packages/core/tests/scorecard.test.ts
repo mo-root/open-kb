@@ -187,6 +187,11 @@ describe("computeScorecard edges", () => {
     expect(sc.yield).toEqual({ window: 6, recent: 6, before: null })
   })
 
+  it("a single landing is a window of 1, and before stays null — a second window needs 2 landings, not 1", () => {
+    const sc = computeScorecard({ ...healthy(), yieldHistory: [3] })
+    expect(sc.yield).toEqual({ window: 1, recent: 3, before: null })
+  })
+
   it("a page-tier node counts whether its evidence is own-page or page", () => {
     const sc = computeScorecard({
       ...healthy(),
@@ -222,6 +227,13 @@ describe("scorecardSentences: facts a reader can disagree with", () => {
   it("renders the two-window yield curve the design shows the lead", () => {
     const sc = computeScorecard({ ...healthy(), yieldHistory: [3, 3, 2, 2, 2, 2, 1, 1, 0, 0, 0, 0] })
     expect(scorecardSentences(sc)).toContain("the last 6 landings added 2 nodes; the 6 before added 14")
+  })
+
+  it("a window of 1 speaks of 'the last landing', singular, not 'the last 1 landings'", () => {
+    const plural = computeScorecard({ ...healthy(), yieldHistory: [3] })
+    expect(scorecardSentences(plural)).toContain("the last landing added 3 nodes")
+    const singular = computeScorecard({ ...healthy(), yieldHistory: [1] })
+    expect(scorecardSentences(singular)).toContain("the last landing added 1 node")
   })
 
   it("speaks sensibly about a run that never grew a map — the seed-only shape", () => {
