@@ -103,6 +103,13 @@ async function systemLookup(host: string): Promise<string[]> {
  */
 function underSignal<T>(work: Promise<T>, signal: AbortSignal | null | undefined): Promise<T> {
   if (!signal) return work
+  // `signal.reason ?? new Error("aborted")`, here and in onAbort below: structurally
+  // unreachable through the public AbortController/AbortSignal API. Per the WHATWG spec,
+  // `abort()` called with no argument still sets `reason` to a DOMException, never leaves
+  // it undefined — confirmed empirically (`new AbortController().abort(); signal.reason`
+  // is a truthy `DOMException [AbortError]`) on Node v22.22.2, and this behavior predates
+  // this package's `engines.node >= 20` floor. There is no path to `aborted === true` with
+  // a falsy `reason`, so the `??` fallback is dead by construction, not an untested branch.
   if (signal.aborted) return Promise.reject(signal.reason ?? new Error("aborted"))
   return new Promise<T>((resolve, reject) => {
     const onAbort = () => reject(signal.reason ?? new Error("aborted"))
