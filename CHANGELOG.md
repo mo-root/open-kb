@@ -4,7 +4,7 @@ All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/); this file is
 maintained by hand from `git log`, not generated.
 
-## [Unreleased] — hardening/overnight-2026-08-21 (2026-08-20 – 2026-09-04)
+## [Unreleased] — hardening/overnight-2026-08-21 (2026-08-20 – 2026-09-05)
 
 Several nights of hardening on top of `main`, driven by measured evidence from
 real sweep runs rather than guesses. Grouped by what a user of the CLI, the
