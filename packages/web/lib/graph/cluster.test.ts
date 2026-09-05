@@ -265,6 +265,21 @@ describe("separationShoves", () => {
     expect(s.get("free")!.dx).toBeCloseTo(10) // the whole overlap, not a share
   })
 
+  /* `a.fixed` and `b.fixed` are handled by two separate branches in
+     separationShoves (one keys off `discs[i]`, the other off `discs[j]`),
+     and every other fixture in this file puts the pinned disc first —
+     so only the `a.fixed` branch above ever ran. Same pair, args swapped,
+     to reach the `b.fixed` branch and confirm the physics don't depend on
+     which side of the pair the pin is on. */
+  it("makes a pinned lobe immovable when it is the second argument too", () => {
+    const s = separationShoves(
+      [disc("free", 15, 0, 10, 5), disc("pinned", 0, 0, 10, 300, true)],
+      5,
+    )
+    expect(s.get("pinned")).toBeUndefined()
+    expect(s.get("free")!.dx).toBeCloseTo(10) // same shove as the a-first case
+  })
+
   it("does not waste motion when both lobes are pinned", () => {
     const s = separationShoves(
       [disc("a", 0, 0, 10, 30, true), disc("b", 15, 0, 10, 30, true)],
