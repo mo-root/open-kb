@@ -857,6 +857,37 @@ describe("rememberTool", () => {
   })
 
   /**
+   * The plural half of the same sentence (tools-free.ts:707,710). The test
+   * above names one missing endpoint, so `missing` never held more than one
+   * entry and the "and"/"are" join was never taken — SELF-327's coverage
+   * pass on this file named 707-710 as still open alongside 735 and
+   * 753-754, all three left for a later fire.
+   */
+  it("an edge with neither end on the map names both and says 'are', not 'is'", () => {
+    const s = populated()
+    const r = rememberTool(s.ctx, {
+      edges: [{ from: "nowhere1.io", to: "nowhere2.io", relation: "integration", why: "guessing" }],
+      why: "t",
+    })
+    expect(r.added.edges).toBe(0)
+    expect(r.rejected[0]!.reason).toBe(
+      '"nowhere1.io" and "nowhere2.io" are not on this map; record it as a node first — the same call is fine, nodes land before edges',
+    )
+  })
+
+  it("an edge missing only its 'from' end names that one alone, still singular", () => {
+    const s = populated()
+    const r = rememberTool(s.ctx, {
+      edges: [{ from: "nowhere1.io", to: "rival.com", relation: "integration", why: "guessing" }],
+      why: "t",
+    })
+    expect(r.added.edges).toBe(0)
+    expect(r.rejected[0]!.reason).toBe(
+      '"nowhere1.io" is not on this map; record it as a node first — the same call is fine, nodes land before edges',
+    )
+  })
+
+  /**
    * The edge half of the same relation gate (tools-free.ts:686-689), mirroring
    * the node one at :494-497. No test on this file gave an edge a relation
    * outside SWARM_RELATIONS before this one — the same scoped coverage pass
@@ -970,6 +1001,22 @@ describe("rememberTool", () => {
     expect(miss.rejected[0]!.reason).toContain('nothing named "ghost.com" is on this map')
   })
 
+  /**
+   * The node lookup in a node-retraction is `(key ? ctx.map.nodes.get(key)
+   * : undefined) ?? [name search]` (tools-free.ts:734-736). "ghost.com"
+   * above keys to something (nodeKey() returns the host unchanged) and
+   * still misses, so only the key-truthy side of that ternary had ever run.
+   * An empty node name keys to "" (map.ts:161's `domain.trim() ? ... : ""`
+   * takes its empty branch), which is falsy, so this is the only way to
+   * take the ternary's other side. Left open by SELF-327's coverage pass.
+   */
+  it("retract by an unkeyable (empty) node name skips straight to the name search and still misses", () => {
+    const s = populated()
+    const r = rememberTool(s.ctx, { retract: [{ node: "", why: "x" }], why: "t" })
+    expect(r.added.retractions).toBe(0)
+    expect(r.rejected[0]!.reason).toBe('nothing named "" is on this map; there is nothing to retract')
+  })
+
   it("retract by edge takes only the named relation off the map; a miss and an empty retraction are both sentences", () => {
     const s = populated()
     // Naming the wrong relation is a miss, not a match against any edge on that pair.
@@ -992,6 +1039,45 @@ describe("rememberTool", () => {
     // A retract entry naming neither a node nor an edge is refused, not a silent no-op.
     const empty = rememberTool(s.ctx, { retract: [{ why: "oops" }], why: "critic pass" })
     expect(empty.rejected[0]!.reason).toBe("say what to retract: a node's domain, or an edge's two ends")
+  })
+
+  /**
+   * The edge-retraction filter compares against `from ?? r.edge!.from` and
+   * `to ?? r.edge!.to` (tools-free.ts:753-754): the raw name only stands in
+   * when `endpointOf()` can't resolve its argument to a live key. Every
+   * retract-by-edge test above (including the "wrong relation" miss)
+   * targets endpoints already seeded on the map, so `from`/`to` were always
+   * non-null and the raw-string side of both `??`s had never run. Left
+   * open by SELF-327's coverage pass.
+   */
+  it("retract by edge naming endpoints never recorded falls back to comparing raw names, and still misses", () => {
+    const s = populated()
+    const r = rememberTool(s.ctx, {
+      retract: [{ edge: { from: "ghost1.com", to: "ghost2.com" }, why: "x" }],
+      why: "t",
+    })
+    expect(r.added.retractions).toBe(0)
+    expect(r.rejected[0]!.reason).toContain('no live edge joins "ghost1.com" to "ghost2.com"')
+    expect(s.map.entityEdges()).toHaveLength(1)
+  })
+
+  /**
+   * The test above sends both ends through the fallback, so the filter's
+   * first `&&` clause (the "from" comparison) already fails and the "to"
+   * comparison on tools-free.ts:754 never runs at all — there is only one
+   * edge on this map, so once `x.from` mismatches for it the `.filter`
+   * short-circuits before reaching `x.to`. Naming a resolvable "from" lets
+   * evaluation reach line 754 while "to" still takes the raw-string side.
+   */
+  it("retract by edge with a resolvable 'from' still falls back on an unresolvable 'to'", () => {
+    const s = populated()
+    const r = rememberTool(s.ctx, {
+      retract: [{ edge: { from: "third.com", to: "ghost.com" }, why: "x" }],
+      why: "t",
+    })
+    expect(r.added.retractions).toBe(0)
+    expect(r.rejected[0]!.reason).toContain('no live edge joins "third.com" to "ghost.com"')
+    expect(s.map.entityEdges()).toHaveLength(1)
   })
 
   it("a claim with an empty evidence array is refused with the snippet route named", () => {
