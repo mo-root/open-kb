@@ -478,6 +478,15 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
           }
           const firstZone = nextZone()
           let out = await once(firstZone)
+          // Every `out.error ?? ""` and `?? "Account is suspended"` below, through
+          // line 487, is dead by construction: `once()` has exactly four ok:false
+          // returns (383, 399, 448, 463) and all four set `error` to a defined,
+          // non-empty string — there is no ok:false return that omits it. Each
+          // `?? ""`/`?? "..."` here only runs inside a `!out.ok` guard, so the
+          // left side is never the missing value the fallback exists for. Kept
+          // because `SearchResult.error` is optional for ports that cannot report
+          // a reason at all (see core/ports.ts) — this port always can. Same class
+          // as SELF-332's safe-fetch.ts abort-reason fallbacks.
           if (!out.ok && SUSPENDED.test(out.error ?? "")) suspended = out.error ?? "Account is suspended"
           // One retry, past the interval the provider names. Workers run
           // concurrently, so this costs one worker's time rather than the wave's.
@@ -496,6 +505,10 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
             out = {
               ...second,
               usd: second.usd + first.usd,
+              // `?? 0` on both sides is dead too: unlike `pacedMs`/`redirects`
+              // below, `requests` is set on all five of `once()`'s returns (383,
+              // 399, 448, 463, and the success return at 451), never omitted, so
+              // neither side is ever the missing value.
               requests: (second.requests ?? 0) + (first.requests ?? 0),
               retries: (second.requests ?? 0),
               // Both waits, plus the retry's own sleep: everything this query
@@ -503,6 +516,12 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
               // minGapMs)` and that is pacing too, not incidental latency.
               pacedMs: (first.pacedMs ?? 0) + (second.pacedMs ?? 0) + wait,
               redirects: (second.redirects ?? 0) + (first.redirects ?? 0),
+              // `first` only ever reaches here via the `!out.ok` guard above, so
+              // `first.error` is always set (same invariant as line 481) and the
+              // `: []` arm of the first ternary never runs. `second.error` is the
+              // same story when `second.ok` is false, so the innermost `: []`
+              // never runs either — only `second.ok ? [] : ...`'s own `[]` is a
+              // real, reachable arm.
               blocked: [...(first.error ? [first.error] : []), ...(second.ok ? [] : second.error ? [second.error] : [])],
             }
           }
