@@ -136,6 +136,27 @@ describe("graphOf, entity-to-entity edges", () => {
   })
 })
 
+/** `dangling` maps each noise entity's own row to `{ from: ANCHOR_PATH,
+ *  target: e.domain || e.name }` — the same `host` fallback `place` uses one
+ *  function up (kb-from-run.ts:427, `(e.domain || e.name || "")`), because
+ *  `Entity.domain` is `z.string()` with no minimum length, so a model can
+ *  return `""`. Nothing in this file ever gave a noise-kind entity (the one
+ *  kind `KIND_GROUP` has no group for) an empty domain, so the `e.name` half
+ *  of that fallback had never run — coverage showed kb-from-run.ts:951 as a
+ *  branch this whole test file never exercised, and `.dangling` itself was
+ *  never read by any test here. */
+describe("graphOf, dangling — a noise-kind entity's own link target", () => {
+  it("falls back to the entity's name when its domain is empty", () => {
+    const g = graphOf(run([{ name: "Some Directory", domain: "", kind: "noise", what: "", relation: "none", why: "" }]))
+    expect(g.dangling).toEqual([{ from: "company.md", target: "Some Directory" }])
+  })
+
+  it("uses the domain when it is present", () => {
+    const g = graphOf(run([{ name: "Some Directory", domain: "dir.example", kind: "noise", what: "", relation: "none", why: "" }]))
+    expect(g.dangling).toEqual([{ from: "company.md", target: "dir.example" }])
+  })
+})
+
 /** `dedupe`'s own doc comment: "First placement wins, except that any real
  *  relation beats `none`." Every existing fixture that hits two rows for one
  *  host (`reports a pair once...` above, the gallery-map fixtures below) keeps
