@@ -66,4 +66,11 @@ describe("rankMatches", () => {
   it("tolerates a node with no domain", () => {
     expect(() => rankMatches([item({ id: "x", title: "No Domain" })], "no")).not.toThrow()
   })
+
+  it("falls back to a mid-domain substring when the title has no hit at all", () => {
+    // "ample" is absent from every title in MAP (including item c's) and from
+    // every domain's start; it only turns up inside "example.com" — the one
+    // branch (score = 20 + domain.indexOf(q)) every other test leaves cold.
+    expect(rankMatches(MAP, "ample").map((h) => h.id)).toEqual(["c"])
+  })
 })
