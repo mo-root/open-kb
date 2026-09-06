@@ -336,6 +336,18 @@ describe("brightDataFetch", () => {
     expect(r.body).toBe("")
   })
 
+  it("leaves contentType undefined for a direct response with no content-type header", async () => {
+    // `new Response("hello", {status:200})` above still gets an automatic
+    // `text/plain` content-type from the Fetch spec's own body-extraction
+    // rules — only a body-less Response(null, ...) skips that, which is the
+    // one way to actually reach the `?? undefined` fallback at brightdata.ts:688.
+    const fetchImpl = vi.fn(async (..._: FetchArgs) => new Response(null, { status: 200 }))
+    const f = brightDataFetch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, lookup: resolvesPublic })
+    const r = await f.get("https://a.com", "direct")
+    expect(r.httpStatus).toBe(200)
+    expect(r.contentType).toBeUndefined()
+  })
+
   it("does not throw and charges nothing when direct mode never gets a response", async () => {
     const fetchImpl = vi.fn(async (..._: FetchArgs) => {
       throw new Error("getaddrinfo ENOTFOUND a.com")
@@ -344,6 +356,16 @@ describe("brightDataFetch", () => {
     const r = await f.get("https://a.com", "direct")
     expect(r.httpStatus).toBe(0)
     expect(r.usd).toBe(0)
+  })
+
+  it("leaves contentType undefined for an unlocked response with no content-type header", async () => {
+    // Same fallback as direct mode, at brightdata.ts:749, reached the same way:
+    // a body-less Response so the Fetch spec does not mint one on this call's behalf.
+    const fetchImpl = vi.fn(async (..._: FetchArgs) => new Response(null, { status: 200 }))
+    const f = brightDataFetch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch })
+    const r = await f.get("https://a.com", "unlocked")
+    expect(r.httpStatus).toBe(200)
+    expect(r.contentType).toBeUndefined()
   })
 
   it("does not throw and charges nothing when the unlocked request never reaches Bright Data", async () => {
@@ -645,6 +667,18 @@ describe("brightDataFetch surfaces the refusal the provider stated", () => {
 
   it("claims nothing when the provider said nothing", async () => {
     const fetchImpl = vi.fn(async (..._: FetchArgs) => new Response("<html>ok</html>", { status: 200 }))
+    const f = brightDataFetch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch })
+    const r = await f.get("https://a.com", "unlocked")
+    expect(r.providerError).toBeUndefined()
+  })
+
+  it("discards a provider header carrying markup instead of forwarding it to the DOM", async () => {
+    // `providerSentence`'s shape check (brightdata.ts:596-611) exists because this
+    // string rides span.error verbatim into BuildWorkflow's DOM and into Supabase.
+    // A real refusal is a short plain sentence like "country_not_supported" — a
+    // header carrying `<`/`>` is not one, and must not survive the check just
+    // because every fixture in this file so far has sent a clean sentence.
+    const fetchImpl = refused({ "x-brd-error": "blocked <script>alert(1)</script>" })
     const f = brightDataFetch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch })
     const r = await f.get("https://a.com", "unlocked")
     expect(r.providerError).toBeUndefined()

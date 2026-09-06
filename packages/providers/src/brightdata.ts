@@ -578,6 +578,14 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
           // Summed over the pages, same partition as the usd above: what this
           // query actually cost in requests, and how much of that was being
           // let in on the second ask.
+          //
+          // `?? 0` here is dead by construction, unlike `retries` right below it:
+          // every element of `mine` is a `raw` entry, and `raw` is built only from
+          // `once()`'s five returns (383, 399, 448, 451, 463) and the retry-merge
+          // (505-527) — the same set the comment at line 481 already walks — and
+          // all six set `requests` to a number. `retries`, by contrast, is only
+          // ever added by the merge branch, so most elements of `mine` (a query
+          // whose first try succeeded) genuinely omit it and this fallback is real.
           requests: mine.reduce((n, r) => n + (r.requests ?? 0), 0),
           retries: mine.reduce((n, r) => n + (r.retries ?? 0), 0),
           // MAX, not sum, and for the opposite reason to `requests`. The pages
