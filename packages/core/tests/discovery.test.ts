@@ -698,4 +698,58 @@ describe("discover", () => {
     expect(span.usd).toBe(0)
     expect(span.error).toBe("no model pricing supplied — token cost not counted")
   })
+
+  /**
+   * `onStepFinish`'s two `?? 0` fallbacks (discovery.ts:364-365, `step.usage?.
+   * inputTokens ?? 0` / `outputTokens ?? 0`) had never run: every test above
+   * that supplies `pricing` also supplies a full `usage` block, so `inTok`
+   * and `outTok` were always numbers already. `vitest run --coverage
+   * --coverage.include='packages/core/src/discovery.ts'` confirmed both
+   * branches at 0 hits with everything else in the block covered by the two
+   * tests above.
+   *
+   * The gap is real, not decorative: `@ai-sdk/provider`'s `LanguageModelV4Usage`
+   * types `inputTokens.total`/`outputTokens.total` as `number | undefined` —
+   * and `ai`'s own `asLanguageModelUsage` (node_modules/ai/dist/index.js) passes
+   * that value straight through with no default of its own, so a step the
+   * provider didn't meter reaches this file's callback as `undefined`, not 0.
+   * Without the `?? 0` here, `undefined / 1e6 * rate` is `NaN`, and `usd += NaN`
+   * poisons every dollar figure the rest of the run adds to it — the same
+   * shape of bug `scripts/bench.ts` shipped with as a literal "$undefined".
+   */
+  it("treats a step the provider reported no token usage for as free, not NaN", async () => {
+    const spans = new SpanStream()
+    const model = new MockLanguageModelV4({
+      doGenerate: async () => ({
+        content: [{ type: "text" as const, text: "Nothing to report." }],
+        finishReason: { unified: "stop" as const, raw: undefined },
+        usage: {
+          inputTokens: { total: undefined, noCache: undefined, cacheRead: undefined, cacheWrite: undefined },
+          outputTokens: { total: undefined, text: undefined, reasoning: undefined },
+        },
+        warnings: [],
+      }),
+    })
+
+    const out = await discover({
+      anchor: "acme.com",
+      model,
+      fetch: new FakeFetch({}),
+      spans,
+      pricing: { inUsdPerM: 2, outUsdPerM: 10 },
+    })
+
+    expect(out.usd).toBe(0)
+
+    spans.close()
+    const emitted = []
+    for await (const s of spans.stream()) emitted.push(s)
+    expect(emitted).toHaveLength(1)
+    const span = emitted[0]!
+    expect(span.tokensIn).toBe(0)
+    expect(span.tokensOut).toBe(0)
+    expect(span.usd).toBe(0)
+    // The failure this guards: with the fallback removed, this reads NaN.
+    expect(Number.isNaN(span.usd)).toBe(false)
+  })
 })
