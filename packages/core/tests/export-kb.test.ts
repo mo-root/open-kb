@@ -775,6 +775,22 @@ describe("withoutStolenNames", () => {
     expect(result.entities[0]?.what).toBe("No domain on this row.")
   })
 
+  it("does not throw on a row with no name at all, and does not treat it as stolen", () => {
+    // `NamedRow.name` is typed as required, but scripts/export-kb.ts's `loadRun`
+    // is `JSON.parse(readFileSync(...))` handed straight to `exportKbFiles` with
+    // no schema check (asRun only checks `entities` is an array) — a run
+    // written before this field existed, or edited by hand, can omit `name` at
+    // runtime regardless of what the type promises. `identityKey(e.name ?? "")`
+    // is the only thing standing between that and `identityKey(undefined)`
+    // throwing inside `.toLowerCase()`.
+    const entities = [
+      { domain: "aws.amazon.com", kind: "product", relation: "competitor", what: "x", why: "y" },
+    ] as unknown as ExportEntity[]
+    const result = withoutStolenNames({ anchor, entities })
+    expect(result.stripped).toEqual([])
+    expect(result.entities).toEqual(entities)
+  })
+
   it("only strips an edge whose why quotes the exact stolen name, into the stolen host", () => {
     const result = withoutStolenNames({
       anchor,
