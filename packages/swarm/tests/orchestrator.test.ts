@@ -2235,6 +2235,107 @@ describe("runSwarm: a harvest mission over fake ports", () => {
     expect(landing.actualUsd).toBeCloseTo(0.001, 6)
   })
 
+  // Every harvest test above (and every one in agent.test.ts) drives the
+  // kernel through `over: { harvestClassify: fakeHarvestClassify }` — the DI
+  // seam `SwarmOptions.harvestClassify` documents as winning over
+  // `classifyPrompt`. `npx vitest run --coverage` on this package shows
+  // orchestrator.ts:498-505 — the `opts.classifyPrompt ? makeHarvestClassify(...)
+  // : undefined` branch that builds the closure for real callers, who have no
+  // reason to hand in a fake classifier — at zero executions: nothing here
+  // ever left the DI override unset. `makeHarvestClassify` itself is well
+  // covered (harvest-classify-prompt.test.ts), but never as the orchestrator's
+  // own construction of it from a caller-supplied template string.
+  it("classifyPrompt (no harvestClassify override) builds the closure that judges the wave", async () => {
+    // All seven of render()'s slots, once each — render() throws on a missing
+    // slot AND on a var the template never places, so this stands in for the
+    // real prompts/agents/classify.md (harvest-classify-prompt.test.ts pushes
+    // that file itself) without needing this package to reach across to it.
+    const CLASSIFY_TEMPLATE =
+      "CLASSIFY-VIA-ORCHESTRATOR\n" +
+      "anchor={{anchor}} sells={{sells}} buyer={{buyer}} host={{host}} seenIn={{seenIn}}\n" +
+      "foundBy: {{foundBy}}\n" +
+      "page: {{page}}\n"
+
+    const flatText = (prompt: readonly { role: string; content: unknown }[]): string =>
+      prompt
+        .flatMap((m) => {
+          if (typeof m.content === "string") return [m.content]
+          if (Array.isArray(m.content)) return (m.content as Array<{ type: string; text?: string }>).map((c) => c.text ?? "")
+          return []
+        })
+        .join("\n")
+
+    const lead = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = leadTurnOf(prompt)
+        if (turn === 1)
+          return reply(
+            call("1", "spawn", { missions: [mission("harvest-wave", 90, "harvest")], why: "judge the wave whole" }),
+            false,
+          )
+        return reply(call("f1", "finish", { reason: "mapped", summary: "s", unresolved: [], why: "done" }), false)
+      },
+    })
+    // One model serves the investigator's tool loop AND — since no `harvest`
+    // tier is configured — the classify closure that `harvestModel = opts.
+    // models.harvest ?? opts.models.read` falls back to. The marker is what
+    // tells the two callers apart: `generateObject`'s prompt is a single
+    // rendered string, the tool loop's is the usual message array.
+    const inv = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        if (flatText(prompt).includes("CLASSIFY-VIA-ORCHESTRATOR")) {
+          return reply(
+            text(
+              JSON.stringify({
+                name: "Rival",
+                kind: "company",
+                what: "fraud scoring api for merchants",
+                relation: "competitor",
+                why: "sells the same step to the same buyer",
+                spans: ["Rival sells a fraud scoring API"],
+              }),
+            ),
+            true,
+          )
+        }
+        const sys = prompt.find((m) => m.role === "system")
+        const sysText = typeof sys?.content === "string" ? sys.content : JSON.stringify(sys?.content ?? "")
+        const turn = invTurnOf(prompt)
+        if (sysText.includes("harvest-wave")) {
+          if (turn === 0)
+            return reply(call("h1", "harvest", { hosts: ["rival.com", "dead.com"], why: "judge the wave" }), false)
+          return reply(text("harvested."), true)
+        }
+        if (turn === 0) return reply(call("s1", "search", { queries: ["fraud scoring"], why: "orient" }), false)
+        return reply(text("done."), true)
+      },
+    })
+
+    const run = await runSwarm(
+      mkOpts({
+        lead,
+        inv,
+        over: {
+          classifyPrompt: CLASSIFY_TEMPLATE,
+          fetch: fakeFetch({
+            "https://rival.com/": { httpStatus: 200, body: rivalHtml },
+            "https://dead.com/": { httpStatus: 404, body: "" },
+          }),
+        },
+      }),
+    )
+
+    expect(run.ending.reason).toBe("lead-finished")
+    // The closure the orchestrator built from the template landed the same
+    // judged host a scripted `harvestClassify` would have — proof the real
+    // wiring (render() over the template, generateObject over harvestModel)
+    // works, not just the DI seam every other test exercises instead of it.
+    const node = run.map.nodes.get("rival.com")!
+    expect(node.relation).toBe("competitor")
+    expect(node.settledBy).toBe("model")
+    expect(run.harvest.modelJudged).toBe(1)
+  })
+
   it("a run that never harvested reports the zero tally — absent and clean must not look alike", async () => {
     const lead = new MockLanguageModelV4({
       doGenerate: async () =>
