@@ -1,10 +1,10 @@
 import { describe, it, expect, afterEach } from "vitest"
-import { readFileSync, existsSync } from "node:fs"
+import { readFileSync, existsSync, mkdtempSync, mkdirSync, rmSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { tmpdir } from "node:os"
 import { composePrompt } from "@open-kb/core"
-import { RELATIONS, ENTITY_KINDS, CLASSIFY_MAX_OUTPUT_TOKENS, makePrompt } from "../src/sweep.js"
+import { RELATIONS, ENTITY_KINDS, CLASSIFY_MAX_OUTPUT_TOKENS, makePrompt, walkUpForPrompts } from "../src/sweep.js"
 
 /**
  * The prompts are the product.
@@ -304,5 +304,41 @@ describe("makePrompt (the per-run compose memo)", () => {
     expect(() => prompt("classify", {})).toThrow(
       `OPENKB_PROMPTS_DIR is set to ${tmpdir()}, which has no doctrine/ in it`,
     )
+  })
+})
+
+/**
+ * `walkUpForPrompts` (sweep.ts:86) has two ways to give up besides the happy
+ * path: it hits the filesystem root before finding `prompts/doctrine`, or it
+ * spends all 8 hops without either. Through `promptsRoot()` neither ever
+ * fires in this repo — the module-path and cwd walks both find the real
+ * `prompts/doctrine` within a couple of hops — so both exhaustion arms had
+ * zero coverage anywhere. Calling the walk directly is the only way to reach
+ * them, which is why it is exported (same reasoning as useUrlView.ts's
+ * readUrl/writeUrl export).
+ */
+describe("walkUpForPrompts's own exhaustion", () => {
+  it("stops at the filesystem root, not past it", () => {
+    // dirname("/") === "/", so starting there hits the `up === dir` break on
+    // the very first hop — as long as no real machine has a `/prompts/doctrine`,
+    // which none does.
+    expect(existsSync("/prompts/doctrine")).toBe(false)
+    expect(walkUpForPrompts("/")).toBeNull()
+  })
+
+  it("gives up after 8 hops when the root is still further up than that", () => {
+    const base = mkdtempSync(join(tmpdir(), "sweep-walk-"))
+    // 12 levels deep: even the shallowest directory the walk checks (8 hops
+    // up from the innermost) is still inside this chain, nowhere near `base`
+    // or the real filesystem root — so the walk can only exhaust its 8 hops,
+    // never hit the root-break arm covered above.
+    const levels = Array.from({ length: 12 }, (_, i) => `d${i}`)
+    const deepest = levels.reduce((dir, name) => join(dir, name), base)
+    mkdirSync(deepest, { recursive: true })
+    try {
+      expect(walkUpForPrompts(deepest)).toBeNull()
+    } finally {
+      rmSync(base, { recursive: true, force: true })
+    }
   })
 })

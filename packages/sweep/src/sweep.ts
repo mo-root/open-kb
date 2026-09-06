@@ -82,8 +82,14 @@ import { heldDeadline } from "./deadline.js";
 
 /** The walk itself: from `start`, upwards, for a directory holding
  *  `prompts/doctrine`. `null` rather than a throw, because a miss is only fatal
- *  once every strategy below has missed. */
-function walkUpForPrompts(start: string): string | null {
+ *  once every strategy below has missed.
+ *
+ *  Exported so the walk's own exhaustion arms can be tested directly: through
+ *  `promptsRoot()`, this repo's real prompts/doctrine is always found within a
+ *  couple of hops from either the module path or cwd, so neither the
+ *  filesystem-root break nor the 8-hop cap below it can ever be the reason a
+ *  test walk stops (same reasoning as useUrlView.ts's readUrl/writeUrl export). */
+export function walkUpForPrompts(start: string): string | null {
   let dir = start;
   for (let i = 0; i < 8; i++) {
     if (existsSync(join(dir, "prompts", "doctrine")))
