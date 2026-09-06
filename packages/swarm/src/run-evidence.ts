@@ -326,12 +326,24 @@ export class RunEvidence {
         if (firstFailure === null) firstFailure = (e as Error).message
       }
     }
+    // `firstFailure ?? ...`: dead by construction, not an untested branch. This line is
+    // reached only by exhausting `ranked` without a single iteration returning — and
+    // `handles.length === 0` already returned above, so `ranked` holds at least one entry.
+    // Its first iteration's catch always fires (`#store.cite` never throws anything but
+    // `CitationError`, which is a real `Error` and so always has a `.message` string), and
+    // that catch sets `firstFailure` on its first run since it starts `null`. So by the time
+    // the loop falls through, `firstFailure` is already a string — there is no public path
+    // that reaches this line with it still `null`.
     return { ok: false, reason: firstFailure ?? `quote not present in ${url}` }
   }
 
   /** found page > found snippet > anything else; newer beats older within a rank. */
   #strength(handle: string): number {
     const rec = this.#store.get(handle)
+    // `!rec`: dead by construction. The only handles `#strength` is ever called with come
+    // from `handlesFor()` (`#byUrl`), and `record()` is `#byUrl`'s only writer — it pushes
+    // `rec.handle` to `#byUrl` in the same call that hands that identical `rec` to `#store`.
+    // `EvidenceStore` has no delete, so a handle drawn from `#byUrl` is always still there.
     if (!rec) return 0
     const idx = this.#all.indexOf(rec)
     const base = rec.status !== "found" ? 0 : rec.tier === "page" ? 2_000_000 : 1_000_000
