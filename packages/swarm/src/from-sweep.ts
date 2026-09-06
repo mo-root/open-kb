@@ -249,6 +249,11 @@ export function validateSweepRun(
  */
 export function sweepSeedMissions(run: SweepRunLike, opts: SweepSeedOptions): Mission[] {
   const anchor = registrableHost(opts.anchor) || opts.anchor.toLowerCase()
+  // `?? ""` has no honest seam: String.prototype.split always returns an
+  // array of length >= 1, so `anchor.split(".")[0]` is always a defined
+  // string (possibly "" when anchor itself is "", e.g. registrableHost
+  // returned "" and opts.anchor.toLowerCase() was also ""), never
+  // undefined. No anchor value reaches the `?? ""` arm.
   const coinages = opts.coinages ?? [...new Set([anchor, anchor.split(".")[0] ?? ""])].filter((w) => w.length > 2)
   const verifyCount = Math.max(0, Math.min(12, Math.floor(opts.verifyCount ?? DEFAULT_VERIFY_COUNT)))
   const recallThreshold = opts.recallGapThreshold ?? DEFAULT_RECALL_GAP_THRESHOLD
