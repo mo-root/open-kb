@@ -158,6 +158,10 @@ export function nodeKey(kind: string, name: string, domain: string): string {
   // "HTTPS:" as the host and every such node minted the same garbage key —
   // silently merging unrelated companies that all happened to arrive
   // uppercase.
+  // `.split("/")[0] ?? ""`: dead by construction, not an untested branch. `.split`
+  // on a string always returns an array of length >= 1, so index 0 is always a
+  // defined string (possibly "" — e.g. a domain that was only a scheme, like
+  // "https://") — there is no input for which `.split("/")[0]` is undefined.
   const host = domain.trim() ? registrableHost(domain.trim().replace(/^https?:\/\//i, "").split("/")[0] ?? "") : ""
   if (kind === "company" || kind === "product") return host
   if (host) return host
@@ -191,6 +195,12 @@ export class MapState {
         ...(n.because ? { because: n.because } : {}),
         ...(n.unreadableReason ? { unreadableReason: n.unreadableReason } : {}),
         ...(n.settledBy ? { settledBy: n.settledBy } : {}),
+        // `!== undefined ? ... : {}`: dead by construction, not an untested branch.
+        // tools-free.ts:588 is the only place a MapNode is ever minted, and its
+        // object literal always carries a `descGrounded` field (a rounded number,
+        // computed at remember() time — see tools-free.ts:536-541); the merge path
+        // (tools-free.ts:630) only ever reassigns it to another such number. No
+        // node this loop can see was ever constructed without it.
         ...(n.descGrounded !== undefined ? { descGrounded: n.descGrounded } : {}),
         tier: n.tier,
         ...(n.also.length ? { also: n.also.map((a) => ({ ...a })) } : {}),
