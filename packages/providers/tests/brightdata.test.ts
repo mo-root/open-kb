@@ -59,6 +59,31 @@ describe("brightDataSearch", () => {
     expect(decodeURIComponent(body.url)).toContain("web scraping api")
   })
 
+  it("treats a response with no organic key at all as zero hits, not an error", async () => {
+    // brightdata.ts:407 reads `parsed.organic ?? []` — every other fixture in
+    // this file sets `organic` to a real or empty array, which never exercises
+    // the fallback. A "nothing indexed for this query" SERP response can omit
+    // the key entirely, and that must map to the same ok:true/zero-hits shape
+    // as an explicit `organic: []`, not fall into the catch block below.
+    const fetchImpl = vi.fn(async (..._: FetchArgs) => new Response(JSON.stringify({}), { status: 200 }))
+    const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 1 })
+    const [r] = await s.search(["nothing indexed"])
+    expect(r).toMatchObject({ ok: true, hits: [] })
+  })
+
+  it("maps a hit with no title or no description to an empty string, not undefined", async () => {
+    // brightdata.ts:420-421 read `h.title ?? ""` and `h.description ?? ""` —
+    // every fixture in this file sets both fields, which never exercises
+    // either fallback. Real SERP rows omit a snippet or a title outright.
+    const fetchImpl = vi.fn(
+      async (..._: FetchArgs) =>
+        new Response(JSON.stringify({ organic: [{ link: "https://a.com" }] }), { status: 200 }),
+    )
+    const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 1 })
+    const [r] = await s.search(["bare hit"])
+    expect(r!.hits[0]).toMatchObject({ url: "https://a.com", title: "", description: "" })
+  })
+
   it("fails one query without failing the batch", async () => {
     let n = 0
     const fetchImpl = vi.fn(async (..._: FetchArgs) => {
