@@ -279,6 +279,16 @@ describe("what leaves the app is the map, not the crawl", () => {
     expect(exportDrop({ name: "n", domain: "medium.com", kind: "publisher", relation: "lists", what: "A publishing platform." })).toBeNull()
   })
 
+  // `domain` is optional on `ExportEntity`, and every case above — like every
+  // other exportDrop test in this file — gives it one, so line 110's
+  // `e.domain ?? ""` had never taken its fallback arm (confirmed on the
+  // v8-coverage branch report: `export-kb.ts:110` uncovered). A row with no
+  // domain at all cannot be host-matched by PERSONAL_HOST against `""`; only
+  // PERSONAL_PROSE, matching on the run's own words, can still gate it.
+  it("a row with no domain at all cannot be gated `personal` by host, only by prose", () => {
+    expect(exportDrop({ name: "n", kind: "publisher", relation: "competitor", what: "A vendor." })).toBeNull()
+  })
+
   it("gives no page to a refusal that does not wear its reason", () => {
     expect(has("unexplained-example")).toBe(false)
     expect(has("maybe-example")).toBe(true)
