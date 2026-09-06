@@ -798,14 +798,28 @@ describe("rememberTool", () => {
    * empty name for any other kind — and this guard answers each with its
    * own sentence. Neither had ever run: every other node fixture in this
    * suite supplies at least a domain.
+   *
+   * SELF-324's fixture only exercised the "company" half of tools-free.ts:502's
+   * `n.kind === "company" || n.kind === "product"` — a coverage rerun
+   * (`npx vitest run packages/swarm --coverage
+   * --coverage.include='packages/swarm/src/tools-free.ts'`) still showed the
+   * `"product"` operand at 0 hits (branch id 129, line 509), because the OR
+   * short-circuits on "company" before "product" is ever evaluated. Added
+   * third node below with kind "product" for the same reason the other two
+   * are here: the message interpolates `n.kind`, and "a product is its
+   * domain" had never actually been produced by this code, only assumed.
    */
-  it("a node that cannot be keyed is refused: no domain for a company, no name or domain for any other kind", () => {
+  it("a node that cannot be keyed is refused: no domain for a company or product, no name or domain for any other kind", () => {
     const s = seeded()
     const r = rememberTool(ctxOf(s), {
       nodes: [
         {
           name: "", domain: "", kind: "company", what: "x", relation: "competitor",
           why: "a company with nothing to key on", evidence: [],
+        },
+        {
+          name: "", domain: "", kind: "product", what: "x", relation: "competitor",
+          why: "a product with nothing to key on", evidence: [],
         },
         {
           name: "", domain: "", kind: "capability", what: "x", relation: "competitor",
@@ -816,7 +830,8 @@ describe("rememberTool", () => {
     })
     expect(r.added.nodes).toBe(0)
     expect(r.rejected[0]!.reason).toBe("a company is its domain; say which host this is")
-    expect(r.rejected[1]!.reason).toBe("a node needs a name or a domain to be anything at all")
+    expect(r.rejected[1]!.reason).toBe("a product is its domain; say which host this is")
+    expect(r.rejected[2]!.reason).toBe("a node needs a name or a domain to be anything at all")
   })
 
   it("refuses to re-record the anchor as a company", () => {
