@@ -395,6 +395,63 @@ describe("discover", () => {
   })
 
   /**
+   * `docLinks`' own cap (discovery.ts:161, `if (out.size >= 40) break`) had
+   * never run: `vitest --coverage --coverage.include='packages/core/src/
+   * discovery.ts'` after SELF-350 still showed branch id 12 (161:26-31) at 0
+   * hits, and every findDocs test in this file and in
+   * packages/sweep/tests/discovery-agent-mode.test.ts hands the tool a docs
+   * index with only a handful of links — nowhere near the 40-link ceiling
+   * that keeps a large docs site's index from riding the agent's context on
+   * every turn (the comment at discovery.ts:268 names exactly that cost). A
+   * real docs index this size is not hypothetical — the whole reason the cap
+   * exists is that some are.
+   */
+  it("findDocs's docLinks caps a docs index at 40 links, in the order they appear, not one more", async () => {
+    const hrefs = Array.from({ length: 45 }, (_, i) => `<a href="/p${i}">p${i}</a>`).join("")
+    const docsHtml = `<html><head><title>Docs</title></head><body><h1>Acme Docs</h1>${hrefs}</body></html>`
+
+    const model = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = prompt.filter((m) => m.role === "tool").length
+        const content =
+          turn === 0
+            ? call("1", "findDocs", {})
+            : turn === 1
+              ? call("2", "finish", { sells: "widgets", buyer: "widget buyers", coinages: [] })
+              : [{ type: "text" as const, text: "done" }]
+        return {
+          content,
+          finishReason: { unified: turn >= 2 ? ("stop" as const) : ("tool-calls" as const), raw: undefined },
+          usage,
+          warnings: [],
+        }
+      },
+    })
+
+    const out = await discover({
+      anchor: "acme.com",
+      model,
+      fetch: new FakeFetch({
+        "https://docs.acme.com/": { httpStatus: 200, body: docsHtml },
+      }),
+      maxSteps: 6,
+    })
+
+    const results = (out._steps ?? []).flatMap((s) => s.toolResults ?? [])
+    const found = results.find((r) => r.toolCallId === "1")?.output as {
+      ok: boolean
+      surfaces: Array<{ url: string; kind: string; heading: string; links: string[] }>
+    }
+    const links = found.surfaces[0]!.links
+    expect(links).toHaveLength(40)
+    // The first 40 in document order, not the last 40 or an arbitrary 40 —
+    // the break fires the instant the 40th is added, so p40..p44 never run.
+    expect(links[0]).toBe("https://docs.acme.com/p0")
+    expect(links[39]).toBe("https://docs.acme.com/p39")
+    expect(links).not.toContain("https://docs.acme.com/p40")
+  })
+
+  /**
    * `findDocs`'s llms.txt branch (discovery.ts:269-272) had never run: every
    * existing findDocs test in this file and in
    * packages/sweep/tests/discovery-agent-mode.test.ts only ever answers a
