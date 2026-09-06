@@ -343,3 +343,26 @@ describe("RunEvidence.unread: harvestable pages nobody has opened yet", () => {
     expect(evidence.unread()).toEqual([{ url: "https://a.com/x", handle: rec.handle }])
   })
 })
+
+/**
+ * SELF-339, D-scope, self-discovered. `pages()`'s own comment promises "one
+ * row per URL" and its body carries a `taken` set for exactly that, but grep
+ * for `.pages()` across every test directory turns up three callers
+ * (orchestrator.test.ts, tools-paid.test.ts, run-evidence-alias.test.ts) and
+ * none of them records two page-tier hits under one canonical URL before
+ * calling it — orchestrator's fixture reads two distinct hosts, tools-paid's
+ * query-fold case keeps `id=7` and `id=42` as two different canonical URLs on
+ * purpose, and the alias fixture reads each of its three URLs once. Deleting
+ * the `taken` set (and its two lines of use) in place and running
+ * `pnpm exec vitest run packages/swarm packages/sweep` still passed all 742
+ * tests, confirmed before writing this one.
+ */
+describe("RunEvidence.pages: one row per canonical URL", () => {
+  it("keeps the first page-tier record's bytes when a second lands under the same canonical URL", () => {
+    const evidence = new RunEvidence()
+    // Trailing slash folds to the same canonical as the cite() tests above rely on.
+    evidence.record({ url: "https://a.com/x/", text: "older bytes, read first", status: "found", tier: "page" })
+    evidence.record({ url: "https://a.com/x", text: "newer bytes, read second", status: "found", tier: "page" })
+    expect(evidence.pages()).toEqual([{ url: "https://a.com/x/", html: "older bytes, read first" }])
+  })
+})
