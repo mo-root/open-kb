@@ -395,6 +395,75 @@ describe("discover", () => {
   })
 
   /**
+   * `findDocs`'s llms.txt branch (discovery.ts:269-272) had never run: every
+   * existing findDocs test in this file and in
+   * packages/sweep/tests/discovery-agent-mode.test.ts only ever answers a
+   * probe with an HTML docs-index page, so the file always took the
+   * `docs-index` fork of the `if (/\.txt$/.test(...))` check and never the
+   * `llms-txt` one. Confirmed with `vitest run --coverage
+   * --coverage.include='packages/core/src/discovery.ts'`: branch id 40
+   * (269:56-272:15) read 0 hits at 84.84% branch overall for the file — the
+   * only remaining gap that was a whole untested code path rather than a
+   * dead-by-construction fallback.
+   *
+   * Closing that branch exposed a second, narrower one underneath it: the
+   * `cap` ternary at line 270 (`/llms-full/.test(url) ? 12_000 : 4_000`) had
+   * only its `4_000` side proven, since a plain `llms.txt` probe never
+   * matches `llms-full`. Both urls are asserted here in one call so the two
+   * caps are checked against the same probe order the tool actually runs.
+   */
+  it("findDocs reads llms.txt and llms-full.txt as llms-txt surfaces, capped at 4,000 and 12,000 chars respectively", async () => {
+    const llmsTxt = "# Acme\n" + "Acme sells widgets. ".repeat(15)
+    expect(llmsTxt.length).toBeGreaterThanOrEqual(200)
+    expect(llmsTxt.length).toBeLessThan(4_000)
+    // Longer than the plain cap but shorter than the full one, so only a port
+    // that actually reads `llms-full` in the url (not just the 4,000 cap)
+    // would return this untruncated.
+    const llmsFullTxt = "# Acme (full)\n" + "Acme sells widgets, in detail. ".repeat(200)
+    expect(llmsFullTxt.length).toBeGreaterThan(4_000)
+    expect(llmsFullTxt.length).toBeLessThan(12_000)
+
+    const model = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = prompt.filter((m) => m.role === "tool").length
+        const content =
+          turn === 0
+            ? call("1", "findDocs", {})
+            : turn === 1
+              ? call("2", "finish", { sells: "widgets", buyer: "widget buyers", coinages: [] })
+              : [{ type: "text" as const, text: "done" }]
+        return {
+          content,
+          finishReason: { unified: turn >= 2 ? ("stop" as const) : ("tool-calls" as const), raw: undefined },
+          usage,
+          warnings: [],
+        }
+      },
+    })
+
+    const out = await discover({
+      anchor: "acme.com",
+      model,
+      fetch: new FakeFetch({
+        "https://acme.com/llms.txt": { httpStatus: 200, body: llmsTxt },
+        "https://acme.com/llms-full.txt": { httpStatus: 200, body: llmsFullTxt },
+      }),
+      maxSteps: 6,
+    })
+
+    const results = (out._steps ?? []).flatMap((s) => s.toolResults ?? [])
+    const found = results.find((r) => r.toolCallId === "1")?.output as {
+      ok: boolean
+      surfaces: Array<{ url: string; kind: string; text: string }>
+    }
+    expect(found.ok).toBe(true)
+    expect(found.surfaces).toEqual([
+      { url: "https://acme.com/llms.txt", kind: "llms-txt", text: llmsTxt },
+      { url: "https://acme.com/llms-full.txt", kind: "llms-txt", text: llmsFullTxt },
+    ])
+  })
+
+  /**
    * `findDocs`'s failure branch had never run. A `vitest --coverage` pass over
    * the whole repo (looking for what 263 nights of self-discovered work had
    * missed) put discovery.ts at 51/65 branches (78.46%) with exactly one
