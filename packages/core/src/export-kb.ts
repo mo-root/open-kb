@@ -389,6 +389,11 @@ const norm = (host: string) => host.trim().toLowerCase().replace(/^www\./, "")
  * this file gives for importing anything: a second copy of a rule is a rule that
  * can disagree with itself, and this one already did.
  */
+// `?? ""` has no honest seam: String.prototype.split always returns an array
+// of length >= 1, so `.split(".")[0]` is always a defined string (possibly ""
+// when registrableHost(norm(anchor)) itself reduces to "", e.g. anchor is ""
+// — no crash, just an empty label), never undefined. No anchor value reaches
+// the `?? ""` arm; noUncheckedIndexedAccess is why it typechecks without it.
 const anchorLabelOf = (anchor: string) => identityKey(registrableHost(norm(anchor)).split(".")[0] ?? "")
 
 /** What the row wears instead of the name, in judge.ts's own words for the same
