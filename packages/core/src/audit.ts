@@ -152,6 +152,14 @@ export function buildAuditPacket(
         best = relation
       }
     }
+    // Unreachable: at the top of iteration `slot`, sum(taken) === slot (every
+    // prior iteration found a `best` and incremented it, or the loop would
+    // already have stopped) and `slot < slots <= pool === sum(size)` by the
+    // Math.min above. sum(taken) < sum(size) forces some relation's
+    // `had < size` by pigeonhole, so the inner loop always finds a `best`.
+    // Kept as a backstop against a future change to the slots/pool relation,
+    // not exercised — v8 branch coverage confirms 0 hits (checked after
+    // adding the tie-break tests below; this line's count did not move).
     if (best === null) break
     taken.set(best, taken.get(best)! + 1)
   }

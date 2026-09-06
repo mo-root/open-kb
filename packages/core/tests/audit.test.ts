@@ -74,6 +74,62 @@ describe("buildAuditPacket sampling", () => {
     expect(packet.rows.every((r) => r.entity.relation === "competitor")).toBe(true)
   })
 
+  it("skips an entity with no relation at all — undefined finds no stratum, same as an unrequested one", () => {
+    const entities: AuditEntityRow[] = [
+      { name: "c0", domain: "c0.com", kind: "company", relation: "competitor", what: "x", why: "y" },
+      { name: "orphan", domain: "orphan.com", kind: "company" }, // relation omitted, not just unrequested
+    ]
+    const packet = build(entities, { n: 30 })
+    expect(packet.rows).toHaveLength(1)
+    expect(packet.rows[0]!.key).toBe("c0.com")
+  })
+
+  it("breaks a genuine score tie by key — the sole case two entities' fnv1a hashes actually collide", () => {
+    // fnv1a("fake\0c129599.com") === fnv1a("fake\0c732382.com") (== 1509993065),
+    // found by brute-forcing this file's own fnv1a over c<N>.com, N up to ~730k.
+    // The comparator is `a.score - b.score || (a.key < b.key ? -1 : 1)`, and no
+    // existing fixture ever collides, so the `||`'s right side — run twice, once
+    // sorting a stratum (line ~135) and once sorting the final `picked` array
+    // (line ~161) — had never fired under test.
+    //
+    // Both entries below feed the same tie into both sort sites in each pool
+    // order, and V8's small-array insertion sort compares adjacent elements
+    // as (arr[1], arr[0]) — so listing the higher key first drives the
+    // ternary's `-1` arm here, and listing the lower key first (below) drives
+    // its `1` arm, closing both without depending on anything but that fixed
+    // comparison order.
+    const entities: AuditEntityRow[] = [
+      { name: "c732382", domain: "c732382.com", kind: "company", relation: "competitor", what: "x", why: "y" },
+      { name: "c129599", domain: "c129599.com", kind: "company", relation: "competitor", what: "x", why: "y" },
+    ]
+    const packet = build(entities, { n: 2, relations: ["competitor"] })
+    expect(packet.rows.map((r) => r.key)).toEqual(["c129599.com", "c732382.com"])
+  })
+
+  it("breaks the same tie the other way round — lower key first still sorts correctly, the ternary's other arm", () => {
+    const entities: AuditEntityRow[] = [
+      { name: "c129599", domain: "c129599.com", kind: "company", relation: "competitor", what: "x", why: "y" },
+      { name: "c732382", domain: "c732382.com", kind: "company", relation: "competitor", what: "x", why: "y" },
+    ]
+    const packet = build(entities, { n: 2, relations: ["competitor"] })
+    expect(packet.rows.map((r) => r.key)).toEqual(["c129599.com", "c732382.com"])
+  })
+
+  it("the tied pair also collides across strata — picked's own re-sort needs the tie-break too", () => {
+    // Splitting the pair one-per-relation puts a single-element stratum on
+    // each side, so neither stratum sort above does any comparing; the tie
+    // only reaches a comparator at the final `picked.sort(...)` (line ~169).
+    // `opts.relations` order ("competitor" then "substitute") concatenates
+    // picked as [c732382, c129599] — backwards — so this is also the one
+    // fixture that forces that site's tie-break to actually swap.
+    const entities: AuditEntityRow[] = [
+      { name: "c732382", domain: "c732382.com", kind: "company", relation: "competitor", what: "x", why: "y" },
+      { name: "c129599", domain: "c129599.com", kind: "company", relation: "substitute", what: "x", why: "y" },
+    ]
+    const packet = build(entities, { n: 2, relations: ["competitor", "substitute"] })
+    expect(packet.rows.map((r) => r.key)).toEqual(["c129599.com", "c732382.com"])
+  })
+
   it("takes the whole pool when N exceeds it, and says how many it got", () => {
     const packet = build(pool(4, 2), { n: 30 })
     expect(packet.rows).toHaveLength(6)
@@ -236,6 +292,11 @@ describe("scoreAuditPacket refusals", () => {
     const out = scoreAuditPacket(p)
     expect(out.scored).toBe(false)
     if (!out.scored) expect(out.refusals.some((line) => line.includes("secondReview"))).toBe(true)
+  })
+
+  it("refuses an empty packet outright, before any per-row check runs", () => {
+    const out = scoreAuditPacket(fill(build([], { n: 30 })))
+    expect(out).toEqual({ scored: false, refusals: ["empty packet — nothing to score"] })
   })
 
   it("accumulates every refusal instead of stopping at the first", () => {
