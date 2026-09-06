@@ -136,6 +136,28 @@ describe("readTool", () => {
     expect(r.text).toContain("https://twitter.com/acme — tw")
   })
 
+  // Every anchor projectLinks (tools-free.ts:101) had ever been given had
+  // non-empty inner text (`Pricing`, `tw` above), so `l.text ? ... : l.href`
+  // had only ever taken its truthy arm. An icon-only link — an <a> wrapping
+  // just an <img>, no words — is ordinary site-nav markup (a logo mark, a
+  // social glyph) and extractText() reduces its stripped-tag content to "",
+  // so the model must still get the bare href rather than a dangling "— ".
+  it("projects an icon-only link (no anchor text) as the bare href", () => {
+    const evidence = new RunEvidence()
+    const rec = evidence.record({
+      url: "https://rival.com/",
+      text: RIVAL_TEXT,
+      raw: `<html><body><a href="/"><img src="/logo.png"></a><a href="/pricing">Pricing</a></body></html>`,
+      status: "found",
+      tier: "page",
+    })
+    const r = readTool({ evidence, ledger: ledger() }, { handle: rec.handle, project: "links" })
+    if (!r.ok) throw new Error(r.reason)
+    expect(r.text).toContain("https://rival.com/pricing — Pricing")
+    expect(r.text).toMatch(/^https:\/\/rival\.com\/$/m)
+    expect(r.text).not.toContain("https://rival.com/ —")
+  })
+
   // Both tests above project a record with `raw` set to HTML, so `raw !==
   // undefined && isHtml(raw)` always took its true branch — the markdown/
   // plain-text fallback in projectHeadings and projectLinks had zero coverage
