@@ -345,7 +345,20 @@ const GENERIC_IN_SLUG = new Set([
   "switch", "tool", "tools", "top", "versus", "vs", "website", "websites",
 ])
 
-/** The anchor's own words, as a slug would spell them: `shopify.com` -> shopify. */
+/**
+ * The anchor's own words, as a slug would spell them: `shopify.com` -> shopify.
+ *
+ * Unreachable: both `?? ""` fallbacks below guard a `.split(...)[0]`, and
+ * `String.prototype.split` always returns an array of at least one element —
+ * even `"".split("/")` is `[""]` — so index 0 is never `undefined` for any
+ * input `anchor` this function can be called with. v8 branch coverage
+ * confirms 0 hits on both after this repo's fullest exercise of this
+ * function (every rivalsFromComparisonUrls fixture, including bare hosts,
+ * hosts with a scheme, and hosts under a locale path). Kept rather than
+ * simplified away: removing the fallback would leave `host`/`label` typed
+ * `string | undefined` for no behavioural gain, since the branch it guards
+ * cannot fire.
+ */
 function anchorWords(anchor: string): Set<string> {
   const host = (anchor.replace(/^[a-z]+:\/\//i, "").split("/")[0] ?? "").replace(/^www\./i, "")
   const label = host.split(".")[0] ?? ""

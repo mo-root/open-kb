@@ -271,6 +271,22 @@ describe("rivalsFromComparisonUrls", () => {
     }
   })
 
+  /**
+   * `pathOf`'s catch-and-return-null arm had never run: every url in every
+   * fixture above is `u(host, path)`, always a well-formed `https://`
+   * string, so `new URL(url)` never throws and `if (!path) continue` was
+   * dead by coverage. A sitemap.xml is XML on disk, not a type the URL
+   * constructor already validated — a stray `<loc>` a real vendor's build
+   * gets wrong must not stop the pass over every other url in the file.
+   */
+  it("skips a url that fails to parse, and still reads the ones beside it", () => {
+    const leads = rivalsFromComparisonUrls(
+      ["not a url at all", u("shopify.com", "/compare/shopify-vs-woocommerce")],
+      "shopify.com",
+    )
+    expect(leads.map((l) => l.name)).toEqual(["woocommerce"])
+  })
+
   it("honours the limit and stays stable between two reads of one sitemap", () => {
     const urls = ["wix", "magento", "etsy", "webflow"].map((r) =>
       u("shopify.com", `/compare/shopify-vs-${r}`),
