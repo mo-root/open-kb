@@ -387,6 +387,66 @@ describe("discover", () => {
   })
 
   /**
+   * `readPage`'s three `facts?.x ?? ""` fallbacks (discovery.ts:228-230) had
+   * never taken their `?? ""` arm: `readPageFacts` (catalog.ts:520) returns
+   * `null` only when a page has neither a `<title>` nor an `<h1>`, and every
+   * readPage test above (like every fixture page anywhere in this file) always
+   * serves at least one of the two. Confirmed with `vitest run --coverage
+   * --coverage.include='packages/core/src/discovery.ts'`: branch ids 30/32/34
+   * (228:30-42, 229:32-46, 230:36-54) read 0 hits at 89.39% branch for the
+   * file, the lowest-numbered of the four gaps SELF-352 left untouched.
+   *
+   * A real page with neither tag is not hypothetical — a bare product page
+   * with only body copy, or a page mid-redirect, would hit this today. The
+   * tool has to keep reading rather than throwing, since `readPageFacts`
+   * returning `null` is its documented "nothing worth naming" signal, not an
+   * error.
+   */
+  it("readPage reports empty title/heading/description, not a crash, for a page with neither a <title> nor an <h1>", async () => {
+    const bareBody =
+      "<html><body><p>This page sells widgets but names itself nowhere in markup a title or " +
+      "heading tag would carry — just this paragraph of plain body copy about what it does.</p></body></html>"
+
+    const model = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = prompt.filter((m) => m.role === "tool").length
+        const content =
+          turn === 0
+            ? call("1", "readPage", { urls: ["https://acme.com/bare"] })
+            : turn === 1
+              ? call("2", "finish", { sells: "widgets", buyer: "widget buyers", coinages: [] })
+              : [{ type: "text" as const, text: "done" }]
+        return {
+          content,
+          finishReason: { unified: turn >= 2 ? ("stop" as const) : ("tool-calls" as const), raw: undefined },
+          usage,
+          warnings: [],
+        }
+      },
+    })
+
+    const out = await discover({
+      anchor: "acme.com",
+      model,
+      fetch: new FakeFetch({ "https://acme.com/bare": { httpStatus: 200, body: bareBody } }),
+      maxSteps: 6,
+    })
+
+    const results = (out._steps ?? []).flatMap((s) => s.toolResults ?? [])
+    const read = results.find((r) => r.toolCallId === "1")?.output as { pages: unknown[] }
+    expect(read.pages).toEqual([
+      {
+        url: "https://acme.com/bare",
+        ok: true,
+        title: "",
+        heading: "",
+        description: "",
+        text: expect.stringContaining("plain body copy about what it does"),
+      },
+    ])
+  })
+
+  /**
    * `findDocs`' own execute body had no test in this package (grepped: only
    * the comment above mentions it by name), and the one place it does run —
    * packages/sweep/tests/discovery-agent-mode.test.ts's "reads the docs" test
