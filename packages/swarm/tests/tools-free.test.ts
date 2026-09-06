@@ -295,6 +295,35 @@ describe("recallTool", () => {
     expect(r.rows.find((x) => x.key === "rival.com")).toBeDefined()
   })
 
+  it("gaps skips a node that clears both bars: two sources and a why that isn't thin", () => {
+    // `populated()`'s two nodes are both single-sourced, so the `sources >= 2 && !thin`
+    // continue at tools-free.ts:279 had never taken its true arm — every prior gaps test
+    // (this file, and rememberTool's own "gaps" doctrine) fixtures nodes with exactly one
+    // evidence entry. Two quotes off the two urls this fixture already fetches gives one
+    // node two distinct evidence.url values without inventing a third fetch.
+    const s = seeded()
+    const ctx = ctxOf(s)
+    rememberTool(ctx, {
+      nodes: [
+        {
+          name: "Acme",
+          domain: "rival.com",
+          kind: "company",
+          what: "scraping api",
+          relation: "competitor",
+          why: "sells the same collection job to the same engineering buyer, as its core product",
+          evidence: [
+            { url: "https://rival.com/", quote: "sells a scraping API to developers" },
+            { url: "https://third.com/roundup", quote: "Acme and anchor compared head to head" },
+          ],
+        },
+      ],
+      why: "seed a two-sourced, non-thin node",
+    })
+    const r = recallTool({ map: s.map, evidence: s.evidence, ledger: ledger() }, { op: "gaps" })
+    expect(r.rows).toEqual([])
+  })
+
   it("barren names terms searched twice that never produced a verified company", () => {
     const s = populated()
     const r = recallTool(
