@@ -502,6 +502,66 @@ describe("discover", () => {
   })
 
   /**
+   * `findDocs`'s docs-index heading fallback (discovery.ts:274, `heading:
+   * facts?.heading ?? ""`) had never run: `vitest --coverage
+   * --coverage.include='packages/core/src/discovery.ts'` after SELF-354 still
+   * showed branch id 45 (274:73-88) at 0 hits, and every findDocs test in this
+   * file hands the docs-index probe a page with a `<title>` and an `<h1>`
+   * (this file's own "Acme Docs" fixture, reused three times above), so
+   * `readPageFacts` never returned `null` from that call site.
+   *
+   * The same "nothing worth naming" page shape already proven for `readPage`
+   * above (a bare `<p>` with neither tag) reaches `findDocs` too — a docs
+   * subdomain that redirects to a bare landing page, or one built entirely
+   * from client-rendered JS the raw fetch never executes, would hit this.
+   * `docLinks` still has to run and the probe still has to count as an
+   * answer past the 200-byte floor; only the heading falls back.
+   */
+  it("findDocs reports an empty heading, not a crash, for a docs-index page with neither a <title> nor an <h1>", async () => {
+    const bareDocsHtml =
+      "<html><body><p>This docs index sells widgets but names itself nowhere in markup a title or " +
+      "heading tag would carry — just this paragraph of plain body copy padding it past the two-hundred-byte " +
+      `floor findDocs requires before treating a probe as a real answer.</p><a href="/guide">Guide</a></body></html>`
+
+    const model = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = prompt.filter((m) => m.role === "tool").length
+        const content =
+          turn === 0
+            ? call("1", "findDocs", {})
+            : turn === 1
+              ? call("2", "finish", { sells: "widgets", buyer: "widget buyers", coinages: [] })
+              : [{ type: "text" as const, text: "done" }]
+        return {
+          content,
+          finishReason: { unified: turn >= 2 ? ("stop" as const) : ("tool-calls" as const), raw: undefined },
+          usage,
+          warnings: [],
+        }
+      },
+    })
+
+    const out = await discover({
+      anchor: "acme.com",
+      model,
+      fetch: new FakeFetch({
+        "https://docs.acme.com/": { httpStatus: 200, body: bareDocsHtml },
+      }),
+      maxSteps: 6,
+    })
+
+    const results = (out._steps ?? []).flatMap((s) => s.toolResults ?? [])
+    const found = results.find((r) => r.toolCallId === "1")?.output as {
+      ok: boolean
+      surfaces: Array<{ url: string; kind: string; heading: string; links: string[] }>
+    }
+    expect(found.ok).toBe(true)
+    expect(found.surfaces).toEqual([
+      { url: "https://docs.acme.com/", kind: "docs-index", heading: "", links: ["https://docs.acme.com/guide"] },
+    ])
+  })
+
+  /**
    * `docLinks`' own cap (discovery.ts:161, `if (out.size >= 40) break`) had
    * never run: `vitest --coverage --coverage.include='packages/core/src/
    * discovery.ts'` after SELF-350 still showed branch id 12 (161:26-31) at 0
