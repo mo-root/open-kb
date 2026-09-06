@@ -271,6 +271,53 @@ describe("discover", () => {
     )
   })
 
+  /**
+   * `mapProductPages`' sitemap-empty ternary (discovery.ts:184: `xml ?
+   * candidatesFromSitemap(xml, 60) : []`) had never taken its false arm.
+   * Confirmed with `vitest run --coverage --coverage.include='packages/core/
+   * src/discovery.ts'`: branch 15 (184:57-63, the `: []`) read 0 hits while
+   * every other sitemap-related branch in the file was covered by the two
+   * tests above, both of which always serve a 200 from sitemap.xml. A site
+   * with no sitemap.xml (a 404, same as FakeFetch serves any URL not in its
+   * table) is common enough that `cands` starting from `[]` rather than
+   * crashing on `candidatesFromSitemap(undefined, ...)` is worth pinning.
+   */
+  it("mapProductPages falls back to the homepage nav alone when sitemap.xml 404s", async () => {
+    const home = `<html><body><a href="/products/widget">Widget</a><a href="/pricing">Pricing</a></body></html>`
+
+    const model = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = prompt.filter((m) => m.role === "tool").length
+        const content =
+          turn === 0
+            ? call("1", "mapProductPages", {})
+            : turn === 1
+              ? call("2", "finish", { sells: "widgets", buyer: "widget buyers", coinages: [] })
+              : [{ type: "text" as const, text: "done" }]
+        return {
+          content,
+          finishReason: { unified: turn >= 2 ? ("stop" as const) : ("tool-calls" as const), raw: undefined },
+          usage,
+          warnings: [],
+        }
+      },
+    })
+
+    // No "https://acme.com/sitemap.xml" entry — FakeFetch serves it a 404.
+    const out = await discover({
+      anchor: "acme.com",
+      model,
+      fetch: new FakeFetch({ "https://acme.com/": { httpStatus: 200, body: home } }),
+      maxSteps: 6,
+    })
+
+    const results = (out._steps ?? []).flatMap((s) => s.toolResults ?? [])
+    const mapped = results.find((r) => r.toolCallId === "1")
+    expect(mapped?.output).toEqual({
+      urls: ["https://acme.com/pricing", "https://acme.com/products/widget"],
+    })
+  })
+
   it("readPage fetches a batch concurrently and reports a page that came back empty, direct and then unlocked", async () => {
     const model = new MockLanguageModelV4({
       doGenerate: async ({ prompt }) => {
