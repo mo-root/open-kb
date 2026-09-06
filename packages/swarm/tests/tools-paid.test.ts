@@ -335,6 +335,22 @@ describe("fetchTool", () => {
     expect(ctx.breaker.open("a.com", "direct").open).toBe(false)
   })
 
+  it("a 5xx is blocked as server-error, with its own hint, and does not strike the breaker", async () => {
+    const port: FetchPort = {
+      async get(url) {
+        return { url, httpStatus: 503, body: "", contentType: "text/html", ms: 1, usd: 0 }
+      },
+    }
+    const { ctx } = paidCtx({ fetch: port })
+    const r = await fetchTool(ctx, { urls: ["https://a.com/x"], mode: "direct", why: "t" })
+    const doc = r.docs[0] as FetchDocFail
+    expect(doc.reason).toBe("server-error")
+    expect(doc.code).toBe("server-error")
+    expect(doc.hint).toBe("the server itself failed; that is not a block — maybe a bad minute, maybe a dead host")
+    // Not in STRIKES: the origin failing on its own is not the host lying about success.
+    expect(ctx.breaker.open("a.com", "direct").open).toBe(false)
+  })
+
   it("a slow fetch answers pending with a handle, and the bytes land later for free reads", async () => {
     const landings: Promise<void>[] = []
     const { ctx, ledger, claimId } = paidCtx({

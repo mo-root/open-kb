@@ -305,6 +305,15 @@ function hintFor(reason: string, mode: SwarmFetchMode): string {
   }
   const m = /^http-(\d+)$/.exec(reason)
   if (m) return `the server answered ${m[1]}; the page is not at this address`
+  // Dead by construction, not an untested branch. `hintFor` has exactly one call
+  // site, in `settle()` below, and there `reason` is always `s.reason` off a
+  // `sniff()` call made only when `raw.httpStatus !== 0` (the `=== 0` case
+  // returns above `sniff` ever runs). Under that constraint `sniff` can only
+  // hand back "no-response" (excluded by the same guard), "server-error",
+  // `http-XXX`, "empty-body", "soft-404" or "thin-render" — core/src/sniff.ts
+  // has no other reason to give — and the five reachable ones are every branch
+  // above this line. No reason string reaches this fallback through the public
+  // API.
   return "nothing usable came back"
 }
 
