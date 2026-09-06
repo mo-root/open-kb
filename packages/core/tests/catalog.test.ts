@@ -346,6 +346,21 @@ describe("reading a page", () => {
     ])
     expect(out).toContain("not-a-url")
   })
+
+  /**
+   * `heading !== title` had never taken its true arm: every fixture above
+   * gives readPageFacts a page whose h1 either matches the title or is
+   * absent, so renderPageFacts always printed the bare title. A page with an
+   * SEO-suffixed <title> and a plain-language <h1> (common on real sites)
+   * carries a second name worth keeping, not a duplicate to collapse.
+   */
+  it("prints the heading alongside a differing title, not just the title", () => {
+    const facts = [
+      readPageFacts("https://x.com/products/a", "<title>SEO Title</title><h1>Real Heading</h1>")!,
+    ]
+    const out = renderPageFacts(facts)
+    expect(out).toContain("Real Heading  (title: SEO Title)")
+  })
 })
 
 describe("spending the budget", () => {
