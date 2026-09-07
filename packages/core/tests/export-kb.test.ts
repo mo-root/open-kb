@@ -217,6 +217,25 @@ describe("exportKbFiles", () => {
     expect(readme).toContain("- Cost: $2.50 over 300s")
   })
 
+  // The Cost line's `seconds ? \` over ${...}s\` : ""` (line 813) had only ever
+  // taken its true arm: `usd` and `seconds` are two independent optional fields
+  // on both `report` and the legacy `stats` shape (nothing ties one to the
+  // other), yet every fixture in this file that sets a `usd` — the shared run
+  // above, and the run.stats fallback test just above this one — sets a
+  // `seconds` right beside it. A report that carries a dollar figure with no
+  // duration is exactly the shape a run cut short by a crash writes: cost is
+  // tallied from the ledger as spend happens, while `seconds` is stamped once,
+  // at the end.
+  it("prints the Cost line with no duration suffix when usd is set but seconds is not", () => {
+    const noDuration = exportKbFiles({
+      entities: [{ name: "X", domain: "x.example", kind: "company", relation: "competitor", what: "A rival." }],
+      report: { usd: 3.2 },
+    })
+    const readme = noDuration.find((f) => f.path === "README.md")?.content ?? ""
+    expect(readme).toContain("- Cost: $3.20")
+    expect(readme).not.toContain("over")
+  })
+
   // `also` is the remember tool's same-node-merge record (tools-free.ts pushes
   // onto it when a second mention resolves to an already-kept entity) and no
   // fixture in this file had ever carried one, so the "Also recorded here" line
