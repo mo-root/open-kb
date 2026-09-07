@@ -150,4 +150,26 @@ describe("makeHarvestClassify over the real composed classify.md", () => {
     expect(seen).toHaveLength(2)
     expect(seen[1]).toMatchObject({ role: "investigator", label: "classify rival.example", ok: false, tokensIn: 0, tokensOut: 0, usd: 0 })
   })
+
+  it("turns DeepSeek's reasoning off; every model in the tests above kept the default and never sent the override", async () => {
+    // agent.ts's turn loop (oneTurn) carries the identical ternary on the same
+    // measured cost (314 hidden tokens, 9.2s vs 4.9s off); this is the harvest
+    // classify call's own copy, and nothing above ever set a modelId, so this
+    // arm had never run — every prior call here took the `{}` fallback.
+    const model = new MockLanguageModelV4({
+      modelId: "deepseek/deepseek-chat",
+      doGenerate: async () => ({
+        content: [{ type: "text" as const, text: JSON.stringify(ANSWER) }],
+        finishReason: { unified: "stop" as const, raw: undefined },
+        usage,
+        warnings: [],
+      }),
+    })
+    const h: HostCandidate = { host: "rival.example", seenIn: 1, intents: [], titles: [], desc: "" }
+    await classifyOver(model)(h, PAGE)
+
+    expect(model.doGenerateCalls[0]!.providerOptions).toEqual({
+      openrouter: { reasoning: { enabled: false }, provider: { order: ["parasail", "novita", "siliconflow"], allow_fallbacks: true } },
+    })
+  })
 })

@@ -1135,6 +1135,27 @@ describe("prompts never name a model", () => {
   })
 })
 
+describe("DeepSeek's reasoning goes off on both runners; every other model above kept the default", () => {
+  it("oneTurn sends the openrouter reasoning-off override only when the model id starts with deepseek/", async () => {
+    // Measured: DeepSeek left to default spends 314 hidden reasoning tokens
+    // (471 at "minimal") and 9-11s a call against 4.9s off. Every model above
+    // in this file left modelId unset or gemini-flavoured, so this ternary's
+    // deepseek/ arm (oneTurn, agent.ts) had never run — a typo in the id
+    // prefix or the provider-order list would not fail a single test.
+    const h = harness(5)
+    const model = new MockLanguageModelV4({
+      modelId: "deepseek/deepseek-chat",
+      doGenerate: async () => reply([{ type: "text" as const, text: "done." }], true),
+    })
+    const lead = runLead({ ...h, domain: "anchor.com", model, pricing: { inUsdPerM: 0, outUsdPerM: 0 } })
+    await lead.leadTurn()
+
+    expect(model.doGenerateCalls[0]!.providerOptions).toEqual({
+      openrouter: { reasoning: { enabled: false }, provider: { order: ["parasail", "novita", "siliconflow"], allow_fallbacks: true } },
+    })
+  })
+})
+
 describe("rememberOutcome — what the span log learns from a remember call", () => {
   const base = {
     added: { nodes: 0, edges: 0, retractions: 0 },
