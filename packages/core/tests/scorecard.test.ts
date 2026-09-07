@@ -236,6 +236,17 @@ describe("scorecardSentences: facts a reader can disagree with", () => {
     expect(scorecardSentences(singular)).toContain("the last landing added 1 node")
   })
 
+  it("a plural window still says 'node', singular, when only one landed", () => {
+    // yieldSentence's window!==1 branch has its own recent===1 ? "node" :
+    // "nodes" ternary, separate from the window===1 branch's copy above.
+    // Every other test with a plural window (run 2 at 8, the two-window
+    // curve at 2) also lands a plural recent count, so this arm had never
+    // run: dropping the ternary for a bare "nodes" still passed every test
+    // in this file but the one added here.
+    const sc = computeScorecard({ ...healthy(), yieldHistory: [0, 1] })
+    expect(scorecardSentences(sc)).toContain("the last 2 landings added 1 node")
+  })
+
   it("speaks sensibly about a run that never grew a map — the seed-only shape", () => {
     const sc = computeScorecard({
       families: [{ lens: "orientation", dedupeKey: "orient:example.com", priority: 1, status: "queued", nodesAdded: 0, pageTierNodes: 0 }],
@@ -269,6 +280,19 @@ describe("scorecardSentences: facts a reader can disagree with", () => {
     const lines = scorecardSentences(sc)
     expect(lines).toContain("1 of 2 nodes carries page-tier evidence")
     expect(lines).toContain("1 of 2 nodes rests on a single source")
+  })
+
+  it("a single kept node says 'node', not 'nodes' — pageTier, singleSourced, and cost-per-node share that denominator", () => {
+    // entities.length is the den for both fractions and the "kept" count in
+    // the cost sentence, so every test above that exercises den===1 uses the
+    // seed-only (zero-node) shape instead, which takes the "the map holds no
+    // nodes" branch and never reaches these three ternaries at all. A run
+    // that actually kept exactly one node had never run.
+    const sc = computeScorecard({ ...healthy(), entities: [{ tier: "own-page", sources: 1 }], spentUsd: 0.5 })
+    const lines = scorecardSentences(sc)
+    expect(lines).toContain("1 of 1 node carries page-tier evidence")
+    expect(lines).toContain("1 of 1 node rests on a single source")
+    expect(lines).toContain("the run has paid $0.50 for 1 node ($0.50 per node)")
   })
 
   it("no family is empty: no parenthetical, 'have' not 'has' — the ternary guard's true branch", () => {
