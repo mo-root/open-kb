@@ -197,6 +197,26 @@ describe("exportKbFiles", () => {
     expect(bare.find((f) => f.path === "segments/unattributed.md")?.content).toContain("[[x-example]]")
   })
 
+  // `run.stats?.usd`/`run.stats?.seconds` (line 803-804) had never been the
+  // reason a value appeared: every fixture with a `report` in this file also
+  // gave that report its own usd/seconds (the shared fixture above), and the
+  // one report-less fixture ("kernel-era", just above) carries no `stats`
+  // either, so both `??` right-hand sides resolved the same way — undefined
+  // — that the left-hand side already gave them. `stats` is not dead weight:
+  // it is the field `ExportRunLike` has carried since the pre-`report` shape,
+  // still written by every run today (`scripts/swarm.ts`'s summary line and
+  // `run-doctor.ts` both read `stats.usd`/`stats.seconds` directly), so a run
+  // whose `report` block exists but omits them is exactly the shape this
+  // fallback is for.
+  it("falls back to run.stats when the report carries no usd/seconds of its own", () => {
+    const legacy = exportKbFiles({
+      entities: [{ name: "X", domain: "x.example", kind: "company", relation: "competitor", what: "A rival." }],
+      stats: { usd: 2.5, seconds: 300 },
+    })
+    const readme = legacy.find((f) => f.path === "README.md")?.content ?? ""
+    expect(readme).toContain("- Cost: $2.50 over 300s")
+  })
+
   // `also` is the remember tool's same-node-merge record (tools-free.ts pushes
   // onto it when a second mention resolves to an already-kept entity) and no
   // fixture in this file had ever carried one, so the "Also recorded here" line
