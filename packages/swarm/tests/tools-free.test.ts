@@ -381,6 +381,86 @@ describe("recallTool", () => {
   })
 })
 
+/**
+ * `MAX_ROWS` (tools-free.ts:204, 40) is checked with the same
+ * `if (rows.length >= MAX_ROWS) break` idiom at the end of all six of
+ * recallTool's per-op loops (find, neighbors, gaps, barren, unread, board — the
+ * two ops with no loop, stats and the "no board" branch, carry no such check).
+ * A v8 branch-coverage pass (@vitest/coverage-v8@3.2.7, temporary devDependency)
+ * over packages/swarm/src showed all six as 0-hit: every existing recallTool
+ * test in this file, and every fixture rememberTool's own tests reuse, stays
+ * under 40 matching rows, so the cap that keeps recall "compact rows, not a
+ * dump" (line 203's own comment) had never actually engaged anywhere in the
+ * suite. Real runs cross it routinely — `find` on a common term, `gaps` on a
+ * young map, `unread` after a wide harvest — so an off-by-one here (`>=` vs
+ * `>`, or a break in the wrong loop) would ship silently. Each test below
+ * builds one op's qualifying population past 40 and asserts the row count
+ * lands on the cap, not above it.
+ */
+describe("recallTool row cap (MAX_ROWS = 40)", () => {
+  const bareNode = (key: string, overrides: Partial<MapNode> = {}): MapNode => ({
+    key, name: key, domain: key, kind: "company", what: "scraping api",
+    relation: "competitor", why: "matches the query", tier: "page",
+    evidence: [], also: [], contributions: [],
+    ...overrides,
+  })
+
+  it("find stops at 40 rows even when 45 nodes match the query", () => {
+    const map = new MapState("anchor.com")
+    for (let i = 0; i < 45; i++) map.nodes.set(`vendor${i}.com`, bareNode(`vendor${i}.com`))
+    const r = recallTool({ map, evidence: new RunEvidence(), ledger: ledger() }, { op: "find", q: "scraping" })
+    expect(r.rows).toHaveLength(40)
+  })
+
+  it("neighbors stops at 40 rows even when 45 edges touch the key", () => {
+    const map = new MapState("anchor.com")
+    const hub = "hub.com"
+    map.nodes.set(hub, bareNode(hub))
+    for (let i = 0; i < 45; i++) {
+      map.edges.push({ from: hub, to: `spoke${i}.com`, relation: "covers", why: "w", confidence: "inferred", evidence: [] })
+    }
+    const r = recallTool({ map, evidence: new RunEvidence(), ledger: ledger() }, { op: "neighbors", key: hub })
+    expect(r.rows).toHaveLength(40)
+  })
+
+  it("gaps stops at 40 rows even when 45 nodes are single-sourced and thin", () => {
+    const map = new MapState("anchor.com")
+    for (let i = 0; i < 45; i++) map.nodes.set(`gap${i}.com`, bareNode(`gap${i}.com`, { why: "thin" }))
+    const r = recallTool({ map, evidence: new RunEvidence(), ledger: ledger() }, { op: "gaps" })
+    expect(r.rows).toHaveLength(40)
+  })
+
+  it("barren stops at 40 rows even when 45 terms qualify", () => {
+    const map = new MapState("anchor.com")
+    const searches = Array.from({ length: 45 }, (_, i) => [
+      { query: `term${i}`, ok: true, urls: [`https://blog${i}.example.org/post`] },
+      { query: `term${i}`, ok: true, urls: [] },
+    ]).flat()
+    // No node on the map is ever a verified company/product, so none of the
+    // 45 terms' hosts can clear the "some host on the map is verified" skip.
+    const r = recallTool({ map, evidence: new RunEvidence(), ledger: ledger(), searches }, { op: "barren" })
+    expect(r.rows).toHaveLength(40)
+  })
+
+  it("unread stops at 40 rows even when 45 snippet-only urls are unread", () => {
+    const evidence = new RunEvidence()
+    for (let i = 0; i < 45; i++) {
+      evidence.record({ url: `https://snippet${i}.example.org/`, text: "a snippet naming several vendors in passing", status: "found", tier: "snippet" })
+    }
+    const r = recallTool({ map: new MapState("anchor.com"), evidence, ledger: ledger() }, { op: "unread" })
+    expect(r.rows).toHaveLength(40)
+  })
+
+  it("board stops at 40 rows even when 45 missions are queued", () => {
+    const board = new Board()
+    for (let i = 0; i < 45; i++) {
+      board.push({ lens: "l", brief: `question ${i}`, why: "w", priority: 80, tier: "peek", dedupeKey: `q${i}` }, "lead")
+    }
+    const r = recallTool({ map: new MapState("anchor.com"), evidence: new RunEvidence(), ledger: ledger(), board }, { op: "board" })
+    expect(r.rows).toHaveLength(40)
+  })
+})
+
 // ── remember ─────────────────────────────────────────────────────────────────
 
 describe("rememberTool", () => {
