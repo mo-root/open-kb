@@ -12,6 +12,7 @@ import {
 } from "@open-kb/core"
 import {
   MapState,
+  type MapNode,
   RunEvidence,
   newRunControl,
   runLead,
@@ -402,6 +403,73 @@ describe("runLead", () => {
     )
     // Free: no ledger draw beyond the turn's own (zero-priced here) model tokens.
     expect(h.ledger.spentUsd()).toBe(0)
+  })
+
+  // The recall tool's execute shapes its input with a three-way ternary
+  // (agent.ts:397): op==="find" -> { op, q }, op==="neighbors" -> { op, key },
+  // else -> { op }. Every recall call anywhere else in this file (and in
+  // orchestrator.test.ts) uses op "stats" or "gaps", so the ternary's first
+  // two arms had 0 hits in the full-suite branch map (coverage-final.json
+  // branch ids 26 and 27, agent.ts:397 cols 17-47 and 54-93) while the
+  // fallback `{ op }` arm ran every time. recallTool's own op "find"/"neighbors"
+  // paths are covered from tools-free.test.ts, but never through this wrapper —
+  // so a typo here (say, key -> `input.q` on the neighbors arm) would not fail
+  // a single test.
+  it("the recall tool wrapper's op-routing ternary forwards q into find and key into neighbors", async () => {
+    const h = harness(5)
+    const rival: MapNode = {
+      key: "rival.com",
+      name: "Rival",
+      domain: "rival.com",
+      kind: "company",
+      what: "fraud scoring API for online merchants",
+      relation: "competitor",
+      why: "sells the fraud-scoring step the anchor bundles into checkout, standalone",
+      tier: "page",
+      evidence: [],
+      also: [],
+      contributions: [{ writer: "lead", tier: "page" }],
+    }
+    h.map.nodes.set(rival.key, rival)
+    h.map.edges.push({
+      from: "rival.com",
+      to: "anchor.com",
+      relation: "competitor",
+      why: "same buyer, standalone",
+      confidence: "measured",
+      evidence: [],
+    })
+
+    const model = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = prompt.filter((m) => m.role === "tool").length
+        if (turn === 0)
+          return reply(call("1", "recall", { op: "find", q: "Rival", why: "look up the name I heard" }), false)
+        if (turn === 1)
+          return reply(
+            call("2", "recall", { op: "neighbors", key: "rival.com", why: "who does rival.com touch" }),
+            false,
+          )
+        return reply([{ type: "text" as const, text: "done." }], true)
+      },
+    })
+    const lead = runLead({ ...h, domain: "anchor.com", model, pricing: { inUsdPerM: 0, outUsdPerM: 0 } })
+
+    await lead.leadTurn()
+    await lead.leadTurn()
+    await lead.leadTurn()
+
+    // find: the op==="find" arm passed q through; recallTool's substring
+    // search over the map found the node and its row reached the next turn.
+    const afterFind = JSON.stringify(model.doGenerateCalls[1]!.prompt)
+    expect(afterFind).toContain(`"key":"rival.com"`)
+    expect(afterFind).toContain(`"name":"Rival"`)
+
+    // neighbors: the op==="neighbors" arm passed key through; recallTool's
+    // edge walk found the edge naming rival.com and its row reached the next turn.
+    const afterNeighbors = JSON.stringify(model.doGenerateCalls[2]!.prompt)
+    expect(afterNeighbors).toContain(`"from":"rival.com"`)
+    expect(afterNeighbors).toContain(`"to":"anchor.com"`)
   })
 })
 
