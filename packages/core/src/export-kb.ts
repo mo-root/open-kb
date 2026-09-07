@@ -744,9 +744,23 @@ export function exportKbFiles(run: ExportRunLike): ExportedFile[] {
   }
 
   // segments/
+  //
+  // TWO DIFFERENT LANES, ONE FILE, ONE OF THEM GONE. `market.name` is a bare
+  // `z.string()` in sweep.ts — nothing stops a model from naming a market
+  // entirely in a script this file's `[^a-z0-9]+` does not cover, or in bare
+  // punctuation — and the slug below strips either down to "". Grouping by
+  // the RAW name (as this used to) let "市場" and "!!!" land in two different
+  // map entries that both write `segments/unattributed.md`; `files` is a
+  // plain array with no path dedup, so the second push silently shadowed the
+  // first on disk. Folding any name whose slug would be empty into the
+  // literal key "unattributed" — the same key an absent `foundBy` already
+  // uses via `segmentOf`'s own fallback — merges them into the one bucket
+  // that name already means, before a path is ever computed.
+  const groupKeyOf = (seg: string): string =>
+    seg.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") ? seg : "unattributed"
   const bySegment = new Map<string, ExportEntity[]>()
   for (const e of kept) {
-    const seg = segmentOf(e)
+    const seg = groupKeyOf(segmentOf(e))
     const list = bySegment.get(seg) ?? []
     list.push(e)
     bySegment.set(seg, list)
@@ -757,6 +771,11 @@ export function exportKbFiles(run: ExportRunLike): ExportedFile[] {
       const lanes = (e.foundBy?.length ?? 0) > 1 ? ` *(also: ${e.foundBy!.slice(1).join(", ")})*` : ""
       return `- [[${slugOf(e)}]] — ${e.relation}${lanes}`
     })
+    // `|| "unattributed"` is dead by construction now, not an untested branch:
+    // `groupKeyOf` above already routes every `seg` whose slug would be empty
+    // to the literal string "unattributed" before this loop ever sees it, and
+    // "unattributed" itself slugifies to itself (already lowercase a-z). Kept
+    // as the honest fallback for what `seg` used to be able to carry here.
     const slug = seg.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "unattributed"
     /**
      * THE SHAPE BEFORE THE SCROLL. Every map has one lane holding a third to

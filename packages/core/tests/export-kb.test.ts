@@ -197,6 +197,33 @@ describe("exportKbFiles", () => {
     expect(bare.find((f) => f.path === "segments/unattributed.md")?.content).toContain("[[x-example]]")
   })
 
+  // The segment filename's `|| "unattributed"` (line 760) had never taken its
+  // right side under test, and reading why it could turned up a real bug, not
+  // just an untested branch: `segmentOf` (line 336) falls back to the literal
+  // string "unattributed" only when `foundBy` is absent — the case the
+  // fixture above covers. `market.name` is a bare `z.string()` in sweep.ts, so
+  // nothing stops a model from naming a market entirely in a script this
+  // file's regex does not cover, or in bare punctuation; two DIFFERENT such
+  // names (grouped, before this fix, by the raw name) each slugified to "" and
+  // both wrote `segments/unattributed.md` — `files` is a plain array with no
+  // path dedup, so the second entity's segment file silently shadowed the
+  // first's on disk. Grouping now folds any name whose slug would be empty
+  // into the literal key "unattributed" before a path is ever computed, so
+  // this asserts the fix: both entities land in the one merged file, and no
+  // other `segments/*.md` is minted for either of them.
+  it("a foundBy lane that slugifies to nothing still files under segments/unattributed.md", () => {
+    const odd = exportKbFiles({
+      entities: [
+        { name: "X", domain: "x.example", kind: "company", relation: "competitor", what: "A rival.", foundBy: ["!!!"] },
+        { name: "Y", domain: "y.example", kind: "company", relation: "competitor", what: "Another.", foundBy: ["市場"] },
+      ],
+    })
+    expect(odd.some((f) => f.path.match(/^segments\/(?!unattributed\.md$)/))).toBe(false)
+    const seg = odd.find((f) => f.path === "segments/unattributed.md")?.content ?? ""
+    expect(seg).toContain("[[x-example]]")
+    expect(seg).toContain("[[y-example]]")
+  })
+
   // `run.stats?.usd`/`run.stats?.seconds` (line 803-804) had never been the
   // reason a value appeared: every fixture with a `report` in this file also
   // gave that report its own usd/seconds (the shared fixture above), and the
