@@ -164,6 +164,24 @@ describe("exportKbFiles", () => {
     expect(readme).toContain("Ending: The lead stopped: ran out of new hosts to investigate.")
   })
 
+  // `rep.recall.probes?.length ?? 0` (export-kb.ts:861) had never taken its
+  // `?? 0` arm: the shared fixture's `recall` block above sets both `pooled`
+  // and `probes: [{}]` together, and every other fixture in this file omits
+  // `recall` entirely (so the guarding `pooled != null` never even opens this
+  // line). `probes` is optional on `ExportRunLike`'s own `recall` shape for a
+  // reason: `packages/swarm/src/from-sweep.ts`'s local report type carries the
+  // same optionality, and the export route reads runs off disk whose age this
+  // module cannot assume — a `pooled` figure from a schema that predates
+  // per-probe tracking is exactly the shape this fallback is for.
+  it("falls back to 0 probe pages when recall carries a pooled figure but no probes array", () => {
+    const noProbes = exportKbFiles({
+      entities: [{ name: "X", domain: "x.example", kind: "company", relation: "competitor", what: "A rival." }],
+      report: { recall: { pooled: 0.4 } },
+    })
+    const readme = noProbes.find((f) => f.path === "README.md")?.content ?? ""
+    expect(readme).toContain("over 0 probe page(s)")
+  })
+
   it("manifest lists every file and every entity key", () => {
     const manifest = JSON.parse(get("manifest.json"))
     expect(manifest.entities.map((e: { key: string }) => e.key)).toContain("oxylabs-io")
