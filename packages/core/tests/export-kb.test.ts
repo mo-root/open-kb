@@ -213,6 +213,24 @@ describe("exportKbFiles", () => {
     const note = merged.find((f) => f.path === "entities/x-example.md")?.content ?? ""
     expect(note).toContain("**Also recorded here:** X Inc — the same company under a second name; an unnamed second mention")
   })
+
+  // `if (e.what) lines.push(...)` (the description paragraph) had only ever seen
+  // its true arm: every kept row in this file's shared fixture and every other
+  // one-off fixture in this file carries a `what`. exportDrop's own `silent`
+  // gate (line 107) does not require one — `!e.what && !e.why && !e.spans?.length`
+  // keeps a row that has a `why` or `spans` even with no `what` at all, the same
+  // asymmetry the "captured span but no what/why" test above already exercises
+  // for spans. A judge call that named a relation and its reason but wrote no
+  // one-line summary is that shape, and it must render a page with no
+  // description paragraph, not a page missing its heading or its Route line.
+  it("a kept row with no `what` at all renders no description paragraph, just the heading and Route", () => {
+    const noWhat = exportKbFiles({
+      entities: [{ name: "No What", domain: "nowhat.example", kind: "company", relation: "competitor", why: "Same buyer, no summary line yet." }],
+    })
+    const note = noWhat.find((f) => f.path === "entities/nowhat-example.md")?.content ?? ""
+    expect(note).toContain("# No What\n\n**Route:**")
+    expect(note).toContain("**Why it's on the map:** Same buyer, no summary line yet.")
+  })
 })
 
 /**
