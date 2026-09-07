@@ -1217,6 +1217,14 @@ export async function runInvestigator(mission: Mission, deps: InvestigatorDeps):
     }
     const f = digest.findings[longest]!
     if (f.length > 40) digest.findings[longest] = `${f.slice(0, Math.floor(f.length / 2))}…`
+    // The `else` (drop the finding rather than shrink it) is dead by construction,
+    // not an untested branch. It only runs once the LONGEST finding is already
+    // <=40 chars, which means every finding in the (<=3-item, line 1200) array is.
+    // Measured worst case at that point — "crashed"/"timeout" status, 9-digit
+    // added/merged counts, a 6-digit spentUsd, and three 40-char findings, the
+    // most padding every field can carry — serializes to 242 chars, 61 tokens:
+    // half of DIGEST_TOKEN_CAP. `over()` cannot be true once every finding is
+    // this short, so this arm never runs.
     else digest.findings.splice(longest, 1)
   }
 
