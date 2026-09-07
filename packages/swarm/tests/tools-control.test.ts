@@ -452,6 +452,18 @@ describe("nextTool", () => {
     nextTool(ctx, { after: { seconds: 45 }, why: "second" })
     expect(ctx.control.next).toEqual({ seconds: 45, why: "second" })
   })
+
+  it("nothing is left to wait for after finish", () => {
+    // The two tools sit side by side on the same lead turn (agent.ts:606-618),
+    // so a model that calls both — finish, then next, in the same batch or the
+    // next turn before the harness ends the loop — is not a hypothetical
+    // caller, unlike spawnTool and proposeTool's matching guard this mirrors.
+    const ctx = ctxOf()
+    finishTool(ctx, { reason: "mapped", summary: "done", unresolved: [] })
+    const r = nextTool(ctx, { after: { landings: 1 }, why: "t" })
+    expect(r).toMatchObject({ ok: false, reason: "the run is finishing; there is no next turn to wait for" })
+    expect(ctx.control.next).toBeNull()
+  })
 })
 
 describe("finishTool", () => {
