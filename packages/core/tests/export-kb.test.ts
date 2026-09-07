@@ -915,6 +915,29 @@ describe("an edge to a gated entity is labeled, never deleted", () => {
     expect(page).not.toContain("trash.example")
   })
 
+  // `slugifyRef(ed.from) === slug ? ed.to : ed.from` (export-kb.ts:665) picks
+  // "the other end" of a half-edge off whichever side the surviving entity is
+  // NOT on — but every half-edge fixture in this file, including the one
+  // above, puts the kept entity on `from` and the gated one on `to`, so the
+  // `ed.from` arm (kept entity on `to` instead) had never run. The rendered
+  // label must not depend on which side of the edge happens to carry the
+  // survivor.
+  it("labels a gated end the same way when the surviving entity is the edge's `to`, not its `from`", () => {
+    const reversed = {
+      anchor: "anchor.example",
+      entities: [
+        { name: "Kept", domain: "kept.example", kind: "company", relation: "competitor", what: "A rival.", why: "Same shortlist." },
+        { name: "Zine", domain: "zine.example", kind: "publisher", relation: "covers", what: "Writes about the market.", why: "Coverage." },
+      ],
+      edges: [{ from: "zine.example", to: "kept.example", relation: "covers", why: "the zine reviews it", confidence: "measured" }],
+    }
+    const files = exportKbFiles(reversed)
+    const page = files.find((f) => f.path === "entities/kept-example.md")?.content ?? ""
+    expect(page).toContain("covers zine.example")
+    expect(page).toContain("publishing near the market")
+    expect(page).not.toContain("[[zine-example]]")
+  })
+
   // TAINTED (line 566 in export-kb.ts) names three reasons, but the fixture
   // above only ever puts "noise" through the filter it guards — "withdrawn"
   // and "personal" were never combined with an edge anywhere in this file
