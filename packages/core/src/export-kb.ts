@@ -706,6 +706,12 @@ export function exportKbFiles(run: ExportRunLike): ExportedFile[] {
      * future `because` phrasing needs no change here, and a list whose rows
      * genuinely differ keeps every word where it was.
      */
+    // `?? ""` has no honest seam: every entity in `sorted` came from `kept`
+    // (line 547), and `exportDrop`'s own `unexplained` gate (line 111) already
+    // dropped any `relation === "unknown"` entity whose `because` was falsy
+    // before `kept` was built. So whenever this ternary's `unknown` arm runs,
+    // `e.because` is already guaranteed truthy — the `?? ""` fallback is
+    // reached by no entity that survives to this line.
     const becauses = sorted.map((e) => (e.relation === "unknown" ? (e.because ?? "") : "")).filter(Boolean)
     let shared = ""
     if (becauses.length > 2) {
