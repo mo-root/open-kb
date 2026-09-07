@@ -93,6 +93,10 @@ const run = {
   edges: [
     { from: "oxylabs.io", to: "brightdata.com", relation: "competitor", confidence: "inferred" },
     { from: "oxylabs.io", to: "reader.example", relation: "covers", confidence: "measured" },
+    // Both ends kept (unlike the "measured" edge above, whose `to` is gated as
+    // commentary and never reaches this rendering path at all) — the pair that
+    // proves a page-verified edge prints bare, with no confidence marker.
+    { from: "oxylabs.io", to: "hole.example", relation: "discussed-by", confidence: "measured" },
   ],
   report: {
     usd: 5.15,
@@ -125,6 +129,18 @@ describe("exportKbFiles", () => {
     const note = get("entities/oxylabs-io.md")
     expect(note).toContain("[[brightdata-com]]")
     expect(note).toContain("*(inferred)*")
+  })
+
+  // istanbul (not v8 — see this commit's message) named line 657's alternate
+  // ("") branch as never taken: every full edge in every prior fixture here
+  // happened to carry confidence "inferred", so a bug always appending the
+  // marker (or an inverted `=== "inferred"` check) would pass every existing
+  // assertion. `hole.example` is a normal kept entity, not gated the way
+  // reader.example is, so this is the first full (both-ends-kept) edge in the
+  // suite whose confidence is anything but "inferred".
+  it("a measured edge between two kept entities prints with no confidence marker", () => {
+    const note = get("entities/oxylabs-io.md")
+    expect(note).toContain("- discussed-by [[hole-example]]\n")
   })
 
   it("unknown.md frames refusals as refusals with their because", () => {
