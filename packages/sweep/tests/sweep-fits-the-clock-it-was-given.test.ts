@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs"
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi } from "vitest"
 import { MEASURED_PHASE_COSTS } from "@open-kb/core"
-import { SERP, runFixture, type Harness } from "./fixture.js"
+import { SERP, runFixture, defaultScript, type Harness } from "./fixture.js"
 
 /**
  * A RUN WITH A CLOCK MUST FIT IN IT — and a run without one must not notice.
@@ -330,4 +330,59 @@ describe("the clock running out during LINKING ships the map, it does not lose i
     expect(firstGuard).toContain("unlinked += batch.length")
     expect(firstGuard).not.toContain('throw new Error("aborted")')
   })
+})
+
+describe("canAffordLinking false declines BOTH asks, not just the pair one", () => {
+  it("skips the pair batch and the orphan batch, and reports both", async () => {
+    // `canAffordLinking` gates two independent sites (sweep.ts: the pair
+    // batch just above `if (!canAffordLinking && unresolved.length ...)`, and
+    // the orphan ask at `if (orphans.length && !canAffordLinking)`) and grep
+    // found neither guarded message anywhere in this suite before this test —
+    // every other clock test here drives the search or the mid-link abort,
+    // never a deadline that is still short once linking itself is reached.
+    //
+    // `Date` alone is faked, not the timers `idle()` polls with — this run's
+    // own `setTimeout` backoff between search waves still ticks on the real
+    // clock, so the search phase behaves exactly as every other fixture run
+    // does. Only the deadline arithmetic is under the test's control: the run
+    // opens with 40s left (`canAffordLinking` needs 30), comfortably enough
+    // to search, rank and judge the fixture's small map, and the FIRST
+    // classify call jumps the clock to 25s left before returning — safe to do
+    // on the first call rather than the last, because `judgeHosts`' worker
+    // pool pops every host from the queue synchronously, before any of their
+    // classify calls resolves, so a jump inside one classify body cannot
+    // still short a host that was already queued.
+    const t0 = Date.parse("2026-01-01T00:00:00Z")
+    vi.useFakeTimers({ toFake: ["Date"] })
+    try {
+      vi.setSystemTime(t0)
+      const baseClassify = defaultScript().classify
+      let jumped = false
+      const h = await runFixture({
+        sweepOptions: { deadlineAt: t0 + 40_000 },
+        script: {
+          classify: (host, prompt) => {
+            if (!jumped) {
+              jumped = true
+              vi.setSystemTime(t0 + 15_000)
+            }
+            return baseClassify(host, prompt)
+          },
+        },
+      })
+      expect(h.calls.filter((c) => c.phase === "link")).toHaveLength(0)
+      expect(h.calls.filter((c) => c.phase === "orphan")).toHaveLength(0)
+      expect((h.result.report.budget as { linkingSkipped: boolean }).linkingSkipped).toBe(true)
+      const orphanStats = (
+        h.result.report.linking as { orphans: { orphans: number; asked: number; linked: number } }
+      ).orphans
+      expect(orphanStats.orphans).toBeGreaterThan(0)
+      expect(orphanStats.asked).toBe(0)
+      expect(orphanStats.linked).toBe(0)
+      expect(h.says.some((s) => s.includes("pairs left unasked"))).toBe(true)
+      expect(h.says.some((s) => s.includes("orphans left unasked"))).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  }, 30_000)
 })
