@@ -935,6 +935,27 @@ describe("an edge to a gated entity is labeled, never deleted", () => {
     expect(page).not.toContain("adeveloper.example")
   })
 
+  // `droppedEnd.set(slugifyRef(e.domain ?? ""), why)` (export-kb.ts:545): every
+  // dropped entity above carries a domain, so the `?? ""` fallback had never
+  // run. `domain` is optional on ExportEntity (line 20), and a row the
+  // classifier calls noise before anything was fetched can lack one — a live
+  // path with no fixture yet, same shape as the TAINTED comment above. Nothing
+  // downstream can key an edge by "" (an edge's `from`/`to` are always a real
+  // host), so there is no half-edge to assert on; this only proves the
+  // fallback runs without crashing and the row still lands in the tally.
+  it("drops a domain-less entity without crashing, and still counts it", () => {
+    const files = exportKbFiles({
+      anchor: "anchor.example",
+      entities: [
+        { name: "Kept", domain: "kept.example", kind: "company", relation: "competitor", what: "A rival.", why: "Same shortlist." },
+        { name: "Trash", kind: "noise", relation: "none", what: "", why: "" },
+      ],
+    })
+    const readme = files.find((f) => f.path === "README.md")?.content ?? ""
+    expect(readme).toContain("1 host(s) surfaced and did not make the map")
+    expect(files.some((f) => f.content.includes("Trash"))).toBe(false)
+  })
+
   it("prints the roads on a page whose entity carries them", () => {
     const files = exportKbFiles({
       anchor: "anchor.example",
