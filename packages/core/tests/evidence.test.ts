@@ -85,6 +85,18 @@ describe("EvidenceStore", () => {
     expect(s.hasFetched("https://a.com/other")).toBe(false)
   })
 
+  it("counts every record, not just fetched-and-found ones", () => {
+    // size() feeds the "N fetched" digest a run reads mid-turn (tools-free.ts's harvest
+    // classify closure). #byUrl only remembers "found" records (see record() above), so a
+    // size() built on that map instead of #records would undercount a run that hit blocked
+    // or not-found pages — exactly the runs where the count matters most.
+    const s = new EvidenceStore(NOW)
+    expect(s.size()).toBe(0)
+    s.record({ url: "https://a.com/p", text: "Acme sells anti-bot bypass APIs.", status: "found" })
+    s.record({ url: "https://a.com/blocked", text: "", status: "blocked", reason: "empty-body" })
+    expect(s.size()).toBe(2)
+  })
+
   it("refuses a quote that is empty after whitespace normalisation", () => {
     const s = new EvidenceStore(NOW)
     const rec = s.record({ url: "https://a.com/p", text: "Acme sells anti-bot bypass APIs.", status: "found" })
