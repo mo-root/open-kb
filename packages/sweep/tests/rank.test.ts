@@ -231,6 +231,20 @@ describe("judgeHosts", () => {
     expect(out.entities[0]!.because).toContain("model")
   })
 
+  it("a model classify failure that is not an Error instance still names it", async () => {
+    // Same ternary as the fetch-throw test above, one call site down (judge.ts's
+    // classify catch): `deps.classify` is caller-supplied, and its contract does
+    // not promise an Error either. Every other classify throw in this file
+    // throws `new Error(...)`, so this else arm had never run here.
+    const out = await judgeHosts([cand("acme.com")], {
+      fetcher: fakeFetcher({ "https://acme.com/": vendorHtml }),
+      classify: async () => { throw "rate limited" },
+      anchor: "anchor.com",
+      aggregatorThreshold: 12,
+    })
+    expect(out.entities[0]!.because).toBe("the model call failed (rate limited)")
+  })
+
   // The measured calibration result: the aggregator threshold came back NULL —
   // no separation between vendor and directory front pages. `null` disables the
   // predicate rule entirely, so an aggregator-shaped page must fall through to
@@ -355,6 +369,28 @@ describe("judgeHosts pool", () => {
     expect(out.stats.fetched).toBe(4)
     expect(out.stats.settledFree + out.stats.modelJudged).toBe(out.stats.fetched)
     expect(fetches.find((f) => f.url === "https://boom.com/")!.ok).toBe(false)
+  })
+
+  it("a port that throws a non-Error value still names it in the because sentence", async () => {
+    // judge.ts's catch reads `err instanceof Error ? err.message : String(err)`.
+    // The FetchPort contract only promises a throw, not an Error instance, and
+    // every other throwing fetcher in this file throws `new Error(...)`, so the
+    // `String(err)` arm had never run — a fetcher that rejects with a bare
+    // string (some do, on a raw ENOTFOUND from a lower-level socket API) would
+    // have rendered "[object Object]" or worse if the fallback were ever wrong.
+    const hosts = [cand("boom.com")]
+    const fetcher: FetchPort = {
+      async get() {
+        throw "ECONNRESET"
+      },
+    }
+    const out = await judgeHosts(hosts, {
+      fetcher,
+      classify: async () => ({ name: "x", kind: "company", what: "", relation: "competitor", why: "", spans: [] }),
+      anchor: "anchor.com",
+      aggregatorThreshold: 12,
+    })
+    expect(out.entities[0]!.because).toBe("its front page fetch threw this run (ECONNRESET)")
   })
 
   it("a throw caused by the abort signal rejects the run instead of settling the host", async () => {
