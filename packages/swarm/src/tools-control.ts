@@ -886,12 +886,29 @@ export function finishTool(ctx: ControlCtx, input: FinishInput): FinishReturn {
     // Which refusal this IS: a re-issue inside the same turn repeats the one
     // already spoken, so it neither advances the count nor moves the number
     // the next turn will be measured against.
+    //
+    // `prior?.refusals ?? 1` has no honest seam: `sameTurn` (above) is
+    // `... && prior?.refusedAtTurn === reading.turns`, so sameTurn===true
+    // already proves `prior` is defined — an undefined `refusedAtTurn` can
+    // never equal a number — and `refusals` is typed `number`, never
+    // optional, so a defined `prior` always carries one. A scoped v8 coverage
+    // pass on this file (97.63% branch) names the `?? 1` arm's hit count as 0
+    // across all 409 swarm tests, including "three finish calls in ONE turn"
+    // below, the test this line exists for.
     const nth = sameTurn ? (prior?.refusals ?? 1) : (prior?.refusals ?? 0) + 1
     ctx.control.gate = {
       refusals: nth,
       objections: prior?.objections ?? objections, // the first refusal's sentences are the record
       carried: [],
       refusedFinish: { reason: input.reason, summary: input.summary, unresolved: [...input.unresolved] },
+      // `prior?.workAtRefusal ?? workLog.length`'s `??` arm is dead for the
+      // same reason plus one more: the only OTHER site that creates a gate
+      // record (below, `workAtRefusal: null`) always coincides with
+      // `ctx.control.finished` being set in that same call, which blocks
+      // every later call at the top-of-function guard before it could read
+      // this `prior` again. So a `prior` reached via `sameTurn===true` was
+      // always created HERE, on an earlier call, and always carries a real
+      // number.
       workAtRefusal: sameTurn ? (prior?.workAtRefusal ?? workLog.length) : workLog.length,
       workAnswered: 0,
       answeredBy: [],
@@ -916,6 +933,12 @@ export function finishTool(ctx: ControlCtx, input: FinishInput): FinishReturn {
       prior.workAnswered = Math.max(0, workSince)
       // The receipt, not a recount: the log is append-only, so everything past
       // the length the refusal froze is what the refusal bought.
+      //
+      // `owed === null` is the same dead arm documented above, reached from
+      // the other direction: `prior` here can only be the refusal-created
+      // record (never the `workAtRefusal: null` one below, which ends the run
+      // in the same call it is created), and that record's `workAtRefusal` is
+      // never null.
       prior.answeredBy = owed === null ? [] : [...workLog.slice(owed)]
       prior.stood = stood
     } else {
