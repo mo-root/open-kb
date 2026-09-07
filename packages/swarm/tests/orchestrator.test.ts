@@ -1859,6 +1859,49 @@ describe("runSwarm: the finish gate", () => {
     expect(turns[2]).toContain("45 seconds left; call finish") // the woken turn, not the seed turn
     expectEndingShape(run.ending, run.ledger)
   })
+
+  // `tenMissionSweep` above (and every other sweep-handoff fixture in this
+  // file) opens several missions at once, so `queuedKeys.length === 1 ?
+  // "mission" : "missions"` (orchestrator.ts ~999) had only ever taken its
+  // plural arm — measured with `npx vitest run --coverage`, scoped to this
+  // package: orchestrator.ts stood at 89% branch with that line's singular
+  // arm at 0 hits across the whole suite. A handoff of exactly one entity is
+  // the one case nothing else here builds.
+  it("the sweep handoff says '1 mission', not '1 missions', for a handoff of exactly one", async () => {
+    const oneMissionSweep: SweepRunLike = {
+      anchor: "anchor.com",
+      entities: [
+        {
+          name: "Rival",
+          domain: "rival.com",
+          kind: "company",
+          relation: "competitor",
+          why: "same fraud scoring sold to the same merchants",
+          foundBy: ["Scoring"],
+        },
+      ],
+    }
+    const turns: string[] = []
+    const lead = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const last = JSON.stringify(prompt.filter((m) => m.role === "user").at(-1)?.content ?? "")
+        turns.push(last)
+        if (last.includes("the sweep handoff opened")) {
+          return reply(call("f1", "finish", { reason: "verified", summary: "s", unresolved: [], why: "d" }), false)
+        }
+        const turn = leadTurnOf(prompt)
+        return reply(call(`n${turn}`, "next", { after: { landings: turn + 1 }, why: "wait for the handoff" }), false)
+      },
+    })
+
+    const run = await runSwarm(mkOpts({ lead, over: { fromSweep: oneMissionSweep } }))
+
+    const note = turns.find((t) => t.includes("the sweep handoff opened"))
+    expect(note).toBeDefined()
+    expect(note).toContain("opened 1 mission from a prior sweep")
+    expect(note).not.toContain("opened 1 missions")
+    expectEndingShape(run.ending, run.ledger)
+  }, 20_000)
 })
 
 // ── tier deadlines and the wall ─────────────────────────────────────────────
