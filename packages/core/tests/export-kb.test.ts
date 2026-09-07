@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { exportDrop, exportKbFiles, receiptSource, slugOf, withoutStolenNames } from "../src/export-kb.js"
-import type { ExportEntity } from "../src/export-kb.js"
+import type { ExportEdge, ExportEntity } from "../src/export-kb.js"
 
 /** A tiered run (the swarm shape): every kept row carries a provenance tier, so
  *  the export is allowed to explain what a tier is. Also carries one row per
@@ -811,6 +811,39 @@ describe("withoutStolenNames", () => {
       { from: "x.example", to: "aws.amazon.com", why: "a page on x.example discusses payments" },
       { from: "aws.amazon.com", to: "n.example", why: 'a page on aws.amazon.com names "Neighbour"' },
     ])
+  })
+
+  it("does not throw on an edge with no `to` or `why` at all, and keeps it", () => {
+    // `MintedEdge.to` is typed as required, but the same gap SELF-359 found for
+    // `NamedRow.name` applies here too: scripts/export-kb.ts's `loadRun` is
+    // `JSON.parse(readFileSync(...))` handed straight in with no schema check
+    // on `edges`, so a hand-edited or pre-`to`-field run can omit it at
+    // runtime. `stolen.get(norm(ed.to ?? ""))` (line 517) is what stands
+    // between that and `norm(undefined)` throwing inside `.trim()`.
+    const edges = [{ from: "n.example", relation: "competitor" }] as unknown as ExportEdge[]
+    const result = withoutStolenNames({
+      anchor,
+      entities: [{ name: "Stripe", domain: "aws.amazon.com", kind: "product", relation: "competitor", what: "x", why: "y" }],
+      edges,
+    })
+    expect(result.edges).toEqual(edges)
+  })
+
+  it("keeps a stolen-host edge whose `why` is absent, not just empty", () => {
+    // `why` is optional on `MintedEdge`, but every edge above sets it, so
+    // `(ed.why ?? "").includes(...)` (line 518) had only ever run its
+    // defined-string arm. A row from before `why` was recorded, or one this
+    // repair itself just blanked (line 505's `why: ""` on the entity side has
+    // a sibling gap here on the edge side), reaches `.includes` through the
+    // `?? ""` fallback instead — and must still be kept, since an edge that
+    // says nothing cannot be quoting the stolen name.
+    const edges = [{ from: "n.example", to: "aws.amazon.com", relation: "competitor" }] as unknown as ExportEdge[]
+    const result = withoutStolenNames({
+      anchor,
+      entities: [{ name: "Stripe", domain: "aws.amazon.com", kind: "product", relation: "competitor", what: "x", why: "y" }],
+      edges,
+    })
+    expect(result.edges).toEqual(edges)
   })
 
   it("declines below the 3-char floor, unchanged and with nothing stripped", () => {
