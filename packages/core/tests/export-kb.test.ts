@@ -1005,4 +1005,25 @@ describe("an edge to a gated entity is labeled, never deleted", () => {
     const page = files.find((f) => f.path === "entities/kept-example.md")?.content ?? ""
     expect(page).toContain("**Found by:** `log search` · `grep alternatives`")
   })
+
+  // `if (!bySlug.has(s)) bySlug.set(s, e)` (export-kb.ts:553): every kept
+  // entity in every existing fixture carries a distinct domain, so the
+  // already-seen arm had never run. `repaired.entities` is not deduped by
+  // domain anywhere upstream of this loop -- a live path, not a hypothetical
+  // one, whenever the classifier surfaces the same host twice under two
+  // names in one run. First writer wins; the second is absorbed rather than
+  // rendered.
+  it("keeps the first entity's own page when two kept rows collide on the same slug", () => {
+    const files = exportKbFiles({
+      anchor: "anchor.example",
+      entities: [
+        { name: "First Name", domain: "same.example", kind: "company", relation: "competitor", what: "A rival.", why: "Same shortlist." },
+        { name: "Second Name", domain: "same.example", kind: "company", relation: "competitor", what: "A different rival.", why: "Also same shortlist." },
+      ],
+    })
+    const pages = files.filter((f) => f.path.startsWith("entities/"))
+    expect(pages).toHaveLength(1)
+    expect(pages[0]!.content).toContain("First Name")
+    expect(pages[0]!.content).not.toContain("Second Name")
+  })
 })
