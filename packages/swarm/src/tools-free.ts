@@ -124,6 +124,15 @@ export function readTool(ctx: ReadCtx, input: ReadInput): ReadReturn {
     return { ok: false, reason: "no such handle in this run", poolLeftUsd }
   }
   if (rec.status !== "found") {
+    // `rec.reason ? ... : ""` has no honest seam: every producer of a
+    // non-"found" record in this repo supplies a real reason string. The two
+    // literal callers (tools-paid.ts:349 "no-response", :469 "fetch-failed:
+    // ...") hardcode one; every other caller (tools-paid.ts:374,694 and
+    // core/tools.ts:413,441) forwards `sniff()`'s own `s.reason`, and
+    // `SniffResult`'s non-"found" arm (core/sniff.ts:79) types `reason` as a
+    // required `SniffReason`, never optional. `RecordInput.reason?: string`
+    // is defensive typing with no real producer that ever omits it — same
+    // shape as export-kb.ts's `gate.objections ?? []` (SELF-386, fdaf192).
     return {
       ok: false,
       reason: `that page was ${rec.status}${rec.reason ? ` (${rec.reason})` : ""}; there is nothing to read`,
