@@ -48,6 +48,20 @@ describe("addressKey: the place a page was read, not the URL string that reached
     expect(() => addressKey("https://a.com/100%")).not.toThrow()
     expect(addressKey("https://a.com/100%")).toBe("a.com/100%")
   })
+
+  // First shown red against the pre-fix code: registrableHost("www.") and
+  // registrableHost(".") are both "" (confirmed by direct evaluation,
+  // packages/core/src/url.ts), and both parse as valid URL hostnames (confirmed:
+  // `new URL("https://www./foo").hostname` is "www."). The old bare
+  // `registrableHost(u.hostname)` read folded BOTH degenerate hosts onto the
+  // same "" prefix, so two different hosts' pages collided on one address key.
+  // Falls back to the raw, case-folded hostname now, the same shape of guard
+  // the sibling keying functions already carry.
+  it("keys two different degenerate hosts apart, not onto the same empty prefix", () => {
+    expect(addressKey("https://www./foo")).not.toBe(addressKey("https://./foo"))
+    expect(addressKey("https://www./foo")).toBe("www./foo")
+    expect(addressKey("https://./foo")).toBe("./foo")
+  })
 })
 
 describe("echoFoldedDigest: the digest a soft-404 template cannot escape", () => {

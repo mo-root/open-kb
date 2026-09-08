@@ -80,6 +80,22 @@ export function textDigest(text: string): string {
  * gains nothing, and the README states the trade in full. Neither the gate nor
  * the fetch tool can say it at the moment it bites: the fetch succeeded, and
  * the gate's sentences are about the MAP, not about this rule.
+ *
+ * `|| u.hostname.toLowerCase()`: `registrableHost("")` is `""`, and so is
+ * `registrableHost` of anything that reduces to nothing after its own
+ * www-strip and trailing-dot trim — "www.", ".", "WWW." all measure empty
+ * (packages/core/src/url.ts, confirmed by direct evaluation), and `new
+ * URL(...)` parses all three as a syntactically valid, if useless, hostname
+ * (confirmed: `new URL("https://www./foo").hostname` is `"www."`). A bare
+ * `registrableHost(u.hostname)` read folded every such URL's host onto the
+ * SAME `""`, so `addressKey("https://www./foo")` and
+ * `addressKey("https://./foo")` — two different, if degenerate, hosts —
+ * collided on the identical key `"/foo"`. `hasAddress` is this function's one
+ * caller that matters: a run that fetched the first would read the second as
+ * already-read and refuse to fetch it, the same false "already here" this
+ * whole function exists to avoid for real hosts. Same guard the sibling
+ * keying functions already carry (drift.ts's `edgeEndpointKey`, alias.ts's
+ * `anchorAliasSet`, judge.ts's `judgeHosts`) for the identical shape of input.
  */
 export function addressKey(url: string): string {
   let u: URL
@@ -95,7 +111,8 @@ export function addressKey(url: string): string {
     /* a lone % is not an escape; the raw spelling is the honest key */
   }
   path = path.replace(/\/+/g, "/").replace(/\/+$/, "")
-  return `${registrableHost(u.hostname)}${path.toLowerCase()}`
+  const host = registrableHost(u.hostname) || u.hostname.toLowerCase()
+  return `${host}${path.toLowerCase()}`
 }
 
 /** Escapes for a literal inside a RegExp alternation. */
