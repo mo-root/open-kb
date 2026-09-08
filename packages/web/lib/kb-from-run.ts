@@ -423,6 +423,20 @@ function place(result: SweepResult): { kept: Placed[]; noise: Entity[]; edges: E
    */
   const anchorHost = (result.anchor || "").trim().toLowerCase().replace(/^www\./, "")
 
+  // `pathFor` sanitizes `[/\\?#]` to `-` (its own `safe`, above) but `dedupe`'s
+  // key does not, so two domain-less entities `dedupe` already told apart —
+  // "Data/Teams" and "Data#Teams" key to distinct strings there — can still
+  // collapse onto the same `pathFor` output, "players/data-teams.md". Same
+  // conflation `graphOf`'s market-node fix guards against on a declared
+  // capability's slug (its own `usedSlugs`); this is `place`'s equivalent for
+  // a kept entity's path, which used to feed `kept.map` with no check at all —
+  // the second entity's node silently stood in for both. A domain-having
+  // entity is not disambiguated here: `dedupe` already merges every row
+  // sharing a domain into one before this loop runs, and a real domain never
+  // contains `/\?#`, so `pathFor` cannot manufacture a collision `dedupe` did
+  // not already resolve for that branch.
+  const usedPaths = new Set<string>()
+
   for (const e of dedupe(map.entities)) {
     const host = (e.domain || e.name || "").trim().toLowerCase().replace(/^www\./, "")
     if (anchorHost && host === anchorHost) continue
@@ -435,9 +449,16 @@ function place(result: SweepResult): { kept: Placed[]; noise: Entity[]; edges: E
       noise.push(e)
       continue
     }
+    const base = pathFor(group, e)
+    let path = base
+    if (!e.domain?.trim()) {
+      const stem = base.slice(0, -".md".length)
+      for (let n = 2; usedPaths.has(path); n++) path = `${stem}-${n}.md`
+    }
+    usedPaths.add(path)
     kept.push({
       entity: e,
-      path: pathFor(group, e),
+      path,
       group,
       type: nodeTypeOf(group),
       relevance: RELATION_WEIGHT[e.relation] ?? RELATION_WEIGHT.none,

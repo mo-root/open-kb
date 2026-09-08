@@ -175,6 +175,27 @@ describe("dedupe, a real relation beats a placeholder `none`", () => {
   })
 })
 
+/** `pathFor` sanitizes `[/\\?#]` to `-` (kb-from-run.ts:149) but `dedupe`'s own
+ *  key (line 159) does not, so two domain-less entities that `dedupe` treats as
+ *  DIFFERENT rows — "Data/Teams" and "Data#Teams" both key to distinct strings —
+ *  can still collapse onto the same `pathFor` output, "players/data-teams.md".
+ *  The same conflation `graphOf`'s market-node fix already guards against
+ *  (`uniqueCaps`/`usedSlugs` above), here on `place()`'s per-entity path
+ *  instead of a declared market's slug. `place()`'s `kept.map` had no
+ *  equivalent guard: two entities minting one node id, the second silently
+ *  standing in for both. */
+describe("place, two domain-less entities sharing a sanitized path", () => {
+  it("gives each its own node instead of collapsing onto one id", () => {
+    const g = graphOf(run([
+      { name: "Data/Teams", domain: "", kind: "company", what: "w1", relation: "none", why: "y1" },
+      { name: "Data#Teams", domain: "", kind: "company", what: "w2", relation: "none", why: "y2" },
+    ]))
+    const players = g.nodes.filter((n) => n.group === "players")
+    expect(players).toHaveLength(2)
+    expect(new Set(players.map((n) => n.id)).size).toBe(2)
+  })
+})
+
 describe("graphOf, prominence — the search's own count, apart from placement", () => {
   const nodeFor = (g: ReturnType<typeof graphOf>, id: string) =>
     g.nodes.find((n) => n.id.includes(id))!
