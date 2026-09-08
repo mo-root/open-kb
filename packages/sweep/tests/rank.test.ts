@@ -220,6 +220,25 @@ describe("judgeHosts", () => {
     expect(out.probePages.map((p) => p.url)).toEqual(["https://acme.com/"])
   })
 
+  // First shown red against the pre-fix code: registrableHost("www.") is ""
+  // (confirmed by direct evaluation), and namesHost(text, "") — the boundary
+  // regex with an empty host spliced in — matches any two adjacent
+  // punctuation characters, which every real HTML page has (`</p>`, `="`, …).
+  // So a degenerate anchor made judge.ts's own probe-gathering (judge.ts:391)
+  // treat EVERY readable host's page as naming the anchor, even one that
+  // never mentions "www." at all — the sibling of the bug SELF-391/SELF-392
+  // fixed in alias.ts's anchorAliasSet and core's answerKeyRecall, at the one
+  // call site those two commits left for a future fire.
+  it("does not treat every page as naming the anchor when the anchor reduces to nothing", async () => {
+    const out = await judgeHosts([cand("acme.com")], {
+      fetcher: fakeFetcher({ "https://acme.com/": vendorHtml }),
+      classify: async () => ({ name: "Acme", kind: "company", what: "scraping api", relation: "competitor", why: "same job", spans: ["We sell a scraping API"] }),
+      anchor: "www.",
+      aggregatorThreshold: 12,
+    })
+    expect(out.probePages).toHaveLength(0)
+  })
+
   it("a model classify failure downgrades to unknown instead of losing the host", async () => {
     const out = await judgeHosts([cand("acme.com")], {
       fetcher: fakeFetcher({ "https://acme.com/": vendorHtml }),

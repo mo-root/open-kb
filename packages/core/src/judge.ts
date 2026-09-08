@@ -333,7 +333,19 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
     stats.unreadable += 1
     stats.unreadableByReason[reason] = (stats.unreadableByReason[reason] ?? 0) + 1
   }
-  const anchorKey = registrableHost(deps.anchor)
+  // `|| deps.anchor`: registrableHost("") is "", and so is registrableHost of
+  // anything that reduces to nothing after its own www-strip and trailing-dot
+  // trim — "www.", ".", "WWW." all measure empty (packages/core/src/url.ts,
+  // confirmed by direct evaluation). An empty anchorKey is not a safe
+  // fallback here the way it would be for a Set key: `namesHost(text, "")`
+  // is `/(^|[^a-z0-9-])([^a-z0-9-]|$)/i`, which matches any two adjacent
+  // punctuation characters — and every real HTML page has some (`</`, `="`,
+  // `>`, …) — so a degenerate anchor made every candidate host's page read as
+  // "names the anchor" and land in `probePages`, even one that never
+  // mentions "www." at all. Same guard `anchorAliasSet` (alias.ts) and
+  // `answerKeyRecall` (coverage.ts) already carry for the identical input
+  // shape — this was the sibling instance SELF-392 left for a future fire.
+  const anchorKey = registrableHost(deps.anchor) || deps.anchor
   const queue = [...hosts]
 
   // The running mean's raw ingredients — the mean itself is stored rounded,
