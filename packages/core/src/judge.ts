@@ -258,6 +258,19 @@ export function wrongDoorName(name: string, host: string): boolean {
   if (nameKey.length < 3) return false
 
   const reg = registrableHost(host)
+  // `?? ""` has no honest seam: String.prototype.split always returns an
+  // array of length >= 1, so `.split(".")[0]` is always a defined string —
+  // possibly "" when `reg` itself reduces to "" (registrableHost("www.") is
+  // "", the same degenerate-host shape fixed in addressKey/originKey), but
+  // never undefined. No host value reaches the `?? ""` arm; it typechecks
+  // only because noUncheckedIndexedAccess widens the indexed-access type.
+  // A "" regLabel cannot manufacture a false stand-down below: `relates`
+  // (above) requires both sides non-empty, so `relates("", nameKey)` and
+  // `relates("", laxName)` are always false — a degenerate host falls
+  // through to `return true` rather than being silently forgiven. And a
+  // host that resolves to "" at the registrable level (no label after
+  // stripping "www.") was never actually fetched by this pipeline's own
+  // crawler in the first place, so the arm has no live producer either.
   const regLabel = identityKey(reg.split(".")[0] ?? "")
   const hostKey = identityKey(host)
   // The name has to show up in the host SOMEWHERE, or there is nothing to
@@ -271,6 +284,11 @@ export function wrongDoorName(name: string, host: string): boolean {
   // SUBDOMAIN_IDENTITY_HOSTS: see that constant's comment for why an
   // ungated comparison here would also forgive sendgrid.kke.co.jp.
   const onPlatform = SUBDOMAIN_IDENTITY_HOSTS.has(reg)
+  // Same dead `?? ""` shape as regLabel above: `host` is a caller-supplied
+  // string, `.split(".")[0]` is always defined. Only reachable at all when
+  // `onPlatform` is true, i.e. `reg` is a real member of
+  // SUBDOMAIN_IDENTITY_HOSTS — never the "" from a degenerate host, since ""
+  // is not one of that set's entries.
   const hostLabel = onPlatform ? identityKey(host.split(".")[0] ?? "") : ""
   if (onPlatform && relates(hostLabel, nameKey)) return false
 
@@ -293,6 +311,12 @@ export function wrongDoorName(name: string, host: string): boolean {
  */
 export function anchorIdentityTheft(name: string, host: string, anchor: string): boolean {
   const anchorKey = registrableHost(anchor)
+  // Same dead `?? ""` shape as wrongDoorName's regLabel: `.split(".")[0]` is
+  // always defined, possibly "" when `anchorKey` itself reduces to "" (a
+  // degenerate anchor). A "" anchorLabel cannot false-fire below — the
+  // `anchorLabel.length >= 3` guard on the next line rejects it before the
+  // other two comparisons run, the same short-circuit the 1-2 letter anchor
+  // comment above already documents.
   const anchorLabel = identityKey(anchorKey.split(".")[0] ?? "")
   return (
     // A one- or two-letter anchor label ("x.com") would match names that have
