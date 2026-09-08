@@ -99,10 +99,25 @@ export function serializeSwarmRun(
       ? null
       : { ...run.finish, unresolved: [...run.finish.unresolved, ...gate.carried.map((c) => `[scorecard] ${c}`)] }
 
+  // `|| h.toLowerCase()`: registrableHost("") is "", and so is registrableHost
+  // of anything that reduces to nothing after its own www-strip and
+  // trailing-dot trim — "www.", ".", "WWW." all measure empty
+  // (packages/core/src/url.ts, confirmed by direct evaluation). `new
+  // URL(...)` parses all three as syntactically valid hostnames, and
+  // canonicalUrl's own www-strip silently no-ops on them too (setting
+  // `u.hostname` to "" is invalid for a special scheme and the setter drops
+  // it, confirmed: `new URL("https://www./x").hostname` stays "www." even
+  // after the replace runs) — so `run.seen` can hold "https://www./foo" and
+  // "https://./bar" as two distinct entries, and a bare `registrableHost(h)`
+  // read folded both onto the SAME "" key, undercounting `stats.hosts` by
+  // one for every degenerate host past the first. Same guard the sibling
+  // keying functions already carry (run-evidence.ts's `addressKey`, map.ts's
+  // `nodeKey`) for the identical shape of input.
   const hosts = new Set<string>()
   for (const url of run.seen) {
     try {
-      hosts.add(registrableHost(new URL(url).hostname))
+      const h = new URL(url).hostname
+      hosts.add(registrableHost(h) || h.toLowerCase())
     } catch {
       /* a canonical entry that is not a URL counts nothing */
     }

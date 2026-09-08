@@ -631,3 +631,58 @@ describe("serializeSwarmRun: a canonical entry that is not a URL", () => {
     expect(serializeSwarmRun(run).stats.hosts).toBe(0)
   })
 })
+
+/**
+ * serialize.ts:105's `registrableHost(new URL(url).hostname)` read, bare —
+ * the same shape already fixed at run-evidence.ts's `addressKey` and map.ts's
+ * `nodeKey`. `registrableHost("")` is `""`, and so is `registrableHost` of
+ * anything that reduces to nothing after its own www-strip and trailing-dot
+ * trim — "www." and "." both measure empty (packages/core/src/url.ts,
+ * confirmed by direct evaluation). `new URL(...)` parses both as
+ * syntactically valid hostnames, and canonicalUrl's own www-strip silently
+ * no-ops on them too: setting a special-scheme URL's `hostname` to "" is
+ * invalid and the setter drops the write (confirmed: `new
+ * URL("https://www./x").hostname` is still "www." after the replace runs),
+ * so `run.seen` can hold "https://www./foo" and "https://./bar" as two
+ * distinct entries — and a bare `registrableHost(h)` read folded both onto
+ * the identical "" key, undercounting `stats.hosts` by one for every
+ * degenerate host past the first.
+ */
+describe("serializeSwarmRun: two different degenerate hosts in run.seen", () => {
+  it('count as two hosts, not one — registrableHost("www.") and registrableHost(".") are both ""', async () => {
+    const degenerateHitSearch: SearchPort = {
+      async search(queries) {
+        return [...new Set(queries)].map((query) => ({
+          query,
+          hits: [
+            { url: "https://www./foo", title: "A", description: "a" },
+            { url: "https://./bar", title: "B", description: "b" },
+          ],
+          ok: true,
+          usd: 0.001,
+          ms: 1,
+        }))
+      },
+    }
+    const lead = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = prompt.filter((m) => m.role === "user").length
+        if (turn === 1) return reply(call("n1", "next", { after: { landings: 1 }, why: "wait for the seed" }), false)
+        return reply(call("f1", "finish", { reason: "mapped", summary: "s", unresolved: [], why: "d" }), false)
+      },
+    })
+    const seed = searchingSeed()
+    const run = await runSwarm({
+      domain: "anchor.com",
+      skill: SKILL,
+      search: degenerateHitSearch,
+      fetch: fetchPort,
+      models: { lead, peek: seed, read: seed, dig: seed },
+      pricing: zeroPricing,
+    })
+
+    expect(run.seen.has("https://www./foo")).toBe(true)
+    expect(run.seen.has("https://./bar")).toBe(true)
+    expect(serializeSwarmRun(run).stats.hosts).toBe(2)
+  })
+})
