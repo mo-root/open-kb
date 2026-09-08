@@ -7358,6 +7358,25 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
     rivals: (() => {
       const squash = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
       const onMap = new Set<string>();
+      /**
+       * `e.domain || e.name` and the trailing `?? ""` look like the same
+       * degenerate-host collision already fixed elsewhere on this branch
+       * (addressKey, entityKey, serialize's host tally) — but `keep`'s
+       * `domain` has no live producer for that shape here.
+       *
+       * Every entity in `keep` traces to `entities`, which only two sites
+       * ever push to (5574, 5581), and both stamp `domain: h.host` off a
+       * `HostCandidate` built at line 5098:
+       * `new URL(h.url).hostname.toLowerCase().replace(/^www\./, "")` — the
+       * hostname of a URL a real search hit actually returned. `new URL`
+       * throws on anything that isn't a well-formed URL (caught, skipped,
+       * never reaches `byHost`), so `h.host` cannot be "", "www.", or any
+       * other string `registrableHost` reduces to "" — the domain-less
+       * kinds this fallback exists for (capability/buyer/community) are a
+       * `swarm`/`core` concept this file's own `Entity` type does not have:
+       * every row here was judged from a page this pipeline fetched, so
+       * `e.domain || e.name` never falls through to the name at all.
+       */
       for (const e of keep) {
         onMap.add(squash(e.name));
         onMap.add(squash(registrableHost(e.domain || e.name).split(".")[0] ?? ""));
