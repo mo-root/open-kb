@@ -427,6 +427,44 @@ describe("runSwarm: endings", () => {
     expectEndingShape(run.ending, run.ledger)
   })
 
+  it("budget-floor before the seed ever opens: a ceiling too small for even a peek says so and still ends clean", async () => {
+    const logs: string[] = []
+    // Ceiling $0.10: the finish reserve is the $0.12 floor (max(0.12, 10% of
+    // ceiling)), so spendable() at t=0 is -$0.02 before the seed ever tries to
+    // reserve anything. Unlike the sibling test above (ceiling $0.30, where
+    // the seed opens as a read and only THEN spends down to the floor), the
+    // seed's own ladder — dig $0.25, read $0.10, peek $0.03 — fails all three
+    // tiers immediately: `reserve()` never succeeds, so the loop's own
+    // "the seed opens as a <tier>" transition message (fired only when a
+    // LATER tier succeeds) never runs either. Only the ladder's fallthrough
+    // at orchestrator.ts:643 can produce a message here, and until now
+    // nothing exercised it.
+    const lead = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const closing = JSON.stringify(prompt).includes("free closing turn")
+        if (closing)
+          return reply(
+            call("f1", "finish", {
+              reason: "out of money",
+              summary: "nothing was ever open to spend on",
+              unresolved: [],
+              why: "closing",
+            }),
+            false,
+          )
+        return reply(call("n1", "next", { after: { landings: 1 }, why: "wait" }), false)
+      },
+    })
+
+    const run = await runSwarm(mkOpts({ lead, logs, over: { ceilingUsd: 0.1 } }))
+
+    expect(logs.some((l) => l.includes("the pool cannot fund even a peek; there is nothing to open with"))).toBe(true)
+    expect(logs.some((l) => l.includes("the seed opens as a"))).toBe(false)
+    expect(run.landings).toHaveLength(0)
+    expect(run.ending.reason).toBe("budget-floor")
+    expectEndingShape(run.ending, run.ledger)
+  })
+
   it("wall-clock: popping halts at the wall, in-flight drains with grace, then hard-cancel — partial writes stand", async () => {
     const logs: string[] = []
     const inv = new MockLanguageModelV4({
