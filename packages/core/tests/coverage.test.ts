@@ -62,6 +62,21 @@ describe("answerKeyRecall", () => {
     expect(r.probes.length).toBeGreaterThan(0)
     expect(r.probes.every((p) => Number.isFinite(p.recall))).toBe(true)
   })
+  // First shown red against the pre-fix code: registrableHost("www.") is ""
+  // (confirmed by direct evaluation), and namesHost(text, "") — the boundary
+  // regex with an empty host spliced in — matches any two adjacent
+  // punctuation characters, which every real HTML page has (`</a>`, `="`, …).
+  // So a degenerate anchor made EVERY page read as "names the anchor" instead
+  // of none of them, even one that never mentions "www." at all. Same guard
+  // anchorAliasSet already carries (alias.ts) for the identical input shape.
+  it("does not treat every page as naming the anchor when the anchor reduces to nothing", () => {
+    const r = answerKeyRecall([page(["a.com", "b.com", "c.com", "d.com", "e.com"], false)], {
+      anchor: "www.",
+      mapHosts: new Set(["a.com"]),
+      minVendors: 5,
+    })
+    expect(r.probes).toHaveLength(0)
+  })
   // The host-exclusion pass only runs when anchorAliases is set (sweep.ts and
   // orchestrator.ts both always pass it, which is why this line reads
   // covered in the full suite despite this file never exercising it on its

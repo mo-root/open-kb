@@ -74,7 +74,19 @@ export function answerKeyRecall(
   },
 ): RecallReport {
   const minVendors = opts.minVendors ?? 5
-  const anchor = registrableHost(opts.anchor)
+  // `|| opts.anchor`: registrableHost("") is "", and so is registrableHost of
+  // anything that reduces to nothing after its own www-strip and trailing-dot
+  // trim — "www.", ".", "WWW." all measure empty (packages/core/src/url.ts,
+  // confirmed by direct evaluation). An empty host is not a safe fallback here
+  // the way it would be for a Set key: `namesHost(text, "")` is
+  // `/(^|[^a-z0-9-])([^a-z0-9-]|$)/i`, which matches any two adjacent
+  // punctuation characters — and every real HTML page has some (`</`, `="`,
+  // `>`, …) — so a degenerate anchor made every probe page read as "names the
+  // anchor" instead of none of them, feeding `answerKeyRecall`'s one honest
+  // number from pages that never mentioned the anchor at all. Same guard
+  // `anchorAliasSet` already carries (alias.ts) for the identical shape of
+  // input.
+  const anchor = registrableHost(opts.anchor) || opts.anchor
   const excluded = new Set([anchor, ...[...(opts.anchorAliases ?? [])].map(registrableHost)])
   const probes: RecallProbe[] = []
   for (const p of pages) {
