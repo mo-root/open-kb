@@ -302,6 +302,42 @@ describe("recallTool", () => {
     expect(r.rows[0]).toMatchObject({ from: "third.com", to: "rival.com", relation: "covers" })
   })
 
+  it("neighbors resolves a domainless key with two periods in its name, not registrableHost's TLD-collapse of it", () => {
+    const s = populated()
+    const ctx = ctxOf(s)
+    rememberTool(ctx, {
+      nodes: [
+        {
+          name: "React.js vs Vue.js",
+          domain: "",
+          kind: "capability",
+          what: "a framework choice guide",
+          relation: "dependency",
+          why: "the roundup frames Acme's stack choice against this comparison",
+          evidence: [{ url: "https://rival.com/", quote: "sells a scraping API to developers" }],
+        },
+      ],
+      why: "seed a domainless node whose name carries two periods",
+    })
+    rememberTool(ctx, {
+      edges: [
+        {
+          from: "rival.com",
+          to: "React.js vs Vue.js",
+          relation: "dependency",
+          why: "Acme's own stack cites this comparison",
+        },
+      ],
+      why: "link the company to the capability",
+    })
+    const r = recallTool({ map: s.map, evidence: s.evidence, ledger: ledger() }, {
+      op: "neighbors",
+      key: "capability:react.js-vs-vue.js",
+    })
+    expect(r.rows).toHaveLength(1)
+    expect(r.rows[0]).toMatchObject({ from: "rival.com", to: "capability:react.js-vs-vue.js", relation: "dependency" })
+  })
+
   it("stats counts the live map", () => {
     const s = populated()
     const r = recallTool(rctx(s), { op: "stats" })

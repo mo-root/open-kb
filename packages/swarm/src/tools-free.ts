@@ -248,7 +248,17 @@ export function recallTool(ctx: RecallCtx, input: RecallInput): RecallReturn {
       break
     }
     case "neighbors": {
-      const key = nodeKey("company", input.key, input.key) || input.key.trim().toLowerCase()
+      // A raw map key IS the exact string `find`/`gaps` handed back, checked
+      // first: registrableHost's own TLD-collapse (url.ts) only special-cases
+      // <=2 labels as a no-op, so a domainless kind:slug(name) key with two or
+      // more literal periods in its name — "capability:react.js-vs-vue.js",
+      // three "parts" once split on "." — gets treated as a 3-label domain and
+      // collapsed to its last two, "js-vs-vue.js" (confirmed by direct
+      // evaluation), which never matches any edge. Only a raw key absent from
+      // the map falls through to nodeKey's domain-shaped normalization, the
+      // path a company/product domain (scheme, case, subdomain) still needs.
+      const raw = input.key.trim().toLowerCase()
+      const key = ctx.map.nodes.has(raw) ? raw : nodeKey("company", input.key, input.key) || raw
       for (const e of ctx.map.edges) {
         if (e.retracted) continue
         if (e.from !== key && e.to !== key) continue
