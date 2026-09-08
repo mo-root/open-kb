@@ -912,6 +912,16 @@ export function exportKbFiles(run: ExportRunLike): ExportedFile[] {
     const breakdown = [...byLabel.entries()].sort(([, a], [, b]) => b - a).map(([l, n]) => `${n} ${l}`)
     health.push(`- ${dropTotal} host(s) surfaced and did not make the map: ${breakdown.join(" · ")}.`)
   }
+  // `?? []` has no honest seam: the only producer of `report.scorecard.gate`
+  // is packages/swarm/src/serialize.ts, and every `ControlGate` it can read
+  // (packages/swarm/src/tools-control.ts:78,193) types `objections` as a
+  // required `string[]`, never optional — both fields were introduced
+  // together in this repo's genesis commit, so there is no run-file vintage
+  // where `refusals` exists without `objections` the way SELF-384's
+  // `recall.probes` could postdate `recall.pooled`. A sweep-produced run
+  // carries no `scorecard.gate` at all, so `gate?.refusals` above is already
+  // false before this line for that shape. `objections?: string[]` on
+  // `ExportRunLike` is defensive typing with no real producer that omits it.
   const gateBlock = gate?.refusals
     ? `\n## The gate exchange\n\n${(gate.objections ?? []).map((o) => `> ${o}`).join("\n")}\n`
     : ""
