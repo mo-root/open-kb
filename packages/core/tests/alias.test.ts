@@ -255,6 +255,16 @@ describe("anchorAliasSet", () => {
     const set = anchorAliasSet([ANCHOR_HOME, ES_HOME], "unrelated.io")
     expect([...set]).toEqual(["unrelated.io"])
   })
+  // First shown red against the pre-fix code: registrableHost("www.") is ""
+  // (confirmed by direct evaluation), so the singleton came back as [""]
+  // instead of ["www."] — a key no real fetched page's own registrableHost
+  // could ever equal, so the anchor's own pages stopped being excluded from
+  // the recall probe pool. Same guard MapState's constructor already applies
+  // to the identical shape of degenerate domain.
+  it("falls back to the raw anchor when it reduces to nothing", () => {
+    const set = anchorAliasSet([ANCHOR_HOME], "www.")
+    expect([...set]).toEqual(["www."])
+  })
 })
 
 describe("answerKeyRecall with anchorAliases — the mechanical fix, measured", () => {

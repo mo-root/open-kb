@@ -217,12 +217,29 @@ export function aliasSets(pages: ReadonlyArray<{ url: string; html: string }>): 
  * The anchor's own alias set, anchor key always included — the shape the
  * recall instrument subtracts. An anchor with no reciprocated assertion gets
  * the singleton it always had; someone else's alias set is never handed over.
+ *
+ * `|| anchor`: registrableHost("") is "", and so is registrableHost of
+ * anything that reduces to nothing after its own www-strip and trailing-dot
+ * trim — "www.", ".", "WWW." all measure empty (confirmed by direct
+ * evaluation, packages/core/src/url.ts). Every other place in this codebase
+ * that keys a run's identity off a possibly-degenerate anchor already guards
+ * it this exact way (MapState's constructor, map.ts; both of orchestrator.ts's
+ * own `anchor`/`host` locals) — this function was the one still keying on the
+ * bare `registrableHost(anchor)` read. Landing there is not inert: this
+ * module's whole job is to make sure the anchor's own key is ALWAYS in the
+ * set `recallProbePool` subtracts (its own doc comment: "Always contains the
+ * anchor's registrable key, so one set is both the old anchor exclusion and
+ * the alias exclusion") — a degenerate anchor made that key "", which no real
+ * fetched page's registrableHost is ever equal to, so the anchor's own pages
+ * stopped being excluded from the recall probe pool. That is exactly the
+ * failure mode this file's own top comment opens with: the anchor's own
+ * property counted as a missed vendor.
  */
 export function anchorAliasSet(
   pages: ReadonlyArray<{ url: string; html: string }>,
   anchor: string,
 ): ReadonlySet<string> {
-  const key = registrableHost(anchor)
+  const key = registrableHost(anchor) || anchor
   for (const set of aliasSets(pages)) {
     if (set.has(key)) return set
   }
