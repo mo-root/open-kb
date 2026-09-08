@@ -25,6 +25,20 @@ describe("entityKey", () => {
     expect(entityKey({ name: "Web Scraping", domain: "", kind: "community" })).toBe("community:web scraping")
     expect(entityKey({ name: "Web Scraping", kind: "community" })).toBe("community:web scraping")
   })
+
+  // First shown red against the pre-fix code: registrableHost("www.") and
+  // registrableHost(".") are both "" (confirmed by direct evaluation,
+  // packages/core/src/url.ts), and the old `domain !== "" ? registrableHost(domain)
+  // : kind:name` read a present-but-degenerate domain as "has a key" and
+  // returned that "" — the SAME key any other row with a different degenerate
+  // domain also collapsed to. Two unrelated rows folded onto one drift entry,
+  // and buildAuditPacket (audit.ts) silently dropped the second as a
+  // "duplicate" of the first. Falls through to the kind:name branch now,
+  // exactly as a domain-less row already does.
+  it("keys a degenerate domain by kind:name, not the empty string registrableHost collapses it to", () => {
+    expect(entityKey({ name: "Acme Community", domain: "www.", kind: "community" })).toBe("community:acme community")
+    expect(entityKey({ name: "Other Community", domain: ".", kind: "community" })).toBe("community:other community")
+  })
 })
 
 describe("diffMaps", () => {

@@ -77,10 +77,32 @@ export interface MapDrift {
 
 const blank = (v: unknown): string => (typeof v === "string" ? v.trim() : "")
 
-/** The one identity rule, exported so a caller can cross-check the diff's arithmetic. */
+/**
+ * The one identity rule, exported so a caller can cross-check the diff's
+ * arithmetic.
+ *
+ * `registrableHost("")` is `""`, and so is `registrableHost` of anything that
+ * reduces to nothing after its own www-strip and trailing-dot trim — "www.",
+ * ".", "WWW." all measure empty (packages/core/src/url.ts, confirmed by
+ * direct evaluation). A bare `if (domain !== "") return registrableHost(domain)`
+ * treats "domain present" as "key present", but the two can split: a domain
+ * that IS present and non-blank can still collapse to `""` once
+ * `registrableHost` runs. That `""` is not a safe key — it is the SAME key a
+ * second, unrelated degenerate-domain row would also collapse to, so two
+ * different companies fold onto one drift entry and `buildAuditPacket`
+ * (audit.ts) silently drops the second one as a "duplicate" of the first.
+ * Falling through to this function's own no-domain branch instead — the
+ * identical `kind:name` key a row with no domain at all already gets — costs
+ * nothing (a name is still what a domain-less row is identified by) and
+ * removes the collision. `edgeEndpointKey` below folds a raw endpoint through
+ * `registrableHost` the same bare way and shares the same exposure; left for
+ * a future fire since it has no direct unit test to pin it against today
+ * (only reachable through diffMaps' edge sets).
+ */
 export function entityKey(e: DriftEntityRow): string {
   const domain = blank(e.domain)
-  if (domain !== "") return registrableHost(domain)
+  const host = domain !== "" ? registrableHost(domain) : ""
+  if (host !== "") return host
   return `${blank(e.kind)}:${blank(e.name).toLowerCase()}`
 }
 
