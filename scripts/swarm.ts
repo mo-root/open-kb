@@ -107,6 +107,40 @@ export function wallClockMsFromEnv(raw: string | undefined): number {
 }
 
 /**
+ * The ceiling, from the positional CLI arg — split out the same way
+ * `wallClockMsFromEnv` above was, for the same reason (an invalid value needs
+ * somewhere to be asserted without executing the top-level body). UNLIKE that
+ * fallback, a bad value here is REFUSED rather than defaulted, because of what
+ * this number feeds: `Ledger`'s finish reserve is `Math.max(0.12, 0.1 *
+ * ceilingUsd)`, and `Math.max` propagates a NaN operand rather than ignoring
+ * it. Confirmed by direct evaluation — `new Ledger(Number("abc"))` — the whole
+ * chain that follows: `finishReserveUsd` and `spendable()` both read NaN, and
+ * `reserve()`'s own guard (`amount > left + EPSILON`) is then a comparison
+ * against NaN, which is always false, so `reserve(1_000_000)` still answers
+ * `{ ok: true }` — a NaN ceiling makes every reservation succeed
+ * unconditionally, the exact opposite of a cap. The sibling watchdog
+ * (`withSpendCap`, fed `SWARM_CAP_HEADROOM * ceilingUsd` below) fails the
+ * other way on the same NaN, also confirmed directly: `span.runningUsd <
+ * tripUsd` is `< NaN`, also always false, so it trips on the very first span
+ * instead of never. `readCapUsd` in spend-caps.ts already refuses this exact
+ * class of input for the env-var caps ("a malformed cap is not a missing
+ * cap"); this is the same refusal for the CLI's own positional one.
+ */
+export function ceilingUsdFromArg(raw: string | undefined): { ok: true; usd: number } | { ok: false; why: string } {
+  if (raw === undefined) return { ok: true, usd: 1.5 }
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n <= 0) {
+    return {
+      ok: false,
+      why:
+        `ceilingUsd is ${JSON.stringify(raw)}, which is not an amount in dollars. Write a plain number, ` +
+        `e.g. 1.5 — no $ sign.`,
+    }
+  }
+  return { ok: true, usd: n }
+}
+
+/**
  * The family floor, off `OPENKB_SWARM_FAMILIES` — same split as
  * `wallClockMsFromEnv` above. `undefined` keeps the library default (ON at
  * 4); "0"/"off"/"false" disables; "1"-"5" sizes it (the library clamps to its
@@ -135,7 +169,12 @@ if (argv.problem) {
   process.exit(1)
 }
 const domain = argv.rest[0] ?? "resend.com"
-const ceilingUsd = argv.rest[1] !== undefined ? Number(argv.rest[1]) : 1.5
+const ceilingReading = ceilingUsdFromArg(argv.rest[1])
+if (!ceilingReading.ok) {
+  console.error(ceilingReading.why)
+  process.exit(2)
+}
+const ceilingUsd = ceilingReading.usd
 
 /** The handoff's run file, loaded and validated here — the library never
  *  reads disk. A file that is not a sweep run of THIS domain is refused

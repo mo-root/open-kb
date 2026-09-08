@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { familyFloorFromEnv, wallClockMsFromEnv } from "../scripts/swarm.js"
+import { ceilingUsdFromArg, familyFloorFromEnv, wallClockMsFromEnv } from "../scripts/swarm.js"
 
 /**
  * `scripts/swarm.ts`'s own env parsing for `OPENKB_SWARM_WALL` and
@@ -26,6 +26,29 @@ describe("wallClockMsFromEnv", () => {
   it("falls back on zero, negative, NaN and non-finite values — a malformed wall must not become no wall", () => {
     for (const raw of ["0", "-1", "not-a-number", "Infinity", "-Infinity"]) {
       expect(wallClockMsFromEnv(raw)).toBe(600_000)
+    }
+  })
+})
+
+describe("ceilingUsdFromArg", () => {
+  it("defaults to $1.50 when the positional arg is absent", () => {
+    expect(ceilingUsdFromArg(undefined)).toEqual({ ok: true, usd: 1.5 })
+  })
+
+  it("takes a positive number", () => {
+    expect(ceilingUsdFromArg("3")).toEqual({ ok: true, usd: 3 })
+  })
+
+  it("refuses zero, negative and unparseable values instead of defaulting — unlike wallClockMsFromEnv above, a malformed ceiling must not become no ceiling", () => {
+    // `wallClockMsFromEnv` falls back for the same shape of input because a
+    // wrong wall clock only changes how long a run may take. This is a dollar
+    // figure that seeds Ledger's own arithmetic, and a silent default would
+    // hide the exact failure this function exists to catch: see this
+    // function's own comment for what `new Ledger(NaN)` does to `reserve()`.
+    for (const raw of ["0", "-1", "not-a-number", "$1.50", "Infinity", "-Infinity"]) {
+      const r = ceilingUsdFromArg(raw)
+      expect(r.ok).toBe(false)
+      if (!r.ok) expect(r.why).toContain(JSON.stringify(raw))
     }
   })
 })
