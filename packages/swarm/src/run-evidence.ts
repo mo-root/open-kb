@@ -210,7 +210,36 @@ export function strongerTier(a: ProvenanceTier, b: ProvenanceTier): ProvenanceTi
   return TIER_RANK[a] >= TIER_RANK[b] ? a : b
 }
 
-/** The registrable host a URL's bytes came from; "" when the URL does not parse. */
+/**
+ * The registrable host a URL's bytes came from; "" when the URL does not
+ * parse OR when its host reduces to nothing under registrableHost's own
+ * www-strip and trailing-dot trim — "www.", ".", "WWW." all measure empty
+ * (packages/core/src/url.ts), and `new URL(...)` parses all three as a
+ * syntactically valid, if useless, hostname (confirmed: `new
+ * URL("https://www./foo").hostname` is `"www."`). Same shape addressKey
+ * (above, this file) had to guard against with `|| u.hostname.toLowerCase()`.
+ *
+ * originKey itself carries no such fallback, and does not need one: traced
+ * every call site by hand rather than assumed. Two either explicitly guard a
+ * falsy result — tools-free.ts's `barren` case (`if (h) t.hosts.add(h)`) and
+ * tools-paid.ts's `one()` (`if (!host) throw`, which refuses the fetch
+ * outright as "bad-url" before `originKey` is ever asked again for that same
+ * url). The rest compare the result against a target that is independently
+ * guaranteed non-empty, so a "" origin can mismatch but never falsely match:
+ * `ownPage`/`snippetFor`'s `key`/`hostKey` (line 379, 456 below) trace to
+ * either rememberTool's own `nodeKey` rejection — a company/product node
+ * with no key is refused before either can be called (tools-free.ts) — or
+ * orchestrator.ts:335's already-guarded `anchor` local; `tierOf`'s `key`
+ * (tools-free.ts:454) is the same nodeKey-derived value; `seenInOf`'s
+ * `registrableHost(host)` (tools-paid.ts:645) and the breaker's own
+ * `originKey(url)` strike (tools-paid.ts:373, the same url `one()` already
+ * validated) both trace to `cleanHost`'s regex
+ * (`^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$`), which cannot produce a string
+ * registrableHost reduces to "". Two degenerate URLs can still both key ""
+ * here — the fold addressKey's own fix exists to avoid — but nothing this
+ * function's result is ever compared against can be "" too, so the fold has
+ * no observer.
+ */
 export function originKey(url: string): string {
   try {
     return registrableHost(new URL(url).hostname)
