@@ -82,6 +82,22 @@ describe("diffMaps", () => {
     expect(d.left).toEqual([])
   })
 
+  it("does not fold a domainless entity's edge endpoint onto an unrelated domain's key", () => {
+    // registrableHost("community:community.cloudflare.com") === "cloudflare.com"
+    // (confirmed by direct evaluation) — fed the internal node key MapState.
+    // entityEdges() serializes for a domain-less entity (map.ts's `domainOf`
+    // falls back to `nodeKey`'s own "kind:slug(name)"), registrableHost keeps
+    // only the key's last two dot-labels and lands on the exact string an
+    // unrelated company named cloudflare.com would carry. Before this test's
+    // fix, an edge that actually moved from the community page to the company
+    // itself folded onto one key on both sides and read as unchanged.
+    const a = map([company("cloudflare.com")], [{ from: "anchor.com", to: "community:community.cloudflare.com", relation: "discusses" }])
+    const b = map([company("cloudflare.com")], [{ from: "anchor.com", to: "cloudflare.com", relation: "discusses" }])
+    const d = diffMaps(a, b)
+    expect(d.edgesLeft).toEqual(["anchor.com -discusses-> community:community.cloudflare.com"])
+    expect(d.edgesEntered).toEqual(["anchor.com -discusses-> cloudflare.com"])
+  })
+
   it("diffs edges by host and relation, tolerating a map that has none", () => {
     const a = map([company("a.com")], [{ from: "www.a.com", to: "b.com", relation: "competitor" }])
     const b = map(

@@ -95,10 +95,33 @@ function indexByKey(rows: DriftEntityRow[]): Map<string, DriftEntityRow> {
   return index
 }
 
+/**
+ * An edge endpoint, folded the way `entityKey`'s domain branch folds one — but
+ * `e.from`/`e.to` are not always domains. `MapState.entityEdges()` (packages/
+ * swarm/src/map.ts, `domainOf`) falls a domain-less entity's endpoint back to
+ * its own internal node key, `${kind}:${slug(name)}` (`nodeKey`, same file) —
+ * the identical shape `entityKey`'s own no-domain branch mints for that same
+ * entity, four lines up. `registrableHost` was built for domains and does not
+ * know that shape: fed "community:community.cloudflare.com" (a real one — see
+ * from-sweep.ts's own GAP_CLUSTER comment, which cites this exact host as a
+ * domain-less community entry) it treats the colon-joined string as a
+ * three-label host and keeps only its last two labels. Confirmed by direct
+ * evaluation: registrableHost("community:community.cloudflare.com") ===
+ * registrableHost("cloudflare.com") === "cloudflare.com" — a domain-less
+ * community page and the unrelated company it happens to be named after fold
+ * onto the same edge key, so an edge that actually moved from one to the
+ * other reads as unchanged. A bare domain never contains ":" — no
+ * `e.domain`/`e.anchor` value read anywhere in this codebase does — so that
+ * character is the one reliable signal nodeKey's own fallback already gives:
+ * a key carrying it is opaque and passes through case-folded only, exactly as
+ * entityKey's no-domain branch leaves the entity it names.
+ */
+const edgeEndpointKey = (raw: string): string => (raw.includes(":") ? raw.trim().toLowerCase() : registrableHost(raw))
+
 /** An edge's identity: hosts folded the same way entity keys are, relation included —
  *  the same pair related two ways is two claims, and each drifts on its own. */
 function edgeKeys(edges: DriftEdgeRow[]): Set<string> {
-  return new Set(edges.map((e) => `${registrableHost(e.from)} -${e.relation}-> ${registrableHost(e.to)}`))
+  return new Set(edges.map((e) => `${edgeEndpointKey(e.from)} -${e.relation}-> ${edgeEndpointKey(e.to)}`))
 }
 
 export function diffMaps(a: DriftMap, b: DriftMap): MapDrift {
