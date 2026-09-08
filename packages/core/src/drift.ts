@@ -94,10 +94,9 @@ const blank = (v: unknown): string => (typeof v === "string" ? v.trim() : "")
  * Falling through to this function's own no-domain branch instead — the
  * identical `kind:name` key a row with no domain at all already gets — costs
  * nothing (a name is still what a domain-less row is identified by) and
- * removes the collision. `edgeEndpointKey` below folds a raw endpoint through
- * `registrableHost` the same bare way and shares the same exposure; left for
- * a future fire since it has no direct unit test to pin it against today
- * (only reachable through diffMaps' edge sets).
+ * removes the collision. `edgeEndpointKey` below folded a raw endpoint through
+ * `registrableHost` the same bare way and shared the same exposure; fixed
+ * there too (SELF-396) with a same-shape fallback to the raw value itself.
  */
 export function entityKey(e: DriftEntityRow): string {
   const domain = blank(e.domain)
@@ -137,8 +136,22 @@ function indexByKey(rows: DriftEntityRow[]): Map<string, DriftEntityRow> {
  * character is the one reliable signal nodeKey's own fallback already gives:
  * a key carrying it is opaque and passes through case-folded only, exactly as
  * entityKey's no-domain branch leaves the entity it names.
+ *
+ * The no-colon branch has the same degenerate-collapse exposure entityKey's
+ * domain branch had (SELF-395): `registrableHost("")` is `""`, and so is
+ * `registrableHost` of anything that reduces to nothing after its own
+ * www-strip and trailing-dot trim — "www.", ".", "WWW." all measure empty
+ * (url.ts, confirmed by direct evaluation). A bare `registrableHost(raw)` read
+ * folded every such endpoint onto the SAME `""` key, so two edges naming two
+ * different degenerate endpoints — "www." and "." — compared as one edge
+ * instead of two, and a real move between them read as unchanged. entityKey
+ * had a better fallback on hand (its own kind:name branch); a bare endpoint
+ * string has no kind/name split to fall back to, so it falls back to itself,
+ * case-folded — the identical opaque pass-through the has-colon branch above
+ * already gives a domain-less key.
  */
-const edgeEndpointKey = (raw: string): string => (raw.includes(":") ? raw.trim().toLowerCase() : registrableHost(raw))
+const edgeEndpointKey = (raw: string): string =>
+  raw.includes(":") ? raw.trim().toLowerCase() : registrableHost(raw) || raw.trim().toLowerCase()
 
 /** An edge's identity: hosts folded the same way entity keys are, relation included —
  *  the same pair related two ways is two claims, and each drifts on its own. */

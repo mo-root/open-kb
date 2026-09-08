@@ -112,6 +112,21 @@ describe("diffMaps", () => {
     expect(d.edgesEntered).toEqual(["anchor.com -discusses-> cloudflare.com"])
   })
 
+  // First shown red against the pre-fix code: registrableHost("www.") and
+  // registrableHost(".") are both "" (confirmed by direct evaluation,
+  // packages/core/src/url.ts), and edgeEndpointKey's old bare
+  // `registrableHost(raw)` read folded BOTH degenerate endpoints onto the
+  // same "" key — an edge that moved from "www." to "." read as unchanged.
+  // Falls back to the raw, case-folded endpoint now, the same opaque
+  // pass-through the has-colon branch already gives a domain-less key.
+  it("keys two different degenerate endpoints apart, not onto the same empty string", () => {
+    const a = map([company("b.com")], [{ from: "www.", to: "b.com", relation: "discusses" }])
+    const b = map([company("b.com")], [{ from: ".", to: "b.com", relation: "discusses" }])
+    const d = diffMaps(a, b)
+    expect(d.edgesLeft).toEqual(["www. -discusses-> b.com"])
+    expect(d.edgesEntered).toEqual([". -discusses-> b.com"])
+  })
+
   it("diffs edges by host and relation, tolerating a map that has none", () => {
     const a = map([company("a.com")], [{ from: "www.a.com", to: "b.com", relation: "competitor" }])
     const b = map(
