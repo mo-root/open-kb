@@ -37,6 +37,29 @@ describe("nodeKey", () => {
 })
 
 /**
+ * The constructor is the one place `MapState.anchor` is minted, and no
+ * dedicated test existed for it: every fixture anywhere in this suite
+ * constructs `new MapState("anchor.com")`, a domain registrableHost never
+ * reduces to "". A domain that DOES — "www.", ".", "WWW." (registrableHost
+ * strips exactly those to nothing, packages/core/src/url.ts) — never got
+ * exercised here, so the class's own field could still come out "" despite
+ * orchestrator.ts's `seedMission` and its own `runSwarm`-local `anchor`
+ * already guarding the identical registrableHost(domain) read with
+ * `|| domain`.
+ */
+describe("MapState constructor", () => {
+  it("a domain that registrableHost reduces to empty falls back to the raw domain, not \"\"", () => {
+    expect(new MapState("www.").anchor).toBe("www.")
+    expect(new MapState(".").anchor).toBe(".")
+    expect(new MapState("WWW.").anchor).toBe("WWW.")
+  })
+
+  it("a domain registrableHost can key is untouched by the fallback", () => {
+    expect(new MapState("Anchor.com").anchor).toBe("anchor.com")
+  })
+})
+
+/**
  * landedBy is the landing digest's only source: agent.ts:1192 feeds its
  * added/merged split straight into InvestigatorDigest, which the lead reads
  * to judge a mission. No dedicated test existed anywhere — every prior
