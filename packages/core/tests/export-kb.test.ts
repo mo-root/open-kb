@@ -1108,7 +1108,7 @@ describe("an edge to a gated entity is labeled, never deleted", () => {
     expect(page).toContain("**Found by:** `log search` · `grep alternatives`")
   })
 
-  // `if (!bySlug.has(s)) bySlug.set(s, e)` (export-kb.ts:553): every kept
+  // `if (!bySlug.has(base)) bySlug.set(base, e)` (export-kb.ts:576): every kept
   // entity in every existing fixture carries a distinct domain, so the
   // already-seen arm had never run. `repaired.entities` is not deduped by
   // domain anywhere upstream of this loop -- a live path, not a hypothetical
@@ -1127,5 +1127,42 @@ describe("an edge to a gated entity is labeled, never deleted", () => {
     expect(pages).toHaveLength(1)
     expect(pages[0]!.content).toContain("First Name")
     expect(pages[0]!.content).not.toContain("Second Name")
+  })
+
+  // The DIFFERENT bug the fixture above cannot reach: two domain-less rows
+  // that are NOT the same host. `slugOf` falls back to `${kind}-${name}` only
+  // when `domain` is empty, and that fallback has nothing else to key on —
+  // "Data Teams" and "Data-Teams!!", both kind "buyer", both slugify to
+  // "buyer-data-teams" (the same `[^a-z0-9]+` conflation SELF-383 found
+  // between "市場" and "!!!" on `market.name`). Before this fix, the loop
+  // above treated that exactly like the same-domain case: the second row
+  // silently lost its `entities/` page while `relations/buyer.md` still
+  // wikilinked it at a path nothing wrote.
+  it("disambiguates two domain-less rows that collide on the same fallback slug, rather than dropping one", () => {
+    const files = exportKbFiles({
+      anchor: "anchor.example",
+      entities: [
+        { name: "Data Teams", kind: "buyer", relation: "buyer", what: "Consumes analytics dashboards.", why: "The primary buyer persona." },
+        { name: "Data-Teams!!", kind: "buyer", relation: "buyer", what: "A distinct, differently-named persona.", why: "A second, unrelated buyer persona." },
+      ],
+    })
+    // `files.sort` at the very end orders by the FULL path string, ".md"
+    // included — where `localeCompare`'s punctuation-insensitive collation
+    // places "-2.md" ahead of ".md", the reverse of what comparing the bare
+    // slugs alone would give.
+    const pages = files.filter((f) => f.path.startsWith("entities/")).map((f) => f.path)
+    expect(pages).toEqual(["entities/buyer-data-teams-2.md", "entities/buyer-data-teams.md"])
+
+    const first = files.find((f) => f.path === "entities/buyer-data-teams.md")!.content
+    expect(first).toContain("Data Teams")
+    expect(first).not.toContain("Data-Teams!!")
+    const second = files.find((f) => f.path === "entities/buyer-data-teams-2.md")!.content
+    expect(second).toContain("Data-Teams!!")
+
+    // The wikilink in relations/buyer.md follows the same disambiguation —
+    // not a dead link to the slug `slugOf` would have recomputed unsuffixed.
+    const buyerRelations = files.find((f) => f.path === "relations/buyer.md")!.content
+    expect(buyerRelations).toContain("[[buyer-data-teams]]")
+    expect(buyerRelations).toContain("[[buyer-data-teams-2]]")
   })
 })

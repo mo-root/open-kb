@@ -547,11 +547,45 @@ export function exportKbFiles(run: ExportRunLike): ExportedFile[] {
       kept.push(e)
     }
   }
+  // A DOMAIN COLLISION AND A DOMAIN-LESS COLLISION ARE NOT THE SAME EVENT, and
+  // the loop used to treat them identically: `if (!bySlug.has(s))` kept
+  // whichever entity reached a slug first and silently dropped the rest.
+  // `slugOf` falls back to `${kind}-${name}` only when `domain` is empty (line
+  // 158), and that fallback has no host behind it to tell two rows apart —
+  // `slugOf({ name: "Data Teams", kind: "buyer" })` and
+  // `slugOf({ name: "Data-Teams!!", kind: "buyer" })` both read
+  // "buyer-data-teams", the same `[^a-z0-9]+` conflation SELF-383 found
+  // between "市場" and "!!!" on `market.name`, here on a domain-less entity's
+  // own name. Two rows with the SAME domain are one host reported twice — the
+  // export-kb.test.ts case at "keeps the first entity's own page when two
+  // kept rows collide on the same slug" — and keeping the first is right. Two
+  // domain-less rows sharing a slug are two DIFFERENT things the model could
+  // not tell apart by name; dropping one lost it from `entities/` entirely
+  // while `relations/` and `segments/` still listed it and wikilinked a page
+  // that was never written. Disambiguated instead, below, with a numeric
+  // suffix — and only for the domain-less branch: a domain-having entity is
+  // never an edge endpoint under any slug but `slugifyRef(its own domain)`
+  // (edges resolve purely off that function, never off this map), so giving
+  // it a second, suffixed identity here would just orphan its edges rather
+  // than fix anything.
   const bySlug = new Map<string, ExportEntity>()
+  const entitySlug = new Map<ExportEntity, string>()
   for (const e of kept) {
-    const s = slugOf(e)
-    if (!bySlug.has(s)) bySlug.set(s, e)
+    const base = slugOf(e)
+    if (e.domain && e.domain.trim()) {
+      if (!bySlug.has(base)) bySlug.set(base, e)
+      entitySlug.set(e, base)
+      continue
+    }
+    let slug = base
+    for (let n = 2; bySlug.has(slug); n++) slug = `${base}-${n}`
+    bySlug.set(slug, e)
+    entitySlug.set(e, slug)
   }
+  // What `relations/` and `segments/` wikilink a kept entity by — `slugOf(e)`
+  // for everything except the domain-less rows disambiguated just above,
+  // which is why they, not `slugOf` directly, are the wikilink source below.
+  const slugFor = (e: ExportEntity): string => entitySlug.get(e) ?? slugOf(e)
   // An edge is a wikilink, and a wikilink to a gated entity is a dead link. The
   // LINKED graph is therefore the induced subgraph on what survived — but the
   // induced-subgraph cut, alone, silently deleted every edge with one dropped
@@ -731,7 +765,7 @@ export function exportKbFiles(run: ExportRunLike): ExportedFile[] {
       const raw = e.relation === "unknown" && e.because ? e.because : ""
       const own = shared && raw.endsWith(shared) ? raw.slice(0, raw.length - shared.length).replace(/[\s—–-]+$/, "") : raw
       const extra = own ? ` — ${own}` : ""
-      return `- [[${slugOf(e)}]]${e.tier ? ` (${e.tier})` : ""}${extra}`
+      return `- [[${slugFor(e)}]]${e.tier ? ` (${e.tier})` : ""}${extra}`
     })
     const order = tiered
       ? "Ordered by evidence tier, strongest first."
@@ -769,7 +803,7 @@ export function exportKbFiles(run: ExportRunLike): ExportedFile[] {
     const straddlers = list.filter((e) => (e.foundBy?.length ?? 0) > 1)
     const rows = [...list].sort(tierSort).map((e) => {
       const lanes = (e.foundBy?.length ?? 0) > 1 ? ` *(also: ${e.foundBy!.slice(1).join(", ")})*` : ""
-      return `- [[${slugOf(e)}]] — ${e.relation}${lanes}`
+      return `- [[${slugFor(e)}]] — ${e.relation}${lanes}`
     })
     // `|| "unattributed"` is dead by construction now, not an untested branch:
     // `groupKeyOf` above already routes every `seg` whose slug would be empty
