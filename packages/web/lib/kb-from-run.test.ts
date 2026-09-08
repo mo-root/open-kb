@@ -222,6 +222,14 @@ describe("graphOf, market clustering", () => {
     ;(r.result.decomposition as { capabilities?: unknown[] }).capabilities = [cap("proxy network"), cap("search api")]
     return r
   }
+  /** Same as `withMarkets`, but with the caller's own capability list rather
+   *  than the fixed two — for cases that need to name colliding or repeated
+   *  declarations exactly. */
+  const withMarketList = (capabilities: unknown[], entities: unknown[], edges: unknown[] = []) => {
+    const r = run(entities, edges)
+    ;(r.result.decomposition as { capabilities?: unknown[] }).capabilities = capabilities
+    return graphOf(r)
+  }
 
   /** The v1 shape, restored: search for the unlocker's job, find Apify, and
    *  Apify sits in the unlocker's cluster rather than on the anchor blob. */
@@ -259,6 +267,48 @@ describe("graphOf, market clustering", () => {
   it("matches market names case-insensitively", () => {
     const g = graphOf(withMarkets([{ ...entity("b.com", "substitute"), foundBy: ["  Proxy Network "] }]))
     expect(g.edges.find((x) => x.target.includes("b.com"))!.source).toBe("markets/proxy-network.md")
+  })
+
+  // `capabilities[].name` is a bare z.string() in sweep.ts's Grouping schema —
+  // nothing dedupes the decomposition's own list, and this file's slug strips
+  // everything but [a-z0-9], a coarser bucket than the exact name. Two
+  // DIFFERENTLY-worded declarations landing on the same slug used to mint two
+  // market nodes sharing one `id`, the same collision export-kb.ts's segment
+  // grouping hit on SELF-383 — silently gone wherever a consumer looks a
+  // market up by id, not merely a rendered duplicate.
+  it("disambiguates two differently-worded markets that slugify to the same path", () => {
+    const g = withMarketList(
+      [
+        { name: "Anti-Bot APIs", does: "does A", centrality: "core", covers: [] },
+        { name: "Anti Bot, APIs!!!", does: "does B", centrality: "core", covers: [] },
+      ],
+      [{ ...entity("a.com", "competitor"), foundBy: ["Anti-Bot APIs"] }, { ...entity("b.com", "competitor"), foundBy: ["Anti Bot, APIs!!!"] }],
+    )
+    const marketNodes = g.nodes.filter((n) => n.kind === "market")
+    expect(marketNodes).toHaveLength(2)
+    const ids = marketNodes.map((n) => n.id)
+    expect(new Set(ids).size).toBe(2)
+    expect(ids).toContain("markets/anti-bot-apis.md")
+    expect(ids).toContain("markets/anti-bot-apis-2.md")
+    // Each entity still hangs off its OWN declaration, not off whichever one won the id.
+    expect(g.edges.find((x) => x.target.includes("a.com"))!.source).toBe("markets/anti-bot-apis.md")
+    expect(g.edges.find((x) => x.target.includes("b.com"))!.source).toBe("markets/anti-bot-apis-2.md")
+  })
+
+  // The model can also repeat one market under two casings (measured
+  // elsewhere in sweep.ts's own market-canonicalization comment). Same key,
+  // not merely the same slug, so this folds to one node rather than two.
+  it("collapses a market repeated under two casings into one node", () => {
+    const g = withMarketList(
+      [
+        { name: "Proxy Network", does: "first wording", centrality: "core", covers: [] },
+        { name: "proxy network ", does: "second wording", centrality: "core", covers: [] },
+      ],
+      [{ ...entity("a.com", "competitor"), foundBy: ["Proxy Network"] }],
+    )
+    const marketNodes = g.nodes.filter((n) => n.kind === "market")
+    expect(marketNodes).toHaveLength(1)
+    expect(marketNodes[0]!.title).toBe("Proxy Network")
   })
 })
 

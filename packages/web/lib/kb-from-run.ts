@@ -776,15 +776,46 @@ export function graphOf(run: CompletedRun): GraphView {
 
   const caps = r.decomposition?.capabilities ?? []
   const marketKey = (s: string) => s.trim().toLowerCase()
-  const marketPath = (name: string) =>
-    `markets/${name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}.md`
+  // TWO DECLARED MARKETS, ONE NODE ID, ONE OF THEM GONE — the same collision
+  // export-kb.ts's segment grouping hit (SELF-383), one file over. `capabilities[].name`
+  // is a bare `z.string()` in sweep.ts's Grouping schema (nothing dedupes the
+  // decomposition's own list before it lands in `report`), and the slug below
+  // strips everything but `[a-z0-9]`, a coarser bucket than the exact name:
+  // "Anti-Bot APIs" and "Anti Bot, APIs!" both land on "anti-bot-apis", and a
+  // model repeating a market under two casings collapses on the exact name.
+  // `nodes` below is built one entry per declaration with `id: marketPath(...)`
+  // as its key — two entries sharing an id is not a rendered duplicate, it is
+  // one node silently standing in for both, however a consumer looks it up.
+  // Fold same-key declarations to their first occurrence, and disambiguate any
+  // remaining slug collision between still-different declarations, before a
+  // single node or edge is built from them.
+  const seenMarketKeys = new Set<string>()
+  const uniqueCaps = caps.filter((c) => {
+    const k = marketKey(c.name)
+    if (seenMarketKeys.has(k)) return false
+    seenMarketKeys.add(k)
+    return true
+  })
+  const usedSlugs = new Map<string, number>()
+  const marketPathByKey = new Map<string, string>()
+  for (const c of uniqueCaps) {
+    const base = c.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
+    const n = (usedSlugs.get(base) ?? 0) + 1
+    usedSlugs.set(base, n)
+    marketPathByKey.set(marketKey(c.name), `markets/${n === 1 ? base : `${base}-${n}`}.md`)
+  }
+  // Every key this is ever called with comes from `caps`, and `uniqueCaps`
+  // above is `caps` deduped by that exact key, so the lookup is provably
+  // present — the `!` is a fact about this function's own construction, not
+  // an assumption about the run.
+  const marketPath = (name: string) => marketPathByKey.get(marketKey(name))!
   const marketIds = new Map(caps.map((c) => [marketKey(c.name), marketPath(c.name)]))
 
   const nodes: GraphViewNode[] = [
     // The anchor's markets, one node each. Typed `product` deliberately: the
     // four canvas colours are fixed by brand law, and a market node is the
     // product side of the anchor, not a rival and not a community.
-    ...caps.map(
+    ...uniqueCaps.map(
       (c): GraphViewNode => ({
         id: marketPath(c.name),
         type: "product",
@@ -846,7 +877,7 @@ export function graphOf(run: CompletedRun): GraphView {
   // related. It is a separate field on purpose: `confidence` is measured vs
   // inferred, a property of edges the RUN asserts, 73-88% of which are
   // inferred, and overloading it would have changed what every real edge means.
-  const edges: GraphEdge[] = caps.map((c) => ({
+  const edges: GraphEdge[] = uniqueCaps.map((c) => ({
     source: ANCHOR_PATH,
     target: marketPath(c.name),
     label: "sells",
