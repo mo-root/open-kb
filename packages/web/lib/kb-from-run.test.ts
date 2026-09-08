@@ -136,6 +136,37 @@ describe("graphOf, entity-to-entity edges", () => {
   })
 })
 
+/**
+ * A domain-less entity (`Entity.domain` is `z.string()`, no minimum length —
+ * see the `dangling` describe below) is not only a sweep possibility: swarm's
+ * `MapState` (packages/swarm/src/map.ts) mints a "community without a home"
+ * node keyed `community:<slug-of-name>` when it has no domain at all
+ * (`nodeKey`, map.ts:153-169), and `entityEdges()`'s `domainOf` (map.ts:217)
+ * falls back to that SAME key — never to the domain, which is `""` here, and
+ * never to the name alone — for a measured edge's `from`/`to` naming such a
+ * node. `byDomain` below used to index every kept entity by `entity.domain`
+ * only, so a domain-less entity was indexable solely by `""`, a string no
+ * real edge endpoint is ever serialized as; every measured edge naming one by
+ * its actual key found nothing, silently dropped, and the entity counted as
+ * `unlinked` regardless of what the run measured. `export-kb.ts` resolves the
+ * identical shape correctly (`slugOf`/`slugifyRef`, export-kb.ts:157-163,534),
+ * which is how this one stayed hidden: the export path was already right.
+ */
+describe("graphOf, a domain-less entity named by its own key as a measured edge's endpoint", () => {
+  it("links a domain-less community entity referenced by its swarm-serialized kind:slug key", () => {
+    const g = graphOf(run(
+      [
+        entity("a.com", "competitor"),
+        { name: "Data Teams", domain: "", kind: "community", what: "w", relation: "none", why: "y" },
+      ],
+      [{ from: "a.com", to: "community:data-teams", relation: "discusses", why: "x", confidence: "measured" }],
+    ))
+    const peer = g.edges.filter((e) => e.source !== "company.md" && e.target !== "company.md")
+    expect(peer).toHaveLength(1)
+    expect(peer[0]!.label).toBe("discusses")
+  })
+})
+
 /** `dangling` maps each noise entity's own row to `{ from: ANCHOR_PATH,
  *  target: e.domain || e.name }` — the same `host` fallback `place` uses one
  *  function up (kb-from-run.ts:427, `(e.domain || e.name || "")`), because

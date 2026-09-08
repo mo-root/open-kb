@@ -958,7 +958,24 @@ export function graphOf(run: CompletedRun): GraphView {
   // (vercel 330, stripe 271, cursor 166, supabase 123, brightdata 30, clerk 24)
   // and 2,704 across the current-engine runs on disk. Nothing else was being
   // lost: self-edges and genuinely off-map ends both measured 0.
-  const byDomain = new Map(kept.map((p) => [p.entity.domain.toLowerCase().replace(/^www\./, ""), p.path]))
+  // A kept entity with no domain — swarm's "community without a home" (map.ts's
+  // `nodeKey`) — is not indexable by `entity.domain` at all: that field is `""`
+  // for it. Its own `entityEdges()` (map.ts:217, `domainOf`) knows this and
+  // falls back its measured edges' `from`/`to` to the node's internal key,
+  // `${kind}:${slug(name)}`, never to `""` and never to the bare name. Without
+  // the second key below, such an edge named its endpoint by that key, `byDomain`
+  // only ever had `""` for the entity, the lookup missed, and the edge was
+  // silently dropped — indistinguishable from one whose end the run never kept
+  // at all, and the entity always counted as `unlinked` however much the run
+  // actually measured about it. `export-kb.ts` already resolves this shape
+  // correctly (`slugOf`/`slugifyRef`), which is how it stayed hidden here.
+  const byDomain = new Map<string, string>()
+  for (const p of kept) {
+    const domain = p.entity.domain.toLowerCase().replace(/^www\./, "")
+    if (domain) byDomain.set(domain, p.path)
+    const name = (p.entity.name ?? "").trim()
+    if (!domain && name) byDomain.set(`${p.entity.kind}:${name.toLowerCase().replace(/\s+/g, "-")}`, p.path)
+  }
   const anchorHost = (r.anchor || "").trim().toLowerCase().replace(/^www\./, "")
   if (anchorHost) byDomain.set(anchorHost, ANCHOR_PATH)
 
