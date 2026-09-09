@@ -23,7 +23,11 @@
  * be, and the delete is recursive. Checked against every export this repo had
  * produced when it was written — examples/kb-clerk-com and the 55 in
  * runs/exports/, one of them old enough to predate SKILL.md and llms.txt, which
- * is why the name list is a superset.
+ * is why the name list is a superset. The same blindness ran the other way too:
+ * a name the list expects as a file (AGENTS.md, say) but which is a directory on
+ * disk was never checked for its type, so a person's own folder using that name
+ * would pass the name list and have its contents read by nothing, only deleted
+ * by everything, the moment some other marker still vouched for the folder.
  *
  * A half-written export stays writable, on purpose. The files land in sorted
  * order, so AGENTS.md is written first and manifest.json second to last: a run
@@ -60,6 +64,17 @@ const EXPORT_ENTRIES = new Set([
  *  Ignoring it keeps a browsed export overwritable. It cannot launder a foreign
  *  folder — a marker still has to vouch for what is left. */
 const IGNORED_ENTRIES = new Set([".DS_Store"])
+
+/** The five EXPORT_ENTRIES names the exporter always writes as a plain file
+ *  (export-kb.ts:938,968,1039,1094,1130). A folder using one of these names for
+ *  a directory instead — a person's own "AGENTS.md/" of notes, say — passes the
+ *  top-level name check the same way `entities/my-research` used to pass it
+ *  before foreignInside() started looking one level down: nothing here read
+ *  what was inside, and readFileSync() on a directory only fails the one marker
+ *  that tried to open it, not the folder as a whole. If any other marker still
+ *  matches (a real manifest.json beside it, say), the folder comes back
+ *  writable and the recursive delete takes the directory's contents too. */
+const FILE_ENTRIES = new Set(["AGENTS.md", "README.md", "SKILL.md", "llms.txt", "manifest.json"])
 
 /**
  * What each export directory may hold, one level down.
@@ -123,21 +138,26 @@ export interface ExportTargetVerdict {
 
 /** Anything one level inside an export directory that the exporter would not
  *  have put there, named `<dir>/<child>` so the refusal can point at it. A name
- *  the exporter writes as a directory but which is a file here counts too. */
+ *  the exporter writes as a directory but which is a file here counts too — and
+ *  the reverse, a name the exporter writes as a file but which is a directory
+ *  here, reported as the bare name since there is no `<dir>/<child>` to point at. */
 function foreignInside(outDir: string, entries: string[]): string[] {
   const out: string[] = []
   for (const name of entries) {
     const allows = DIR_CONTENTS[name]
-    if (!allows) continue
-    const dir = join(outDir, name)
-    if (!statSync(dir).isDirectory()) {
-      out.push(name)
+    if (allows) {
+      const dir = join(outDir, name)
+      if (!statSync(dir).isDirectory()) {
+        out.push(name)
+        continue
+      }
+      for (const child of readdirSync(dir)) {
+        if (IGNORED_ENTRIES.has(child)) continue
+        if (!allows(child) || statSync(join(dir, child)).isDirectory()) out.push(`${name}/${child}`)
+      }
       continue
     }
-    for (const child of readdirSync(dir)) {
-      if (IGNORED_ENTRIES.has(child)) continue
-      if (!allows(child) || statSync(join(dir, child)).isDirectory()) out.push(`${name}/${child}`)
-    }
+    if (FILE_ENTRIES.has(name) && statSync(join(outDir, name)).isDirectory()) out.push(name)
   }
   return out
 }

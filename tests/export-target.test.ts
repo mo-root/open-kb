@@ -159,6 +159,22 @@ describe("judgeExportTarget", () => {
     expect(verdict.foreign).toEqual(["entities"])
   })
 
+  it("refuses an export whose AGENTS.md is a directory of somebody's own notes", () => {
+    // The mirror image of the "entities as a file" case above: a name the
+    // exporter always writes as a file, holding a directory instead. Nothing
+    // reads what is inside it — only the recursive delete does — so a real
+    // manifest.json beside it is enough to mark the whole folder as a prior
+    // export and take the directory's contents along with everything else.
+    const haunted = dir("kb-agents-dir", [
+      { path: "manifest.json", content: JSON.stringify({ anchor: "clerk.com", entities: [], files: [] }) },
+    ])
+    writeInto(haunted, [{ path: "AGENTS.md/my-notes.md", content: "irreplaceable\n" }])
+    const verdict = judgeExportTarget(haunted)
+    expect(verdict.writable).toBe(false)
+    expect(verdict.because).toBe("foreign-contents")
+    expect(verdict.foreign).toEqual(["AGENTS.md"])
+  })
+
   it("refuses an export somebody has parked their own work inside", () => {
     // The top-level check cannot see one level down, and the delete is
     // recursive — so `entities/` and `evidence/` are exactly where a person's
