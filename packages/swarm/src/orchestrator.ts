@@ -859,6 +859,21 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
     const live = [...map.nodes.values()].filter((n) => !n.retracted)
     // Recall grades the map's VENDORS, the same host set serialize.ts builds
     // from the map's own vocabulary (company/product).
+    //
+    // `n.domain || n.name`: dead by construction for this filter, not an
+    // untested branch. `nodeKey` (map.ts:166) keys a company/product node by
+    // its host ALONE, with no name fallback, and rememberTool (tools-free.ts:
+    // 517-527) rejects any node whose key comes out "" before it ever reaches
+    // `ctx.map.nodes.set` — the rejection message is literally "a company/
+    // product is its domain; say which host this is". `admit` (verdict.ts)
+    // is the only thing that can change a node's kind after that gate, and it
+    // never assigns "company" or "product" (it only downgrades TO
+    // "directory" or leaves `claim.kind` — the already-gated kind —
+    // untouched). So every node this filter selects was created through the
+    // company/product branch of that gate, which only accepts a non-empty,
+    // non-whitespace `domain`, and `domain` is never reassigned by the merge
+    // path below (only name/what/kind/relation/tier/evidence are). `|| n.name`
+    // has no live node to fall through on.
     const mapHosts = new Set(
       live.filter((n) => n.kind === "company" || n.kind === "product").map((n) => registrableHost(n.domain || n.name)),
     )
