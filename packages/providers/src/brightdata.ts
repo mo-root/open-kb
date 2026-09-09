@@ -479,14 +479,18 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
           const firstZone = nextZone()
           let out = await once(firstZone)
           // Every `out.error ?? ""` and `?? "Account is suspended"` below, through
-          // line 487, is dead by construction: `once()` has exactly four ok:false
+          // line 496, is dead by construction: `once()` has exactly four ok:false
           // returns (383, 399, 448, 463) and all four set `error` to a defined,
           // non-empty string — there is no ok:false return that omits it. Each
           // `?? ""`/`?? "..."` here only runs inside a `!out.ok` guard, so the
           // left side is never the missing value the fallback exists for. Kept
           // because `SearchResult.error` is optional for ports that cannot report
           // a reason at all (see core/ports.ts) — this port always can. Same class
-          // as SELF-332's safe-fetch.ts abort-reason fallbacks.
+          // as SELF-332's safe-fetch.ts abort-reason fallbacks. Line 496's
+          // `THROTTLED.test(out.error ?? "")` re-check sits inside the same
+          // `!out.ok` guard (opened below) and was left out of this comment's
+          // original "through line 487" scope — it is the same dead fallback,
+          // not a sixth new one.
           if (!out.ok && SUSPENDED.test(out.error ?? "")) suspended = out.error ?? "Account is suspended"
           // One retry, past the interval the provider names. Workers run
           // concurrently, so this costs one worker's time rather than the wave's.
