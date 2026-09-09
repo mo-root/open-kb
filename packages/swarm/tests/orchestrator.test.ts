@@ -365,6 +365,83 @@ describe("runSwarm: fill/think/wake", () => {
     expect(run.ending.residue.map((r) => r.dedupeKey)).toContain("dig-deep")
     expectEndingShape(run.ending, run.ledger)
   })
+
+  it("eff's funded-queued add-back can admit a proposal that ledger.reserve then refuses, once the pool has overrun", async () => {
+    // fill() (~line 814) hands popAffordable `eff = ledger.spendable() +
+    // fundedQueuedUsd()` rather than the bare spendable figure, specifically so
+    // a mission already paid for at spawn time is never asked to fit twice. Its
+    // own comment argues this keeps the later `ledger.reserve()` call "exact"
+    // for an unfunded proposal — true ONLY while the pool has never overrun
+    // (ledger.spendable() >= 0). Once a lane's real cost blows past its own
+    // reservation and the global pool goes negative, `eff`'s add-back can still
+    // read positive (padded by another mission's untouched reservation) while
+    // the real spendable it is about to draw against cannot cover anything —
+    // the exact gap `!held.ok` (line ~825) exists for. Uncovered until now.
+    const logs: string[] = []
+    // dig costs $0.04/turn (1000 in @ $38/M + 50 out @ $40/M); 8 such turns
+    // draw $0.32 against dig's $0.25 reservation, so the seed settles $0.07
+    // over its own allowance. With m1's $0.10 read reservation still
+    // outstanding, the pool lands at ceilingUsd(0.5) - finishReserve(0.12) -
+    // spent(0.32) - m1(0.10) = -$0.04.
+    const seedModel = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = invTurnOf(prompt)
+        // Turn 0 is free (usage 0,0): only here to keep the run past
+        // stillbornMs — the check wants a readable page or a non-empty SERP
+        // before the seed lands, and this test's seed never fetches a page.
+        if (turn === 0)
+          return reply(call("s1", "search", { queries: ["fraud scoring"], why: "orient" }), false, usage(0, 0))
+        if (turn === 1)
+          return reply(
+            call("p1", "propose", { missions: [mission("cheap-peek", 50, "peek")], why: "a find I cannot chase" }),
+            false,
+            usage(1000, 50),
+          )
+        if (turn <= 8) return reply(call(`r${turn}`, "recall", { op: "stats", why: "keep working" }), false, usage(1000, 50))
+        return reply(text("done."), true, usage(0, 0))
+      },
+    })
+    const lead = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = leadTurnOf(prompt)
+        if (turn === 1)
+          return reply(
+            [
+              ...call("s1", "spawn", { missions: [mission("m1", 90, "read")], why: "a second lane, funded now" }),
+              ...call("n1", "next", { after: { seconds: 600 }, why: "let the seed run" }),
+            ],
+            false,
+          )
+        return reply(
+          call("f1", "finish", { reason: "floor", summary: "closing on the floor wake", unresolved: [], why: "no money left" }),
+          false,
+        )
+      },
+    })
+
+    const run = await runSwarm(
+      mkOpts({
+        lead,
+        tiers: { dig: seedModel },
+        logs,
+        over: { ceilingUsd: 0.5, lanes: 1, pricing: { lead: zero, peek: zero, read: zero, dig: { inUsdPerM: 38, outUsdPerM: 40 } } },
+      }),
+    )
+
+    // The exact gap: popAffordable let "cheap-peek" through on the padded eff,
+    // and the real ledger then refused the very same reservation — right
+    // beside m1, the ONE funded mission, itself skipped as unaffordable by
+    // the same padded eff (fundedQueuedUsd() cannot rescue its own overrun).
+    expect(logs.some((l) => l.includes("the pool no longer funds a read; your p90 m1 has been skipped"))).toBe(true)
+    expect(logs.some((l) => /"cheap-peek" popped but cannot be funded: a \$0\.03 reservation does not fit;/.test(l))).toBe(
+      true,
+    )
+    expect(run.ending.reason).toBe("budget-floor")
+    // Neither mission ever ran: m1 waited on the one lane, cheap-peek was
+    // popped then released when its reservation failed. Both ship as residue.
+    expect(run.ending.residue.map((r) => r.dedupeKey)).toEqual(expect.arrayContaining(["m1", "cheap-peek"]))
+    expectEndingShape(run.ending, run.ledger)
+  })
 })
 
 // ── endings ─────────────────────────────────────────────────────────────────
