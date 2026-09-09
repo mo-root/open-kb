@@ -131,6 +131,11 @@ export function measureClusters(
   const acc = new Map<string, { x: number; y: number; n: number; fixed: boolean }>()
   for (const n of nodes) {
     if (n.x == null || n.y == null || !Number.isFinite(n.x) || !Number.isFinite(n.y)) continue
+    // `?? n.id`: defensive against a `clusterOf` that does not cover this node,
+    // but both call sites (GraphCanvas.tsx:910, bake-layouts.ts:128) build
+    // `clusterOf` with `assignClusters(nodes, adj)` over this exact `nodes`
+    // array, and `assignClusters` (line 94 above) sets an entry for every node
+    // it iterates — so `clusterOf.get(n.id)` is defined for every `n` here.
     const k = clusterOf.get(n.id) ?? n.id
     const pinned = n.fx != null || n.fy != null
     const a = acc.get(k)
@@ -153,7 +158,13 @@ export function measureClusters(
   const sq = new Map<string, number>()
   for (const n of nodes) {
     if (n.x == null || n.y == null || !Number.isFinite(n.x) || !Number.isFinite(n.y)) continue
+    // Same `?? n.id` and the same reason it never falls through, one loop up.
     const k = clusterOf.get(n.id) ?? n.id
+    // `!d`: every `k` this loop can produce was also produced by the first
+    // loop above (identical `nodes`, identical filter, identical `clusterOf`
+    // read), and the first loop's `acc.set` — which seeds `out` two lines up —
+    // ran on that exact `k`. So `out.get(k)` always hits; this guards only
+    // against the two loops disagreeing, which they cannot.
     const d = out.get(k)
     if (!d) continue
     const dx = n.x - d.x
@@ -161,6 +172,10 @@ export function measureClusters(
     sq.set(k, (sq.get(k) ?? 0) + dx * dx + dy * dy)
   }
   for (const [k, d] of out) {
+    // `?? 0`: reached only if some `k` in `out` got no entry in `sq` above —
+    // impossible by the same argument: every `out` key traces to at least one
+    // node that passed the filter in the first loop, and that same node passes
+    // the identical filter here, so it always adds to `sq.get(k)` first.
     d.r = Math.sqrt((sq.get(k) ?? 0) / d.n) * RMS_TO_RADIUS
   }
   return out
@@ -244,6 +259,10 @@ export function separationShoves(
         bShare = 0
       } else {
         const total = a.n + b.n
+        // `: 0.5`: `a.n` and `b.n` are `ClusterDisc.n`, which `measureClusters`
+        // only ever sets to a real member count — `acc.set` (line 143 above)
+        // seeds every entry at `n: 1` and `a.n += 1` only grows it, so a disc
+        // with `n === 0` cannot exist and `total` cannot be `<= 0`.
         aShare = total > 0 ? b.n / total : 0.5
         bShare = 1 - aShare
       }
