@@ -137,6 +137,26 @@ describe("loadSettings", () => {
   })
 })
 
+describe("without window (SSR)", () => {
+  /* stubWindow() runs in this file's own beforeEach, so every test above
+     always has a `window` and the `typeof window === "undefined"` guards
+     (settings.ts:214, :274) had never run. Next.js imports this module on
+     the server, where there is no DOM at all — not a stubbed one, an absent
+     one — before any component that calls loadSettings/saveSettings ever
+     reaches the browser. Deleting the stub here (afterEach already deletes
+     it again; a second delete on an absent key is a no-op) is the one way
+     this suite can put the module back in that state. */
+  it("loadSettings returns defaults with no window to read localStorage from", () => {
+    delete (globalThis as { window?: unknown }).window
+    expect(loadSettings()).toEqual(DEFAULT_SETTINGS)
+  })
+
+  it("saveSettings is a no-op with no window to write localStorage to", () => {
+    delete (globalThis as { window?: unknown }).window
+    expect(() => saveSettings(DEFAULT_SETTINGS)).not.toThrow()
+  })
+})
+
 describe("saveSettings", () => {
   /* stubWindow's setItem never throws, so this catch (settings.ts:277) had
      never run: every existing test only exercises the write succeeding. A
