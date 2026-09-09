@@ -280,6 +280,22 @@ describe("seeding", () => {
       radius(node({ id: "market", deg: 82 })),
     )
   })
+
+  it("gives every node the same outer radius when the graph has no edges yet", () => {
+    // Both call sites (GraphCanvas.tsx:862/873, bake-layouts.ts:100/117) derive
+    // maxDeg from the same edge set `deg` comes from, so a run with entities but
+    // no discovered relations yet passes maxDeg: 0 — the `maxDeg > 0 ? ... : 0`
+    // branch. Every existing test above passes maxDeg: 82, so it had never run.
+    const radius = (n: ReturnType<typeof node>) => {
+      const p = seedPosition(n, 295, 0)
+      return Math.hypot(p.x, p.y)
+    }
+    // t collapses to 0 regardless of this node's own deg, so radius is fixed at
+    // span(nodeCount) * 1.05 — not scaled by degree at all.
+    const expected = span(295) * 1.05
+    expect(radius(node({ id: "a", deg: 0 }))).toBeCloseTo(expected)
+    expect(radius(node({ id: "b", deg: 30 }))).toBeCloseTo(expected)
+  })
 })
 
 describe("tetherAspect", () => {
