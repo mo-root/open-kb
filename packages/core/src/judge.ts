@@ -936,6 +936,27 @@ export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
         : judged.what
     const spanFields = { descSpans, ...(receipts.length ? { spans: receipts } : {}) }
 
+    // `!gate.ok` never fires here — the comment at `gate`'s own definition
+    // (836) says the admit() call is structurally unreachable and this is
+    // the proof, rule by rule. `page` (798-802) is a literal
+    // `{ readable: true, ... }` object for every host that reaches this
+    // line, never reassigned, so admit()'s commercial rule
+    // (`!page?.readable`, verdict.ts:111) is always `!true` — always false,
+    // whatever `out.relation` is. Its aggregator rule
+    // (`outboundHosts.length >= aggregatorThreshold`, verdict.ts:102) is
+    // dead by a different route: when `threshold !== null`, the identical
+    // comparison already ran against this same `page` at 804-819 and
+    // returned `ok: true` (a `false` there would have emitted the
+    // `directory` verdict and returned at 817, never reaching this line) —
+    // the same `outboundHosts.length` cannot cross the same `threshold` a
+    // second time. When `threshold === null`, line 846 passes
+    // `Number.POSITIVE_INFINITY`, and no finite length is ever `>=` that.
+    // Both rules dead unconditionally, confirmed by direct evaluation of
+    // admit() against both cases: `gate.ok` is always `true` here.
+    // Documented in place rather than deleted — deleting it would silently
+    // drop the one path that would matter if `admit()` ever grew a third
+    // rule — and rather than tested, since there is no live input that
+    // makes it go red.
     if (!gate.ok) {
       emit({ ...judged, what: whatFor(gate.kind), domain: h.host, kind: gate.kind, relation: gate.relation, because: gate.because, settledBy: "model", descGrounded, ...spanFields })
       return
