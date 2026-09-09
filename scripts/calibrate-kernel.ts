@@ -106,6 +106,50 @@ async function main(): Promise<void> {
       throw new Error(`runs/${f}: no entities at the top level or under result — not a run file this reads`)
     }
     for (const e of entities) {
+      /**
+       * `e.domain || e.name || ""` looks like the same degenerate-domain
+       * collision already fixed across this branch (nodeKey, originKey,
+       * entityKey, edgeEndpointKey, addressKey, judgeHosts, answerKeyRecall,
+       * anchorAliasSet, serialize's host tally): a domain-less entity's
+       * name-derived fallback squashing onto an unrelated entity's real
+       * host. Traced rather than assumed a fix was owed — the line below
+       * only acts on `e.kind === "company" || e.kind === "directory"`, and
+       * every current producer of those two kinds stamps `domain` off a
+       * real host, never a value the fallback would ever need.
+       *
+       * Sweep is one source of both kinds: every entity it emits comes from
+       * exactly two pushes (sweep.ts:5574, 5581), both carrying `domain:
+       * h.host` off a `HostCandidate` built from `new URL(h.url).hostname`
+       * (sweep.ts:5098) — `new URL` throws on anything malformed, so
+       * `h.host` cannot be "" or any other registrableHost("")-shaped
+       * string. Same trace as SELF-405's rivals doc (8da632c).
+       *
+       * Swarm is the other source, and it can reach "directory" too, by a
+       * route worth spelling out because it looks like a gap at first
+       * read: `kind: string` (map.ts:58) is not restricted to
+       * SWARM_NODE_KINDS at the type level, and `admit()`'s aggregator gate
+       * (verdict.ts:100-109) can downgrade a claim's kind to "directory" at
+       * runtime (tools-free.ts:580, `kind = verdict.kind`). But that
+       * downgrade only ever fires on a claim whose ORIGINAL kind was
+       * "company" or "product" (verdict.ts:31 `COMPANY_LIKE`), and by the
+       * time it fires, `nodeKey(n.kind, n.name, n.domain)` (tools-free.ts
+       * :517, run on the pre-downgrade kind) has already rejected the claim
+       * outright if that key came out "" — the SELF-406/407 gate this
+       * branch already traced, which requires a non-empty `n.domain` for
+       * company/product. The downgrade past that gate (tools-free.ts:580-
+       * 582) reassigns `kind` and `relation`, never `domain`, and the node
+       * stores `domain: n.domain` verbatim at creation (tools-free.ts:609)
+       * with no reassignment anywhere after (grepped tools-free.ts for
+       * `.domain =`: zero matches). So a swarm "directory" node carries the
+       * same already-proven-non-empty domain its company/product claim
+       * arrived with.
+       *
+       * So for the two kinds this loop watches, `e.domain` is never "" in
+       * any run file this repo's own code can write — `|| e.name || ""`
+       * has no live seam to fall through. Documented in place rather than
+       * an untestable defensive branch, so a later fire does not re-flag
+       * this as a gap.
+       */
       const host = registrableHost(e.domain || e.name || "")
       if (!host || !host.includes(".")) continue
       if (e.kind === "company" || e.kind === "directory") seen.set(host, { kind: e.kind, relation: e.relation })
