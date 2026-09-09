@@ -161,3 +161,86 @@ describe("the in-memory at-once limit refuses a concurrent claim", () => {
     }
   })
 })
+
+/**
+ * `claimInMemory`'s day-cap comparison (spend-limits.ts:766, `c.spentUsd +
+ * (limits.runCapUsd ?? 0) > limits.dayCapUsd`) and `refusal`'s matching `need`
+ * (spend-limits.ts:805, `limits.runCapUsd ?? 0`) had never run with the run
+ * cap off. A scoped `@vitest/coverage-v8` pass against this file alone (every
+ * other suite touching it goes through `app/api/map/limits.test.ts`, which
+ * always sets a run cap) named lines 766, 790, 804-805 and 823 as uncovered
+ * branches.
+ *
+ * 790, 804 and 823 turned out to be dead by construction: `refusal`'s
+ * `"visitor"`/`"day"`/`"at-once"` cases are only ever reached when that same
+ * limit is non-null, in both `claimInMemory` (the `!== null` guard immediately
+ * above each `return { kind: "refused", ... }` above) and the Postgres
+ * `claim_run` function it mirrors (scripts/supabase-schema.sql's `is not
+ * null` ahead of each `'limit'` it returns) — so `perVisitorPerDay ?? 0`,
+ * `dayCapUsd ?? 0` and `atOnce ?? 0` can never take their fallback arm.
+ *
+ * 766 and 805 are not dead: `dayCapUsd` and `runCapUsd` are independent
+ * settings (DEPLOY.md lets an operator run one without the other), and
+ * spend-limits.ts:604-609 already documents that with the run cap off "the
+ * day cap degrades from a ceiling to a preflight check" — a running claim
+ * reserves nothing, so only a SETTLED run's real cost can trip the day
+ * refusal. Every existing day-cap test sets both caps, so `runCapUsd` was
+ * never null on that path.
+ */
+describe("the day cap refuses on real spend alone when the run cap is off", () => {
+  const headers = new Headers({ "x-real-ip": "203.0.113.70" })
+  const T0 = Date.parse("2026-08-27T12:00:00Z")
+
+  beforeEach(() => {
+    resetLedger()
+    delete process.env.SUPABASE_URL
+    delete process.env.SUPABASE_SECRET_KEY
+    process.env[LIMIT_VARS.runCap] = "off"
+    process.env[LIMIT_VARS.dayCap] = "0.10"
+    process.env[LIMIT_VARS.perVisitor] = "off"
+    process.env[LIMIT_VARS.atOnce] = "off"
+  })
+
+  afterEach(() => {
+    delete process.env[LIMIT_VARS.runCap]
+    delete process.env[LIMIT_VARS.dayCap]
+    delete process.env[LIMIT_VARS.perVisitor]
+    delete process.env[LIMIT_VARS.atOnce]
+  })
+
+  it("refuses once a settled run's real cost alone clears the day cap, reserving nothing for the new one", async () => {
+    const first = await spendGate({
+      id: "no-run-cap-1",
+      domain: "meterco.example",
+      headers,
+      budgetQueries: 18,
+      runWindowMs: 300_000,
+      aboutSeconds: 250,
+      now: T0,
+    })
+    expect(first.ok).toBe(true)
+
+    // Settles above the $0.10 day cap. With the run cap off, a still-running
+    // claim would have held $0 against the day (line 622's `capUsd ?? 0`), so
+    // it is the settled cost alone that has to clear the cap here.
+    noteRunEnded("no-run-cap-1", 0.15)
+
+    const second = await spendGate({
+      id: "no-run-cap-2",
+      domain: "meterco.example",
+      headers,
+      budgetQueries: 18,
+      runWindowMs: 300_000,
+      aboutSeconds: 250,
+      now: T0 + 1_000,
+    })
+    expect(second.ok).toBe(false)
+    if (!second.ok) {
+      expect(second.status).toBe(429)
+      expect(second.log).toContain(LIMIT_VARS.dayCap)
+      // `need` (spend-limits.ts:805) is `limits.runCapUsd ?? 0`; the run cap
+      // is off, so the log reserves nothing for the refused run.
+      expect(second.log).toContain("$0.1500 + $0.00 reserved for this run")
+    }
+  })
+})
