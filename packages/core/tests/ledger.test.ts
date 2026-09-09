@@ -114,6 +114,53 @@ describe("Ledger reserve and settle", () => {
   })
 })
 
+describe("Ledger spentUsd: the realized total, distinct from spendable", () => {
+  // spentUsd() is #spentUsd's only reader outside this file (serialize.ts and
+  // orchestrator.ts read it for the closing report), but nothing above ever
+  // called it directly — every assertion up to here went through spendable(),
+  // which also nets out finishReserveUsd and outstanding claims. A caller that
+  // wants the realized-cost figure alone (what the run actually paid, not what
+  // it still holds out) needs #spentUsd's own contract checked in isolation:
+  // it starts at zero, moves only on settle(), and ignores reserve() and
+  // draw() — both of which spendable() and warnAt() already do react to.
+  it("starts at zero before anything settles", () => {
+    const l = new Ledger(1.5)
+    expect(l.spentUsd()).toBe(0)
+  })
+
+  it("reserving alone does not move it: nothing is real yet", () => {
+    const l = new Ledger(1.5)
+    l.reserve(0.25)
+    expect(l.spentUsd()).toBe(0)
+  })
+
+  it("drawing against an open claim does not move it either: settle is what makes cost real", () => {
+    const l = new Ledger(1.5)
+    const r = l.reserve(0.1)
+    if (!r.ok) throw new Error("reserve should fit")
+    l.draw(r.claimId, 0.09)
+    expect(l.spentUsd()).toBe(0)
+  })
+
+  it("settle adds the actual, not the reservation", () => {
+    const l = new Ledger(1.5)
+    const r = l.reserve(0.25)
+    if (!r.ok) throw new Error("reserve should fit")
+    l.settle(r.claimId, 0.161)
+    expect(l.spentUsd()).toBeCloseTo(0.161)
+  })
+
+  it("accumulates across claims, including an overrun's real cost", () => {
+    const l = new Ledger(1.5)
+    const a = l.reserve(0.1)
+    const b = l.reserve(0.25)
+    if (!a.ok || !b.ok) throw new Error("reserve should fit")
+    l.settle(a.claimId, 0.08)
+    l.settle(b.claimId, 0.3) // overrun: settles at the real number
+    expect(l.spentUsd()).toBeCloseTo(0.38)
+  })
+})
+
 describe("Ledger affordTurn: the lead is metered like everything else", () => {
   it("answers from the transcript's exact token count and both prices", () => {
     const l = new Ledger(1.5)
