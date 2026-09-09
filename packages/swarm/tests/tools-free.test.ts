@@ -594,6 +594,43 @@ describe("rememberTool", () => {
     expect(node.also).toContainEqual({ name: "Apify Docs", what: "docs portal" })
   })
 
+  // Untested until now, and the reason nodeKey's capability/buyer branch
+  // (map.ts) needed a fix: unlike company/product, a capability or buyer
+  // claim is never SUPPOSED to carry a real domain (map.ts's own doc comment
+  // calls them "kinds without a domain"), but nothing in the schema or the
+  // gate strips one if the model supplies it anyway. Before the fix, a
+  // capability claim with a stray host-shaped domain matching an existing
+  // company's host fell into the same `if (host) return host` branch as the
+  // company itself, landing on the identical key and merging — silently
+  // relabeling the company's own `kind` to "capability" once the capability
+  // claim's tier won the merge, exactly the corruption `scorecardInput`'s
+  // company/product filter (orchestrator.ts) and every other kind-gated
+  // reader depends on not happening.
+  it("a capability claim with a stray domain does not merge onto a company at the same host", () => {
+    const s = seeded()
+    const ctx = ctxOf(s)
+    rememberTool(ctx, {
+      nodes: [{
+        name: "Acme", domain: "rival.com", kind: "company", what: "scraping api", relation: "competitor",
+        why: "same job same buyer, sold standalone", evidence: [{ url: "https://rival.com/", quote: "sells a scraping API" }],
+      }],
+      why: "t",
+    })
+    const r = rememberTool(ctx, {
+      nodes: [{
+        name: "Fraud scoring", domain: "rival.com", kind: "capability", what: "risk model", relation: "dependency",
+        why: "a model echoing the rival's own URL into the domain field",
+        evidence: [{ url: "https://rival.com/", quote: "sells a scraping API" }],
+      }],
+      why: "t",
+    })
+    expect(r.added.nodes).toBe(1)
+    expect(r.merged.nodes).toBe(0)
+    expect(s.map.nodes.size).toBe(2)
+    expect(s.map.nodes.get("rival.com")!.kind).toBe("company")
+    expect(s.map.nodes.get("capability:fraud-scoring")!.kind).toBe("capability")
+  })
+
   it("merge is commutative on key: either arrival order lands one node with both quotes", () => {
     const build = (order: "ab" | "ba") => {
       const evidence = new RunEvidence()

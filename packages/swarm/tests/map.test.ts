@@ -34,6 +34,31 @@ describe("nodeKey", () => {
     expect(nodeKey("capability", "", "")).toBe("")
     expect(nodeKey("capability", "   ", "")).toBe("")
   })
+
+  // Untested until now: this module's own doc comment calls capability and
+  // buyer "kinds without a domain", and every fixture in this repo agrees —
+  // no `kind: "buyer"` or `kind: "capability"` node anywhere carries a real
+  // domain — but nothing in the schema or the gate enforces that absence
+  // (agent.ts's remember tool requires `domain: z.string()` on every kind
+  // alike). A capability or buyer claim that arrives with a stray host-shaped
+  // domain must still key on `kind:name-slug`, not fall into company/
+  // product's host-identity space, or it would silently merge onto — and
+  // potentially relabel the kind of — an unrelated node already keyed at
+  // that host.
+  it("capability and buyer ignore a stray domain and key on kind:name-slug regardless", () => {
+    expect(nodeKey("capability", "Fraud scoring", "rival.com")).toBe("capability:fraud-scoring")
+    expect(nodeKey("buyer", "SMB finance teams", "rival.com")).toBe("buyer:smb-finance-teams")
+  })
+
+  // Contrast case, pinning what the fix must NOT change: community is the
+  // one domain-bearing kind the doc names ("community without a home" keys
+  // on kind:name-slug, implying one WITH a home keys on that home) — every
+  // `kind: "community"` fixture in tools-free.test.ts carries a real domain
+  // and expects host-based merge, so community must keep falling into the
+  // host branch exactly like company/product.
+  it("community with a domain still keys on the bare host, unlike capability/buyer", () => {
+    expect(nodeKey("community", "Rival's dev forum", "rival.com")).toBe("rival.com")
+  })
 })
 
 /**

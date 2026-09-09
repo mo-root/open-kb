@@ -164,7 +164,22 @@ export function nodeKey(kind: string, name: string, domain: string): string {
   // "https://") — there is no input for which `.split("/")[0]` is undefined.
   const host = domain.trim() ? registrableHost(domain.trim().replace(/^https?:\/\//i, "").split("/")[0] ?? "") : ""
   if (kind === "company" || kind === "product") return host
-  if (host) return host
+  // Only "community" shares the host identity space with company/product —
+  // this module's own doc comment names capability and buyer as "kinds
+  // without a domain", and every fixture in this repo agrees: grep finds
+  // dozens of `kind: "community"` nodes carrying a real domain (tools-free.
+  // test.ts alone has several), but not one `kind: "buyer"` or `kind:
+  // "capability"` fixture with a non-empty domain anywhere in the suite.
+  // Nothing enforces that absence, though: agent.ts's remember schema
+  // requires `domain: z.string()` on every node regardless of kind, and
+  // admit() never checks a claim's domain against its kind. Before this fix,
+  // a capability or buyer claim that arrived with a stray host-shaped domain
+  // (a model echoing a URL from the page it just read) fell into the same
+  // `if (host) return host` branch as a real company, silently merging onto
+  // — and, via tools-free.ts's incoming-stronger-tier merge, potentially
+  // overwriting the kind of — any unrelated company/product/community node
+  // that happened to already be keyed at that host.
+  if (kind === "community" && host) return host
   return name.trim() ? `${kind}:${slug(name)}` : ""
 }
 
