@@ -392,6 +392,15 @@ export async function discover(opts: DiscoverOptions): Promise<DiscoveryResult> 
     prompt: `Discover everything ${anchor} sells, by reading its own site.\n\nStart by mapping its product pages, then read and submit. When you are certain you have them all, call finish.\n\nGO.`,
   })
 
+  // `?? []`: structurally unreachable. `ai@7.0.48`'s own `GenerateTextResult`
+  // (node_modules/ai/dist/index.d.ts) declares `steps` as `readonly steps:
+  // Array<StepResult<...>>` — not optional, no `| undefined` — so `agent.generate`
+  // can only ever hand back a real array here, empty or not. v8 branch coverage
+  // confirms 0 hits on the fallback across every discovery.test.ts fixture,
+  // including the ones that stop before any tool call. Kept rather than
+  // simplified away: removing it would leave `steps` typed from a call whose
+  // declared return type this file does not otherwise re-assert, for no
+  // behavioural gain.
   const steps = result.steps ?? []
 
   // The agent should call finish; if it stopped without one, keep what it found
