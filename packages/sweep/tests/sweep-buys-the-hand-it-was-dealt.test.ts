@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from "vitest"
 import { openingHand, companyHand } from "@open-kb/core"
-import { ANCHOR_NAME, COINAGE, runFixture, type Harness } from "./fixture.js"
+import { ANCHOR, ANCHOR_NAME, COINAGE, runFixture, type Harness } from "./fixture.js"
 
 /**
  * WHAT THE RUN BOUGHT, exactly, and nothing else.
@@ -159,6 +159,59 @@ describe("the opening catalog", () => {
     // branded one second, which is what tells a reader the bare category term
     // was doing the work rather than the company's name.
     expect(by("tailwatch.example")!.families).toEqual(["plain", "branded", "debranded"])
+  })
+})
+
+/**
+ * THE LABEL-IS-A-MARKET-WORD GUARD (sweep.ts:3424-3445), never exercised —
+ * every existing fixture strips to terms that share no word with `pellucid`,
+ * the anchor's own label, so `labelIsMarketWord` was false on every run this
+ * suite has ever fired.
+ *
+ * The guard's own comment states the failure it exists to prevent: a company
+ * like customer.io strips to a core market whose own name is "customer" —
+ * banning the bare label kills the entire plain family for that market, after
+ * the catalog call that wrote it was already paid for. The fix is not to drop
+ * the ban; it is to swap what the ban NAMES, from the label to the anchor's
+ * full domain, so "customer engagement platform" survives while "customer.io"
+ * and "customerio" — the spellings that actually self-return — stay banned.
+ */
+describe("the anchor's label, when the market speaks it too, is not a self-return", () => {
+  const labelIsMarketWordScript = {
+    catalog: (product: string) =>
+      product === "Log Search Cloud"
+        ? { terms: [`${ANCHOR_NAME} log search`, "log management"], generic: false, queries: [] }
+        : { terms: ["uptime monitoring"], generic: true, queries: [] },
+  }
+
+  it("keeps the plain family instead of banning the label out of its own market", async () => {
+    const h = await runFixture({ script: labelIsMarketWordScript })
+    // Both of the bare term's opening doors name the label — banned by the
+    // ordinary rule, and the whole reason this guard exists.
+    expect(h.asked).toContain(`${ANCHOR_NAME} log search`)
+    expect(h.asked).toContain(`${ANCHOR_NAME} log search alternatives`)
+  })
+
+  it("tightens to the anchor's own domain forms instead, so self-return in disguise still fails", async () => {
+    // The joined spelling: no space between label and TLD, so the ordinary
+    // word-boundary ban on the bare label (`pellucid`) would never have
+    // caught it either — this form is banned ONLY because the guard adds it.
+    const joined = `${ANCHOR.replace(/\./g, "")} enterprise pricing`
+    const h = await runFixture({
+      script: {
+        catalog: (product: string) =>
+          product === "Log Search Cloud"
+            ? {
+                terms: [`${ANCHOR_NAME} log search`, "log management"],
+                generic: false,
+                queries: [{ q: joined, intent: "evaluation", platform: "web", why: "self-return in disguise", market: "log search" }],
+              }
+            : { terms: ["uptime monitoring"], generic: true, queries: [] },
+      },
+    })
+    expect(h.asked).not.toContain(joined)
+    // The loosening and the tightening are the same guard, on the same run.
+    expect(h.asked).toContain(`${ANCHOR_NAME} log search`)
   })
 })
 
