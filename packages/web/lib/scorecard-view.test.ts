@@ -135,4 +135,15 @@ describe("what the refusals bought", () => {
     // refusals: 0 (the early-return path), is what's missing here.
     expect(gateAnswer(gate({ refusals: 1 }))).toBe("refused once; no page and no landing followed")
   })
+
+  it("falls back to a bare count past two refusals, for a run this build's own gate could never write", () => {
+    // gate.refusals is a bare `number` on the view type (viewTypes.ts:180),
+    // and kb-from-run.ts only checks `typeof g.refusals === "number"` before
+    // passing a stored run's own field straight through — it is not clamped
+    // to GATE_MAX_REFUSALS (tools-control.ts:730, currently 2). A run stored
+    // by a build with a higher ceiling, or a hand-edited/corrupted run file,
+    // reaches gateAnswer with refusals: 3 and must still print something
+    // honest rather than silently rounding down to "twice".
+    expect(gateAnswer(gate({ refusals: 3 }))).toBe("refused 3 times; no page and no landing followed")
+  })
 })
