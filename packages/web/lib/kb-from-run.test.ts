@@ -501,6 +501,66 @@ describe("scorecard passthrough (swarm runs)", () => {
     expect(viewOf(fixtureRun({ report: { scorecard: "yes" } })).scorecard).toBeUndefined()
     expect(viewOf(fixtureRun({ report: { scorecard: { families: [] } } })).scorecard).toBeUndefined()
   })
+
+  /**
+   * Every scorecard fixture above hands `families` a well-formed array and
+   * `gate` a well-formed object, so scorecardOf's own defensive fallbacks for
+   * a malformed ENTRY within a well-formed families array, and for `gate`
+   * itself being malformed, had 0 branch hits (kb-from-run.ts:318-344,356) —
+   * confirmed with `pnpm exec vitest run --coverage` before writing this.
+   * The four families/family-field fallbacks and the gate/refusedFinish/
+   * refusals fallbacks are the same "malformed serialized JSON" class
+   * `alsoOf` above (kb-from-run.ts:193-203, tested at line 551) already
+   * covers for a different field — `report.scorecard` is unknown data read
+   * off a run file on disk, not a value this file's own code constructs, so
+   * a hand-edited or older-format file really can carry any of these shapes.
+   */
+  it("drops a malformed family entry and defaults a well-formed entry's malformed fields", () => {
+    const v = viewOf(
+      fixtureRun({
+        report: {
+          scorecard: {
+            ...liveScorecard,
+            families: [
+              null,
+              "not an object",
+              { dedupeKey: "no-lens-field", priority: 1 },
+              { lens: "orientation", status: 7, nodesAdded: "two", pageTierNodes: null, because: 3 },
+            ],
+          },
+        },
+      }),
+    )
+    expect(v.scorecard!.families).toEqual([
+      { lens: "orientation", status: "unknown", nodesAdded: 0, pageTierNodes: 0, because: undefined },
+    ])
+  })
+
+  it("falls back to the zero gate record when gate itself is malformed, not just when its fields are missing", () => {
+    const v = viewOf(fixtureRun({ report: { scorecard: { ...liveScorecard, gate: null } } }))
+    expect(v.scorecard!.gate).toEqual({
+      refusals: 0,
+      objections: [],
+      carriedObjections: [],
+      refusedFinish: null,
+      workAtRefusal: null,
+      workAnswered: 0,
+      answeredBy: [],
+      stood: "",
+    })
+  })
+
+  it("reads refusedFinish as null when present but not an object, and refusals as 0 when not a number", () => {
+    const v = viewOf(
+      fixtureRun({
+        report: {
+          scorecard: { ...liveScorecard, gate: { refusals: "two", refusedFinish: "mapped" } },
+        },
+      }),
+    )
+    expect(v.scorecard!.gate.refusals).toBe(0)
+    expect(v.scorecard!.gate.refusedFinish).toBeNull()
+  })
 })
 
 describe("evidence tier and grounding", () => {
