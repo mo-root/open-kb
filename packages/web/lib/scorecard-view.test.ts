@@ -125,4 +125,14 @@ describe("what the refusals bought", () => {
     expect(gateAnswer(gate({ refusals: 0, objections: [], stood: "clean" }))).toBeNull()
     expect(gateAnswer(gate({ refusals: 0, objections: ["something stood"], stood: "" }))).toBeNull()
   })
+
+  it("still reports a refusal that happened when stood carries no recognized blurb", () => {
+    // `stood` is a bare string on the view type, not the narrow GateStood
+    // union — a run stored before this field existed, or one from a future
+    // build with a value this build has never heard of, leaves `why`
+    // undefined. The refusal still happened and gets its sentence; only the
+    // trailing " — <reason>" clause, which line 126 above only exercises at
+    // refusals: 0 (the early-return path), is what's missing here.
+    expect(gateAnswer(gate({ refusals: 1 }))).toBe("refused once; no page and no landing followed")
+  })
 })
