@@ -273,6 +273,20 @@ describe("fetchTool", () => {
     expect(r.docs[1]).toMatchObject({ ok: false, reason: "thin-render" })
   })
 
+  it("thin-render's hint drops the unlock-tier suggestion when the call already paid for the unlock tier", async () => {
+    // hintFor's `mode === "direct" ? "; the unlock tier may see..." : ""` arm
+    // only ever ran with mode "direct" above and at tools-paid.ts:616 — both
+    // fixture pages were fetched at "direct". A thin-render at "unlock" has
+    // nowhere higher to escalate to, so the hint has to say that by omission.
+    const { ctx } = paidCtx({
+      fetch: fakeFetcher({ "https://b.com/": "<html><body><p>tiny</p></body></html>" }),
+    })
+    const r = await fetchTool(ctx, { urls: ["https://b.com/"], mode: "unlock", why: "t" })
+    const doc = r.docs[0] as FetchDocFail
+    expect(doc.reason).toBe("thin-render")
+    expect(doc.hint).toBe("under 200 characters of readable text came back — the page is assembled in the browser")
+  })
+
   it("two strikes open the breaker; the third call is refused before the port, in words", async () => {
     let portCalls = 0
     const counting: FetchPort = {
