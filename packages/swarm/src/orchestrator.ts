@@ -1334,7 +1334,33 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
           stopping = true
           stopReason = "turn-cap"
           say(o.because)
-        } else if (!control.finished && !stopReason) {
+        }
+        // `!control.finished && !stopReason` never holds here: structurally
+        // unreachable, not just untested. Scoped branch coverage on this file
+        // (temporary `@vitest/coverage-v8` devDependency, reverted before
+        // verifying) named 1338-1340 as the file's other gap beside the
+        // already-documented 1263-1265, 90.42% branch.
+        //
+        // `o` reaches this `else` (o.kind === "done") from exactly three
+        // sites in agent.ts's leadTurn: `deps.control.finished` truthy
+        // (824), `closingSpent` true (825), or the turn cap (826-830, which
+        // always sets `loopDetected = true`). `deps.control` and this file's
+        // `control` are the same object (base.control, spread into runLead's
+        // deps above) and leadTurn's checks at 824-825 run synchronously
+        // before its first `await`, so they read exactly the state this file
+        // last observed when it scheduled the call (line 1217, guarded by
+        // `!control.finished`) — no other code runs in between to change it.
+        // That guard rules out the 824 site outright. The 825 site is ruled
+        // out one call earlier: `closingSpent` only ever flips true inside
+        // the same call that returns `kind: "closing"`, and processing that
+        // result sets `stopping = true` (1328) before this file loops back —
+        // `stopping` never resets (1246's comment walks all eight write
+        // sites) — so 1217's own `!stopping` guard blocks every later call
+        // that could observe `closingSpent`. That leaves the turn-cap site,
+        // which always sets `loopDetected = true`. So every `kind: "done"`
+        // this file ever receives already took the `if` branch above; the
+        // `else if` cannot fire.
+        else if (!control.finished && !stopReason) {
           stopping = true
           stopReason = "budget-floor"
         }
