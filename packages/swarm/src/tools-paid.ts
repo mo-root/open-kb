@@ -812,6 +812,22 @@ export async function harvestTool(ctx: HarvestCtx, input: HarvestInput): Promise
   } catch (err) {
     // The kernel only throws on abort (its own contract); anything else is
     // still a sentence to the model, never a stack — the tool does not throw.
+    //
+    // `if (!controller.signal.aborted)`: dead by construction, not an
+    // untested branch. judge.ts's judgeHosts has exactly one throw site that
+    // escapes judgeOne unguarded — judge.ts:397, `if (deps.signal?.aborted)
+    // throw err`, itself gated on that same check — every other call inside
+    // judgeOne that could throw (the unlocker retry, both `deps.classify`
+    // calls) sits in its own local try/catch and never rethrows. `signal`
+    // was passed to judgeHosts as `controller.signal` above (the same
+    // object, not a copy), so the one condition that lets this catch ever
+    // run — `deps.signal.aborted` true at the moment of the rethrow — is the
+    // exact condition re-checked here, and an AbortSignal never un-aborts
+    // once it fires. So `failure` can never actually be assigned; every
+    // unjudged host below always falls through to the `ranDry` ternary
+    // instead. Left in rather than deleted: it is the one path that would
+    // matter if judgeHosts ever grew a second unguarded throw site, and
+    // there is no live input that makes it go red.
     if (!controller.signal.aborted) {
       failure = `the harvest itself failed (${err instanceof Error ? err.message : String(err)})`
     }
