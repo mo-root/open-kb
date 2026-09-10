@@ -166,4 +166,21 @@ describe("checkQuote", () => {
     expect(checkQuote(text, "Acme se")).toBe("too-short")
     expect(() => s.cite(rec.handle, "Acme se")).toThrow(CitationError)
   })
+
+  it("folds a page's typographic quotes and dashes against a model's ASCII spelling of the same text", () => {
+    // MEASURED: before this fold, this exact pair returned "absent" — a CMS
+    // (WordPress's "wptexturize" does this by default) renders a straight `'`
+    // as U+2019, a model asked for a `quote` field tends to write it back as
+    // ASCII, and the two sides of one correct citation stopped matching on a
+    // single codepoint neither side got wrong.
+    const curly = "Acme’s “anti-bot” toolkit — built for scraping teams."
+    expect(checkQuote(curly, "Acme's \"anti-bot\" toolkit - built for scraping teams")).toBe("ok")
+    // The reverse direction: a model quoting straight punctuation from a page
+    // that already renders it that way must keep matching, unaffected by the fold.
+    expect(checkQuote("Acme's anti-bot toolkit.", "Acme's anti-bot toolkit")).toBe("ok")
+  })
+
+  it("still refuses a paraphrase once punctuation is folded — the fold does not loosen containment", () => {
+    expect(checkQuote("Acme’s anti-bot toolkit.", "Acme's anti-bot suite")).toBe("absent")
+  })
 })

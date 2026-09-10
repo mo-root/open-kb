@@ -42,7 +42,28 @@ export class CitationError extends Error {
   }
 }
 
-const squash = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase()
+/**
+ * Typographic marks a page and a model-written quote can spell differently
+ * for the identical text: a CMS renders a straight `'` as U+2019 (WordPress's
+ * "wptexturize" does this by default), while a model asked for a `quote`
+ * field tends to write the ASCII form back. MEASURED: `checkQuote` on
+ * "Acme’s platform helps developers ship faster." against the model-shaped
+ * quote "Acme's platform helps developers ship faster" returned "absent" —
+ * same sentence, one codepoint apart, on text neither side got wrong. Folded
+ * before whitespace/case, on both sides equally, since `squash` runs over the
+ * page text and the quote alike — this is the same normalisation the
+ * containment check already gives case and wrapped whitespace, not a
+ * loosening of "literal, not semantic": every character still has to be
+ * there, just not in one of several interchangeable spellings.
+ */
+const squash = (s: string) =>
+  s
+    .replace(/[‘’‚ʼ]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/[–—]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase()
 
 /**
  * Below this, a "quote" proves nothing, it matches too much of the page to mean anything.
