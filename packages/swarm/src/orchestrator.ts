@@ -1239,6 +1239,25 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
     if (!stopping && !leadDone && !control.finished && !inflight.has("lead") && control.next?.seconds !== undefined) {
       deadlines.push(lastTurnEnd + control.next.seconds * 1000)
     }
+    // This condition never holds. Scoped branch coverage on this file
+    // (temporary `@vitest/coverage-v8` devDependency, reverted before
+    // verifying) named 1244-1246 as a gap, and tracing it by hand shows why
+    // no test can close it. `stopping` is assigned in eight places in this
+    // function and every one of them assigns `true` — nothing here ever
+    // resets it to `false`. `wallStopped` has exactly one write site (1171),
+    // inside the same `if` block that also sets `stopping = true` (1173)
+    // whenever it was not already — so `wallStopped` can never be `true`
+    // while `stopping` is `false`. Reaching this line without having
+    // returned at 1229-1230 already requires `stopping === false` (a `true`
+    // there returns via `endRun` first), which by the above means
+    // `wallStopped === false` too — and that makes line 1237's
+    // `if (!wallStopped) deadlines.push(...)` fire earlier in this same
+    // iteration, so `deadlines.length` is already at least 1 by the time
+    // this check runs. "no deadline queued" and "still running" cannot both
+    // be true. Documented in place rather than deleted — it is the one line
+    // that would matter if a future wall-clock refactor let `stopping` and
+    // `wallStopped` diverge — and rather than tested, since no live input
+    // can make it go red.
     if (inflight.size === 0 && deadlines.length === 0) {
       // Nothing flies and nothing ticks: wake the lead rather than hang.
       forceDue = true
