@@ -6425,6 +6425,28 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       // against, which is a different claim from selling against the anchor.
       // The anchor is named by host, which is the one identification that
       // cannot be a judgement.
+      //
+      // THIS BRANCH DOES NOT FIRE TODAY. `isRival` has exactly one call site
+      // (6529, `(isAnchorHost || isRival(src!)) && isRival(entity)`), and
+      // neither argument can carry the anchor's domain there. `isRival(src!)`
+      // is short-circuited away whenever `isAnchorHost` is true, and when it
+      // is false `src` is `keep.find(e => domain === host)` with
+      // `host !== anchorHost` (6450) — so `src.domain` can't be the anchor
+      // either. `entity` always comes from `spellings` (6336), which maps
+      // over `keep` (6165, `entities.filter(onMap)`); `entities` (5400) is
+      // filled only from `judged.entities` and `triagedOut`, both drawn from
+      // `hostList`/`judgeList`, and `hostList` itself filters out
+      // `host !== anchorFolded` (5134) before either one exists — the anchor
+      // never becomes a row in `keep`, so `entity.domain` can't be it either.
+      // Confirmed dynamically too: an instrumented build of this branch
+      // logged zero hits across the full `packages/sweep` and `packages/swarm`
+      // suites.
+      //
+      // Left in rather than deleted — the prose above it is the reason it was
+      // written, and it is the one guard that would matter again the moment
+      // either fact above stops holding (the short-circuit at 6529 goes away,
+      // or `hostList`/`keep` ever gains a row for the anchor). Not tested
+      // either, since there is no live input today that makes it go red.
       if (e.domain.toLowerCase().replace(/^www\./, "") === anchorHost)
         return true;
       return (
