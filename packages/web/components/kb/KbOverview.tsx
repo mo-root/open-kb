@@ -143,7 +143,7 @@ export function timeAgo(ts: string): string {
   return `${Math.floor(h / 24)}d ago`;
 }
 
-const pct = (v: number, total: number) =>
+export const pct = (v: number, total: number) =>
   total > 0 ? Math.round((v / total) * 100) : 0;
 
 export function meanRelevance(notes: NoteRef[]): number {

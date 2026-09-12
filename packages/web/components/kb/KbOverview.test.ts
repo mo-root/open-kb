@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { JUDGED_RELATIONS } from "@open-kb/core"
-import { meanRelevance, RELATION_COLOR, RELATION_ORDER, timeAgo } from "./KbOverview"
+import { meanRelevance, pct, RELATION_COLOR, RELATION_ORDER, timeAgo } from "./KbOverview"
 import type { NoteRef } from "@/lib/viewTypes"
 
 /**
@@ -178,5 +178,57 @@ describe("timeAgo formats a build timestamp relative to now", () => {
 
   it("returns a timestamp Date.parse cannot read unchanged, rather than 'NaNs ago'", () => {
     expect(at("not-a-real-timestamp", "2026-01-01T00:00:00.000Z")).toBe("not-a-real-timestamp")
+  })
+})
+
+/**
+ * `pct` (formerly unexported) had never run under test: `@vitest/coverage-v8`
+ * run against this file's own suite in isolation measured 8.32% lines / 100%
+ * branch / 12.5% funcs before this commit, with line 147 (the function body)
+ * inside the uncovered range. After: 8.46% lines / 100% branch / 18.75%
+ * funcs — one more of the file's sixteen functions, the rest unmoved.
+ *
+ * It has four call sites, all in this file: `PlacementPanel`'s `coverage`
+ * (line 259, the second Gauge and its `>= 60` colour threshold), the header
+ * rail's `--rel` CSS custom property (line 887), and two `StatTile` hints
+ * (lines 949, 955). The last three sit inside `KbOverview` itself, which
+ * fetches its data with `useEffect` the same way `NoteView.tsx`'s `hostOf`
+ * comment and this file's own `timeAgo` already found for their call sites:
+ * `renderToStaticMarkup` never runs an effect, so `KbOverview` never leaves
+ * its loading skeleton under this suite's harness and none of those three are
+ * reachable without a jsdom/RTL fixture this repo does not have. `pct` itself
+ * is the one thing every call site shares regardless of which renders, so it
+ * is what gets pinned directly — same shape as `meanRelevance` above.
+ *
+ * The guard matters for a real state, not a hypothetical one: `total` is 0
+ * on a knowledge base with zero entities (`totalTyped` and `PlacementPanel`'s
+ * own `total` both come from `entities.length` or a filtered count of it),
+ * and `0 / 0` is `NaN` in JavaScript — a `NaN%` hint or gauge value is exactly
+ * the empty-map case this dashboard's other panels (`CompositionPanel`'s own
+ * `total === 0` branch, `PlacementPanel`'s `profile.length > 1` branch) each
+ * special-case rather than let through.
+ *
+ * D-scope, self-discovered (docs/overnight-backlog.md is gone from this
+ * checkout, untracked by 481fa6d); git log names SELF-433 as the last used,
+ * so this is SELF-434.
+ */
+describe("pct guards the empty-total case every real call site can reach", () => {
+  it("returns 0 rather than NaN when total is 0, whatever v is", () => {
+    expect(pct(0, 0)).toBe(0)
+    expect(pct(5, 0)).toBe(0)
+  })
+
+  it("returns 0 for a zero numerator over a real total", () => {
+    expect(pct(0, 10)).toBe(0)
+  })
+
+  it("returns 100 when v equals total", () => {
+    expect(pct(10, 10)).toBe(100)
+  })
+
+  it("rounds to the nearest whole percent, half up", () => {
+    expect(pct(1, 8)).toBe(13) // 12.5 -> 13, not truncated to 12
+    expect(pct(1, 3)).toBe(33)
+    expect(pct(2, 3)).toBe(67)
   })
 })
