@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { JUDGED_RELATIONS } from "@open-kb/core"
-import { meanRelevance, RELATION_COLOR, RELATION_ORDER } from "./KbOverview"
+import { meanRelevance, RELATION_COLOR, RELATION_ORDER, timeAgo } from "./KbOverview"
 import type { NoteRef } from "@/lib/viewTypes"
 
 /**
@@ -114,5 +114,69 @@ describe("RELATION_ORDER and RELATION_COLOR cover every JUDGED_RELATIONS member"
   it("gives no two relations the same colour", () => {
     const colors = JUDGED_RELATIONS.map((r) => RELATION_COLOR[r])
     expect(new Set(colors).size).toBe(colors.length)
+  })
+})
+
+/**
+ * `timeAgo` (KbOverview.tsx, formerly unexported) had zero test coverage
+ * anywhere: `@vitest/coverage-v8` run against this file measured 27.7% lines
+ * / 36.4% branches / 17.6% functions covered — `meanRelevance` and the two
+ * relation maps above are the only three of its seventeen functions this
+ * file's tests ever reached. `timeAgo` has its own call site (line ~917,
+ * `built {timeAgo(built)}`, `built` from `builtAtOf(manifest)` — the run
+ * manifest's `built_at`/`builtAt` field) but is otherwise exactly the kind of
+ * pure, deterministic-once-`Date.now()`-is-pinned helper this suite's
+ * fake-timer-free style can cover directly, same shape as `meanRelevance`
+ * needing an export before SELF-99 could reach it.
+ *
+ * D-scope, self-discovered; git log names SELF-430 as the last used, so this
+ * is SELF-431.
+ */
+describe("timeAgo formats a build timestamp relative to now", () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  const at = (ts: string, now: string) => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(now))
+    return timeAgo(ts)
+  }
+
+  it("reports whole seconds under the 60s boundary", () => {
+    expect(at("2026-01-01T00:00:01.000Z", "2026-01-01T00:00:00.000Z")).toBe("0s ago")
+    expect(at("2026-01-01T00:00:00.000Z", "2026-01-01T00:00:59.000Z")).toBe("59s ago")
+  })
+
+  it("rolls seconds into minutes exactly at the 60s boundary", () => {
+    expect(at("2026-01-01T00:00:00.000Z", "2026-01-01T00:01:00.000Z")).toBe("1m ago")
+  })
+
+  it("reports whole minutes under the 60m boundary", () => {
+    expect(at("2026-01-01T00:00:00.000Z", "2026-01-01T00:59:00.000Z")).toBe("59m ago")
+  })
+
+  it("rolls minutes into hours exactly at the 60m boundary", () => {
+    expect(at("2026-01-01T00:00:00.000Z", "2026-01-01T01:00:00.000Z")).toBe("1h ago")
+  })
+
+  it("reports whole hours under the 24h boundary", () => {
+    expect(at("2026-01-01T00:00:00.000Z", "2026-01-01T23:00:00.000Z")).toBe("23h ago")
+  })
+
+  it("rolls hours into days exactly at the 24h boundary", () => {
+    expect(at("2026-01-01T00:00:00.000Z", "2026-01-02T00:00:00.000Z")).toBe("1d ago")
+  })
+
+  it("reports multi-day gaps", () => {
+    expect(at("2026-01-01T00:00:00.000Z", "2026-01-08T00:00:00.000Z")).toBe("7d ago")
+  })
+
+  it("clamps a build timestamp that reads as being in the future to 0s, not a negative count", () => {
+    expect(at("2026-01-02T00:00:00.000Z", "2026-01-01T00:00:00.000Z")).toBe("0s ago")
+  })
+
+  it("returns a timestamp Date.parse cannot read unchanged, rather than 'NaNs ago'", () => {
+    expect(at("not-a-real-timestamp", "2026-01-01T00:00:00.000Z")).toBe("not-a-real-timestamp")
   })
 })

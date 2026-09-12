@@ -131,7 +131,7 @@ export const RELATION_COLOR: Record<string, string> = {
   none: "#F0A441",
 };
 
-function timeAgo(ts: string): string {
+export function timeAgo(ts: string): string {
   const t = Date.parse(ts);
   if (Number.isNaN(t)) return ts;
   const s = Math.max(0, Math.floor((Date.now() - t) / 1000));
