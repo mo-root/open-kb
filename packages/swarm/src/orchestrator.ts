@@ -1227,6 +1227,23 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
     // Fully drained and stopping: the run is over.
     if (inflight.size === 0) {
       if (stopping) return await endRun(stopReason ?? "budget-floor")
+      // Dead by construction, not an untested branch. Scoped branch coverage
+      // on this file (temporary `@vitest/coverage-v8` devDependency, reverted
+      // before verifying) named line 1230 (this line) as a gap beside the
+      // already-documented 1263-1265 and 1363-1366.
+      //
+      // `leadDone` has exactly one write site in this function — the `else {
+      // leadDone = true; ... }` arm below (this file's own "kind: done"
+      // handling) — and that arm's own comment already proves `o.loopDetected`
+      // is unconditionally true whenever a turn reaches it, so
+      // `if (o.loopDetected) stopping = true` runs in the same tick every
+      // time `leadDone` is set. `stopping` never resets (the "nothing flies"
+      // comment below walks all eight write sites), so on every later pass
+      // through this loop, `leadDone === true` implies `stopping === true`
+      // already — which the line above returns on first. Left in rather than
+      // deleted: the one line that would matter if `leadDone` ever grew a
+      // second write site that did not also set `stopping`. Not tested,
+      // since no live input makes it go red.
       if (leadDone) return await endRun(stopReason ?? "budget-floor")
     }
 
