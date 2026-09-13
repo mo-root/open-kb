@@ -231,6 +231,24 @@ describe("readTool", () => {
     expect(ranged.totalChars).toBe(41)
   })
 
+  // `range.end` is `end?: number` — a caller may ask for "everything from
+  // start" with no end at all. tools-free.ts:170 reads
+  // `input.range.end === undefined ? undefined : ...`, and the one range test
+  // above always sets both bounds, so v8 branch coverage confirmed the
+  // `undefined` arm at 0 hits before this test.
+  it("range with no end reads from start straight through to the end of the text", () => {
+    const evidence = new RunEvidence()
+    const rec = evidence.record({
+      url: "https://l.com/",
+      text: "alpha one\nbeta two\nalpha three\ngamma four",
+      status: "found",
+      tier: "page",
+    })
+    const ranged = readTool({ evidence, ledger: ledger() }, { handle: rec.handle, range: { start: 31 } })
+    if (!ranged.ok) throw new Error(ranged.reason)
+    expect(ranged.text).toBe("gamma four")
+  })
+
   it("a broken grep regex is treated as literal text rather than refused", () => {
     const evidence = new RunEvidence()
     const rec = evidence.record({ url: "https://l.com/", text: "price (usd\nother line", status: "found", tier: "page" })
