@@ -1153,6 +1153,47 @@ describe("brightDataSearch obeys a stated rate limit", () => {
     }
   })
 
+  /**
+   * The other half of the same gap: `statedRate`'s SECOND pattern, `rate\s+to\s+
+   * (\d+)`, has no test of its own either. Every test in this file that trips
+   * THROTTLED with a stated number spells it as `N/min`, which the FIRST
+   * pattern already matches — so the `??` fallback right of it has never once
+   * run. Bright Data phrases the same throttle without a literal `/min` too
+   * ("...decrease your request rate to 10 requests per minute"), and a typo
+   * or a dropped alternative in that fallback would silently mis-parse it as
+   * "no rate stated" and fall through to the flat 6s gap above instead of the
+   * rate the provider actually asked for.
+   */
+  it("reads the stated rate from 'rate to N' phrasing when there is no 'N/min'", async () => {
+    vi.useFakeTimers()
+    try {
+      let n = 0
+      const fetchImpl = vi.fn(async (..._: FetchArgs) => {
+        n += 1
+        return n === 1
+          ? new Response("", {
+              status: 200,
+              headers: {
+                "x-brd-error":
+                  "The request was auto-throttled due to low success rate. Please decrease your request rate to 10 requests per minute.",
+              },
+            })
+          : new Response(JSON.stringify({ organic: [{ link: "https://a.com", title: "A", description: "" }] }), { status: 200 })
+      })
+      const s = brightDataSearch(creds, { fetchImpl: fetchImpl as unknown as typeof fetch, pages: 1, retryMs: 0 })
+      const pending = s.search(["a"])
+      // 10/min at 90% -> ceil(60_000 / 9) = 6_667ms, distinct from the flat
+      // 6_000ms fallback the sibling test above pins — proof the number was
+      // actually parsed, not just defaulted.
+      await vi.advanceTimersByTimeAsync(6_667)
+      const [r] = await pending
+      expect(r!.ok).toBe(true)
+      expect(r!.pacedMs).toBe(6_667)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("does not pace at all until something reports a throttle", async () => {
     const at: number[] = []
     const fetchImpl = vi.fn(async (..._: FetchArgs) => {
