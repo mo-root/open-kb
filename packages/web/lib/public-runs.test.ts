@@ -255,6 +255,21 @@ describe("with an allowance", () => {
     expect(gate.refusal).toMatch(/cannot reach the database/i)
   })
 
+  it("reads the singular when the allowance is one and the store cannot answer", async () => {
+    // The "used-up" refusal already has its own singular test just above; this
+    // is the other branch that spells out `limit`, and it carries its own
+    // `limit === 1 ? "map" : "maps"` ternary — untested until now, since every
+    // other uncountable-store test above sets a limit no smaller than 2.
+    env({ OPENKB_DEMO: "1", OPENKB_PUBLIC_RUNS_PER_DAY: "1" })
+    countRunsSince.mockResolvedValue(null)
+    const gate = await runGate()
+
+    expect(gate.open).toBe(false)
+    if (gate.open) return
+    expect(gate.refusal).toContain("1 map a day")
+    expect(gate.refusal).not.toContain("1 maps")
+  })
+
   it("meters a deployment that is not a demo too", async () => {
     // The allowance is about spending, not about the gallery. An owner who caps
     // their own password-protected instance gets the cap.
