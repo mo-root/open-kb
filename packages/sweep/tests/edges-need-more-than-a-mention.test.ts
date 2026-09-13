@@ -193,10 +193,22 @@ describe("a seller's mention is not a rivalry", () => {
     // A publisher naming a vendor genuinely covers it, and a forum genuinely
     // discusses one. The seller branch was the only one that did not follow
     // from the match, so it is the only one that moved.
+    //
+    // Both non-seller channel kinds this ladder knows about were only ever
+    // half of this claim: the forum ("discusses") side ran, but "publisher"
+    // naming a vendor had no case anywhere naming that vendor, so the
+    // "covers" arm of the mention ladder (sweep.ts, the `srcKind ===
+    // "publisher"` rung) had never executed. Loglens already carries kind
+    // "publisher" elsewhere in this file (line 115); here its own "log
+    // search alternatives" snippet is the one doing the naming.
     const h = await runFixture({
       ...OFFLINE,
       serp: {
         ...serpWhereGrepstackNamesEveryone("Hosted log search."),
+        "log search alternatives": [
+          hit(HOSTS.grepstack, "Grepstack", "Hosted log search."),
+          hit(HOSTS.loglens, "Loglens", "A roundup naming Tailwatch as the incumbent to beat."),
+        ],
         "uptime monitoring": [
           hit(HOSTS.forum, "The Ops Forum", "Long thread comparing Tailwatch retention settings."),
           hit(HOSTS.tailwatch, "Tailwatch", "Synthetic checks."),
@@ -209,11 +221,12 @@ describe("a seller's mention is not a rivalry", () => {
             : host === HOSTS.tailwatch
               ? said("Tailwatch", "company", "integration", "A console.", TAILWATCH_SPAN)
               : host === HOSTS.loglens
-                ? said("Loglens", "company", "substitute", "A retention service.", LOGLENS_SPAN)
+                ? said("Loglens", "publisher", "covers", "A newsletter about log tooling.", LOGLENS_SPAN)
                 : FORUM,
       },
     })
     expect(edge(h, HOSTS.forum, HOSTS.tailwatch)?.relation).toBe("discusses")
+    expect(edge(h, HOSTS.loglens, HOSTS.tailwatch)?.relation).toBe("covers")
   })
 })
 
