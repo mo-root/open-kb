@@ -41,6 +41,11 @@ export function normalizeDomain(input: string | undefined): string {
   let d = input.trim().toLowerCase()
   if (!d) return ""
   d = d.replace(/^[a-z][\w+.-]*:\/\//, "")
+  // `?? ""` is here for `noUncheckedIndexedAccess`, not for a real input:
+  // `String.prototype.split` always returns an array of length >= 1 (an
+  // unmatched separator yields `[d]`, an all-separator string yields `[""]`
+  // repeated), so `[0]` is never actually `undefined` — there is no `d` that
+  // reaches this line and makes the fallback fire.
   d = d.split(/[/?#]/)[0] ?? ""
   d = d.replace(/^www\./, "")
   // Unchanged, and deliberately not widened. It already refuses everything with
