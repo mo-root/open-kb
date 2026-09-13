@@ -1214,6 +1214,26 @@ describe("rememberOutcome — what the span log learns from a remember call", ()
     expect(error).toContain("rival.com (competitor)")
   })
 
+  it("names the first two downgrades rather than counting them, and caps the list", () => {
+    // The `rejected` list already has this same "+N more" arm tested above
+    // (line 1193); `downgraded`'s own copy of it — a separate `more > 0`
+    // ternary — had never run.
+    const { error } = rememberOutcome({
+      ...base,
+      added: { nodes: 1, edges: 0, retractions: 0 },
+      downgraded: Array.from({ length: 4 }, (_, i) => ({
+        key: `r${i}.com`,
+        relation: "competitor",
+        because: "no own page was read",
+        hint: "fetch it",
+      })),
+    })
+    expect(error).toContain("downgraded 4")
+    expect(error).toContain("r0.com (competitor): no own page was read")
+    expect(error).toContain("r1.com (competitor): no own page was read")
+    expect(error).toContain("+2 more")
+  })
+
   it("a clean call carries no error at all", () => {
     const { ok, error } = rememberOutcome({ ...base, added: { nodes: 3, edges: 1, retractions: 0 } })
     expect(ok).toBe(true)
