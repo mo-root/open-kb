@@ -742,6 +742,73 @@ describe("runSwarm: endings", () => {
     expect(ending?.reason).toBe("aborted")
     if (ending) expectEndingShape(ending)
   })
+
+  it("aborted: a mission with a still-pending fetch closes at what it actually drew", async () => {
+    // closeClaims (orchestrator.ts:1095-1107) has two arms for a claim still
+    // open when the run ends: queued-but-never-started settles at $0
+    // (line 1097, covered by every other ending test) and started-but-cut-off
+    // settles at whatever was drawn (lines 1101-1105, uncovered). The test
+    // above never reaches the second arm — its investigator's post-abort turn
+    // sleeps only 300ms, so runInvestigator resolves and its own `.then()`
+    // (line 788-796) settles the claim over an EMPTY `missionLandings`
+    // (nothing tracked via trackPending), which clears `Promise.allSettled`
+    // on the next microtask — well before `abortedEnd`'s `settleWithin`
+    // (line 1168) needs its 1_500ms grace — so `closeClaims` always finds it
+    // already settled.
+    //
+    // Forcing the second arm (measured with `console.error` timestamps at
+    // every step, since the ordering is not obvious from reading the code
+    // alone) needs a mission whose `missionLandings` is non-empty — a fetch
+    // gone "pending" (tools-paid.ts:463-474), tracked via `trackPending` —
+    // AND still mid-turn when the caller aborts. A mission that reaches its
+    // OWN `settleWithin(missionLandings)` call BEFORE the abort registers
+    // that call's abort listener early, and it then fires before
+    // `abortedEnd`'s own grace timer (armed synchronously, later, off the
+    // same `aborter.abort()`) — settling the claim normally, same as the
+    // empty-array case. So turn 1 has to reach "pending" AND turn 2 has to
+    // still be running when the caller aborts: search and the pending-fetch
+    // turn get real headroom (abort at 150ms) to run before that happens,
+    // and turn 2 sleeps far longer than the abort delay so it is what
+    // `oneTurn`'s own abort race (agent.ts:746-748) actually cuts off —
+    // only then does runInvestigator resolve, and its `.then()`, AFTER the
+    // abort, race its own now-populated `missionLandings` against a grace
+    // timer that starts later than `abortedEnd`'s and so loses.
+    const controller = new AbortController()
+    const lead = new MockLanguageModelV4({
+      doGenerate: async () => reply(call("n1", "next", { after: { seconds: 600 }, why: "quiet" }), false),
+    })
+    // A fetch port that never answers — the "late bytes" side of a pending
+    // fetch (tools-paid.ts:463-474) that this run never lives to see land.
+    const neverFetch: FetchPort = { get: () => new Promise<never>(() => {}) }
+    const inv = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = invTurnOf(prompt)
+        // Turn 0: draws $0.001 against the claim synchronously (tools-paid.ts:226).
+        if (turn === 0) return reply(call("s1", "search", { queries: ["fraud scoring"], why: "orient" }), false)
+        // Turn 1: with `pendingAfterMs: 5` below, this answers "pending" well
+        // inside the 150ms before the caller aborts, tracking `neverFetch`'s
+        // promise via `trackPending`.
+        if (turn === 1) return reply(call("f1", "fetch", { urls: ["https://rival.com/about"], mode: "direct", why: "read it" }), false)
+        // Turn 2: still running when the caller aborts at 150ms — this is the
+        // turn `oneTurn`'s own abort race (agent.ts:746-748) cuts off.
+        await sleep(5_000)
+        return reply(text("done."), true)
+      },
+    })
+    setTimeout(() => controller.abort(), 150)
+
+    let thrown: unknown
+    try {
+      await runSwarm(mkOpts({ lead, inv, over: { signal: controller.signal, fetch: neverFetch, pendingAfterMs: 5 } }))
+    } catch (e) {
+      thrown = e
+    }
+    const ending = (thrown as { ending?: SwarmEnding }).ending
+    expect(ending?.reason).toBe("aborted")
+    // Only the search's drawn $0.001 shows up — the pending fetch never drew
+    // anything more, and the mission never got to settle itself.
+    expect(ending?.spentUsd).toBe(0.001)
+  })
 })
 
 // ── the family ledger ───────────────────────────────────────────────────────
