@@ -105,6 +105,24 @@ describe("searchTool", () => {
     expect(r.spentUsd).toBeCloseTo(0.004)
   })
 
+  it("a failed query with no error string still gets a reason, not undefined", async () => {
+    // `SearchResult.error` is optional (packages/core/src/ports.ts) — a port
+    // that cannot say why is allowed to leave it unset. Every other `ok:
+    // false` fixture in this file sets `error`, so tools-paid.ts:205's `r.error
+    // ?? "..."` fallback had never run.
+    const port: SearchPort = {
+      async search(queries) {
+        return queries.map((query) => ({ query, hits: [], ok: false, usd: 0, ms: 1 }))
+      },
+    }
+    const { ctx } = paidCtx({ search: port })
+    const r = await searchTool(ctx, { queries: ["silent failure"], why: "t" })
+    expect(r.results[0]).toMatchObject({
+      query: "silent failure",
+      reason: "the engine refused this query and gave no reason",
+    })
+  })
+
   it("passes the model's queries through exactly as written", async () => {
     let got: string[] = []
     const port: SearchPort = {
