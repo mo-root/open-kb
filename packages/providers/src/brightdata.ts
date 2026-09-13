@@ -479,18 +479,24 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
           const firstZone = nextZone()
           let out = await once(firstZone)
           // Every `out.error ?? ""` and `?? "Account is suspended"` below, through
-          // line 496, is dead by construction: `once()` has exactly four ok:false
+          // line 500, is dead by construction: `once()` has exactly four ok:false
           // returns (383, 399, 448, 463) and all four set `error` to a defined,
           // non-empty string — there is no ok:false return that omits it. Each
           // `?? ""`/`?? "..."` here only runs inside a `!out.ok` guard, so the
           // left side is never the missing value the fallback exists for. Kept
           // because `SearchResult.error` is optional for ports that cannot report
           // a reason at all (see core/ports.ts) — this port always can. Same class
-          // as SELF-332's safe-fetch.ts abort-reason fallbacks. Line 496's
+          // as SELF-332's safe-fetch.ts abort-reason fallbacks. Line 500's
           // `THROTTLED.test(out.error ?? "")` re-check sits inside the same
           // `!out.ok` guard (opened below) and was left out of this comment's
           // original "through line 487" scope — it is the same dead fallback,
-          // not a sixth new one.
+          // not a sixth new one. (SELF-417 named it "line 496" — accurate at
+          // that commit, until its own +4-line diff to this very comment
+          // pushed the site four lines further down. Cited lines drift when
+          // the comment that states them grows; this file has no seam for a
+          // relative reference, so re-derive them from `grep -n` rather than
+          // trusting the last commit that touched this block, this one
+          // included.)
           if (!out.ok && SUSPENDED.test(out.error ?? "")) suspended = out.error ?? "Account is suspended"
           // One retry, past the interval the provider names. Workers run
           // concurrently, so this costs one worker's time rather than the wave's.
@@ -509,10 +515,16 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
             out = {
               ...second,
               usd: second.usd + first.usd,
-              // `?? 0` on both sides is dead too: unlike `pacedMs`/`redirects`
-              // below, `requests` is set on all five of `once()`'s returns (383,
-              // 399, 448, 463, and the success return at 451), never omitted, so
-              // neither side is ever the missing value.
+              // `?? 0` is dead on all three reads of `.requests` here, not just the
+              // two on this line: unlike `pacedMs`/`redirects` below, `requests` is
+              // set on all five of `once()`'s returns (383, 399, 448, 463, and the
+              // success return at 451), never omitted, so none of the three is ever
+              // the missing value. `retries` right below reads `second.requests`
+              // for the same reason `requests` does above it — the retry's own
+              // billed-request count doubles as "how many of the total were the
+              // retry" precisely because there was only one retry to begin with —
+              // so its `?? 0` is that same guaranteed-defined value a third time,
+              // not a second gap.
               requests: (second.requests ?? 0) + (first.requests ?? 0),
               retries: (second.requests ?? 0),
               // Both waits, plus the retry's own sleep: everything this query
