@@ -1592,4 +1592,20 @@ describe("OPENKB_RUNS_DIR shapes the refusal must keep its hands off", () => {
     // also why the message can name the variable without hedging.
     await expect(accepts(undefined)).resolves.toBeNull()
   })
+
+  it("accepts the unset case when the walk-up finds nothing and falls all the way through", async () => {
+    // The test above runs from the repo root, so `writeDir`'s loop returns on
+    // its first look — `pnpm-workspace.yaml` sits right there. That leaves the
+    // loop's other two arms (climb past a miss; give up after the fs root)
+    // unrun by anything in this suite. A `cwd` with no workspace file above it
+    // anywhere forces both: `vi.spyOn` per `demo-maps.test.ts`'s own comment on
+    // this trick, since `chdir` would move every other test sharing this pool.
+    const nowhere = await mkdtemp(path.join(tmpdir(), "openkb-nowhere-"))
+    vi.spyOn(process, "cwd").mockReturnValue(nowhere)
+    try {
+      await expect(accepts(undefined)).resolves.toBeNull()
+    } finally {
+      vi.restoreAllMocks()
+    }
+  })
 })
