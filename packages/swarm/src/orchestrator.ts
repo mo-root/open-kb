@@ -742,6 +742,39 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
       pricing: { peek: opts.pricing.peek, read: opts.pricing.read, dig: opts.pricing.dig, harvest: harvestPricing },
       deadlineMs: tierDeadlineMs[mission.tier],
     }
+    // `.catch()`'s handler below is dead by construction, not an untested
+    // branch: it only runs if `runInvestigator` REJECTS, as opposed to
+    // resolving with an internal `status: "crashed"`/`"timeout"` digest, which
+    // is agent.ts:1137's own job and never escapes its guarded
+    // try/finally (agent.ts:1116-1183). Every statement runInvestigator runs
+    // OUTSIDE that block is provably throw-free for any mission this call can
+    // ever be handed:
+    //   - `ALLOWANCES[mission.tier]` (agent.ts:1053, then `.toFixed(2)`'d into
+    //     the system prompt at 1055) can only read a key `ALLOWANCES` has.
+    //     Not because a caller validated it — proposeTool takes `tier:
+    //     z.string()` with no enum, so a proposal CAN carry a tier ALLOWANCES
+    //     has never heard of — but because `Board.popAffordable`
+    //     (core/src/board.ts:96, `allowances[held.tier] <= spendableUsd`)
+    //     compares against `undefined` for such a row, which is `false`
+    //     whatever `spendableUsd` is: the row is skipped every fill() pass,
+    //     forever, and never reaches `launch()` at all. A mission `launch()`
+    //     is handed always has a real tier.
+    //   - the system-prompt build (agent.ts:1054-1058), `mapSlice` included,
+    //     is string concatenation and safe reads over `deps.map`'s own
+    //     nodes — no operation there can throw against a well-formed
+    //     MapState, which is the only kind this orchestrator ever
+    //     constructs (`map` at line 512 above, never caller-supplied).
+    //   - `deps.map.liveKeys()` (agent.ts:1077) and `landedBy(...)`
+    //     (agent.ts:1192, map.ts:331-344) are both plain `Map` iteration.
+    //   - every `deps.ledger.draw(...)` call, in or out of the guarded
+    //     block, answers `{ok:false, reason}` for an unknown or settled
+    //     claim (core/src/ledger.ts:154-162) — it never throws, whatever
+    //     `claimId` it is asked about.
+    // With no throwing statement left outside the try, `runInvestigator`
+    // never rejects and this `.catch()` never runs. Left in rather than
+    // deleted: it is the one path that would matter if runInvestigator ever
+    // grew an unguarded throw site, and there is no live input that makes it
+    // go red.
     const p: Promise<Wake> = runInvestigator(mission, deps)
       .catch(
         (e): InvestigatorDigest => ({
