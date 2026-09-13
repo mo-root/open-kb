@@ -223,6 +223,77 @@ describe("what the company published about itself", () => {
  * drawer that already answers "why this one". The sentence beside them is a
  * judgement about the row; this is the retrieval that produced it.
  */
+/**
+ * `groupByMarket` — the function that groups "What the market sells" cards by
+ * which market's queries surfaced them — had zero test coverage anywhere, and
+ * neither did the whole `products.length > 0` render branch that calls it:
+ * every case above passes only `type: "player"` notes, so `products` is
+ * always empty and this branch (and the relation-tally line above it) never
+ * ran. Confirmed with `@vitest/coverage-v8` against this file's own suite in
+ * isolation (temporary devDependency, reverted before committing — no
+ * package.json or pnpm-lock.yaml change ships): lines 95-112 and 383-465
+ * uncovered before this test, along with the tally line at 395-408.
+ */
+describe("what the market sells, grouped by which market's queries found it", () => {
+  const product = (title: string, over: Partial<NoteRef> = {}): NoteRef => ({
+    path: `products/${title}.md`,
+    title,
+    relevance: 50,
+    type: "product",
+    kind: "product",
+    relation: "competitor",
+    domain: `${title.toLowerCase()}.example`,
+    what: `what ${title} does`,
+    why: `why ${title} is here`,
+    ...over,
+  })
+
+  it("keys a product's foundBy against a declared market's own name, ignoring case and edge whitespace", () => {
+    const html = renderToStaticMarkup(
+      <ProductsTab
+        notes={[
+          product("Postmark", { foundBy: ["Email API"] }),
+          product("Mailgun", { foundBy: [" email api "] }),
+        ]}
+        markets={[{ name: "Email API", does: "", covers: [] }]}
+        openNote={() => {}}
+      />,
+    )
+    // Both land under the market's own-cased name, not a market nobody declared.
+    expect(html).toContain("Email API")
+    expect(html).not.toContain("not attributed to a market")
+    expect(html).toContain("Postmark")
+    expect(html).toContain("Mailgun")
+  })
+
+  it("buckets a product naming no declared market as unattributed, and drops a declared market nothing landed in", () => {
+    const html = renderToStaticMarkup(
+      <ProductsTab
+        notes={[
+          product("Postmark", { foundBy: ["Email API"] }),
+          product("Twilio", { foundBy: ["Some Other Market"] }),
+          product("Resend", {}),
+        ]}
+        markets={[
+          { name: "Email API", does: "", covers: [] },
+          { name: "SMS API", does: "", covers: [] },
+        ]}
+        openNote={() => {}}
+      />,
+    )
+    // SMS API was declared but nothing this run found was attributed to it.
+    expect(html).not.toContain("SMS API")
+    // Twilio's own market and Resend's missing foundBy both fall into the one
+    // honest bucket, appended after every declared market rather than dropped.
+    const emailApiAt = html.indexOf("Email API")
+    const unattributedAt = html.indexOf("not attributed to a market")
+    expect(emailApiAt).toBeGreaterThan(-1)
+    expect(unattributedAt).toBeGreaterThan(emailApiAt)
+    expect(html).toContain("Twilio")
+    expect(html).toContain("Resend")
+  })
+})
+
 describe("the searches behind a card", () => {
   it("prints the queries that surfaced the host", () => {
     const html = renderToStaticMarkup(
