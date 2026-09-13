@@ -330,6 +330,22 @@ describe("run-doctor over the runs on disk", () => {
     expect(uncapped.detail).toContain("no ceiling explains it")
   })
 
+  it("reads a rival channel that actually bought queries as ok, not a gap", () => {
+    // The two cases above are `urlsScanned === 0` and `found > 0 && queries
+    // === 0` — the sitemap-unread gap and the names-bought-nothing gap. The
+    // `else` beneath both (~line 109) is the channel doing exactly what it
+    // exists to do: names found, queries fired from them. It had zero test
+    // coverage of its own — `coverage/coverage-final.json` (v8, scoped to
+    // this file) showed that statement's hit count as 0 across the whole
+    // suite, the one arm of the if/else-if/else chain the test above never
+    // reaches because its fixture always sets `queries: 0`.
+    const found = diagnose({ rivals: { found: 5, urlsScanned: 900, queries: 3, reachedMap: 2 } }, {}).find(
+      (n) => n.what === "rival harvest",
+    )!
+    expect(found.level).toBe("ok")
+    expect(found.detail).toBe("5 names, 3 queries, 2 reached the map")
+  })
+
   it("reports the wire's own plan: unsearched products named, and the strip-terms-fired rate", () => {
     // `r.wire` is the FIRST check in `diagnose()` (~line 77) and, before this,
     // had zero test coverage of its own — both branches below ran unverified.
