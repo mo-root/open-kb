@@ -212,6 +212,18 @@ describe("judgeExportTarget", () => {
     expect(judgeExportTarget(webapp).because).toBe("unmarked")
   })
 
+  it("refuses a manifest.json that is not even valid JSON, rather than throwing", () => {
+    // export-target.ts:121-126: the manifest marker's own try/catch around
+    // JSON.parse, never driven — every prior manifest.json fixture parsed
+    // (either into the shape the marker wants, or into the wrong shape, which
+    // is a different code path: JSON.parse succeeding but the typeof/Array
+    // checks failing). A manifest truncated mid-write, or simply corrupt, has
+    // to read as "unmarked" the same as a foreign one, not crash the guard
+    // that exists to make deletion safe.
+    const corrupt = dir("corrupt-manifest", [{ path: "manifest.json", content: "{ not json" }])
+    expect(judgeExportTarget(corrupt).because).toBe("unmarked")
+  })
+
   it("refuses a file", () => {
     const f = join(dir("holder"), "notes.md")
     writeFileSync(f, "# notes\n")
@@ -262,5 +274,12 @@ describe("exportTargetRefusal", () => {
   it("says a file is a file, not that it is unmarked", () => {
     const verdict = { writable: false, because: "not-a-directory" as const, foreign: [] }
     expect(exportTargetRefusal("notes.md", verdict, "x")[0]).toContain("it is a file, not a directory")
+  })
+
+  it("says nothing in it was written by this exporter, for an unmarked folder", () => {
+    // The ternary's third arm (export-target.ts:205) — "not-a-directory" and
+    // "foreign-contents" are each pinned above; "unmarked" itself never was.
+    const verdict = { writable: false, because: "unmarked" as const, foreign: [] }
+    expect(exportTargetRefusal("decoy", verdict, "x")[0]).toContain("nothing in it was written by this exporter")
   })
 })
