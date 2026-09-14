@@ -199,6 +199,22 @@ export function publicOnlyFetch(opts: SafeFetchOpts = {}): typeof fetch {
     const href = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
     let target = new URL(href)
 
+    // The middle clause is empty on purpose, and v8's own branch coverage flags
+    // exactly one dead spot for it: a single, permanently-0-hit branch at this
+    // loop's closing brace (column 4-5, the `}` itself), representing "the loop's
+    // test came back false" — the ordinary way a `for` exits when its body simply
+    // finishes an iteration. There is no test here to come back false; every real
+    // exit is one of the three explicit ones inside the body above (`return res`
+    // twice, the `throw` on `hop >= maxRedirects`), and the only other way out of
+    // an iteration is `target = next` falling through to `hop++` and around again
+    // — never past the loop. Confirmed empirically outside this package too: an
+    // isolated `for (let i = 0; ; i++) { if (cond) return }` gets the identical
+    // single 0-hit branch on its own closing brace under this repo's coverage
+    // config, while the equivalent `while (true) { ...; i++ }` gets none — the
+    // artifact is specific to a `for` with an omitted test, not to "loops forever"
+    // in general. Kept as `for (let hop = 0; ; hop++)` rather than rewritten to
+    // `while (true)` for that reason: rewriting would only swap which construct
+    // owns `hop`'s increment, not add a real exit this loop is missing.
     for (let hop = 0; ; hop++) {
       await assertPublic(target, lookup, init?.signal)
 
