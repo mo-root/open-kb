@@ -112,8 +112,13 @@ export interface SpendCapOpts {
  * IT LIVES HERE, WITH THE WATCHDOG, though the dollar figures either side of it
  * do not. A watchdog cannot stop a run AT a cap without knowing how much to hold
  * back, so the reserve is the mechanism's own parameter rather than a policy —
- * and it now has four callers (the web route and three CLI entrypoints) where it
- * had one.
+ * and it now has three callers (the web route, `scripts/sweep.ts` and
+ * `scripts/swarm.ts`) where it had one. `scripts/batch.ts` gained a dollar bound
+ * in the same commit but never calls `withSpendCap`: a list of runs is capped by
+ * `listRoom` in `scripts/spend-caps.ts`, a check between subprocess launches, not
+ * a reserve on any one run's spend. Verified: `grep -rn "withSpendCap(" packages/
+ * scripts/` outside tests names exactly those three call sites, and
+ * `scripts/batch.ts` has none.
  */
 export function reserveUsd(capUsd: number): number {
   return Math.max(0.05, 0.25 * capUsd)
