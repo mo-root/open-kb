@@ -373,7 +373,7 @@ const norm = (host: string) => host.trim().toLowerCase().replace(/^www\./, "")
 /**
  * The anchor's label, by judge.ts's rule and not an approximation of it.
  *
- * `judge.ts:164` reads it off `registrableHost(anchor).split(".")[0]`. Stripping
+ * `anchorIdentityTheft` in judge.ts reads it off `registrableHost(anchor).split(".")[0]`. Stripping
  * `www.` and taking the first label instead agrees on every anchor stored today
  * — all twenty are apex — and disagrees the moment one is not. On
  * `docs.example.com` the shortcut reads the label as "docs", and then any row

@@ -161,13 +161,6 @@ export interface JudgeDeps {
 }
 
 /**
- * Judge every candidate host from its own front page, streamed: each host is
- * settled the instant its page lands, in a bounded pool. Predicates first —
- * an aggregator-shaped page and an unreadable one are decided by arithmetic
- * for $0 — and a model call only on the residue, one host at a time, so the
- * model never gets within-prompt contrast to lean on.
- */
-/**
  * The anchor's own brand, as a string two spellings of it both reduce to.
  *
  * Only ever compared against a name the model wrote, so it has to survive the
@@ -348,6 +341,13 @@ export function capReceipts(verified: readonly string[]): string[] {
   return receipts
 }
 
+/**
+ * Judge every candidate host from its own front page, streamed: each host is
+ * settled the instant its page lands, in a bounded pool. Predicates first —
+ * an aggregator-shaped page and an unreadable one are decided by arithmetic
+ * for $0 — and a model call only on the residue, one host at a time, so the
+ * model never gets within-prompt contrast to lean on.
+ */
 export async function judgeHosts(hosts: HostCandidate[], deps: JudgeDeps) {
   const threshold = deps.aggregatorThreshold
   const entities: Judged[] = []
