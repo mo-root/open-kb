@@ -92,8 +92,13 @@ import type { UsageRow } from "./store/supabase"
  * WHY THIS TABLE IS NOT IN `@open-kb/core` BESIDE clock.ts, THOUGH THE WATCHDOG
  * THAT READS IT IS. What core owns is the MECHANISM — `withSpendCap`, and the
  * reserve it holds back to stop a run at a cap rather than past it — because
- * four callers now need exactly one copy of that ordering argument: this route
- * and the three CLI entrypoints. What core must not own is what a run may cost,
+ * three callers now need exactly one copy of that ordering argument: this
+ * route and the two CLI entrypoints that call it, `scripts/sweep.ts` and
+ * `scripts/swarm.ts` (`scripts/batch.ts` has a dollar bound too, but through
+ * `listRoom` in `scripts/spend-caps.ts`, a check between subprocess launches,
+ * never `withSpendCap` itself — confirmed by `grep -rn "withSpendCap(" packages/
+ * scripts/` outside tests, which names exactly those three call sites and none
+ * in `batch.ts`). What core must not own is what a run may cost,
  * because the two payers disagree about it by an order of magnitude and for good
  * reasons: this file derives $0.41 from the queries a 300s host affords, and
  * `scripts/spend-caps.ts` measures $8.00 from what an unbounded CLI run actually
