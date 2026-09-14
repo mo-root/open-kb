@@ -228,6 +228,37 @@ describe("a seller's mention is not a rivalry", () => {
     expect(edge(h, HOSTS.forum, HOSTS.tailwatch)?.relation).toBe("discusses")
     expect(edge(h, HOSTS.loglens, HOSTS.tailwatch)?.relation).toBe("covers")
   })
+
+  it("a directory naming a vendor lists it — the third rung of the same ladder", async () => {
+    // SELF-444 (D-scope) named this exact gap and left it for later: it added
+    // coverage for the `publisher` rung ("covers") beside the already-tested
+    // `community` rung ("discusses") but its own commit message says the
+    // `directory` rung (sweep.ts, `srcKind === "directory" ? "lists"`, line
+    // 6541) was "still 0, left for a later fire since nothing here claims it."
+    // No fixture host had ever been classified `directory` while also naming
+    // another host in its own snippet.
+    //
+    // Grepstack takes the directory role here rather than gaining a new
+    // fixture host: it already names Tailwatch through its own "log search"
+    // snippet (`serpWhereGrepstackNamesEveryone`), and its front page already
+    // carries `GREPSTACK`'s span text, so reusing it needs no new fetch-table
+    // entry — only a different classify answer for this one test.
+    const h = await runFixture({
+      ...OFFLINE,
+      serp: serpWhereGrepstackNamesEveryone("Compares Tailwatch against 40 other log tools in one place."),
+      script: {
+        classify: (host) =>
+          host === HOSTS.grepstack
+            ? said("Grepstack", "directory", "lists", "A directory of log tooling vendors.", GREPSTACK.spans[0]!)
+            : host === HOSTS.tailwatch
+              ? said("Tailwatch", "company", "competitor", "A log search vendor.", TAILWATCH_SPAN)
+              : host === HOSTS.loglens
+                ? said("Loglens", "company", "substitute", "A retention service.", LOGLENS_SPAN)
+                : FORUM,
+      },
+    })
+    expect(edge(h, HOSTS.grepstack, HOSTS.tailwatch)?.relation).toBe("lists")
+  })
 })
 
 describe("a spelling two entities answer to", () => {
