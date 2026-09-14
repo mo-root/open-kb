@@ -525,4 +525,58 @@ describe("investigate", () => {
     // unpriced-run one — the span carries no complaint.
     expect(span.error).toBeUndefined()
   })
+
+  it("without pricing, reports the turn as free and names why on the span", async () => {
+    // investigator.ts:100/114 is a single `rate ? ... : ...` ternary, and every test
+    // above that omits `pricing` (the first test in this file included) only ever
+    // reads `out.usd` / `ctx.spans.totalUsd()` — both 0 either way a broken string
+    // would produce, since the tool-loop tests never inspect the emitted "model"
+    // span itself. So the false side of the ternary has run on every one of those
+    // calls, but the exact sentence it writes (`span.error`) and the `modelName ??
+    // "model"` fallback (investigator.ts:106) have never been asserted anywhere in
+    // this file — both pricing tests above supply `modelName` and only ever check
+    // `span.error` is `undefined`, the opposite branch. discovery.ts's identical gap
+    // (discovery.test.ts's "without a rate..." test) is what this one mirrors.
+    const ctx = {
+      evidence: new EvidenceStore(),
+      spans: new SpanStream(),
+      search: new FakeSearch({}),
+      fetch: new FakeFetch({}),
+      runId: "r6",
+      agentId: "inv1",
+      parentId: null,
+      graph: { nodes: new Map<string, StoredNode>(), edges: [] as StoredEdge[] },
+    }
+
+    const model = new MockLanguageModelV4({
+      doGenerate: async () => ({
+        content: [{ type: "text" as const, text: "Nothing to report." }],
+        finishReason: { unified: "stop" as const, raw: undefined },
+        usage: {
+          inputTokens: { total: 500_000, noCache: 500_000, cacheRead: 0, cacheWrite: 0 },
+          outputTokens: { total: 100_000, text: 100_000, reasoning: 0 },
+        },
+        warnings: [],
+      }),
+    })
+
+    // No `pricing`, no `modelName` — the ternary's false side and the name fallback.
+    const out = await investigate({ anchor: "example.com", mission: "find head-on rivals", ctx, model })
+
+    expect(out.usd).toBe(0)
+    expect(ctx.spans.totalUsd()).toBe(0)
+
+    ctx.spans.close()
+    const spans = []
+    for await (const s of ctx.spans.stream()) spans.push(s)
+    expect(spans).toHaveLength(1)
+    const span = spans[0]!
+    expect(span.name).toBe("model")
+    expect(span.tokensIn).toBe(500_000)
+    expect(span.tokensOut).toBe(100_000)
+    expect(span.usd).toBe(0)
+    // The one sentence a run priced at zero must carry, so it reads as deliberately
+    // unpriced rather than a free run nobody noticed.
+    expect(span.error).toBe("no model pricing supplied — token cost not counted")
+  })
 })
