@@ -144,6 +144,20 @@ describe("judgeHosts", () => {
     expect(out.entities[0]!.because).toMatch(/could not be read/)
   })
 
+  it("keeps `discusses` from a snippet — the other call the page bears out 82% of the time", async () => {
+    // SNIPPET_MAY_SAY (judge.ts) has two members, `lists` and `discusses`.
+    // Only `lists` had a kept-path test; `discusses` appeared solely in this
+    // file's comment block, never as a scenario a test actually ran.
+    const out = await judgeHosts([surfaced("blocked-forum.com")], {
+      fetcher: fakeFetcher({}),
+      classify: async () => ({ name: "Blocked Forum", kind: "community", what: "where buyers argue about payment vendors", relation: "discusses", why: "buyer-run thread comparing vendors", spans: [] }),
+      anchor: "anchor.com",
+      aggregatorThreshold: 12,
+    })
+    expect(out.entities[0]!).toMatchObject({ relation: "discusses", kind: "community" })
+    expect(out.entities[0]!.because).toMatch(/could not be read/)
+  })
+
   it("refuses `competitor` from a snippet — a market claim is not exempt at 59%", async () => {
     // The band gate kept this row. It is the case the per-relation reading
     // changed: the market/channel line was an artefact of `covers` volume.
