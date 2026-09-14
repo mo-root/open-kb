@@ -585,6 +585,16 @@ export function exportKbFiles(run: ExportRunLike): ExportedFile[] {
   // What `relations/` and `segments/` wikilink a kept entity by — `slugOf(e)`
   // for everything except the domain-less rows disambiguated just above,
   // which is why they, not `slugOf` directly, are the wikilink source below.
+  // `?? slugOf(e)` has no honest seam: the loop just above sets `entitySlug`
+  // for every `e` in `kept`, unconditionally, on both branches (the `continue`
+  // at line 578 and the fall-through at line 583) — there is no path through
+  // that loop that visits a kept entity and leaves it out of the map. Both
+  // call sites below (`relations/`'s `rows` and `segments/`'s `rows`) only
+  // ever pass entities drawn from `kept` (`sorted`/`list`, themselves sorted
+  // or filtered copies of `byRelation`/`bySegment` groupings built from
+  // `kept`), so `slugFor` never sees an entity `entitySlug` does not already
+  // hold. Kept as the honest fallback for what this function used to do
+  // before `entitySlug` existed.
   const slugFor = (e: ExportEntity): string => entitySlug.get(e) ?? slugOf(e)
   // An edge is a wikilink, and a wikilink to a gated entity is a dead link. The
   // LINKED graph is therefore the induced subgraph on what survived — but the
