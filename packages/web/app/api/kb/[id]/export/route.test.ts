@@ -15,10 +15,11 @@ import { GET } from "./route"
  */
 
 const UUID = "9d4a2c1e-70bb-4f0a-8b3e-6c5d21f8a704"
+const NO_ANCHOR_UUID = "1f6a5b3c-2d8e-4c91-9a7f-3e0b6d4c1a52"
 
-function sweepResult() {
+function sweepResult(anchor = "resend.com") {
   return {
-    anchor: "resend.com",
+    anchor,
     decomposition: { sells: "transactional email", buyer: "developers" },
     queries: [],
     entities: [
@@ -67,6 +68,25 @@ beforeAll(async () => {
     }),
     "utf8",
   )
+
+  // `result.anchor` is typed as a required `string` (discovery.ts:97), not
+  // optional — but nothing stops it from arriving empty, and route.ts:41's
+  // `(result.anchor || "map")` exists specifically to name the download
+  // something other than "kb-.zip" when it does. No fixture in this suite
+  // had ever set it that way, so the fallback arm had never run.
+  await writeFile(
+    path.join(dir, `run-${NO_ANCHOR_UUID}.json`),
+    JSON.stringify({
+      id: NO_ANCHOR_UUID,
+      domain: "",
+      queries: 4,
+      startedAt: 0,
+      endedAt: 1,
+      status: "complete",
+      result: sweepResult(""),
+    }),
+    "utf8",
+  )
 })
 
 afterAll(async () => {
@@ -98,5 +118,11 @@ describe("GET /api/kb/[id]/export", () => {
     const text = new TextDecoder().decode(buf)
     expect(text).toContain("postmarkapp.com")
     expect(text).toContain("Postmark")
+  })
+
+  it("names the zip kb-map.zip when the run's own anchor is empty", async () => {
+    const res = await GET(...req(NO_ANCHOR_UUID))
+    expect(res.status).toBe(200)
+    expect(res.headers.get("Content-Disposition")).toBe('attachment; filename="kb-map.zip"')
   })
 })
