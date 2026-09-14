@@ -206,6 +206,27 @@ describe("seedFamilyMissions: the template deck", () => {
     expect(five[4]!.dedupeKey).toBe("family:stack")
   })
 
+  // The count clamp is `Math.max(0, Math.min(FAMILY_FLOOR_MAX, Math.floor(...)))`.
+  // orchestrator.ts:333 already clamps its own `opts.familyFloor` to
+  // [0, FAMILY_FLOOR_MAX] as an integer before it ever reaches this function
+  // as `count`, so the production callsite never sends a negative or
+  // fractional value — but `seedFamilyMissions` is exported, takes `count` as
+  // its own parameter, and the doc comment above claims the clamp happens
+  // HERE, so a direct caller (any test above included, until now) is the only
+  // way `Math.max(0, ...)`'s floor and `Math.floor`'s truncation ever run.
+  // Neither had, per `grep -n "count: -\|Math.floor\|Math.max(0"` on this file
+  // before this test.
+  it("a negative count floors at zero rather than going negative", () => {
+    expect(seedFamilyMissions(profile, { count: -1 })).toHaveLength(0)
+    expect(seedFamilyMissions(profile, { count: -0.5 })).toHaveLength(0)
+  })
+
+  it("a fractional count truncates down, it does not round", () => {
+    // Math.floor(2.9) is 2, not 3 — a caller passing a fraction gets the
+    // smaller deck, never rounded up past what it asked for.
+    expect(seedFamilyMissions(profile, { count: 2.9 })).toHaveLength(2)
+  })
+
   it("the buyer's name reaches the demand-side brief when the profile carries one", () => {
     const ms = seedFamilyMissions({ ...profile, buyer: "fraud and risk teams" })
     expect(ms[3]!.brief).toContain('orientation named "fraud and risk teams"')
