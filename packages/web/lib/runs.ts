@@ -1,5 +1,5 @@
-import { access, mkdir, readdir, readFile, writeFile } from "node:fs/promises"
-import { constants as fsConstants, existsSync } from "node:fs"
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises"
+import { existsSync } from "node:fs"
 import path from "node:path"
 import { SpanStream, type Span } from "@open-kb/core"
 import { faultNotice, isNamedFault, namedFaults, type RunsDirTrouble } from "./api-error"
@@ -940,19 +940,6 @@ function troubleOf(e: unknown): RunsDirTrouble | undefined {
  * syscall actually failed on, and a relative OPENKB_RUNS_DIR would otherwise
  * print as something the operator has to resolve in their head to act on.
  */
-/** Whether the directory itself is readable and searchable, asked of the OS
- *  rather than guessed from a file's errno. The distinction it buys: one
- *  unopenable file among many is that file's problem; a directory that answers
- *  no here is everyone's. */
-async function canRead(dir: string): Promise<boolean> {
-  try {
-    await access(dir, fsConstants.R_OK | fsConstants.X_OK)
-    return true
-  } catch {
-    return false
-  }
-}
-
 function readFault(e: unknown, dir: string): unknown {
   const trouble = troubleOf(e)
   return trouble ? namedFaults.runsDirUnreadable(path.resolve(dir), trouble) : e
@@ -1119,8 +1106,8 @@ export async function listStoredRuns(): Promise<StoredRun[]> {
     }
   }
   // Every candidate refused, and there was at least one: the directory is the
-  // fault even though it let itself be listed. `canRead` cannot see this — it
-  // asks about the directory's own bits, and those are fine here.
+  // fault even though it let itself be listed. An OS-level check of the
+  // directory's own read/search bits cannot see this — those bits are fine here.
   if (!diskFault && candidates > 0 && refused === candidates) diskFault = readFault(lastRefusal, dir)
 
   // Postgres and the in-memory registry are asked even when the disk refused,
