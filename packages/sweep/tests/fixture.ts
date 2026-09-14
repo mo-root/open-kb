@@ -340,6 +340,12 @@ export interface ModelCall {
    *  a measured 26%-vs-85% fill gap found `reasoning` and its prompt at
    *  odds about that order and this is what would have caught it. */
   schemaKeys?: string[]
+  /** `call()`'s own `providerOptions.openrouter`, exactly as `openrouterOpts`
+   *  built it for this call — `reasoning` in particular, whose DeepSeek
+   *  "bounded" branch (sweep.ts:1997) has no other seam: it is chosen by
+   *  `modelId` and an env var, both closed over inside `call()`, so reading
+   *  it back is only possible from what actually reached the model. */
+  providerOptions?: Record<string, unknown>
 }
 
 /** Fixed, so the bill is arithmetic a test can do independently. With the
@@ -639,7 +645,7 @@ export async function runFixture(opts: FixtureOptions = {}): Promise<Harness> {
   let rounds = 0
 
   const model = new MockLanguageModelV4({
-    doGenerate: async ({ responseFormat, prompt }) => {
+    doGenerate: async ({ responseFormat, prompt, providerOptions }) => {
       // Every one of the engine's calls passes `generateObject` a plain string,
       // so this is one user message carrying one text part. Flattened
       // defensively anyway — the routing below must never key off a prompt that
@@ -693,7 +699,13 @@ export async function runFixture(opts: FixtureOptions = {}): Promise<Harness> {
       const schemaKeys = Object.keys(
         ((responseFormat as { schema?: { properties?: Record<string, unknown> } })?.schema?.properties) ?? {},
       )
-      calls.push({ phase, prompt: text, subject, schemaKeys })
+      calls.push({
+        phase,
+        prompt: text,
+        subject,
+        schemaKeys,
+        providerOptions: providerOptions?.openrouter as Record<string, unknown> | undefined,
+      })
       const object =
         phase === "understand"
           ? script.understand(text)
