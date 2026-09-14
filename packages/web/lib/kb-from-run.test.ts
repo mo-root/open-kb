@@ -227,6 +227,30 @@ describe("place, two domain-less entities sharing a sanitized path", () => {
   })
 })
 
+/** `dedupe`'s key is `(e.domain || e.name || "").trim()...`; `Entity.domain`
+ *  and `.name` are both `z.string()` with no minimum length, so a row with
+ *  neither set is a shape the schema allows, not just a type-level fiction.
+ *  `if (!key) continue` (kb-from-run.ts, right after the key) drops such a row
+ *  before `place()`'s loop ever calls `pathFor` on it — see the "structurally
+ *  unreachable" note on `pathFor`'s own `|| "unknown"` fallbacks, which this is
+ *  the other half of. Nothing in this file had ever given `dedupe` a blank row:
+ *  traced every call it received across this whole suite (coverage's `if
+ *  (!key)` branch read 0 hits) and confirmed none had `domain` and `name` both
+ *  empty. A row like that is not noise (it never reaches the `KIND_GROUP`
+ *  check) and not unplaced — it has no host to be placed OR reported as, so
+ *  the honest behavior is silence: it counts nowhere at all. */
+describe("dedupe, a row with neither domain nor name", () => {
+  it("is dropped silently — no host to key on, so no node and no noise entry", () => {
+    const g = graphOf(run([
+      { name: "", domain: "", kind: "company", what: "w", relation: "competitor", why: "y" },
+      entity("a.com", "competitor"),
+    ]))
+    // Only the anchor plus the one real entity; the blank row left no trace.
+    expect(g.nodes).toHaveLength(2)
+    expect(g.nodes.some((n) => n.group === "players" && n.title === "a.com")).toBe(true)
+  })
+})
+
 describe("graphOf, prominence — the search's own count, apart from placement", () => {
   const nodeFor = (g: ReturnType<typeof graphOf>, id: string) =>
     g.nodes.find((n) => n.id.includes(id))!

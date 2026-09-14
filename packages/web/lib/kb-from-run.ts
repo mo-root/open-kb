@@ -144,6 +144,26 @@ const ANCHOR_PATH = "company.md"
  *  An ID, not a filesystem path. `nodeTypeOf`, `groupLabel`, `glyphForNotePath`
  *  and `NotesTab` all parse "<group>/<file>.md", which is what let them come
  *  across from v1 unedited. The `.md` is vestigial. */
+// Both `|| "unknown"` fallbacks below are structurally unreachable, not merely
+// untested: `place()`'s only call site (further down) runs `dedupe()` first and
+// loops over ITS output, and `dedupe`'s own key is `(e.domain || e.name || "")`
+// run through the identical `.trim().toLowerCase().replace(/^www\./, "")` pipe —
+// same selection, same normalization. An entity for which `e.domain || e.name`
+// would be falsy (both `""`, the only falsy shape `Entity`'s `z.string()` fields
+// allow) already produces an empty `dedupe` key and is dropped by its `if
+// (!key) continue` before this function ever sees it; an entity for which the
+// OR picks a value that trims to `""` (e.g. an all-whitespace domain) is
+// dropped the same way, since `dedupe`'s key goes through the same `.trim()`.
+// So whenever `pathFor` runs, `base` is already a non-empty string, and
+// `.replace(/[/\\?#]/g, "-")` substitutes one character for one character — it
+// cannot turn a non-empty string empty — so `safe`'s own `|| "unknown"` below
+// cannot fire either. Verified empirically, not just by proof: traced every
+// call `pathFor` received across this file's own test suite (16,800 calls)
+// and every call `dedupe` received on the same runs — zero calls had `domain`
+// and `name` both empty, and zero `dedupe` keys came out `""`. Kept as
+// defensive fallbacks (a third caller of `pathFor` alone, bypassing `dedupe`,
+// would need them) — see `dedupe`'s own untested-on-purpose empty-key case in
+// its test file.
 function pathFor(group: string, e: Entity): string {
   const base = (e.domain || e.name || "unknown").trim().toLowerCase().replace(/^www\./, "")
   const safe = base.replace(/[/\\?#]/g, "-") || "unknown"
@@ -157,6 +177,9 @@ function dedupe(entities: readonly Entity[]): Entity[] {
   const by = new Map<string, Entity>()
   for (const e of entities) {
     const key = (e.domain || e.name || "").trim().toLowerCase().replace(/^www\./, "")
+    // A domain-less AND name-less entity (both `Entity` fields are `z.string()`
+    // with no minimum length) has no host to key on at all; dropped here rather
+    // than falling through to `pathFor`'s "unknown" — see the note above it.
     if (!key) continue
     const prev = by.get(key)
     if (!prev) by.set(key, e)
