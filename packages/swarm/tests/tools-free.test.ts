@@ -313,6 +313,20 @@ describe("recallTool", () => {
     expect(r.poolLeftUsd).toBeCloseTo(1.35)
   })
 
+  it("find with a blank query answers nothing rather than every node", () => {
+    // agent.ts:390 declares `q` optional and maps a missing one to `""`
+    // (agent.ts:397, `q ?? ""`), so a model that calls recall({op:"find"})
+    // without filling `q` reaches this with an empty string, live. Without
+    // the `if (!q) break` guard (tools-free.ts:242), `hay.includes(q)` is
+    // true for every string on an empty needle, so a blank query would have
+    // matched both seeded nodes instead of none.
+    const s = populated()
+    const empty = recallTool(rctx(s), { op: "find", q: "" })
+    expect(empty.rows).toHaveLength(0)
+    const blank = recallTool(rctx(s), { op: "find", q: "   " })
+    expect(blank.rows).toHaveLength(0)
+  })
+
   it("neighbors answers the edges touching a key, naming the other end", () => {
     const s = populated()
     const r = recallTool(rctx(s), { op: "neighbors", key: "rival.com" })
