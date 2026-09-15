@@ -156,6 +156,37 @@ describe("listicle harvest", () => {
     expect(q).toBeLessThan(z)
   })
 
+  /**
+   * `fresh`'s dedup (sweep.ts, just above `rivalHand(fresh, ...)`) used to be
+   * a bare `new Set`, which only catches an EXACT repeat. Two roundup rows
+   * can spell one vendor in different case, and the model has no reason to
+   * normalize a name it is transcribing — traced (not measured; no live run
+   * in this loop) to `rivalHand(["wix", "wix", "magento"], 6)` emitting a
+   * literal `wix vs wix` pair, because `mentions` counts case-insensitively
+   * so both spellings tie and `sort`'s stability then keeps them adjacent in
+   * the model's own order, which is exactly the order `rivalHand`'s pair loop
+   * reads two at a time.
+   */
+  it("two case-variant spellings of one vendor collapse to a single query, never a self-pair", async () => {
+    const h = await runFixture({
+      sweepOptions: { listicleHarvest: true },
+      serp: serpWithRoundup(),
+      script: {
+        // "Runlog" and "RUNLOG" are the same vendor by every rule this file
+        // enforces elsewhere (case-insensitive knownLabel, case-insensitive
+        // banned) except the one dedup this test exists to fix.
+        listicle: () => ({ vendors: ["Runlog", "RUNLOG"] }),
+      },
+    })
+    const runlogQueries = h.asked.filter((q) => q.toLowerCase().includes("runlog"))
+    expect(runlogQueries).toEqual(["Runlog alternatives"])
+    expect(h.asked.some((q) => /vs/i.test(q) && q.toLowerCase().includes("runlog"))).toBe(false)
+    const stats = (h.result.report as { listicleHarvest: { vendorsFound: number; queriesFired: number } })
+      .listicleHarvest
+    expect(stats.vendorsFound).toBe(1)
+    expect(stats.queriesFired).toBe(1)
+  })
+
   it("a vendor already on the map buys no query at all", async () => {
     const h = await runFixture({
       sweepOptions: { listicleHarvest: true },

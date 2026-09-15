@@ -4989,9 +4989,34 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
             if (host.toLowerCase().replace(/[^a-z0-9]/g, "").includes(norm)) return true;
           return false;
         };
-        const fresh = [...new Set(out.vendors.map((v) => v.trim()).filter(Boolean))].filter(
-          (v) => !knownLabel(v) && !banned(v, "rival", anchorBanName, banCoinages),
-        );
+        // `new Set` alone dedupes only an EXACT repeat; the schema's "each
+        // written once" is an ask of the model, not a guarantee. Two roundup
+        // rows can spell the same vendor in different case ("Wix" in one
+        // title, "WIX" in another the same call reads), and the model has no
+        // reason to normalize a name it is transcribing rather than composing.
+        // Left case-sensitive, two spellings of one vendor both survive into
+        // `fresh`, both fire an `<x> alternatives` query for the same company,
+        // and — since `mentions` counts them via `.toLowerCase()` (below) so
+        // both tie at the same count and `sort`'s stability then keeps them
+        // adjacent in the model's own order — `rivalHand`'s pair loop reads
+        // consecutive names and pairs them: `wix vs wix` (traced with `npx
+        // tsx`; `rivalHand(["wix", "wix", "magento"], 6)` emits exactly that
+        // query). `rivalHand`'s own doc comment already promises "no name is
+        // bought twice in this shape" — that promise holds for its sitemap
+        // caller (`rivalsFromComparisonUrls`'s `found` Map keys are already
+        // lowercased) but not for this one, so the fix belongs at the one
+        // caller that can hand it a case-variant duplicate.
+        const seenLabel = new Set<string>();
+        const fresh = out.vendors
+          .map((v) => v.trim())
+          .filter((v) => {
+            if (!v) return false;
+            const k = v.toLowerCase();
+            if (seenLabel.has(k)) return false;
+            seenLabel.add(k);
+            return true;
+          })
+          .filter((v) => !knownLabel(v) && !banned(v, "rival", anchorBanName, banCoinages));
         listicleVendorsFound = fresh.length;
         /**
          * MOST-MENTIONED FIRST, because this cap cuts hard and the model's
