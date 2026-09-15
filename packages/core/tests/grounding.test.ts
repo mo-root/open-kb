@@ -91,6 +91,19 @@ describe("descriptionGrounding", () => {
     expect(r.ungrounded).toEqual(["proxy proxy", "proxy"])
   })
 
+  it("breaks a length tie alphabetically, not by discovery order", () => {
+    // sort's comparator is `b.length - a.length || a.localeCompare(b)`. Every
+    // tie in the other tests here ("caps ungrounded at 8") happens to already
+    // sit in alphabetical order because the terms are discovered left-to-right
+    // through the description and that description was written alphabetically,
+    // so a plain stable sort (drop the `|| a.localeCompare(b)` entirely) would
+    // pass every other test in this file unchanged. "zebra" is found before
+    // "apple" here (it comes first in the description), so only the explicit
+    // localeCompare — not sort's stability — can put "apple" ahead of it.
+    const r = descriptionGrounding("zebra and apple", "unrelated page text")
+    expect(r.ungrounded).toEqual(["apple", "zebra"])
+  })
+
   it("drops a single-letter word even when it is not a stopword", () => {
     // `STOPWORDS.has(t) || t.length < 2` short-circuits on the left disjunct
     // for every stopword the suite exercises elsewhere ("a", "as", "or"...),
