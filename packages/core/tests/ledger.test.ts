@@ -34,6 +34,18 @@ describe("Ledger construction: the finish reserve is carved at t=0", () => {
     const l = new Ledger(0.1)
     expect(l.spendable()).toBeLessThan(0)
   })
+
+  it("a reservation against that negative pool still answers a sentence, dollar sign before the minus", () => {
+    // usd() is `$${n.toFixed(2)}`, so a negative amount reads "$-0.02" — sign
+    // after the $, not "-$0.02". Every other reserve() test in this file has
+    // a positive `left`, so this exact string was never produced by a test:
+    // the ceiling-below-floor case above only checked spendable() in
+    // isolation and never fed it through reserve()'s rejection message.
+    const l = new Ledger(0.1) // finishReserveUsd floor $0.12, spendable() -$0.02
+    const r = l.reserve(0.01)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.reason).toBe("a $0.01 reservation does not fit; $-0.02 is spendable after the finish reserve")
+  })
 })
 
 describe("Ledger reserve and settle", () => {
