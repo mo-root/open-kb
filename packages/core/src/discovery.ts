@@ -77,7 +77,7 @@ export interface DiscoveryResult {
    * each turn separately from the total this already carries.
    *
    * It was `unknown`, written `steps as unknown`, and `unknown` is not iterable — so
-   * `scripts/discover.ts:56` could not loop over it, and nothing said so until scripts/
+   * `scripts/discover.ts:33` could not loop over it, and nothing said so until scripts/
    * came under `pnpm check`. The type is the SDK's own; the loop it feeds reads
    * `usage.inputTokens` and `usage.outputTokens`, which is a promise only the SDK can
    * keep, and a hand-written `{ usage?: … }` here would be this file guessing at a
