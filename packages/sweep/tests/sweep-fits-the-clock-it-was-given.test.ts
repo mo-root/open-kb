@@ -386,3 +386,87 @@ describe("canAffordLinking false declines BOTH asks, not just the pair one", () 
     }
   }, 30_000)
 })
+
+describe("triageAffordable and dropConfirmAffordable false, the same clock rule earlier in the funnel", () => {
+  // `triageAffordable` and `dropConfirmAffordable` (sweep.ts) read the exact
+  // same `DEADLINE === null || secondsLeft() > TAIL_SECONDS` rule
+  // `canAffordLinking` does, at the two other points a paid, optional, opt-
+  // out-able stage sits ahead of the write: before triage (right after
+  // search, before the first classify call) and before drop-confirm (right
+  // after judging, before the write). Neither withheld message
+  // ("triage withheld...", "drop-confirm withheld...") had a test anywhere —
+  // every other clock test in this file drives the search phase, the
+  // mid-link abort, or the link phase itself, never these two earlier gates.
+
+  it("says triage is withheld when the clock is already tight right after search", async () => {
+    // Jumped inside `assess`, the call that ends the search round with
+    // "enough" — the earliest point the harness can move the clock without
+    // touching the search phase's own behaviour, and before hostList is ever
+    // handed to the triage decision. Rank's own `stop` backstop reads the
+    // same clock, so this same jump also means zero hosts get judged — not
+    // asserted here, since triage withheld is the one thing under test.
+    const t0 = Date.parse("2026-01-01T00:00:00Z")
+    vi.useFakeTimers({ toFake: ["Date"] })
+    try {
+      vi.setSystemTime(t0)
+      const baseAssess = defaultScript().assess
+      let jumped = false
+      const h = await runFixture({
+        sweepOptions: { deadlineAt: t0 + 40_000 },
+        script: {
+          assess: (round, text) => {
+            if (!jumped) {
+              jumped = true
+              vi.setSystemTime(t0 + 15_000)
+            }
+            return baseAssess(round, text)
+          },
+        },
+      })
+      expect(h.calls.filter((c) => c.phase === "triage")).toHaveLength(0)
+      expect(
+        h.says.some((s) =>
+          s.includes("triage withheld: only the write reserve is left on the clock"),
+        ),
+      ).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  }, 30_000)
+
+  it("says drop-confirm is withheld when the clock is tight by the time judging ends", async () => {
+    // Jumped inside the FIRST classify call, same as the linking test above:
+    // every fixture host is already claimed by rank's worker pool before any
+    // of their classify calls resolves, so judging finishes normally and the
+    // clock is only tight for the drop-confirm decision that comes after it.
+    // `dropConfirm: true` — the stage is opt-in, and its withheld branch
+    // reads `DROP_CONFIRM && !dropConfirmAffordable`, so the message never
+    // fires while the stage itself is off.
+    const t0 = Date.parse("2026-01-01T00:00:00Z")
+    vi.useFakeTimers({ toFake: ["Date"] })
+    try {
+      vi.setSystemTime(t0)
+      const baseClassify = defaultScript().classify
+      let jumped = false
+      const h = await runFixture({
+        sweepOptions: { deadlineAt: t0 + 40_000, dropConfirm: true },
+        script: {
+          classify: (host, prompt) => {
+            if (!jumped) {
+              jumped = true
+              vi.setSystemTime(t0 + 15_000)
+            }
+            return baseClassify(host, prompt)
+          },
+        },
+      })
+      expect(
+        h.says.some((s) =>
+          s.includes("drop-confirm withheld: only the write reserve is left on the clock"),
+        ),
+      ).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  }, 30_000)
+})
