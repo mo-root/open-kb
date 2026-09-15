@@ -479,24 +479,28 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
           const firstZone = nextZone()
           let out = await once(firstZone)
           // Every `out.error ?? ""` and `?? "Account is suspended"` below, through
-          // line 500, is dead by construction: `once()` has exactly four ok:false
-          // returns (383, 399, 448, 463) and all four set `error` to a defined,
-          // non-empty string — there is no ok:false return that omits it. Each
-          // `?? ""`/`?? "..."` here only runs inside a `!out.ok` guard, so the
-          // left side is never the missing value the fallback exists for. Kept
-          // because `SearchResult.error` is optional for ports that cannot report
-          // a reason at all (see core/ports.ts) — this port always can. Same class
-          // as SELF-332's safe-fetch.ts abort-reason fallbacks. Line 500's
-          // `THROTTLED.test(out.error ?? "")` re-check sits inside the same
-          // `!out.ok` guard (opened below) and was left out of this comment's
-          // original "through line 487" scope — it is the same dead fallback,
-          // not a sixth new one. (SELF-417 named it "line 496" — accurate at
-          // that commit, until its own +4-line diff to this very comment
-          // pushed the site four lines further down. Cited lines drift when
-          // the comment that states them grows; this file has no seam for a
-          // relative reference, so re-derive them from `grep -n` rather than
-          // trusting the last commit that touched this block, this one
-          // included.)
+          // the retry guard's `wait` line, is dead by construction: `once()` has
+          // exactly four ok:false returns (383, 399, 448, 463) and all four set
+          // `error` to a defined, non-empty string — there is no ok:false return
+          // that omits it. Each `?? ""`/`?? "..."` here only runs inside a
+          // `!out.ok` guard, so the left side is never the missing value the
+          // fallback exists for. Kept because `SearchResult.error` is optional
+          // for ports that cannot report a reason at all (see core/ports.ts) —
+          // this port always can. Same class as SELF-332's safe-fetch.ts
+          // abort-reason fallbacks. The `SUSPENDED.test` re-check right below
+          // this comment, the `RETRYABLE.test`/`THROTTLED.test` pair that opens
+          // the retry `if`, and the `THROTTLED.test` that picks `wait` are all
+          // the same dead fallback repeated five times over three lines, not
+          // five separate gaps — each sits inside the identical `!out.ok`
+          // condition (`suspended` is only ever assigned from an ok:false `out`
+          // too). This paragraph deliberately names the guard's SHAPE rather
+          // than line numbers: SELF-417 cited "line 496", accurate for one
+          // commit until its own diff to this very comment moved the site;
+          // a later fire found "through line 500" stale for the same reason
+          // and still numbered its own fix. A comment that grows can't cite
+          // absolute lines about the code sitting right below it without
+          // drifting on its own next edit — re-derive with `grep -n
+          // 'out.error ?? ""'` rather than trusting any line number here.
           if (!out.ok && SUSPENDED.test(out.error ?? "")) suspended = out.error ?? "Account is suspended"
           // One retry, past the interval the provider names. Workers run
           // concurrently, so this costs one worker's time rather than the wave's.
