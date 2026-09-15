@@ -6494,16 +6494,16 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       // cannot be a judgement.
       //
       // THIS BRANCH DOES NOT FIRE TODAY. `isRival` has exactly one call site
-      // (6529, `(isAnchorHost || isRival(src!)) && isRival(entity)`), and
+      // (6618, `(isAnchorHost || isRival(src!)) && isRival(entity)`), and
       // neither argument can carry the anchor's domain there. `isRival(src!)`
       // is short-circuited away whenever `isAnchorHost` is true, and when it
       // is false `src` is `keep.find(e => domain === host)` with
-      // `host !== anchorHost` (6450) — so `src.domain` can't be the anchor
-      // either. `entity` always comes from `spellings` (6336), which maps
-      // over `keep` (6165, `entities.filter(onMap)`); `entities` (5400) is
+      // `host !== anchorHost` (6539) — so `src.domain` can't be the anchor
+      // either. `entity` always comes from `spellings` (6403), which maps
+      // over `keep` (6232, `entities.filter(onMap)`); `entities` (5467) is
       // filled only from `judged.entities` and `triagedOut`, both drawn from
       // `hostList`/`judgeList`, and `hostList` itself filters out
-      // `host !== anchorFolded` (5134) before either one exists — the anchor
+      // `host !== anchorFolded` (5201) before either one exists — the anchor
       // never becomes a row in `keep`, so `entity.domain` can't be it either.
       // Confirmed dynamically too: an instrumented build of this branch
       // logged zero hits across the full `packages/sweep` and `packages/swarm`
@@ -6511,9 +6511,13 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       //
       // Left in rather than deleted — the prose above it is the reason it was
       // written, and it is the one guard that would matter again the moment
-      // either fact above stops holding (the short-circuit at 6529 goes away,
+      // either fact above stops holding (the short-circuit at 6618 goes away,
       // or `hostList`/`keep` ever gains a row for the anchor). Not tested
       // either, since there is no live input today that makes it go red.
+      // (Line numbers re-verified 2026-09-15, SELF-480 — the prior citations,
+      // from SELF-423 on 2026-09-10, had drifted with five intervening
+      // commits' worth of edits to this file; the underlying claim still
+      // held on a fresh read, only the addresses had moved.)
       if (e.domain.toLowerCase().replace(/^www\./, "") === anchorHost)
         return true;
       return (
