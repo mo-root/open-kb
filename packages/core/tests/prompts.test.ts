@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest"
-import { readdirSync, readFileSync } from "node:fs"
+import { readdirSync, readFileSync, mkdtempSync, writeFileSync } from "node:fs"
+import { join } from "node:path"
+import { tmpdir } from "node:os"
 import { loadPrompt, composePrompt, render } from "../src/prompts.js"
 import { RELATIONS } from "../src/tools.js"
 import type { QueryFamily } from "../src/families.js"
@@ -40,10 +42,51 @@ describe("prompt files", () => {
     }
   })
 
-  it("throws rather than silently loading a prompt whose declared name disagrees", () => {
-    // The identity guard is the only thing standing between a rename and an agent
-    // running a prompt nobody thinks it runs.
+  it("throws rather than silently loading a prompt from the wrong directory", () => {
+    // "01-the-thesis" is a doctrine file, not an agent — prompts/agents/01-the-thesis.md
+    // does not exist, confirmed by direct readFileSync (ENOENT). This throws at the
+    // readFileSync on line 15, before the frontmatter regex on line 16 ever runs — it
+    // does NOT exercise the identity guard the comment used to claim it did. That guard
+    // (line 24, `key !== name`) and the missing-frontmatter guard (line 17, `!m`) had
+    // no test anywhere in this file — coverage, isolated to this file's own suite:
+    // prompts.ts 85.71% branch, lines 17/24/31 dark. Both get their own test below.
     expect(() => loadPrompt("01-the-thesis", AGENTS)).toThrow()
+  })
+
+  it("throws naming the file when a prompt has no frontmatter block at all", () => {
+    // Line 17's `if (!m) throw`: the regex requires `---\n...\n---\n` opening the
+    // file. Every real prompt on disk has one (the "identity" test above asserts
+    // it), so this branch had never run — a temp fixture is the only way to reach
+    // a prompt file that genuinely lacks the block.
+    const dir = mkdtempSync(join(tmpdir(), "prompts-no-frontmatter-"))
+    writeFileSync(join(dir, "bare.md"), "just a body, no --- delimiters anywhere\n")
+    expect(() => loadPrompt("bare", dir)).toThrow("bare.md has no frontmatter")
+  })
+
+  it("throws naming both names when the declared identity disagrees with the filename", () => {
+    // Line 24's `if (key && key !== name) throw`: the guard the file's own doc comment
+    // calls "the only thing standing between a rename and an agent running a prompt
+    // nobody thinks it runs" — never exercised by a real file on disk, since every
+    // prompts/agents and prompts/doctrine file's declared identity already matches its
+    // filename (asserted by the tests above and by "every doctrine file declares the
+    // identity its filename claims").
+    const dir = mkdtempSync(join(tmpdir(), "prompts-mismatch-"))
+    writeFileSync(join(dir, "renamed.md"), "---\nagent: original-name\n---\nbody text\n")
+    expect(() => loadPrompt("renamed", dir)).toThrow(
+      'renamed.md declares "original-name" — filename and identity must match',
+    )
+  })
+
+  it("composes an agent that declares no includes at all", () => {
+    // Line 31's `(a.frontmatter.includes ?? "")`: every composePrompt call in this
+    // file and in production (sweep.ts's `prompt()`) composes "investigator", whose
+    // frontmatter always has an includes list — the `?? ""` fallback had never run.
+    // classify.md is a real production agent with no `includes:` line at all
+    // (confirmed by reading prompts/agents/classify.md), so this is the fallback's
+    // one live producer rather than a fixture invented to hit it.
+    expect(readFileSync("prompts/agents/classify.md", "utf8")).not.toContain("includes:")
+    const composed = composePrompt("classify", AGENTS, DOCTRINE)
+    expect(composed).toBe(loadPrompt("classify", AGENTS).body)
   })
 
   it("every name in the investigator's includes resolves to a real doctrine file", () => {
