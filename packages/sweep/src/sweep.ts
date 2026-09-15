@@ -4382,6 +4382,38 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
        * predicted. Asking `can I still judge what I have?` reads the hosts that
        * actually landed instead of the ones a median said would.
        */
+      /**
+       * THE BLOCK BELOW IS STRUCTURALLY UNREACHABLE, proven rather than merely
+       * suspected. `sweep-stops-once-the-map-is-the-size-it-was-sized-for.test.ts`
+       * measured it dead across every scenario its own fixture could build and
+       * left it "a narrower, likely-unreachable item for whoever next has a
+       * reason to prove otherwise." Here is the proof.
+       *
+       * `distinctHosts()` (line 4198) returns the exact `hostsSeen` object the
+       * worker loop reads at its own ceiling check (line 4266), and the only
+       * place anything is ever added to it is inside `runOne` (line 4156),
+       * called only as `await runOne(planned)` from that same worker loop —
+       * with no `await` between `hostsSeen.add()` and the worker's own next
+       * `while (true)` iteration. So the worker whose result crosses
+       * HOST_CEILING sets `sealed = true` (line 4268) as a same-tick
+       * continuation of its own `runOne` call, before control can ever reach a
+       * `setTimeout`-based `idle()` poll: Node drains every ready microtask
+       * before running the next timer callback, and every competing reader of
+       * `distinctHosts()` here — the landing-grace wait above and the
+       * planner's own queue-low wait — is timer-based `idle()`. The one path
+       * that could beat the worker to noticing, a landing-grace timeout that
+       * fires before every taken query has landed, still cannot: whichever
+       * already-landed result crossed the ceiling already ran the worker's own
+       * check as it landed, so `sealed` is already true at the guard above
+       * regardless of which other workers are still in flight.
+       *
+       * Kept rather than deleted, matching every other proven-dead branch in
+       * this codebase (e.g. `judge.ts`'s `!gate.ok`, ~line 960): a backstop
+       * against a future edit that lets `hostsSeen` be mutated from somewhere
+       * other than `runOne`, or that puts an `await` between a worker's own
+       * mutation and its next loop iteration. Not tested, since there is no
+       * live input in this engine's current shape that makes it go red.
+       */
       if (distinctHosts().size >= HOST_CEILING) {
         say(
           "plan",

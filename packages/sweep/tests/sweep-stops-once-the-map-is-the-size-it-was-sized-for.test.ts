@@ -15,15 +15,16 @@ import { SERP, runFixture } from "./fixture.js"
  *
  * IT IS READ IN TWO PLACES AND ONLY ONE IS REACHABLE. Every search worker
  * checks `hostsSeen.size >= HOST_CEILING` after each result lands
- * (sweep.ts:4256) and seals the run the instant it crosses; the widening
+ * (sweep.ts:4266) and seals the run the instant it crosses; the widening
  * decision has its own, later recheck of the same ceiling before planning
- * another round (sweep.ts:4376-4382). Below drives the worker check, the one
- * a real host stream reaches first — by the time hostsSeen crosses the
- * ceiling, `sealed` is already true, so the widening decision's own check
- * always finds itself already sealed and returns before evaluating it. That
- * second read looks dead in every scenario this fixture can build; it is
- * left as a narrower, likely-unreachable item for whoever next has a reason
- * to prove otherwise.
+ * another round (sweep.ts, just above that recheck). Below drives the worker
+ * check, the one a real host stream reaches first. This file originally left
+ * the widening-side recheck as "a narrower, likely-unreachable item for
+ * whoever next has a reason to prove otherwise" — it is now proven, not just
+ * observed dead: the comment sitting directly above that recheck in
+ * sweep.ts walks the microtask/macrotask ordering that makes it structurally
+ * unreachable, the same treatment this codebase already gives every other
+ * proven-dead branch.
  */
 describe("the map stops growing once it is the size it was sized for", () => {
   /** Distinct hosts nobody has seen, so a widening round clears the yield
