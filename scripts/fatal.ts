@@ -96,7 +96,14 @@ function classify(message: string, statusCode: number | undefined): Known {
  * the stack trace it replaced.
  */
 export function fatal(e: unknown, what: string): never {
-  const err = e as { message?: string; statusCode?: number; cause?: unknown }
+  // Not `cause`: for the one failure shape that would need it — a network error
+  // with the real reason a level down — @ai-sdk/provider-utils's
+  // handleFetchError() already folds `cause.message` into this top-level
+  // message as `Cannot connect to API: ${cause.message}` before it ever
+  // reaches here (confirmed in its source, src/handle-fetch-error.ts). There is
+  // no failure shape this function sees where the informative text hides
+  // behind `.cause` instead of `.message`.
+  const err = e as { message?: string; statusCode?: number }
   const message = typeof err?.message === "string" ? err.message : String(e)
   const { code, headline, remedy } = classify(message, err?.statusCode)
 
