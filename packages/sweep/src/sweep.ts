@@ -7200,7 +7200,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    * `e.domain || e.name` reads like the degenerate-host fallback already
    * fixed elsewhere on this branch (addressKey, entityKey, serialize's host
    * tally) — same proof as the `rivals` section's identical read below
-   * (`onMap`, ~line 7462): every row in `entities` traces to one of its two
+   * (`onMap`, ~line 7466): every row in `entities` traces to one of its two
    * push sites (5641, 5648), both stamping `domain: h.host` off a
    * `HostCandidate` built at line 5165 from `new URL(h.url).hostname` — a
    * URL a real search hit returned, so `h.host` cannot be "" and
