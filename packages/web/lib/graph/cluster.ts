@@ -260,7 +260,7 @@ export function separationShoves(
       } else {
         const total = a.n + b.n
         // `: 0.5`: `a.n` and `b.n` are `ClusterDisc.n`, which `measureClusters`
-        // only ever sets to a real member count — `acc.set` (line 143 above)
+        // only ever sets to a real member count — `acc.set` (line 148 above)
         // seeds every entry at `n: 1` and `a.n += 1` only grows it, so a disc
         // with `n === 0` cannot exist and `total` cannot be `<= 0`.
         aShare = total > 0 ? b.n / total : 0.5
