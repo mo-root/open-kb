@@ -1403,13 +1403,23 @@ async function resolves(host: string): Promise<boolean> {
 
 /** A typo is nearly always a doubled or transposed letter in the TLD, so the
  *  useful reply is a concrete alternative rather than "check your spelling". */
-function suggest(host: string): string {
+export function suggest(host: string): string {
   const parts = host.split(".");
   const tld = parts.at(-1) ?? "";
+  const GOOD_TLDS = ["com", "io", "ai", "dev", "app", "co", "net", "org"];
+  // Already a real TLD, so it cannot also be a typo of a DIFFERENT one — the
+  // loop below would otherwise keep checking it against every other entry.
+  // Measured bug: "co" is a length+1 substring of "com" ("com".includes("co")
+  // is true because "co" is "com"'s own prefix), so a `.com` domain that
+  // fails DNS for an unrelated reason (unregistered, expired) used to come
+  // back "Did you mean foo.co?" — a suggestion that changes a correct TLD
+  // into a different one. No other pair in this list collides the same way,
+  // but the early return removes the whole class rather than special-casing
+  // co/com.
+  if (GOOD_TLDS.includes(tld)) return "";
   const fixes = new Set<string>();
-  for (const good of ["com", "io", "ai", "dev", "app", "co", "net", "org"]) {
+  for (const good of GOOD_TLDS) {
     // one character away: a doubled letter, a missing one, or two swapped
-    if (tld === good) continue;
     if (tld.replace(/(.)\1/, "$1") === good) fixes.add(good);
     if (tld.length === good.length + 1 && tld.includes(good)) fixes.add(good);
   }
