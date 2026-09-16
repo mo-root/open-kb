@@ -225,10 +225,10 @@ export class MapState {
         ...(n.unreadableReason ? { unreadableReason: n.unreadableReason } : {}),
         ...(n.settledBy ? { settledBy: n.settledBy } : {}),
         // `!== undefined ? ... : {}`: dead by construction, not an untested branch.
-        // tools-free.ts:588 is the only place a MapNode is ever minted, and its
+        // tools-free.ts:612 is the only place a MapNode is ever minted, and its
         // object literal always carries a `descGrounded` field (a rounded number,
-        // computed at remember() time — see tools-free.ts:536-541); the merge path
-        // (tools-free.ts:630) only ever reassigns it to another such number. No
+        // computed at remember() time — see tools-free.ts:560-566); the merge path
+        // (tools-free.ts:654) only ever reassigns it to another such number. No
         // node this loop can see was ever constructed without it.
         ...(n.descGrounded !== undefined ? { descGrounded: n.descGrounded } : {}),
         tier: n.tier,
