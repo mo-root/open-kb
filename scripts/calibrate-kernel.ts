@@ -118,9 +118,9 @@ async function main(): Promise<void> {
        * real host, never a value the fallback would ever need.
        *
        * Sweep is one source of both kinds: every entity it emits comes from
-       * exactly two pushes (sweep.ts:5574, 5581), both carrying `domain:
+       * exactly two pushes (sweep.ts:5641, 5648), both carrying `domain:
        * h.host` off a `HostCandidate` built from `new URL(h.url).hostname`
-       * (sweep.ts:5098) — `new URL` throws on anything malformed, so
+       * (sweep.ts:5165) — `new URL` throws on anything malformed, so
        * `h.host` cannot be "" or any other registrableHost("")-shaped
        * string. Same trace as SELF-405's rivals doc (8da632c).
        *
@@ -138,7 +138,7 @@ async function main(): Promise<void> {
        * branch already traced, which requires a non-empty `n.domain` for
        * company/product. The downgrade past that gate (tools-free.ts:580-
        * 582) reassigns `kind` and `relation`, never `domain`, and the node
-       * stores `domain: n.domain` verbatim at creation (tools-free.ts:609)
+       * stores `domain: n.domain` verbatim at creation (tools-free.ts:610)
        * with no reassignment anywhere after (grepped tools-free.ts for
        * `.domain =`: zero matches). So a swarm "directory" node carries the
        * same already-proven-non-empty domain its company/product claim
