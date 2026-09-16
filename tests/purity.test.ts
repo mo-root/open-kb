@@ -213,12 +213,6 @@ describe("core purity", () => {
       writeFileSync(PROBE_FILE, `export const a = somewindow.foo\n`)
       const { status, output } = runOverProbe()
       expect(status).toBe(0)
-      expect(output).toContain(`plus 1 under ${PROBE_DIR}`)
-      // `toContain(PROBE_DIR)` is what makes this a clean rather than a
-      // never-looked. Exit 0 alone cannot tell them apart, and mutating the
-      // gate to accept `--also` and discard the directory left exactly these
-      // three green while 15 others went red — the vacuity moving the probe
-      // out of the source tree risked, landing precisely here.
       // Proves the probe was READ, not merely named. The clean line prints the
       // `--also` directory whether or not it was scanned, so the discriminator
       // is its COUNT: mutating the gate to accept the flag and discard the
@@ -281,12 +275,6 @@ describe("core purity", () => {
       )
       const { status, output } = runOverProbe()
       expect(status).toBe(0)
-      expect(output).toContain(`plus 1 under ${PROBE_DIR}`)
-      // `toContain(PROBE_DIR)` is what makes this a clean rather than a
-      // never-looked. Exit 0 alone cannot tell them apart, and mutating the
-      // gate to accept `--also` and discard the directory left exactly these
-      // three green while 15 others went red — the vacuity moving the probe
-      // out of the source tree risked, landing precisely here.
       // Proves the probe was READ, not merely named. The clean line prints the
       // `--also` directory whether or not it was scanned, so the discriminator
       // is its COUNT: mutating the gate to accept the flag and discard the
