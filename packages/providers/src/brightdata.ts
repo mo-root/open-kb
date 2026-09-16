@@ -480,7 +480,7 @@ export function brightDataSearch(creds: BrightDataCredentials, opts: Opts = {}):
           let out = await once(firstZone)
           // Every `out.error ?? ""` and `?? "Account is suspended"` below, through
           // the retry guard's `wait` line, is dead by construction: `once()` has
-          // exactly four ok:false returns (383, 399, 448, 463) and all four set
+          // exactly four ok:false returns (383, 399, 448, 459) and all four set
           // `error` to a defined, non-empty string — there is no ok:false return
           // that omits it. Each `?? ""`/`?? "..."` here only runs inside a
           // `!out.ok` guard, so the left side is never the missing value the
