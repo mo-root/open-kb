@@ -169,11 +169,11 @@ describe("graphOf, a domain-less entity named by its own key as a measured edge'
 
 /** `dangling` maps each noise entity's own row to `{ from: ANCHOR_PATH,
  *  target: e.domain || e.name }` — the same `host` fallback `place` uses one
- *  function up (kb-from-run.ts:427, `(e.domain || e.name || "")`), because
+ *  function up (kb-from-run.ts:464, `(e.domain || e.name || "")`), because
  *  `Entity.domain` is `z.string()` with no minimum length, so a model can
  *  return `""`. Nothing in this file ever gave a noise-kind entity (the one
  *  kind `KIND_GROUP` has no group for) an empty domain, so the `e.name` half
- *  of that fallback had never run — coverage showed kb-from-run.ts:951 as a
+ *  of that fallback had never run — coverage showed kb-from-run.ts:1043 as a
  *  branch this whole test file never exercised, and `.dangling` itself was
  *  never read by any test here. */
 describe("graphOf, dangling — a noise-kind entity's own link target", () => {
@@ -206,8 +206,8 @@ describe("dedupe, a real relation beats a placeholder `none`", () => {
   })
 })
 
-/** `pathFor` sanitizes `[/\\?#]` to `-` (kb-from-run.ts:149) but `dedupe`'s own
- *  key (line 159) does not, so two domain-less entities that `dedupe` treats as
+/** `pathFor` sanitizes `[/\\?#]` to `-` (kb-from-run.ts:169) but `dedupe`'s own
+ *  key (line 179) does not, so two domain-less entities that `dedupe` treats as
  *  DIFFERENT rows — "Data/Teams" and "Data#Teams" both key to distinct strings —
  *  can still collapse onto the same `pathFor` output, "players/data-teams.md".
  *  The same conflation `graphOf`'s market-node fix already guards against
@@ -530,11 +530,11 @@ describe("scorecard passthrough (swarm runs)", () => {
    * Every scorecard fixture above hands `families` a well-formed array and
    * `gate` a well-formed object, so scorecardOf's own defensive fallbacks for
    * a malformed ENTRY within a well-formed families array, and for `gate`
-   * itself being malformed, had 0 branch hits (kb-from-run.ts:318-344,356) —
+   * itself being malformed, had 0 branch hits (kb-from-run.ts:341-356,361) —
    * confirmed with `pnpm exec vitest run --coverage` before writing this.
    * The four families/family-field fallbacks and the gate/refusedFinish/
    * refusals fallbacks are the same "malformed serialized JSON" class
-   * `alsoOf` above (kb-from-run.ts:193-203, tested at line 551) already
+   * `alsoOf` above (kb-from-run.ts:216-226, tested at line 635) already
    * covers for a different field — `report.scorecard` is unknown data read
    * off a run file on disk, not a value this file's own code constructs, so
    * a hand-edited or older-format file really can carry any of these shapes.
