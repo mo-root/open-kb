@@ -709,7 +709,7 @@ export function exportKbFiles(run: ExportRunLike): ExportedFile[] {
         const otherHost = slugifyRef(ed.from) === slug ? ed.to : ed.from
         const why = droppedEnd.get(slugifyRef(otherHost))
         // `"not exported"` has no honest seam: `myHalf` only ever holds edges
-        // that survived the `halfEdges` filter above (line 572-578), and that
+        // that survived the `halfEdges` filter above (line 616-623), and that
         // filter already required `droppedEnd.get(gone) !== undefined` for the
         // very same gone-side host — `gone` there and `otherHost` here are the
         // same computation (whichever side isn't `slug`), so `why` cannot be
