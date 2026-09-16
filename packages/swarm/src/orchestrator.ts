@@ -1262,8 +1262,8 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
       if (stopping) return await endRun(stopReason ?? "budget-floor")
       // Dead by construction, not an untested branch. Scoped branch coverage
       // on this file (temporary `@vitest/coverage-v8` devDependency, reverted
-      // before verifying) named line 1230 (this line) as a gap beside the
-      // already-documented 1263-1265 and 1363-1366.
+      // before verifying) named line 1280 (this line) as a gap beside the
+      // already-documented 1311-1313 and 1413-1415.
       //
       // `leadDone` has exactly one write site in this function — the `else {
       // leadDone = true; ... }` arm below (this file's own "kind: done"
@@ -1291,16 +1291,16 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
     }
     // This condition never holds. Scoped branch coverage on this file
     // (temporary `@vitest/coverage-v8` devDependency, reverted before
-    // verifying) named 1244-1246 as a gap, and tracing it by hand shows why
+    // verifying) named 1311-1313 as a gap, and tracing it by hand shows why
     // no test can close it. `stopping` is assigned in eight places in this
     // function and every one of them assigns `true` — nothing here ever
-    // resets it to `false`. `wallStopped` has exactly one write site (1171),
-    // inside the same `if` block that also sets `stopping = true` (1173)
+    // resets it to `false`. `wallStopped` has exactly one write site (1204),
+    // inside the same `if` block that also sets `stopping = true` (1206)
     // whenever it was not already — so `wallStopped` can never be `true`
     // while `stopping` is `false`. Reaching this line without having
-    // returned at 1229-1230 already requires `stopping === false` (a `true`
+    // returned at 1262 already requires `stopping === false` (a `true`
     // there returns via `endRun` first), which by the above means
-    // `wallStopped === false` too — and that makes line 1237's
+    // `wallStopped === false` too — and that makes line 1287's
     // `if (!wallStopped) deadlines.push(...)` fire earlier in this same
     // iteration, so `deadlines.length` is already at least 1 by the time
     // this check runs. "no deadline queued" and "still running" cannot both
@@ -1388,8 +1388,8 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
         // `!control.finished && !stopReason` never holds here: structurally
         // unreachable, not just untested. Scoped branch coverage on this file
         // (temporary `@vitest/coverage-v8` devDependency, reverted before
-        // verifying) named 1338-1340 as the file's other gap beside the
-        // already-documented 1263-1265, 90.42% branch.
+        // verifying) named 1413-1415 as the file's other gap beside the
+        // already-documented line 1280, 90.42% branch.
         //
         // `o` reaches this `else` (o.kind === "done") from exactly three
         // sites in agent.ts's leadTurn: `deps.control.finished` truthy
@@ -1398,14 +1398,14 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
         // `control` are the same object (base.control, spread into runLead's
         // deps above) and leadTurn's checks at 824-825 run synchronously
         // before its first `await`, so they read exactly the state this file
-        // last observed when it scheduled the call (line 1217, guarded by
+        // last observed when it scheduled the call (line 1250, guarded by
         // `!control.finished`) — no other code runs in between to change it.
         // That guard rules out the 824 site outright. The 825 site is ruled
         // out one call earlier: `closingSpent` only ever flips true inside
         // the same call that returns `kind: "closing"`, and processing that
-        // result sets `stopping = true` (1328) before this file loops back —
-        // `stopping` never resets (1246's comment walks all eight write
-        // sites) — so 1217's own `!stopping` guard blocks every later call
+        // result sets `stopping = true` (1378) before this file loops back —
+        // `stopping` never resets (1295's comment walks all eight write
+        // sites) — so 1250's own `!stopping` guard blocks every later call
         // that could observe `closingSpent`. That leaves the turn-cap site,
         // which always sets `loopDetected = true`. So every `kind: "done"`
         // this file ever receives already took the `if` branch above; the
