@@ -123,9 +123,15 @@ export const DEFAULT_RUN_CAP_USD = 8
  *
  *     N domains × $3.74 + one run cap per worker
  *
- * `scripts/gallery-domains.txt` holds 79 domains, so a full gallery build wants
- * `OPENKB_BATCH_CAP_USD=310`. At the median it will cost about $110 of that. The
- * cheaper habit is to leave the default alone and resume: the batch stops
+ * `scripts/gallery-domains.txt` holds 50 domains (its own header says so, and
+ * the header's own "$83 and ten hours" at $1.66/map checks out: 50 × 1.66 =
+ * 83), so a full gallery build wants `OPENKB_BATCH_CAP_USD=200` (50 × $3.74 +
+ * one run cap per worker at the batch default of 2 workers = $203, rounded
+ * to the nearest $10). At the median it will cost about $69 of that (50 ×
+ * $1.386) — the same $69 the "WHAT WAS BROKEN" section above already cites
+ * for a 50-domain list, which is the check that caught this: this paragraph
+ * said 79 domains and $310/$110, numbers a 50-domain gallery never produced.
+ * The cheaper habit is to leave the default alone and resume: the batch stops
  * itself, prints the exact resume command, and the next $50 costs one more line
  * of typing.
  */
