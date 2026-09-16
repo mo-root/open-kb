@@ -163,6 +163,62 @@ describe("the opening catalog", () => {
 })
 
 /**
+ * A QUERY'S MARKET THAT MATCHES NOTHING DECLARED, never exercised — every
+ * existing fixture's queries carry a `market` copied exactly from
+ * `decomp.capabilities` ("log search" or "uptime alerts"), so `canonical()`
+ * (sweep.ts:5983) resolved on every query this suite has ever fired and the
+ * `stray` branch it feeds (sweep.ts:5990-6000) never ran.
+ *
+ * The comment beside `market` in the widening schema says why this branch has
+ * to exist rather than being a schema violation: "a measured run still
+ * returned its LENS there... a market the planner invented mid-round" — the
+ * model is asked to COPY a string, not choose from an enum, so a name that
+ * does not match a declared capability is an ordinary, expected shape of
+ * answer, not a malformed one.
+ */
+describe("a query naming a market that was never declared", () => {
+  it("says how many, names each one, and the host it surfaced still lands without that market", async () => {
+    const h = await runFixture({
+      script: {
+        assess: () => ({
+          enough: false,
+          missing: "compliance angle untested",
+          draw: [],
+          queries: [
+            {
+              q: "audit trail for who read which log line",
+              intent: "pain",
+              platform: "web",
+              why: "gap",
+              // Not "log search" or "uptime alerts" — the two capabilities
+              // `decomp.capabilities` declares for this fixture.
+              market: "reporting suite",
+            },
+          ],
+        }),
+      },
+      sweepOptions: { maxWaves: 1 },
+    })
+    expect(h.asked).toContain("audit trail for who read which log line")
+    expect(
+      h.says.some((s) =>
+        s.includes("1 queries named a market that was never declared; their hosts fall back to the anchor"),
+      ),
+    ).toBe(true)
+
+    // The host this query alone surfaced (see SERP's own comment on this
+    // query) still lands on the map, carrying the query itself in `roads` —
+    // only the market attribution is withheld, exactly as `canonical()`
+    // returning undefined for every hit means `counts.size` never grows past
+    // zero for this entity.
+    const e = h.result.entities.find((x) => x.domain === "compliancely.example")
+    expect(e).toBeDefined()
+    expect(e!.roads).toContain("audit trail for who read which log line")
+    expect(e!.foundBy).toBeUndefined()
+  }, 30_000)
+})
+
+/**
  * THE LABEL-IS-A-MARKET-WORD GUARD (sweep.ts:3424-3445), never exercised —
  * every existing fixture strips to terms that share no word with `pellucid`,
  * the anchor's own label, so `labelIsMarketWord` was false on every run this
