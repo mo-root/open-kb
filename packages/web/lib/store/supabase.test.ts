@@ -585,8 +585,8 @@ describe("the supabase store", () => {
     })
 
     it("still names the status, even when the error body itself fails to read", async () => {
-      // supabase.ts:270's `res.text().catch(() => "")` is a second, inner catch
-      // nested inside the one at supabase.ts:299 — every non-2xx test above uses
+      // supabase.ts:282's `res.text().catch(() => "")` is a second, inner catch
+      // nested inside the one at supabase.ts:316 — every non-2xx test above uses
       // a real `Response` whose `.text()` always resolves, so that inner catch
       // had never run. A body stream that errors mid-read (connection dropped
       // after the status line but before the body finishes) is a real fetch
