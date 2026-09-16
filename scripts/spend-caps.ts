@@ -54,6 +54,17 @@ import type { Span, SpendTrip } from "../packages/core/src/index.js"
  *     $5.15    a brightdata.com run that took 4,195 seconds on a dear model.
  */
 
+/**
+ * The two figures above, named. `scripts/batch.ts` prints a per-list dollar
+ * projection from the same measured median and worst — before this export it
+ * carried its own copies of `1.386` and `3.736` as bare literals, so a
+ * remeasurement here would have had to be repeated by hand over there with
+ * nothing to catch a miss. One source, so a future remeasurement is one edit
+ * rather than a grep for every place the old numbers might have been copied.
+ */
+export const MEASURED_MEDIAN_RUN_USD = 1.386
+export const MEASURED_WORST_RUN_USD = 3.736
+
 /* ────────────────────────────────────────────────────────────── the per-run cap
  *
  * $8.00, AND IT IS DELIBERATELY LOOSE.

@@ -47,6 +47,8 @@ import {
   CLI_LIMIT_VARS,
   DEFAULT_LIST_CAP_USD,
   DEFAULT_RUN_CAP_USD,
+  MEASURED_MEDIAN_RUN_USD,
+  MEASURED_WORST_RUN_USD,
   capUsdOrExit,
   listRoom,
 } from "./spend-caps.js"
@@ -363,14 +365,15 @@ console.log(
     ` · ${CONCURRENCY} at a time · ${TIMEOUT_S}s cap each · manifest ${manifest}`,
 )
 // Said before anything is spent, and said in dollars. The projection is the
-// point: the measured median run is $1.386 and the worst is $3.736, so a reader
-// can see whether their list fits inside the cap before it stops halfway. Left
-// off an empty list, where "$0-$0" is arithmetic nobody asked for.
+// point: the measured median run is $1.386 and the worst is $3.736 (named in
+// scripts/spend-caps.ts), so a reader can see whether their list fits inside
+// the cap before it stops halfway. Left off an empty list, where "$0-$0" is
+// arithmetic nobody asked for.
 console.log(
   money +
     (todo.length
-      ? ` · this list projects to $${(todo.length * 1.386).toFixed(0)}-$${(todo.length * 3.736).toFixed(0)} ` +
-        `at the measured median and worst run`
+      ? ` · this list projects to $${(todo.length * MEASURED_MEDIAN_RUN_USD).toFixed(0)}-` +
+        `$${(todo.length * MEASURED_WORST_RUN_USD).toFixed(0)} at the measured median and worst run`
       : ""),
 )
 if (!todo.length) {
@@ -614,8 +617,8 @@ if (failed.length || unstarted.length) {
       `\n${unstarted.length} not started: ${unstarted.slice(0, 6).join(", ")}` +
         (unstarted.length > 6 ? `, and ${unstarted.length - 6} more` : "") +
         `\nRaise ${CLI_LIMIT_VARS.listCap} — this list wants about ` +
-        `$${Math.ceil(todo.length * 3.736 + CONCURRENCY * (RUN_CAP_USD ?? 0))} to be sure of finishing in one ` +
-        `go — or just resume, as often as it takes.`,
+        `$${Math.ceil(todo.length * MEASURED_WORST_RUN_USD + CONCURRENCY * (RUN_CAP_USD ?? 0))} to be sure of ` +
+        `finishing in one go — or just resume, as often as it takes.`,
     )
   }
   console.log(`\nresume with:  npx tsx scripts/batch.ts ${listPath} --resume ${manifest}`)
