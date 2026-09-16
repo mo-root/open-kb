@@ -6125,103 +6125,112 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       const batches: Array<typeof candidates> = [];
       for (let i = 0; i < candidates.length; i += BATCH)
         batches.push(candidates.slice(i, i + BATCH));
-      await Promise.all(
-        batches.map(async (batch) => {
-          dropConfirmAsked += batch.length;
-          try {
-            const out = await call(
-              "drop-confirm",
-              `drop-confirm ${batch.length} hosts`,
-              z.object({
-                placements: z
-                  .array(
-                    z.object({
-                      host: z.string().describe("the host, exactly as given"),
-                      kind: z.enum(CLASSIFY_KINDS),
-                      relation: z.enum(RELATIONS),
-                      what: z
-                        .string()
-                        .describe(
-                          "what it is, one line — empty when relation is none",
-                        ),
-                      why: z
-                        .string()
-                        .describe(
-                          "the evidence for the placement, or the one line confirming nothing fits",
-                        ),
-                      spans: z
-                        .array(z.string())
-                        .max(3)
-                        .describe(
-                          "1-3 quotes copied from this host's what/why/roads below, backing a real placement; empty when relation is none",
-                        ),
-                    }),
-                  )
-                  .describe("one row per host, every host answered"),
-              }),
-              prompt("drop-confirm", {
-                anchor,
-                sells: decomp.sells,
-                buyer: decomp.buyer,
-                hosts: batch.map(blockFor).join("\n\n"),
-              }),
-              { think: "none", maxOutputTokens: TRIAGE_MAX_OUTPUT_TOKENS },
-            );
-            const askedHosts = new Set(batch.map((e) => e.domain));
-            for (const v of out.placements) {
-              // A verdict for a host this batch never asked about is noise
-              // from the model, not a decision about the map — the same
-              // guard triage's verdict loop applies.
-              if (!askedHosts.has(v.host)) continue;
-              const e = byDomain.get(v.host);
-              if (!e) continue;
-              if (v.relation === "none") {
-                dropConfirmConfirmed += 1;
-                e.because = [e.because, `drop-confirmed: ${v.why}`]
-                  .filter(Boolean)
-                  .join("; ");
-                continue;
-              }
-              // Same discipline `spans` gets in the main classify path: a
-              // literal substring of the exact text this call handed the
-              // model, or the rescue does not stand — the second look's own
-              // rule (`if (verified.length === 0) return`), repeated here.
-              const ctx = contextOf.get(v.host) ?? "";
-              const verified = v.spans.filter(
-                (sp) => checkQuote(ctx, sp) === "ok",
-              );
-              if (verified.length === 0) continue;
-              dropConfirmRescued += 1;
-              e.kind = v.kind;
-              e.relation = v.relation;
-              e.what = v.what;
-              e.why = v.why;
-              e.spans = capReceipts(verified);
-              // The first pass's reasoning/relationSpan described the "none"
-              // verdict this rescue just overwrote — left standing, they
-              // would go on explaining a relation this entity no longer
-              // carries, which is worse than carrying nothing. This call's
-              // schema asks for no fresh relationSpan (there is no page to
-              // draw one from — see the stage's own doc comment), so the
-              // honest move is to clear rather than leave a stale one.
-              e.reasoning = undefined;
-              e.relationSpan = undefined;
-              e.relationGrounded = undefined;
+      // A POOL, not `Promise.all` over every batch at once — triage's own fix
+      // (see TRIAGE_CONC above), applied here too. DROP_CONFIRM_CAP (60) and
+      // the default BATCH (40) keep this at one or two batches on an
+      // unconfigured run, so `Promise.all` cost nothing there — but
+      // `opts.batchSize` is a caller-set knob, and a small one turns 60
+      // candidates into a dozen-plus batches fired at the model with no
+      // concurrency limit at all, the exact unpaced-wave failure mode
+      // TRIAGE_CONC/LINK_CONC exist to avoid. Same TRIAGE_CONC width: this
+      // call carries triage's own shorter TRIAGE_MAX_OUTPUT_TOKENS deadline
+      // just below, so it earns triage's own concurrency too.
+      const DROP_CONFIRM_CONC = 6;
+      await runPool(batches, DROP_CONFIRM_CONC, async (batch) => {
+        dropConfirmAsked += batch.length;
+        try {
+          const out = await call(
+            "drop-confirm",
+            `drop-confirm ${batch.length} hosts`,
+            z.object({
+              placements: z
+                .array(
+                  z.object({
+                    host: z.string().describe("the host, exactly as given"),
+                    kind: z.enum(CLASSIFY_KINDS),
+                    relation: z.enum(RELATIONS),
+                    what: z
+                      .string()
+                      .describe(
+                        "what it is, one line — empty when relation is none",
+                      ),
+                    why: z
+                      .string()
+                      .describe(
+                        "the evidence for the placement, or the one line confirming nothing fits",
+                      ),
+                    spans: z
+                      .array(z.string())
+                      .max(3)
+                      .describe(
+                        "1-3 quotes copied from this host's what/why/roads below, backing a real placement; empty when relation is none",
+                      ),
+                  }),
+                )
+                .describe("one row per host, every host answered"),
+            }),
+            prompt("drop-confirm", {
+              anchor,
+              sells: decomp.sells,
+              buyer: decomp.buyer,
+              hosts: batch.map(blockFor).join("\n\n"),
+            }),
+            { think: "none", maxOutputTokens: TRIAGE_MAX_OUTPUT_TOKENS },
+          );
+          const askedHosts = new Set(batch.map((e) => e.domain));
+          for (const v of out.placements) {
+            // A verdict for a host this batch never asked about is noise
+            // from the model, not a decision about the map — the same
+            // guard triage's verdict loop applies.
+            if (!askedHosts.has(v.host)) continue;
+            const e = byDomain.get(v.host);
+            if (!e) continue;
+            if (v.relation === "none") {
+              dropConfirmConfirmed += 1;
               e.because = [e.because, `drop-confirmed: ${v.why}`]
                 .filter(Boolean)
                 .join("; ");
+              continue;
             }
-          } catch (err) {
-            // Fail open: an unanswered batch leaves every first verdict in it
-            // standing, exactly as if this stage never ran — but the attempt
-            // is still counted, so the closing line and the census can say so.
-            say(
-              "rank",
-              `  a drop-confirm call failed (${(err as Error).message}); its ${batch.length} hosts keep their first verdict`,
+            // Same discipline `spans` gets in the main classify path: a
+            // literal substring of the exact text this call handed the
+            // model, or the rescue does not stand — the second look's own
+            // rule (`if (verified.length === 0) return`), repeated here.
+            const ctx = contextOf.get(v.host) ?? "";
+            const verified = v.spans.filter(
+              (sp) => checkQuote(ctx, sp) === "ok",
             );
+            if (verified.length === 0) continue;
+            dropConfirmRescued += 1;
+            e.kind = v.kind;
+            e.relation = v.relation;
+            e.what = v.what;
+            e.why = v.why;
+            e.spans = capReceipts(verified);
+            // The first pass's reasoning/relationSpan described the "none"
+            // verdict this rescue just overwrote — left standing, they
+            // would go on explaining a relation this entity no longer
+            // carries, which is worse than carrying nothing. This call's
+            // schema asks for no fresh relationSpan (there is no page to
+            // draw one from — see the stage's own doc comment), so the
+            // honest move is to clear rather than leave a stale one.
+            e.reasoning = undefined;
+            e.relationSpan = undefined;
+            e.relationGrounded = undefined;
+            e.because = [e.because, `drop-confirmed: ${v.why}`]
+              .filter(Boolean)
+              .join("; ");
           }
-        }),
-      );
+        } catch (err) {
+          // Fail open: an unanswered batch leaves every first verdict in it
+          // standing, exactly as if this stage never ran — but the attempt
+          // is still counted, so the closing line and the census can say so.
+          say(
+            "rank",
+            `  a drop-confirm call failed (${(err as Error).message}); its ${batch.length} hosts keep their first verdict`,
+          );
+        }
+      });
       say(
         "rank",
         `drop-confirm rescued ${dropConfirmRescued} of ${dropConfirmAsked}; ${dropConfirmConfirmed} confirmed unrelated`,
