@@ -128,11 +128,16 @@ export function readTool(ctx: ReadCtx, input: ReadInput): ReadReturn {
     // non-"found" record in this repo supplies a real reason string. The two
     // literal callers (tools-paid.ts:349 "no-response", :469 "fetch-failed:
     // ...") hardcode one; every other caller (tools-paid.ts:374,694 and
-    // core/tools.ts:413,441) forwards `sniff()`'s own `s.reason`, and
+    // core/tools.ts:441) forwards `sniff()`'s own `s.reason`, and
     // `SniffResult`'s non-"found" arm (core/sniff.ts:79) types `reason` as a
     // required `SniffReason`, never optional. `RecordInput.reason?: string`
     // is defensive typing with no real producer that ever omits it — same
     // shape as export-kb.ts's `gate.objections ?? []` (SELF-386, fdaf192).
+    // (core/tools.ts:413 was never a fifth forwarder, at this comment's own
+    // origin (c22a0c2) or now: it is the search tool's own record() call,
+    // hardcoded `status: "found"` with no `reason` field and no `s` in
+    // scope — grepping this file's history shows the miscount was original,
+    // not drift.)
     return {
       ok: false,
       reason: `that page was ${rec.status}${rec.reason ? ` (${rec.reason})` : ""}; there is nothing to read`,
