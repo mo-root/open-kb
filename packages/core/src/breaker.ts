@@ -10,7 +10,7 @@
  * Reasons are opaque text repeated back to a reader; the table imports no
  * vocabulary. An open breaker answers with a sentence naming the host, the
  * mode, and the most recent reason (e.g. "example.com refuses the unlock tier
- * this run: two empty-200 responses"), because a model told that adapts, and
+ * this run: two empty-body responses"), because a model told that adapts, and
  * a model handed a bare boolean retries.
  */
 
