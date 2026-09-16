@@ -31,4 +31,18 @@ describe("fake providers", () => {
     expect(r.httpStatus).toBe(200)
     expect(r.body).toBe("")
   })
+
+  it("dedupes a repeated query in the results but keeps the repeat in .calls", async () => {
+    // fake-provider.ts's own doc comment calls this "the exact bug this
+    // contract exists to prevent": a fake that returned one row per query
+    // ASKED (not per query DISTINCT) would let a caller's duplicate-billing
+    // bug pass here while a real port double-charged it. Nothing in this
+    // file — or anywhere else in the repo, checked with a repo-wide grep for
+    // `.calls` on a FakeSearch instance — had fed search() a duplicate query
+    // before this test.
+    const s = new FakeSearch({ q: [{ url: "https://x.com", title: "X", description: "d" }] })
+    const rs = await s.search(["q", "q"])
+    expect(rs).toHaveLength(1)
+    expect(s.calls).toEqual([["q", "q"]])
+  })
 })
