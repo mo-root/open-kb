@@ -202,7 +202,7 @@ export class MapState {
     // one place the identity this class exists to own could still come out "".
     // Landing there is not inert: serialize.ts writes `run.map.anchor` straight
     // into the run JSON's own top-level `anchor` and `report.domain` fields
-    // (serialize.ts:115,134) with no fallback of its own — an anchor too
+    // (serialize.ts:130,149) with no fallback of its own — an anchor too
     // degenerate to key would ship a run file whose subject is officially "",
     // and kb-from-run.ts's every anchor-keyed lookup (ANCHOR_PATH's `domain`,
     // `place`'s `anchorHost`) reads that same empty string as gospel.
