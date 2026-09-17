@@ -527,7 +527,7 @@ describe("the supabase store", () => {
     })
 
     it("defaults each count to 0 rather than NaN, when a count is missing or unreadable", async () => {
-      // supabase.ts:289-291's `Number(x) || 0` guards a count that is present
+      // supabase.ts:306-308's `Number(x) || 0` guards a count that is present
       // but not numeric — a function deployed from an older schema.sql, or any
       // other jsonb producer, could send a string or omit a field entirely
       // (`Number(undefined)` is NaN, same as `Number("not-a-number")`; both

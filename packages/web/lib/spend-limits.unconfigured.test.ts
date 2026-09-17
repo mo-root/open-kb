@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 /**
- * spend-limits.ts:726-727's ternary — `claim.kind === "unconfigured" ? "spend
+ * spend-limits.ts:731-732's ternary — `claim.kind === "unconfigured" ? "spend
  * limits are on and no store is configured" : ...` — had never run.
  *
  * NOT REACHABLE THROUGH spendGate AS SHIPPED, and that is worth writing down
  * rather than guessing past. `spendGate` only calls `db.claimRun` when
- * `db.configured()` already read true (spend-limits.ts:697), and `claimRun`'s
- * own `{kind: "unconfigured"}` returns (store/supabase.ts:250, 268) both read
+ * `db.configured()` already read true (spend-limits.ts:702), and `claimRun`'s
+ * own `{kind: "unconfigured"}` returns (store/supabase.ts:250, 280) both read
  * that exact same `configured()` synchronously, with no `await` between
  * spendGate's check and either of them — so on every call the two reads agree
  * and this ternary's left arm is dead code today, confirmed by grep: spendGate
