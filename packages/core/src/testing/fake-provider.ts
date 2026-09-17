@@ -34,6 +34,16 @@ export class FakeSearch implements SearchPort {
     private opts: {
       failing?: string[]
       /**
+       * Per-query override of the message a `failing` query reports. Every
+       * query not named here keeps the fixed "search provider refused this
+       * query" text below. Added so a test can put a specific reason on the
+       * wire — `sweep.ts`'s `serpSuspendedSaid` branch fires only on a
+       * reason matching `/suspended/i`, which the fixed text never does, so
+       * every `failing` test before this one exercised the generic-refusal
+       * path and none reached that branch.
+       */
+      failingErrors?: Record<string, string>
+      /**
        * What every answered query reports as `pacedMs` — time it spent waiting
        * for the provider's own rate limit before it was allowed to ask.
        *
@@ -69,7 +79,8 @@ export class FakeSearch implements SearchPort {
     // bug this contract exists to prevent.
     return [...new Set(queries)].map((query) => {
       if (this.opts.failing?.includes(query)) {
-        return { query, hits: [], ok: false, error: "search provider refused this query", usd: 0, ms: 1 }
+        const error = this.opts.failingErrors?.[query] ?? "search provider refused this query"
+        return { query, hits: [], ok: false, error, usd: 0, ms: 1 }
       }
       return {
         query,

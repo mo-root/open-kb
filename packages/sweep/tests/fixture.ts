@@ -386,6 +386,9 @@ export interface FixtureOptions {
   script?: Script
   /** Queries `FakeSearch` refuses, reported inside their own row. */
   failing?: string[]
+  /** Per-query override of what a `failing` query's refusal says. Every
+   *  query left out keeps `FakeSearch`'s fixed generic-refusal text. */
+  failingWith?: Record<string, string>
   /** Make every answered query report this much rate-limit wait, so the
    *  sweep's `report.serp.paced` aggregation can be exercised. */
   pacedMs?: number
@@ -638,7 +641,11 @@ export function blockTheNetwork(opts: { dnsResolves?: boolean } = {}): () => voi
 
 export async function runFixture(opts: FixtureOptions = {}): Promise<Harness> {
   const script = { ...defaultScript(), ...opts.script }
-  const search = new FakeSearch(opts.serp ?? SERP, { failing: opts.failing, pacedMs: opts.pacedMs })
+  const search = new FakeSearch(opts.serp ?? SERP, {
+    failing: opts.failing,
+    failingErrors: opts.failingWith,
+    pacedMs: opts.pacedMs,
+  })
   const fetcher = new FakeFetch({ ...FETCH_TABLE, ...(opts.fetchTable ?? {}) })
   const spans = new SpanStream()
   const calls: ModelCall[] = []
