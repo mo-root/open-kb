@@ -129,16 +129,16 @@ async function main(): Promise<void> {
        * read: `kind: string` (map.ts:58) is not restricted to
        * SWARM_NODE_KINDS at the type level, and `admit()`'s aggregator gate
        * (verdict.ts:100-109) can downgrade a claim's kind to "directory" at
-       * runtime (tools-free.ts:580, `kind = verdict.kind`). But that
+       * runtime (tools-free.ts:585, `kind = verdict.kind`). But that
        * downgrade only ever fires on a claim whose ORIGINAL kind was
        * "company" or "product" (verdict.ts:31 `COMPANY_LIKE`), and by the
        * time it fires, `nodeKey(n.kind, n.name, n.domain)` (tools-free.ts
-       * :517, run on the pre-downgrade kind) has already rejected the claim
+       * :522, run on the pre-downgrade kind) has already rejected the claim
        * outright if that key came out "" — the SELF-406/407 gate this
        * branch already traced, which requires a non-empty `n.domain` for
-       * company/product. The downgrade past that gate (tools-free.ts:580-
-       * 582) reassigns `kind` and `relation`, never `domain`, and the node
-       * stores `domain: n.domain` verbatim at creation (tools-free.ts:610)
+       * company/product. The downgrade past that gate (tools-free.ts:585-
+       * 586) reassigns `kind` and `relation`, never `domain`, and the node
+       * stores `domain: n.domain` verbatim at creation (tools-free.ts:615)
        * with no reassignment anywhere after (grepped tools-free.ts for
        * `.domain =`: zero matches). So a swarm "directory" node carries the
        * same already-proven-non-empty domain its company/product claim
