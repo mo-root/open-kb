@@ -99,6 +99,21 @@ describe("renderTable prints FAILED instead of $NaN, and stays readable empty", 
     expect(table).not.toContain("- deepseek-off:")
   })
 
+  it("prints a real zero for a dead anchor's hosts/entities, not a dash that reads like a failure", () => {
+    // A completed (non-failed) run against an anchor that yielded nothing —
+    // every SERP host filtered out, nothing kept — reports hosts:0/entities:0
+    // as genuine measurements, not the "never ran" sentinel `failedRow` uses.
+    // `Number.isNaN(r.usd)` is false here (it has a real, if tiny, dollar
+    // figure), so the row must read as a completed contestant that found
+    // zero — not collapse into the same dash a FAILED row shows.
+    const row = rowFromRun(contestant, "sweep-dead-com-x.json", {
+      stats: { usd: 0.02, seconds: 9, hosts: 0 },
+      report: { entities: 0 },
+    })
+    const table = renderTable("dead.com", "10", [row], "2026-08-25")
+    expect(table).toContain("| deepseek-off | deepseek/deepseek-v4-flash-0731 | $0.02 | 9 | 0 | 0 | 0 | 0 | no probe | - |")
+  })
+
   it("stays a well-formed table with zero contestants", () => {
     const table = renderTable("figma.com", "52", [], "2026-08-25")
     expect(table).toContain("| config | model | $ |")

@@ -106,10 +106,18 @@ export function renderTable(domain: string, queries: string, rows: Row[], dateIs
     "",
     "| config | model | $ | wall s | hosts | entities | competitor | unknown | recall | grounding |",
     "|---|---|---|---|---|---|---|---|---|---|",
-    ...rows.map(
-      (r) =>
-        `| ${r.key} | ${r.model} | ${Number.isNaN(r.usd) ? "FAILED" : "$" + r.usd.toFixed(2)} | ${r.seconds || "-"} | ${r.hosts || "-"} | ${r.entities || "-"} | ${r.competitors} | ${r.unknowns} | ${r.recall} | ${r.groundingMean} |`,
-    ),
+    ...rows.map((r) => {
+      // `failedRow` is the only source of `Number.isNaN(r.usd)`, and it is
+      // also the only row that leaves `hosts`/`entities` at their sentinel 0
+      // ("never ran") rather than a measured count. A `rowFromRun` row for a
+      // genuinely dead anchor reports both as a real, informative 0 — the
+      // exact case this table exists to surface — so gating the dash on
+      // `Number.isNaN(r.usd)` (already the $ column's failure signal) rather
+      // than each field's own falsiness keeps that 0 visible instead of
+      // reading identically to a contestant that never produced a run file.
+      const failed = Number.isNaN(r.usd)
+      return `| ${r.key} | ${r.model} | ${failed ? "FAILED" : "$" + r.usd.toFixed(2)} | ${failed ? "-" : r.seconds} | ${failed ? "-" : r.hosts} | ${failed ? "-" : r.entities} | ${r.competitors} | ${r.unknowns} | ${r.recall} | ${r.groundingMean} |`
+    }),
     "",
     ...rows.filter((r) => r.file !== "-").map((r) => `- ${r.key}: runs/${r.file}`),
     "",

@@ -388,3 +388,35 @@ piggybacked on it are exhausted for now. The next self-discovered fire should
 pick a genuinely different angle (a fresh reading of one file end-to-end
 looking for a real logic bug, the way most `fix(...)` SELF-<n>'s were found,
 rather than another instrumented sweep) rather than re-running this one.
+
+**SELF-510 (2026-09-17 overnight fire) — took SELF-509's own advice: read
+`scripts/bakeoff.ts` end to end and found a real display bug.** `renderTable`
+built each row's `hosts`/`entities`/`seconds` cells with `r.hosts || "-"` etc.
+— falsy-checking each field rather than asking whether the contestant
+actually failed. `failedRow` (the only source of `Number.isNaN(r.usd)`, the
+signal the adjacent `$` column already uses) sets `hosts`/`entities` to 0 as
+a "never ran" sentinel, which is what that `||` was written for. But
+`rowFromRun` reads `hosts: byHost.size` and `entities: entities.length`
+straight from a completed sweep's own report
+(`packages/sweep/src/sweep.ts:7171,7403`), and a genuinely dead anchor — every
+SERP host filtered out, nothing kept, still a real (if tiny) dollar figure —
+reports both as a true, measured 0, not "no data". The `||` fallback made
+that row's hosts/entities columns print the identical dash a FAILED
+contestant shows, in the exact scenario (a model config that finds nothing)
+a bake-off exists to surface — the $ column would read a real price while
+hosts/entities on the same row read "-", contradicting each other.
+
+Fixed by gating the dash on `Number.isNaN(r.usd)`, the same signal the $
+column already uses, instead of each field's own falsiness — `seconds` moved
+to the same gate for consistency, though a real completed child `sweep.ts`
+run rounding to 0 seconds is not a reachable case. Added a test with
+`hosts: 0, entities: 0` on a row whose `usd` is a real number, asserting the
+row prints `0`/`0`, not `-`/`-`. Verified non-vacuous by mutation: reverted
+just the `renderTable` change, reran — the new test failed showing `-`/`-`;
+restored the fix and reran clean before staging. No test previously
+exercised `rowFromRun`/`renderTable` with a zero-count successful row —
+every existing fixture used positive hosts/entities.
+
+`pnpm check && pnpm test` both green: 3307 tests passing (up from 3306, one
+new), 13 skipped (7 gated live/paid or run-dependent suites, same skip
+census as SELF-509).
