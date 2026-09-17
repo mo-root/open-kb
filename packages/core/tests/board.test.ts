@@ -115,6 +115,22 @@ describe("Board popAffordable", () => {
     expect(skipped.map((s) => s.dedupeKey)).toEqual(["expensive"])
   })
 
+  it("an allowance that is exactly what is left still fits, despite float imprecision (0.3 - 0.2 !== 0.1)", () => {
+    // A caller never hands popAffordable a clean literal; production computes
+    // spendableUsd as `ledger.spendable() + fundedQueuedUsd()`, a chain of
+    // dollar subtractions and additions over figures like these. `0.3 - 0.2`
+    // is `0.09999999999999998` in IEEE754, one bit short of the `read`
+    // allowance it should exactly match — without board.ts's own EPSILON
+    // this mission reads as unaffordable and is reported skipped instead of
+    // popped.
+    const b = new Board()
+    b.push(mission({ priority: 70, tier: "read", dedupeKey: "k" }), "lead")
+    const spendableUsd = 0.3 - 0.2
+    const { mission: m, skipped } = b.popAffordable(spendableUsd, ALLOWANCES)
+    expect(m?.dedupeKey).toBe("k")
+    expect(skipped).toHaveLength(0)
+  })
+
   it("never promotes: the skipped item keeps its place for the next pop", () => {
     const b = new Board()
     b.push(mission({ priority: 84, tier: "dig", dedupeKey: "expensive" }), "lead")

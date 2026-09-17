@@ -448,3 +448,44 @@ infinite value introduces no other arithmetic to break.
 
 `pnpm check && pnpm test` both green: 3308 tests passing (up from 3307, one
 new), 13 skipped (same gated census as SELF-510/511).
+
+**SELF-513 (2026-09-17 overnight fire) — read `core/src/board.ts` end to end
+(one of 77 source files this branch's history had never individually
+touched, per `git log --name-only` against every commit past the base merge)
+and found `popAffordable`'s affordability check has no float-precision
+guard, unlike every other dollar comparison in this codebase.**
+`Ledger` (`core/src/ledger.ts:64`) carries its own `EPSILON = 1e-9` explicitly
+because "`0.07 + 0.01 >= 0.8 * 0.1` is at the mercy of rounding in the last
+bit," and every one of its five dollar comparisons (`reserve`, `settle`'s
+none, `warnAt`, `overrunAbort`, `affordTurn`) uses it. `Board.popAffordable`
+makes the same class of comparison — `allowances[held.tier] <= spendableUsd`
+— with no such guard, and `orchestrator.ts:848` hands it exactly the kind of
+value that trips this: `ledger.spendable() + fundedQueuedUsd()`, a running
+sum of ordinary decimal dollar figures (0.05, 0.1, 0.25, the tier allowances
+themselves) built through repeated float subtraction and addition. Verified
+directly in node: `0.3 - 0.2 === 0.09999999999999998`, and `0.1 <=
+0.09999999999999998` is `false` — so a `read`-tier mission (allowance
+exactly $0.10) priced at exactly what is left over reads as unaffordable by
+under a thousandth of a cent, gets narrated to the lead as skipped via
+`narrateSkip`, and — since it is a `popAffordable` scan, not a `Ledger`
+gate — never gets the benefit of `Ledger.reserve`'s own epsilon two lines
+later, because `popAffordable` never lets it get that far. Not hypothetical:
+every dollar figure `spendableUsd` is built from in production (`ceilingUsd`,
+`finishReserveUsd`, the tier allowances) is an ordinary two-decimal number,
+exactly the shape that produces this class of rounding error.
+
+Fixed by giving `board.ts` its own `EPSILON = 1e-9` (same value, same
+rationale, a fresh local constant rather than an import from `ledger.ts` to
+avoid introducing a circular value-import — `ledger.ts` already does a
+type-only import of `MissionTier` from `board.ts`) and widening the
+comparison to `allowances[held.tier] <= spendableUsd + EPSILON`. Added a
+test passing `spendableUsd = 0.3 - 0.2` against a `read`-tier mission;
+reverted just the epsilon term to confirm the test fails first (`undefined`
+where `"k"` was expected), then restored the fix. Every existing
+`popAffordable` test still passes: none of them sit at a boundary this
+narrow, so the widened comparison changes no other observed behaviour.
+
+`pnpm check && pnpm test` both green: 3309 tests passing (up from 3308, one
+new), 13 skipped (same gated census as SELF-510/511/512).
+
+Backlog item: SELF-513

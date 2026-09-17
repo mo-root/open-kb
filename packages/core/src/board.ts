@@ -36,6 +36,20 @@ export interface BoardRow extends Mission {
 
 export type BoardOutcome = { ok: true } | { ok: false; reason: string }
 
+/**
+ * Slack for the affordability comparison in `popAffordable`, same shape and
+ * same reason as `Ledger`'s own EPSILON (ledger.ts:64). The caller hands in
+ * `ledger.spendable() + fundedQueuedUsd()` — dollar figures built by adding
+ * and subtracting ordinary decimals (0.05, 0.1, 0.25, the tier allowances
+ * themselves) that IEEE754 cannot always represent exactly: `0.3 - 0.2` is
+ * `0.09999999999999998`, not `0.1`. Without this slack, a mission priced at
+ * exactly what is left over reads as unaffordable by less than a thousandth
+ * of a cent, gets reported to the lead as skipped, and — if it is the
+ * cheapest thing on the board — starves for the rest of the run over an
+ * error smaller than the currency this ledger tracks.
+ */
+const EPSILON = 1e-9
+
 interface Held extends BoardRow {
   /** Insertion sequence — the deterministic tie-break at equal priority. Survives release. */
   seq: number
@@ -93,7 +107,7 @@ export class Board {
   ): { mission?: BoardRow; skipped: BoardRow[] } {
     const skipped: BoardRow[] = []
     for (const held of this.#ranked(this.#queued.values())) {
-      if (allowances[held.tier] <= spendableUsd) {
+      if (allowances[held.tier] <= spendableUsd + EPSILON) {
         this.#queued.delete(held.dedupeKey)
         this.#claimed.set(held.dedupeKey, held)
         return { mission: this.#row(held), skipped }
