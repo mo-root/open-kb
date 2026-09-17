@@ -533,3 +533,67 @@ the correct templated phrase appears once each rather than duplicating
 new), 13 skipped (same gated census as SELF-510/511/512/513).
 
 Backlog item: SELF-514
+
+**SELF-515 (2026-09-17 overnight fire) — a full manual read of every
+previously-untouched small/medium module found nothing to fix; read this
+before re-reading the same files.** `git log a7bbc57..HEAD --name-only`
+against every non-test `.ts`/`.tsx` file under `packages/*/src` and
+`packages/web/{app,lib,components}` (93 files total, excluding the demo
+gallery which is out of scope) named 91 files some prior fire had already
+opened; two categories of the remaining set were genuinely untouched. Read
+every one of them end to end, adversarially, looking for the same class of
+bug SELF-510/512/513/514 found (a falsy-check standing in for a real
+predicate, a `.find()` that can match the wrong slot, a comparison with no
+float-precision guard, a status transition an invariant elsewhere silently
+relies on):
+
+`packages/core/src`: `grounding.ts` (descriptionGrounding's stopword/2-gram/
+word-boundary logic), `investigator.ts`, `pricing.ts`, `prompts.ts`
+(frontmatter identity check, `{{placeholder}}` fill). `packages/swarm/src`:
+`family-ledger.ts` — traced its one subtle-looking case by hand (a killed
+row's `nodesAdded` surviving into a later `opened()` on the same
+`dedupeKey`) back to `core/src/board.ts`'s own invariant, "a landed mission
+is never released: it stays claimed so its key keeps rejecting duplicates
+for the rest of the run" (board.ts:135) plus `kill()`'s `#claimed.has` guard
+(board.ts:172) — together they make a landed row's key structurally
+unkillable and unreopenable, so the case cannot occur. `packages/web/lib`:
+`kb-lookup.ts`, `graph/search.ts`, `graph/layout.ts` (the whole force
+recipe — already exhaustively self-documented with measured numbers per
+constant), `graph/layoutCache.ts`, `graph/settings.ts` (the
+load/clamp/default reconciliation for all 20 settings fields, opt-in vs.
+opt-out fields both checked against their own doc comments), `notes-view.ts`,
+`scorecard-view.ts`, `stream-adapter.ts`, `theme.ts`, `graphIcons.ts` (the
+LIFO request queue — `unshift`+`shift` — matches its own "newest first"
+claim), `zip.ts` (byte-counted the local/central-directory/EOCD field
+layout against the ZIP spec by hand — 30/46/22 bytes, all correct).
+`packages/web/app/api`: every route under `kb/[id]/*`, `kb/route.ts`,
+`run/[id]/route.ts`, `run/[id]/cancel/route.ts`, `run/[id]/stream/route.ts`.
+`packages/web/middleware.ts` (the Basic-auth gate: colon-splitting, the
+constant-time-ish compare, the open-when-unset default). `packages/web/
+next.config.ts` (the `.env` mini-parser, the file-tracing includes, the
+webpack `extensionAlias` shim) — one real parsing gap found and set aside
+rather than "fixed": `loadRepoEnv`'s regex captures everything after `=` to
+end-of-line, so `KEY=value # comment` would fold the comment into the value.
+Not fixed, because it is not a bug this repo has: `.env.example` — the one
+template this parser ever reads in the shapes this branch controls — puts
+every comment on its own line, never inline, and DEPLOY.md's own env
+instructions follow the same convention throughout. Shipping a fix for an
+input shape that never occurs would be exactly the "arithmetic dressed as
+evidence" P1-8's own BLOCKED note already warns against.
+
+`pnpm install` first (a fresh clone had no `node_modules`, unlike every
+prior fire in this file's history — noted in case the next fire hits the
+same thing), then `pnpm check && pnpm test`: both green, 3310 tests passing,
+13 skipped (same gated census as SELF-510 through SELF-514; unchanged by a
+docs-only commit).
+
+Not a claim that every file in the app is bug-free — `packages/swarm/src/
+orchestrator.ts` (1,434 lines) and `packages/core/src/export-kb.ts` (1,143
+lines) are both far larger than a single fire can read end to end
+adversarially and both already carry many prior fixes, so a fresh full read
+of either is still a genuinely open angle for a future fire. What this
+entry closes off is the class of file small enough for one fire to finish:
+every remaining untouched module under 300 lines is now read, and none of
+them held the kind of bug this branch has been finding.
+
+Backlog item: SELF-515 - BLOCKED
