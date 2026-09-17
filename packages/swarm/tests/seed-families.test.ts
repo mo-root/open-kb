@@ -252,6 +252,28 @@ describe("seedFamilyMissions: the template deck", () => {
     expect(competitors!.brief).toContain('"widgets alternatives"')
     expect(competitors!.brief).toContain('"widgets vs"')
   })
+
+  // A category that already reads like one of the five other templates makes
+  // `bare` itself satisfy that template's shape predicate — `x.q.startsWith("open
+  // source ")` matches the bare candidate "open source data pipeline" before the
+  // search ever reaches reserve's actual `open source ${c}` entry, so
+  // `openSource` came out identical to `bare` and the substitutes brief quoted
+  // the same phrase twice instead of naming the DIY-specific query. Real
+  // categories collide with all four `reserve`-only shapes this way: "best
+  // fraud scoring", "X vs Y" pricing pages, "top N tools" roundups, and
+  // "open source X" are ordinary business-category phrasings, not contrived
+  // input.
+  it("a category that already looks like a template does not swallow its own reserve entry", () => {
+    const [market] = seedFamilyMissions({ category: "best fraud scoring", source: "capability" })
+    expect(market!.brief).toContain('"best fraud scoring"')
+    expect(market!.brief).toContain('"best best fraud scoring"')
+
+    const [, , substitutes] = seedFamilyMissions({
+      category: "open source data pipeline",
+      source: "capability",
+    })
+    expect(substitutes!.brief).toContain('"open source open source data pipeline"')
+  })
 })
 
 // ── the orchestrator wiring, offline ─────────────────────────────────────────

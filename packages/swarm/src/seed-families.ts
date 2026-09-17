@@ -140,11 +140,28 @@ export function seedFamilyMissions(profile: FamilyProfile, opts?: { count?: numb
   const q = (find: (x: { q: string }) => boolean, fallback: string): string =>
     [...open, ...reserve].find(find)?.q ?? fallback
   const bare = q((x) => x.q === c, c)
-  const alternatives = q((x) => x.q.endsWith(" alternatives"), `${c} alternatives`)
-  const best = q((x) => x.q.startsWith("best "), `best ${c}`)
-  const vs = q((x) => x.q.endsWith(" vs"), `${c} vs`)
-  const top = q((x) => x.q.startsWith("top "), `top ${c} companies`)
-  const openSource = q((x) => x.q.startsWith("open source "), `open source ${c}`)
+  // NOT a shape search (`.startsWith("open source ")` etc.) over the combined
+  // hand. `openingHand(c, [c], { branded: false })` deals a fixed shape when
+  // t0 is truthy — open = [bare, `${t0} alternatives`], reserve = [`best
+  // ${t0}`, `${t0} vs`, `top ${t0} companies`, `open source ${t0}`] — so these
+  // five are read off their own known slot, never searched for.
+  //
+  // A shape search breaks the moment the category itself already reads like
+  // one of the OTHER four templates, and that is not a contrived case: "best
+  // fraud scoring", "open source data pipeline" and "X vs Y" pricing pages are
+  // ordinary business-category phrasings. `bare` ("open source data
+  // pipeline") starts with "open source ", so a search for THAT shape matched
+  // `bare` before reserve's real `open source ${t0}` entry — and once the fix
+  // scoped the search to `reserve` alone, `${t0} vs` ("open source data
+  // pipeline vs") turned out to ALSO start with "open source ", because `vs`
+  // sits ahead of `openSource` in the same array and inherits whatever prefix
+  // `t0` carries. No shape predicate is safe against a `t0` built from the
+  // very words the predicate looks for; only the slot is.
+  const alternatives = open[1]?.q ?? `${c} alternatives`
+  const best = reserve[0]?.q ?? `best ${c}`
+  const vs = reserve[1]?.q ?? `${c} vs`
+  const top = reserve[2]?.q ?? `top ${c} companies`
+  const openSource = reserve[3]?.q ?? `open source ${c}`
 
   const floorWhy = (family: string) => `the code floor's ${family} — it exists whatever the lead chooses to spawn`
 

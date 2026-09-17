@@ -488,4 +488,48 @@ narrow, so the widened comparison changes no other observed behaviour.
 `pnpm check && pnpm test` both green: 3309 tests passing (up from 3308, one
 new), 13 skipped (same gated census as SELF-510/511/512).
 
-Backlog item: SELF-513
+**SELF-514 (2026-09-17 overnight fire) — read `swarm/src/seed-families.ts`
+end to end and found the family-floor's template picker swallows itself on a
+category that already reads like one of its own templates.** `seedFamilyMissions`
+builds five of its six query phrases (`alternatives`, `best`, `vs`, `top`,
+`openSource`) with `q()`, a `.find()` over `[...open, ...reserve]` matched by
+shape — `x.q.startsWith("best ")`, `x.q.endsWith(" vs")`, and so on — rather
+than by which of `openingHand`'s six deterministic slots each is. That is
+fine as long as the category itself (`c`, folded into every one of those six
+strings) never happens to start or end with the words the shape is looking
+for. It routinely does: "best fraud scoring", "open source data pipeline"
+and an "X vs Y" pricing-page category are ordinary business-category
+phrasings this app's own categories take, not contrived input. Verified
+directly: `seedFamilyMissions({ category: "open source data pipeline", ... })`
+produced a `substitutes` brief quoting `"open source data pipeline"` twice —
+`bare` and the intended `openSource` slot (`open source ${c}` =
+`"open source open source data pipeline"`) — because `bare`'s own text
+already starts with "open source " and sits earlier in the search order.
+Scoping the search to `reserve` alone (where `best`/`vs`/`top`/`openSource`
+actually live) was not enough either: with `c` itself already prefixed
+"open source ", `${c} vs` (`vs`'s own slot) ALSO starts with "open source "
+and sits ahead of `openSource`'s slot in the same array, so `openSource`
+still came out wrong.
+
+Fixed by reading each of the five off its known, fixed index instead of
+searching for it: `openingHand(c, [c], { branded: false })` deals a shape
+that is invariant whenever its single term is non-empty — `open = [bare,
+"${t0} alternatives"]`, `reserve = ["best ${t0}", "${t0} vs", "top ${t0}
+companies", "open source ${t0}"]` — so `open[1]`, `reserve[0..3]` are what
+each variable always meant; `?? fallback` covers the one case those slots
+are absent (an empty category, where `openingHand`'s own `if (t0)` guard
+produces empty `open`/`reserve` and every fallback already matched the
+intended text). `bare` keeps its own `x.q === c` equality search unchanged —
+it is already immune to this class of collision, and it is the one lookup a
+prior fire (see the "untrimmed category" test) deliberately built to detect
+a mismatch and fall back to the raw, untrimmed `c`. Added a test with two
+categories ("best fraud scoring", "open source data pipeline") asserting
+the correct templated phrase appears once each rather than duplicating
+`bare`; reverted just the fix to confirm both assertions fail first (the
+`open source data pipeline` case failing on the SECOND collision, the
+`${t0} vs` one, even after the first fix pass), then restored it.
+
+`pnpm check && pnpm test` both green: 3310 tests passing (up from 3309, one
+new), 13 skipped (same gated census as SELF-510/511/512/513).
+
+Backlog item: SELF-514
