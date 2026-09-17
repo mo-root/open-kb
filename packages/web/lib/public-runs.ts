@@ -64,10 +64,13 @@ export const RUNS_PER_DAY_VAR = "OPENKB_PUBLIC_RUNS_PER_DAY"
  * it allows some. `ceilingUsd()` in the map route documents having shipped
  * exactly that bug in the other direction.
  *
- * Anything that is not a whole number of at least 1 is 0. A typo (`OPENKB_
- * PUBLIC_RUNS_PER_DAY=lots`) closing the door is a demo; a typo opening it is a
- * bill, and the tolerance runs one way on purpose — the same asymmetry
- * `truthy()` in lib/demo.ts is built on, pointing the same direction.
+ * Anything below 1, or not a finite number at all, is 0 — but a fraction AT
+ * LEAST 1 floors rather than closing the door: "5.9" reads as 5, not 0
+ * (asserted next door in public-runs.test.ts, "floors a fraction rather than
+ * rounding it up"). A typo (`OPENKB_PUBLIC_RUNS_PER_DAY=lots`) closing the
+ * door is a demo; a typo opening it is a bill, and the tolerance on the
+ * closing side runs one way on purpose — the same asymmetry `truthy()` in
+ * lib/demo.ts is built on, pointing the same direction.
  */
 export function publicRunsPerDay(): number {
   const raw = process.env[RUNS_PER_DAY_VAR]
