@@ -159,6 +159,13 @@ export function labelPriority(n: {
   deg: number
   rel: number
 }): number {
-  if (n.isHub) return -1_000_000
+  // -Infinity, not a large fixed offset: a sentinel of -1_000_000 only outranks
+  // every hub while no market's degree reaches 1_000 (deg * 1000 crosses back
+  // above it), and the measured cursor.com run already carries 926 hosts
+  // (docs/overnight-backlog.md's own header) — a single dominant market on a
+  // run that size is one hub away from a node degree in that range. -Infinity
+  // makes "the anchor first" true by construction instead of by an arithmetic
+  // margin a big enough map can close.
+  if (n.isHub) return -Infinity
   return -(n.deg * 1000 + n.rel)
 }

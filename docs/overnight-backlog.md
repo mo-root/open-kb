@@ -420,3 +420,31 @@ every existing fixture used positive hosts/entities.
 `pnpm check && pnpm test` both green: 3307 tests passing (up from 3306, one
 new), 13 skipped (7 gated live/paid or run-dependent suites, same skip
 census as SELF-509).
+
+**SELF-512 (2026-09-17 overnight fire) — read `lib/graph/labels.ts` end to
+end and found the anchor's label priority could lose to a big enough
+market.** `labelPriority` encodes "the anchor first, then the hubs, then
+placement" as one sort key: the anchor got a fixed `-1_000_000`, every other
+node `-(deg * 1000 + rel)`. That only holds while no node's degree reaches
+1,000 — at `deg: 1000` a market ties the anchor outright (`-1_000_000` on
+both sides) and past it the market sorts strictly first, breaking the
+comment's own stated invariant. `rel` (`RELATION_WEIGHT`, capped at 95 for
+`competitor`) never closes that gap on its own. Not hypothetical: the
+measured cursor.com run this branch's own P0 section cites already carries
+926 hosts, and `GraphCanvas.tsx` sets a node's `deg` from its edge count in
+the rendered graph — a single dominant market on a run that size is one hub
+away from a four-digit degree.
+
+Fixed by returning `-Infinity` for the anchor instead of a fixed offset,
+so "the anchor first" holds by construction regardless of how large a
+market's degree gets — safe because `isHub` is unique to the one node whose
+id equals `meta.hubId` (`GraphCanvas.tsx`), so `priority` is never
+`-Infinity` on both sides of the sort's subtraction. Added a test asserting
+the anchor still outranks a `deg: 1200` market; reverted just the sentinel
+to confirm the test fails first (`-1000000` is not less than `-1200095`),
+then restored the fix. `packages/web/lib/graph/labels.test.ts`'s existing
+`priority` usages are comparator-only (`a.priority - b.priority`), so an
+infinite value introduces no other arithmetic to break.
+
+`pnpm check && pnpm test` both green: 3308 tests passing (up from 3307, one
+new), 13 skipped (same gated census as SELF-510/511).

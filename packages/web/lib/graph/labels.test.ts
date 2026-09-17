@@ -143,4 +143,15 @@ describe("labelPriority", () => {
       labelPriority({ isHub: false, deg: 3, rel: 10 }),
     )
   })
+
+  it("keeps the anchor first even for a market with a four-digit degree", () => {
+    // A fixed -1_000_000 sentinel (the prior value here) loses this exact
+    // comparison: deg 1000 alone already sums to -1_000_000, tying the anchor,
+    // and every host past that outranks it outright. The measured cursor.com
+    // run already carries 926 hosts (docs/overnight-backlog.md), so a single
+    // dominant market is one hub away from this range on a real map.
+    expect(labelPriority({ isHub: true, deg: 1, rel: 0 })).toBeLessThan(
+      labelPriority({ isHub: false, deg: 1200, rel: 95 }),
+    )
+  })
 })
