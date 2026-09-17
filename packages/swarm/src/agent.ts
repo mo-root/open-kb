@@ -985,7 +985,7 @@ export function runLead(deps: LeadDeps): LeadRunner {
  * direction or the other.
  *
  * NO EDGE COUNT, deliberately. `contributions` lives on MapNode; the map's one
- * edge-writing site (tools-free.ts:725) stamps no writer, and an edge's
+ * edge-writing site (tools-free.ts:749) stamps no writer, and an edge's
  * evidence is not about a single host, so the {writer, tier} shape does not
  * even fit one — a tier for an edge would have to be invented. Every edge
  * number this digest could compute FROM THE MAP is a guess: the old global
@@ -997,7 +997,7 @@ export function runLead(deps: LeadDeps): LeadRunner {
  *
  * NOT because the number is unobtainable, and the distinction matters to whoever
  * picks this up. `rememberTool` already returns a per-call `{added, merged}` for
- * edges (tools-free.ts:722-726) — the exact shape this digest wants, attributed
+ * edges (tools-free.ts:793) — the exact shape this digest wants, attributed
  * by construction because the call was this mission's. Accumulating it across a
  * mission's remember calls in `freeTools` would give an honest edge count
  * without touching the map schema. It is left undone because 20a is an
