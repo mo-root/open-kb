@@ -66,14 +66,15 @@ const EXPORT_ENTRIES = new Set([
 const IGNORED_ENTRIES = new Set([".DS_Store"])
 
 /** The five EXPORT_ENTRIES names the exporter always writes as a plain file
- *  (export-kb.ts:938,968,1039,1094,1130). A folder using one of these names for
- *  a directory instead — a person's own "AGENTS.md/" of notes, say — passes the
- *  top-level name check the same way `entities/my-research` used to pass it
- *  before foreignInside() started looking one level down: nothing here read
- *  what was inside, and readFileSync() on a directory only fails the one marker
- *  that tried to open it, not the folder as a whole. If any other marker still
- *  matches (a real manifest.json beside it, say), the folder comes back
- *  writable and the recursive delete takes the directory's contents too. */
+ *  (export-kb.ts:978,948,1049,1104,1140, in this set's own order). A folder
+ *  using one of these names for a directory instead — a person's own
+ *  "AGENTS.md/" of notes, say — passes the top-level name check the same way
+ *  `entities/my-research` used to pass it before foreignInside() started
+ *  looking one level down: nothing here read what was inside, and
+ *  readFileSync() on a directory only fails the one marker that tried to
+ *  open it, not the folder as a whole. If any other marker still matches (a
+ *  real manifest.json beside it, say), the folder comes back writable and
+ *  the recursive delete takes the directory's contents too. */
 const FILE_ENTRIES = new Set(["AGENTS.md", "README.md", "SKILL.md", "llms.txt", "manifest.json"])
 
 /**
@@ -85,7 +86,7 @@ const FILE_ENTRIES = new Set(["AGENTS.md", "README.md", "SKILL.md", "llms.txt", 
  * one of them — six months of hand-written notes under `entities/`, a
  * transcript in `evidence/` — none of which the top-level check can see and all
  * of which the recursive delete takes. The exporter writes one flat `.md` per
- * row (export-kb.ts:231, :251, :270), so a subdirectory or any other name is
+ * row (export-kb.ts:722, :787, :844), so a subdirectory or any other name is
  * somebody else's.
  *
  * `evidence/receipts.md` is here for the exports that still have one. The
@@ -109,7 +110,7 @@ const DIR_CONTENTS: Record<string, (name: string) => boolean> = {
  * knowledge-base skill and not a fingerprint: an agent skill folder holding
  * just SKILL.md and README.md passes the name list, and `kb-notes` matched, so
  * the guard cleared somebody's skill and rewrote it as a market map. The body
- * heading below (export-kb.ts:419) is the part no one writes by accident.
+ * heading below (export-kb.ts:1055) is the part no one writes by accident.
  */
 const MARKERS: ReadonlyArray<readonly [string, (raw: string) => boolean]> = [
   ["AGENTS.md", (raw) => raw.startsWith("# How to use this knowledge base")],
