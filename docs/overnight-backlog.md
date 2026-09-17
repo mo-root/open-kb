@@ -341,3 +341,50 @@ ledger.ts` and `spend-cap.ts`; `core/src/export-kb.ts` (the folder users
 actually read); `scripts/*.ts` beyond sweep.ts; `web/lib/store/supabase.ts`;
 the swarm orchestrator; doctrine contradictions; coverage gaps. Tag
 `Backlog item: SELF-<n>`, continuing from wherever git log leaves off.
+
+**SELF-509 (2026-09-17 overnight fire) — a coverage-gap sweep found nothing
+left to find; read this before repeating it.** "Coverage gaps" above is the
+one D-area that had never been measured directly — every prior SELF-<n> in
+this class found its target by manual reading, one file at a time. Installed
+`@vitest/coverage-v8@3.2.7` locally (matched to this repo's `vitest@3.2.7`;
+never committed — reverted `package.json`/`pnpm-lock.yaml` before finishing)
+and ran the full suite with `--coverage`. Result: `packages/core/src` 99.89%
+lines, `packages/swarm/src` 99.41%, `packages/sweep/src` 98.3%,
+`packages/providers/src` 100%. Read every remaining uncovered line in those
+four packages (judge.ts:961-963, catalog.ts:363-364, tools-control.ts:898,912,942,
+tools-free.ts:614,644,657,670, alias.ts:68,212, agent.ts:1228,
+orchestrator.ts:1315,1413-1416, tools-paid.ts:692,832-833, map.ts:165,233,
+run-evidence.ts:383,393, url.ts:162, export-kb.ts core 17,759,823,936,
+sweep.ts:5755,6878-6880) — every single one already carries a prior fire's
+comment proving it structurally dead (an `?? ""` after a `.split` that
+`String.prototype.split` never leaves empty, an arm two upstream checks
+already make unreachable, etc.), so there is nothing left here for a test to
+usefully close. `scripts/*.ts`'s low line-% (batch.ts 25%, sweep.ts CLI 0%,
+etc.) is the same shape as `spend-caps.ts` before it — checked, and it is
+`invokedDirectly`-guarded CLI body that a wiring test already covers by
+source-grep (`tests/the-cli-entrypoints-have-a-dollar-bound.test.ts`), not an
+untested pure function; `scripts/audit.ts`'s `sniffEntities` is the one real
+instance of that D-area's "pull the pure part out and test it" move and it
+was already done (its own comment says so). `packages/web`'s low numbers
+(`GraphCanvas.tsx` 6.57%, `NoteView.tsx` 4.56%, etc.) are the documented
+absence of a jsdom/RTL harness, not a gap this repo can close (B1-B4 already
+say so).
+
+Also checked, all clean: automated citation-drift detection (grepped every
+`file.ts:NNN` comment citation across the repo, 260 of them, and diffed each
+citation's own last-edited commit against its target file's last-edited
+commit via `git blame`/`git log` — zero cases where the target moved after
+the citation was last written, i.e. the manual drift-hunting SELF-<n>'s have
+been keeping current in near real time); every `OPENKB_*` env var read by
+`process.env` against `.env.example` (one apparent gap, `OPENKB_MAX_DURATION`,
+turned out to be prose in a comment describing what does NOT work, not a real
+variable); `DEPLOY.md`'s numeric claims (the query-budget table, the
+`$0.41`/`$1.51`/`$3.74` run-cap figures) against a live run of the functions
+they cite (`queriesThatFit`/`runSeconds`) — all match exactly.
+
+Not a claim that this repo is finished — only that this specific tool
+(coverage-driven gap-hunting) and the citation-drift/env-doc checks that
+piggybacked on it are exhausted for now. The next self-discovered fire should
+pick a genuinely different angle (a fresh reading of one file end-to-end
+looking for a real logic bug, the way most `fix(...)` SELF-<n>'s were found,
+rather than another instrumented sweep) rather than re-running this one.
