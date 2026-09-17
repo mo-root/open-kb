@@ -269,6 +269,34 @@ describe("scorecardSentences: facts a reader can disagree with", () => {
     ])
   })
 
+  it("speaks of an empty board, not an empty family list — familiesSentence's den===0 arm", () => {
+    // "uses no judgement vocabulary" below already runs this shape (families:
+    // [] among its inputs) but only greps the output for forbidden words; the
+    // literal string this branch returns had never been asserted anywhere.
+    // Every other families:[] shape in this file is really a families:[one
+    // queued row] shape ("the seed-only shape" test), which takes the
+    // den>0 branch and never reaches "the board holds no planned families".
+    const sc = computeScorecard({
+      families: [],
+      entities: [],
+      spendableUsd: 4.5,
+      ceilingUsd: 5,
+      spentUsd: 0,
+      elapsedMs: 12000,
+      wallMs: 300000,
+      yieldHistory: [],
+      recall: { pooled: null, probes: [] },
+    })
+    expect(scorecardSentences(sc)).toEqual([
+      "the board holds no planned families",
+      "the map holds no nodes",
+      "the pool holds $4.50 of $5.00",
+      "12s of the 300s wall elapsed",
+      "no missions have landed",
+      "no fetched page qualified as an answer key",
+    ])
+  })
+
   it("agrees its verbs with its counts", () => {
     const sc = computeScorecard({
       ...healthy(),
