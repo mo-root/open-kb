@@ -32,7 +32,7 @@ export interface EntityData {
    *  comment used to list nine, the same drift SELF-108 found and fixed in
    *  `KbOverview.tsx`'s `RELATION_ORDER`/`RELATION_COLOR` — the four missing
    *  values (`covers`/`lists`/`discusses`/`unknown`) reach this stream
-   *  unfiltered and render as plain text below the `KindChip` (line 115). */
+   *  unfiltered and render as plain text below the `KindChip` (line 132). */
   relation?: string;
   what?: string;
   why?: string;
