@@ -701,3 +701,28 @@ asserted — then restored the fix.
 new), 13 skipped (same gated census as SELF-510 through SELF-516).
 
 Backlog item: SELF-517
+
+**SELF-518 (2026-09-18 overnight fire) — read `components/ThemeToggle.tsx` end
+to end and found its own top comment says the opposite of the actual default.**
+The comment above the component read "dark is the default, so the stored/
+attribute value is only ever 'light' when the reader has opted in." Both the
+shared rule this component imports (`lib/theme.ts`'s `themeFromStored`: "LIGHT
+is the default, and every non-'dark' value resolves to it") and the no-fouc
+script in `app/layout.tsx` ("LIGHT is the default here") say the reverse —
+light is the default and "dark" is the opt-in value. `theme.ts`'s own header
+names exactly this failure mode ("Nothing here imports anything... this
+function, the inline pre-paint script... and the `colorScheme`... must
+agree"), and this comment, sitting right next to the one client-side reader of
+that rule, had drifted to contradict it. No behavior was ever wrong — the code
+three lines down (`isDark = theme === "dark"`) and the `themeFromStored` call
+it wraps were already correct; only the comment lied. Fixed by flipping the
+sentence to state light-default/dark-opt-in, matching `theme.ts` and
+`layout.tsx` verbatim. No test change: this is a comment-only fix, the same
+class as the "docs(...)" SELF-<n>'s already on this branch (e.g. the
+`publicRunsPerDay` comment fix), and `theme.test.ts` already covers the real
+behavior this comment describes.
+
+`pnpm check && pnpm test` both green: 3313 tests passing (unchanged — no test
+touches a comment), 13 skipped (same gated census as SELF-517).
+
+Backlog item: SELF-518

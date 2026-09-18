@@ -5,8 +5,8 @@ import { readStoredTheme, themeFromStored, THEME_KEY, type Theme } from "@/lib/t
 
 // The theme switch: flips document.documentElement.dataset.theme and persists
 // the choice to localStorage 'kb-theme' (read pre-paint by the no-fouc script in
-// layout.tsx). dark is the default, so the stored/attribute value is only ever
-// "light" when the reader has opted in.
+// layout.tsx). light is the default (lib/theme.ts), so the stored/attribute
+// value is only ever "dark" when the reader has opted in.
 //
 // Theme is a client-only fact (it lives on <html> before React mounts), so the
 // icon is resolved in an effect. First render stays theme-agnostic to keep SSR
