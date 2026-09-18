@@ -811,3 +811,69 @@ signals on a plain-text URL.
 new), 13 skipped (same gated census as SELF-521/522/523).
 
 Backlog item: SELF-524
+
+**SELF-525 (2026-09-18 overnight fire) — read `core/src/export-kb.ts` end to
+end and found nothing to fix; read this before re-reading the same file.**
+SELF-515 named it explicitly: "`packages/core/src/export-kb.ts` (1,143 lines)
+[is] far larger than a single fire can read end to end adversarially… still a
+genuinely open angle for a future fire." This fire is that read — all 1,162
+lines (it has grown since SELF-515), every exported function (`exportDrop`,
+`slugOf`, `fm`, `tierSort`, `receiptSource`, `segmentOf`,
+`withoutStolenNames`, `exportKbFiles`) and every inline gate inside
+`exportKbFiles` (the domain-collision `bySlug`/`rendered` split SELF-519 fixed,
+the induced-subgraph edge cut, the half-edge taint set, the shared-suffix
+hoist in `relations/unknown.md`, the segment-key folding, the README/SKILL.md/
+llms.txt count arithmetic, the manifest serialization).
+
+Nothing was wrong. The file is already the most heavily self-documented one on
+this branch — nearly every non-obvious line carries a paragraph proving it
+correct with a measured number (`export-kb.test.ts` is 1,193 lines, longer
+than the source), and several of the exact defect classes this branch's other
+`SELF-<n>`'s have found elsewhere (a `.find()`/`[0]` picking the wrong row, a
+raw `new Map` overwriting a first occurrence, a falsy check standing in for a
+real predicate) are already called out and either fixed or deliberately
+documented as inert here (`segmentOf`'s `foundBy?.[0]` tie is measured at ~3%
+and left alone with a written reason; the `?? ""`/`|| "unattributed"`
+fallbacks are each proven dead by the invariants two lines above them, not
+guessed at).
+
+Also read, in the same pass, every other file this branch's history had never
+opened that was large enough to plausibly hide something: `core/src/
+scorecard.ts` (290 lines — the finish-gate's own instrument; its test file
+already exercises every branch this read could find, including the exact
+mutation-style edge cases — a `window===1` vs plural-window `recent` count, a
+`den===1` singular noun, an all-empty-families sentence — a fresh read would
+have reached first); `packages/sweep/src/ui.ts` (71 lines, narration framing)
+and its dedicated `a-torn-ui-frame-degrades-to-one-missing-line.test.ts`;
+`scripts/query-yield.ts` (257 lines) and `tests/query-yield.test.ts`;
+`packages/web/lib/demo.ts` (the read-only demo-mode gate, not the out-of-scope
+demo gallery — confirmed by reading `docs/overnight-backlog.md`'s own "NOT IN
+SCOPE" line before opening it); `packages/web/app/kb/page.tsx`, `kb/[id]/
+page.tsx` and `runs/page.tsx`; and the previously-untouched icon/legend
+components `GraphLegend.tsx`, `TabBar.tsx`, `icons/NodeGlyph.tsx` (plus its
+`glyphForNotePath` test), and `viz/Donut.tsx`/`Gauge.tsx`'s arc-geometry math
+(the `large`-arc-flag and single-segment-circle special cases in both,
+independently derived and both correct). None held a defect either.
+
+One near-miss worth recording so it is not re-investigated: `GraphLegend.tsx`
+carries the sentence "port NOTE, THE footnote earns ITS line." — its
+capitalisation looks corrupted at first read. It is not: `packages/web/app/
+runs/page.tsx` independently opens a comment "port NOTE. v1 built this page
+from the KB manifests on disk…", so "port NOTE" is this codebase's own porting-
+note marker (paired with `layerMeta.tsx`'s spelled-out "PORT NOTE — what came
+across, and what did not."), not a typo. Checked before touching it, on the
+same "no honest seam" standard the rest of this branch holds itself to for a
+code change; the same standard says an unowned guess at a confusing but
+possibly-intentional sentence is not a fix.
+
+Not a claim that `export-kb.ts` or any of the above is bug-free forever — only
+that this specific angle (a full adversarial read, the tool SELF-515 itself
+prescribed for files too large for a coverage sweep) is exhausted for these
+files today. `packages/swarm/src/orchestrator.ts` was the other file SELF-515
+named as too large; SELF-516 already gave it this same treatment.
+
+`pnpm install` first (fresh clone, no `node_modules` — same as SELF-515 hit).
+`pnpm check && pnpm test` both green: 3322 tests passing, 13 skipped (same
+gated census as SELF-524; unchanged by a read-only, docs-only fire).
+
+Backlog item: SELF-525 - BLOCKED
