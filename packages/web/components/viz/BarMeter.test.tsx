@@ -11,6 +11,15 @@ import { BarMeter } from "./BarMeter";
  * ecosystem panel in the classifier's own relation order) and `ResultPanel.tsx`
  * leaves on, and a `minWidth` floor that keeps a nonzero-but-tiny bar visible
  * without giving a true zero the same sliver.
+ *
+ * `glyph` (the leading icon a row may carry — KbOverview.tsx's ecosystem and
+ * rivals panels both pass one, `kb/KbOverview.tsx:348`) was still an
+ * uncovered branch after all of the above: a coverage-v8 run over
+ * `packages/web/components/**` (D-scope, following SELF-520's precedent of
+ * running coverage over web, which had none before) found it as the one
+ * untested branch in an otherwise 100%-statement file. StatTile.test.tsx
+ * next door already pins the identical optional-glyph pattern for its own
+ * `glyph` prop — the same test shape, applied here.
  */
 
 describe("BarMeter's ceiling defaults to the largest row, not a fixed scale", () => {
@@ -65,6 +74,24 @@ describe("BarMeter gives a nonzero row a visible sliver but a true zero none", (
     // other number ("min-width:3px"), so the pattern has to accept both.
     const minWidths = [...html.matchAll(/min-width:(\d+)(?:px)?/g)].map((m) => Number(m[1]));
     expect(minWidths).toEqual([0, 3]);
+  });
+});
+
+describe("BarMeter's glyph is optional, the same pattern StatTile.test.tsx pins", () => {
+  it("omits the leading glyph span entirely when a row has none", () => {
+    const html = renderToStaticMarkup(<BarMeter rows={[{ label: "a", value: 1 }]} />);
+    expect(html).not.toContain("aria-hidden");
+  });
+
+  it("renders the glyph inside an aria-hidden span when a row has one", () => {
+    // The real caller: KbOverview.tsx's ecosystem/rivals panels pass
+    // `glyph: <NodeGlyph .../>` per row (kb/KbOverview.tsx:348), which this
+    // file had never driven — every row above omits it.
+    const html = renderToStaticMarkup(
+      <BarMeter rows={[{ label: "a", value: 1, glyph: <span>*</span> }]} />,
+    );
+    expect(html).toContain("aria-hidden");
+    expect(html).toContain(">*<");
   });
 });
 
