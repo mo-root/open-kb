@@ -106,4 +106,20 @@ describe("it cannot itself throw", () => {
     expect(html).not.toContain("digest 42")
     expect(html).toContain("nothing about this error reached the browser")
   })
+
+  // global-error.tsx's own test suite passes `undefined`, `{}` and a
+  // null-prototype object as `error` itself, not just a hostile field on it —
+  // this file's guard claimed to be "identical" but was missing the `?.` on
+  // `error` that makes those cases survive rather than throw.
+  it.each([
+    ["undefined", undefined],
+    ["an empty object", {}],
+    ["a null prototype bag", Object.create(null)],
+  ])("survives %s where an Error was promised", (_label, value) => {
+    expect(() =>
+      renderToStaticMarkup(
+        <PageError error={value as unknown as Error & { digest?: string }} />,
+      ),
+    ).not.toThrow()
+  })
 })

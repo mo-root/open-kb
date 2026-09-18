@@ -70,11 +70,18 @@ export default function PageError({ error }: { error: Error & { digest?: string 
   // into exactly the crash it exists to catch. Caught here first: this file's
   // own test asserted a non-string `message` on the promised `Error` and
   // `error.message.includes is not a function` came back instead of a render.
+  //
+  // `error?.` rather than `error.`: this file's own claim to carry "the
+  // identical guard" as global-error.tsx was not true until now — that file
+  // guards `error` itself (its own test passes `undefined`, `{}` and a
+  // null-prototype object as `error`), this one only guarded its fields.
+  // `typeof undefined.message` throws before the `typeof` ever runs, the same
+  // crash this guard exists to prevent, just one property level up.
   const message =
-    typeof error.message === "string" && !error.message.includes(REDACTED)
+    typeof error?.message === "string" && !error.message.includes(REDACTED)
       ? error.message
       : null;
-  const digest = typeof error.digest === "string" ? error.digest : null;
+  const digest = typeof error?.digest === "string" ? error.digest : null;
 
   return (
     <div className="mx-auto max-w-6xl px-5 py-10">
