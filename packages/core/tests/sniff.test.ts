@@ -28,6 +28,38 @@ describe("sniff", () => {
     expect(r.reason).toBe("soft-404")
   })
 
+  it("calls a .txt request a soft 404 when the HTML never says so with a doctype", () => {
+    // The measured case isHtml's own header names: a 200, `text/html`, and a
+    // "Page not found" page — here shaped as a WAF interstitial with no
+    // `<!doctype html>`/`<html>` prefix at all, the same shape the "extracts
+    // HTML fragment without contentType" case below proves is real. Before
+    // this fix, soft-404 only read `looksLikeHtml` (the body's own first
+    // bytes), so this body sailed past the soft-404 check, got extracted, and
+    // came back "found" — an HTML error page misfiled as real content.
+    const r = sniff({
+      url: "https://example.com/llms-full.txt",
+      httpStatus: 200,
+      body: "<!-- generated --><div><h1>Page not found</h1><p>" + "nothing here. ".repeat(30) + "</p></div>",
+      contentType: "text/html; charset=utf-8",
+    })
+    expect(r.status).toBe("not_found")
+    expect(r.reason).toBe("soft-404")
+  })
+
+  it("calls a .txt request a soft 404 from content-type alone, body carrying no doctype or tag signals", () => {
+    // Isolates the contentType-only path of isHtml: a body with no HTML tag
+    // shape at all (so `looksLikeHtml` and the signal count both read false),
+    // caught only because the response labelled itself text/html.
+    const r = sniff({
+      url: "https://example.com/llms.txt",
+      httpStatus: 200,
+      body: "Page not found. " + "Please try again later. ".repeat(20),
+      contentType: "text/html; charset=utf-8",
+    })
+    expect(r.status).toBe("not_found")
+    expect(r.reason).toBe("soft-404")
+  })
+
   it("accepts a real text file", () => {
     const body = "# Stripe\n> Stripe is a technology company that provides financial infrastructure.\n" + "## Payments\n".repeat(30)
     const r = sniff({ url: "https://stripe.com/llms.txt", httpStatus: 200, body })

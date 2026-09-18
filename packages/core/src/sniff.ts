@@ -200,10 +200,6 @@ export function sniff(r: RawResponse): SniffResult {
 
   if (r.body.length === 0) return { status: "blocked", reason: "empty-body", detail, text: "" }
 
-  if (expectsPlainText(r.url) && looksLikeHtml(r.body)) {
-    return { status: "not_found", reason: "soft-404", detail, text: "" }
-  }
-
   // Decide whether to extract or keep the body as-is. The declared type is a
   // hint and never a veto: real HTML arrives labelled text/plain, so the shape
   // of the body has the last word.
@@ -215,6 +211,18 @@ export function sniff(r: RawResponse): SniffResult {
   // signal and is stored raw. That failure is visible (two tags in the text)
   // rather than silent, and real fragments nest or carry attributes.
   const shouldExtract = isHtml(r.body, r.contentType)
+
+  // A .txt/.md/.json URL answering with HTML is a soft-404 whether or not the
+  // HTML says so with a doctype. `isHtml`'s own header names the measured case
+  // this check exists for — a 200, `text/html`, 608KB "Page not found" page —
+  // and a WAF interstitial can open with no `<!doctype html>`/`<html>` prefix
+  // at all (the "extracts HTML fragment without contentType" case below proves
+  // that shape is real). `looksLikeHtml` alone misses both: it only reads the
+  // body's own first bytes, never the content-type, and never a body that is
+  // HTML by tag-shape rather than by a literal doctype string.
+  if (expectsPlainText(r.url) && shouldExtract) {
+    return { status: "not_found", reason: "soft-404", detail, text: "" }
+  }
 
   const text = shouldExtract ? extractText(r.body) : r.body
 

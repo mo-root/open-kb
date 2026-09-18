@@ -762,3 +762,52 @@ new), 13 skipped (same gated census as SELF-517/518).
 Backlog item: SELF-519
 
 Backlog item: SELF-518
+
+**SELF-524 (2026-09-18 overnight fire) — read `core/src/sniff.ts` end to end
+and found the soft-404 check uses a weaker "is this HTML" test than the one
+the file itself already trusts for the same question.** `isHtml`'s own header
+names the exact scenario soft-404 exists for — "a `.txt` URL that answers
+with HTML did not have the file... one measured case returns 200,
+`text/html`, and 608KB of another company's 'Page not found' page" — but the
+soft-404 branch tested `looksLikeHtml(r.body)` instead of `isHtml`: a strict
+prefix check (`^\s*(<!doctype html|<html\b)`) that reads only the body's own
+first bytes, never the content-type, and never a body that is HTML by
+tag-shape rather than by a literal doctype string.
+
+Not hypothetical on either signal it misses. The content-type signal is the
+one the docstring's own 608KB measured case turns on — a "Page not found"
+page can easily open with something other than a literal doctype (a
+boilerplate comment, a CDN banner) while still being served `text/html`. The
+tag-shape signal is proven live two tests below in the same file: "extracts
+HTML fragment without contentType (no DOCTYPE, no `<html>` prefix)" already
+establishes that WAF interstitials commonly open with no doctype at all —
+that test just never used a `.txt`/`.md`/`.json` URL, so nobody had asked
+whether that exact fragment shape still gets caught when soft-404 is the
+verdict that should fire. It doesn't: such a body sails past
+`looksLikeHtml`, gets extracted by the very next line (`shouldExtract =
+isHtml(...)`, which correctly answers true), and — if the extracted text
+clears 200 chars, as a real error page's boilerplate usually does — comes
+back `found`, an HTML error page misfiled as real content instead of the
+`soft-404` a stored run's dead-end taxonomy exists to count separately.
+
+Fixed by computing `shouldExtract = isHtml(r.body, r.contentType)` before the
+soft-404 check and testing that instead of `looksLikeHtml(r.body)` — the
+soft-404 branch and the extraction decision now ask the identical question,
+which they always should have, since `shouldExtract` was already computed
+one line later from the same inputs. Added two regression tests: one for the
+doctype-less WAF-fragment shape on a `.txt` URL (content-type `text/html`,
+body opening with a comment before `<div>`), one isolating the
+content-type-only path (a body with zero HTML tag signals, caught only by
+its `text/html` header). Verified non-vacuous by mutation: reverted just the
+`sniff.ts` change (kept the tests), reran — both new tests failed reading
+`found` where `not_found` was asserted; restored the fix. Every existing
+soft-404/extraction test in the file (the markdown-with-generics cases, the
+`<code>`-mention case, the plain-text-file case) still passes unmutated: none
+of them trip `isHtml` any differently than they tripped `looksLikeHtml`
+before, since none carry a `text/html` content-type or two-or-more real tag
+signals on a plain-text URL.
+
+`pnpm check && pnpm test` both green: 3322 tests passing (up from 3320, two
+new), 13 skipped (same gated census as SELF-521/522/523).
+
+Backlog item: SELF-524
