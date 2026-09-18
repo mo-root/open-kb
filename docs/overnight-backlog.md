@@ -725,4 +725,40 @@ behavior this comment describes.
 `pnpm check && pnpm test` both green: 3313 tests passing (unchanged — no test
 touches a comment), 13 skipped (same gated census as SELF-517).
 
+**SELF-519 (2026-09-18 overnight fire) — read `core/src/export-kb.ts` end to
+end and found the domain-collision fix documented at line 1111 (the "keeps
+the first entity's own page" case) never reached `relations/`, `segments/`
+or any of the entity counts.** That earlier fix made `entities/` write only
+the first of two kept rows sharing a domain slug, via the `bySlug` map — but
+`relations/`'s `byRelation` grouping, `segments/`'s `bySegment` grouping, the
+README/SKILL.md/llms.txt entity counts, and `tiered` all looped over `kept`
+directly, the very array the file's own comment already names as a live
+collision path ("`repaired.entities` is not deduped by domain anywhere
+upstream of this loop… whenever the classifier surfaces the same host twice
+under two names in one run").
+
+Verified directly: two kept rows sharing `domain: "same.example"`, one
+`relation: "competitor"`, one `relation: "substitute"` —
+`entities/same-example.md` correctly wrote only the competitor row (the
+existing fix), but `relations/competitor.md` AND `relations/substitute.md`
+both still wikilinked `[[same-example]]`, so the substitute list pointed a
+reader at a page that never mentions a substitute relation at all — the page
+is entirely the competitor row's own text. README's own count read "2
+entities: competitor 1 · substitute 1" over the one page that actually
+exists.
+
+Fixed by introducing `rendered` — `kept` deduplicated the same way
+`entities/` already is, read straight off `bySlug`'s values, which are
+exactly the rows a page was written for — and routing `tiered`,
+`byRelation`, `bySegment`, the README/llms.txt counts, and the `kept.length`
+prose in README/SKILL.md/llms.txt through it instead of `kept`. Added a
+regression test with the competitor/substitute collision above; reverted
+just the fix (kept the test) to confirm it failed first — a stray
+`relations/substitute.md` was still produced — then restored the fix.
+
+`pnpm check && pnpm test` both green: 3314 tests passing (up from 3313, one
+new), 13 skipped (same gated census as SELF-517/518).
+
+Backlog item: SELF-519
+
 Backlog item: SELF-518
