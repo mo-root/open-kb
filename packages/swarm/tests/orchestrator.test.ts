@@ -442,6 +442,106 @@ describe("runSwarm: fill/think/wake", () => {
     expect(run.ending.residue.map((r) => r.dedupeKey)).toEqual(expect.arrayContaining(["m1", "cheap-peek"]))
     expectEndingShape(run.ending, run.ledger)
   })
+
+  it("review's promote can rank an unfunded proposal above an already-funded mission, and the padded eff then blocks the funded one from launching at all — no overrun required", async () => {
+    // A second way into the SAME gap the test above measures, and a more
+    // ordinary one: no overrun anywhere. `eff = ledger.spendable() +
+    // fundedQueuedUsd()` (~line 842) is algebraically insensitive to WHICH
+    // rows sit funded-and-queued — expand it and the funded-queued term always
+    // cancels, leaving `ceilingUsd - finishReserveUsd - spentUsd -
+    // <money committed to missions actually RUNNING>` — so the padding never
+    // hurts a funded row checking ITS OWN affordability (its own allowance is
+    // part of the very sum being added back). But `reviewTool`'s promote
+    // (tools-control.ts ~535) can lift a still-UNFUNDED investigator proposal
+    // into the SAME 61-100 band a funded mission occupies, and `popAffordable`
+    // (core/src/board.ts:104) returns the FIRST ranked row that passes a
+    // SINGLE shared `eff` — highest priority first — never recomputing it per
+    // row. A promoted proposal ranked above a funded mission wins that scan
+    // and gets popped before the funded one is ever looked at; if its real
+    // `ledger.reserve()` (which reads `spendable()` alone, not the padded eff)
+    // then refuses, fill()'s while loop `break`s — and the funded mission
+    // never gets its turn in this pass, however much real money is already
+    // set aside for it and however idle its lane sits.
+    //
+    // Ceiling $0.50: finishReserve $0.12, pool $0.38. The seed dig ($0.25)
+    // reserves first, leaving $0.13 real. Turn 2 spawns "m-low" (read, $0.10,
+    // p65) — funded immediately, $0.03 real left — and in the SAME turn
+    // promotes the seed's own proposal "cheap-high" (read, $0.10) to p90,
+    // still unfunded. `lanes: 1` keeps fill() from ever running while the
+    // seed occupies the one lane, so both rows sit funded/unfunded together on
+    // the board, untouched, until the seed lands. The seed's one billed turn
+    // (1000 tokens in @ $200/M) costs exactly $0.20 against its $0.25
+    // reservation; settling refunds the $0.05 surplus, landing real spendable
+    // at $0.08 — under cheap-high's $0.10. `eff` at that same instant reads
+    // $0.08 + m-low's still-queued $0.10 = $0.18, enough to let cheap-high
+    // pass the scan first (p90 beats m-low's p65) and get popped — its real
+    // reserve then refuses at $0.08, and m-low, sitting right behind it in
+    // rank with money genuinely reserved for it, never gets a look this pass.
+    const logs: string[] = []
+    const seedModel = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = invTurnOf(prompt)
+        if (turn === 0)
+          return reply(call("s1", "search", { queries: ["fraud scoring"], why: "orient" }), false, usage(0, 0))
+        if (turn === 1)
+          return reply(
+            call("p1", "propose", { missions: [mission("cheap-high", 20, "read")], why: "a find I cannot chase" }),
+            false,
+            usage(0, 0),
+          )
+        await sleep(150) // stay in flight past the lead's spawn+promote before landing
+        return reply(text("done."), true, usage(1000, 0))
+      },
+    })
+    const lead = new MockLanguageModelV4({
+      doGenerate: async ({ prompt }) => {
+        const turn = leadTurnOf(prompt)
+        if (turn === 1) return reply(call("n1", "next", { after: { seconds: 0.05 }, why: "let the propose land" }), false)
+        if (turn === 2)
+          return reply(
+            [
+              ...call("s1", "spawn", { missions: [mission("m-low", 65, "read")], why: "a lane the pool already affords" }),
+              ...call("r1", "review", {
+                promote: [{ dedupeKey: "cheap-high", priority: 90 }],
+                why: "the map says this matters more",
+              }),
+            ],
+            false,
+          )
+        return reply(call("n2", "next", { after: { seconds: 600 }, why: "nothing left to plan; let the clock run" }), false)
+      },
+    })
+
+    const run = await runSwarm(
+      mkOpts({
+        lead,
+        tiers: { dig: seedModel },
+        logs,
+        over: {
+          ceilingUsd: 0.5,
+          lanes: 1,
+          familyFloor: false,
+          wallClockMs: 250,
+          graceMs: 50,
+          pricing: { lead: zero, peek: zero, read: zero, dig: { inUsdPerM: 200, outUsdPerM: 0 } },
+        },
+      }),
+    )
+
+    // cheap-high popped first (p90 beats m-low's p65) on the padded eff, and
+    // its real reserve refused at the true, un-padded spendable figure.
+    expect(
+      logs.some((l) =>
+        /"cheap-high" popped but cannot be funded: a \$0\.10 reservation does not fit; \$0\.08 is spendable/.test(l),
+      ),
+    ).toBe(true)
+    // m-low never got a turn in that same pass: no lane-take was ever narrated for it.
+    expect(logs.some((l) => l.includes("lane takes") && l.includes("m-low"))).toBe(false)
+    // The receipt: a fully-funded, ready mission ships as residue, indistinguishable
+    // on paper from a proposal that genuinely never affords its own tier.
+    expect(run.ending.residue.map((r) => r.dedupeKey)).toEqual(expect.arrayContaining(["m-low", "cheap-high"]))
+    expectEndingShape(run.ending, run.ledger)
+  })
 })
 
 // ── endings ─────────────────────────────────────────────────────────────────

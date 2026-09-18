@@ -597,3 +597,63 @@ every remaining untouched module under 300 lines is now read, and none of
 them held the kind of bug this branch has been finding.
 
 Backlog item: SELF-515 - BLOCKED
+
+**SELF-516 (2026-09-17 overnight fire) — took SELF-515's own advice: a fresh
+full read of `packages/swarm/src/orchestrator.ts` end to end, adversarially.**
+Found the trigger surface of an ALREADY-KNOWN, ALREADY-ACCEPTED gap is wider
+than its own test suite proves, and added the missing coverage rather than
+changing the accepted behaviour.
+
+`fill()`'s own comment (orchestrator.ts ~840) and an existing test
+(orchestrator.test.ts, "eff's funded-queued add-back can admit a proposal
+that ledger.reserve then refuses") already establish that `eff =
+ledger.spendable() + fundedQueuedUsd()` can admit a board row that the real
+`ledger.reserve()` then refuses — but that test's own title, and its
+comment's own qualifier ("true ONLY while the pool has never overrun"),
+frame the gap as an OVERRUN-only phenomenon: a lane's real cost blowing past
+its own reservation. Tracing `eff`'s algebra by hand (every claim is either
+funded-and-still-queued or started-and-unsettled, exhaustively — the
+`fundedQueuedUsd()` term always cancels the queued half of
+`ledger.spendable()`'s own subtraction) shows `eff` actually equals
+`ceilingUsd - finishReserveUsd - spentUsd - <money committed to missions
+actually RUNNING>`, a quantity with NO dependency on overrun at all — it is
+provably ≥ `ledger.spendable()` by exactly `fundedQueuedUsd()`, always, the
+moment ANY other row sits funded-and-queued beside the one being scanned.
+
+That gap has a second, ordinary door with no overrun anywhere: `reviewTool`'s
+promote (tools-control.ts ~535) can lift a still-unfunded investigator
+proposal into the SAME 61-100 band a funded, spawned mission occupies.
+`Board.popAffordable` (core/src/board.ts:104) returns the FIRST ranked row
+that passes a single shared `eff`, highest priority first, never
+recomputing it per row — so a promoted proposal ranked above an
+already-funded mission wins the scan and gets popped first; if its real
+`ledger.reserve()` then refuses, `fill()`'s while loop `break`s, and the
+funded mission — sitting right behind it in rank, with real money already
+set aside and a free lane waiting — never gets a look in that pass. Verified
+by a new orchestrator.test.ts case with no overrun anywhere (a $0.50
+ceiling, one seed dig settling cleanly at $0.20 of its $0.25 reservation):
+the promoted proposal is popped and refused exactly as the algebra predicts,
+and the funded mission it out-ranked ships as residue having never launched
+at all — indistinguishable on paper from a mission that genuinely never
+could afford its own tier. Confirmed non-vacuous by mutation: with the
+`fundedQueuedUsd()` add-back removed, the same script correctly pops the
+funded mission instead and the new assertions fail first.
+
+Not fixed, on the same reasoning the existing test already applied to the
+overrun door: the recovery path (`board.release`, a narrated skip,
+`fillDry` forcing the lead's next turn) is exactly what makes the OTHER door
+tolerable — no money is lost (the blocked mission's claim still settles at
+$0 refund when the run ends, per `closeClaims`), and the cost is scheduling
+opportunity, not correctness. A real fix would need `Board.popAffordable` to
+tell "this specific row is already funded" apart from "money is generically
+available" per row scanned, which changes its signature and every one of
+its ~15 existing call sites/tests — a redesign, not the "small, real,
+tested" scope one fire owns, and the maintainers already chose
+document-not-fix for the sibling door. Left as a second, ordinary trigger of
+the SAME documented tradeoff, so a future fire does not mistake it for a
+fresh, independent bug.
+
+`pnpm check && pnpm test` both green: 3311 tests passing (up from 3310, one
+new), 13 skipped (same gated census as SELF-510 through SELF-515).
+
+Backlog item: SELF-516
