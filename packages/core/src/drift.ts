@@ -107,7 +107,20 @@ export function entityKey(e: DriftEntityRow): string {
 
 const WATCHED: readonly DriftField[] = ["kind", "relation", "tier"]
 
-function indexByKey(rows: DriftEntityRow[]): Map<string, DriftEntityRow> {
+/**
+ * First-wins, per this module's own header rule: "the first row speaks for
+ * the key". Exported because a caller printing a side-by-side reading of a
+ * key (scripts/diff-runs.ts's table) needs the SAME map diffMaps used to
+ * decide changed/left/entered, not a second index built its own way.
+ * diff-runs.ts used to build its display index with `new Map(rows.map(...))`
+ * -- last-wins, the constructor's ordinary behaviour on a repeated key -- so a
+ * file with two rows folding to one key (the exact case this header
+ * documents) could print a "was" reading from the SECOND row while the
+ * sentence above it, computed from this function, named the move it measured
+ * against the first. Sharing this function closes the gap by construction
+ * instead of keeping two loops in sync by hand.
+ */
+export function indexByKey(rows: DriftEntityRow[]): Map<string, DriftEntityRow> {
   const index = new Map<string, DriftEntityRow>()
   for (const row of rows) {
     const key = entityKey(row)

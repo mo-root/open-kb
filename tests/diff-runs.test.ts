@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { denoise, parseRun } from "../scripts/diff-runs.js"
-import type { DriftEntityRow } from "../packages/core/src/index.js"
+import { denoise, driftRows, parseRun } from "../scripts/diff-runs.js"
+import { diffMaps, type DriftEntityRow } from "../packages/core/src/index.js"
 
 /**
  * `parseRun` and `denoise` — the shape-sniffing and noise-filtering behind
@@ -68,5 +68,38 @@ describe("denoise", () => {
   it("is a no-op when nothing is noise", () => {
     const m = { entities: [company("a.com"), company("b.com")], edges: [] }
     expect(denoise(m).entities).toEqual(m.entities)
+  })
+})
+
+describe("driftRows", () => {
+  /**
+   * The bug this guards: two rows folding to one key in A used to make the
+   * table's "was" column disagree with the sentence computed from the same
+   * diff. `diffMaps` (drift.ts) keeps the FIRST of a repeated key — its own
+   * header says so — but this file used to rebuild its display index with
+   * `new Map(entities.map(...))`, which keeps the LAST on a repeated key. So
+   * a duplicate-domain A (a real shape: export-kb.ts's own comment describes
+   * "two rows with the same domain" as one host reported twice) could print
+   * a "was" reading from the row `diffMaps` never compared against.
+   */
+  it("reads the same row diffMaps compared, when A repeats a key", () => {
+    const a = { entities: [company("a.com", { relation: "competitor" }), company("a.com", { relation: "substitute" })], edges: [] }
+    const b = { entities: [company("a.com", { relation: "adjacent" })], edges: [] }
+    const diff = diffMaps(a, b)
+    expect(diff.changed).toEqual([{ key: "a.com", field: "relation", from: "competitor", to: "adjacent" }])
+
+    const rows = driftRows(diff, a, b)
+    expect(rows).toEqual([["a.com", "competitor", "adjacent"]])
+  })
+
+  it("shows an absent side as an em dash for a key that only one run has", () => {
+    const a = { entities: [company("left.com")], edges: [] }
+    const b = { entities: [company("entered.com")], edges: [] }
+    const diff = diffMaps(a, b)
+    const rows = driftRows(diff, a, b)
+    expect(rows).toEqual([
+      ["left.com", "competitor", "—"],
+      ["entered.com", "—", "competitor"],
+    ])
   })
 })

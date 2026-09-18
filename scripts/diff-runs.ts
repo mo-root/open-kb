@@ -18,7 +18,14 @@
  * Usage:  npx tsx scripts/diff-runs.ts runs/swarm-a.json runs/swarm-b.json
  */
 import { readFileSync } from "node:fs"
-import { diffMaps, driftSentences, entityKey, type DriftMap, type DriftEntityRow } from "../packages/core/src/index.js"
+import {
+  diffMaps,
+  driftSentences,
+  indexByKey,
+  type DriftMap,
+  type DriftEntityRow,
+  type MapDrift,
+} from "../packages/core/src/index.js"
 
 /** Sniff one already-parsed run file into the drift shape: top-level entities
  *  (sweep, swarm) or the kernel wrapper's `result`. Anything else is refused
@@ -42,6 +49,39 @@ export function parseRun(path: string, json: {
  *  diff compares whatever rows it is handed. */
 export function denoise(m: DriftMap): DriftMap {
   return { entities: m.entities.filter((e) => e.kind !== "noise"), edges: m.edges }
+}
+
+/**
+ * One row per key that moved, both readings side by side, for the CLI table
+ * below. Absent side reads "—"; a key's reading is relation@tier, tier
+ * omitted where the run never minted one. Unchanged keys stay off the table —
+ * the sentence printed above it already counts them, and 200 identical rows
+ * is padding, not reading.
+ *
+ * Reads `a`/`b` through `indexByKey`, the SAME first-wins index `diffMaps`
+ * built `diff` from, rather than a second index of its own. This used to be
+ * `new Map(m.entities.map((e) => [entityKey(e), e]))` — last-wins, the
+ * constructor's ordinary behaviour on a repeated key — so a file with two
+ * rows folding to one key (drift.ts's own header: "two subdomains folding to
+ * one host") printed a "was" reading from the SECOND row here while the
+ * sentence one line above it, computed by diffMaps from the FIRST, named the
+ * move it measured against. Confirmed directly: two rows sharing a domain,
+ * relations "competitor" then "substitute" in A, one "adjacent" row in B —
+ * the sentence read "competitor -> adjacent" (diffMaps' first-wins pick) and
+ * the table read "was substitute" (the old last-wins `new Map`), two lines
+ * about the same key disagreeing about what "was".
+ */
+export function driftRows(diff: MapDrift, a: DriftMap, b: DriftMap): Array<readonly [string, string, string]> {
+  const inA = indexByKey(a.entities)
+  const inB = indexByKey(b.entities)
+  const reading = (e?: DriftEntityRow) => (e ? `${e.relation ?? "?"}${e.tier ? "@" + e.tier : ""}` : "—")
+
+  const changedKeys = [...new Set(diff.changed.map((c) => c.key))]
+  return [
+    ...changedKeys.map((k) => [k, reading(inA.get(k)), reading(inB.get(k))] as const),
+    ...diff.left.map((k) => [k, reading(inA.get(k)), "—"] as const),
+    ...diff.entered.map((k) => [k, "—", reading(inB.get(k))] as const),
+  ]
 }
 
 const invokedDirectly = process.argv[1] ? import.meta.url.endsWith(process.argv[1].split("/").pop() ?? "\0") : false
@@ -70,21 +110,7 @@ if (invokedDirectly) {
   console.log()
   for (const line of driftSentences(diff)) console.log(line)
 
-  // The table: one row per key that moved, both readings side by side. Absent
-  // side reads "—"; a key's reading is relation@tier, tier omitted where the
-  // run never minted one. Unchanged keys stay off the table — the sentence
-  // already counts them, and 200 identical rows is padding, not reading.
-  const byKey = (m: DriftMap) => new Map(m.entities.map((e) => [entityKey(e), e] as const))
-  const inA = byKey(a)
-  const inB = byKey(b)
-  const reading = (e?: DriftEntityRow) => (e ? `${e.relation ?? "?"}${e.tier ? "@" + e.tier : ""}` : "—")
-
-  const changedKeys = [...new Set(diff.changed.map((c) => c.key))]
-  const rows = [
-    ...changedKeys.map((k) => [k, reading(inA.get(k)), reading(inB.get(k))] as const),
-    ...diff.left.map((k) => [k, reading(inA.get(k)), "—"] as const),
-    ...diff.entered.map((k) => [k, "—", reading(inB.get(k))] as const),
-  ]
+  const rows = driftRows(diff, a, b)
 
   if (rows.length > 0) {
     console.log()

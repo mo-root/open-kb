@@ -5,6 +5,7 @@ export {
   diffMaps,
   driftSentences,
   entityKey,
+  indexByKey,
   type DriftEntityRow,
   type DriftEdgeRow,
   type DriftMap,

@@ -657,3 +657,47 @@ fresh, independent bug.
 new), 13 skipped (same gated census as SELF-510 through SELF-515).
 
 Backlog item: SELF-516
+
+**SELF-517 (2026-09-18 overnight fire) — read `scripts/diff-runs.ts` end to
+end and found its CLI table can print a "was" reading `diffMaps` never
+compared.** `packages/core/src/drift.ts`'s own header states the rule for a
+run that spells one key twice ("two subdomains folding to one host"): "the
+first row speaks for the key — the order the run wrote is the order the run
+meant", and `diffMaps` enforces it through a private `indexByKey` that keeps
+the FIRST occurrence on a repeated key (`if (!index.has(key)) index.set(...)`).
+`diff-runs.ts`'s CLI table — the "was"/"now" columns printed under the drift
+sentences — built its OWN index instead, `new Map(m.entities.map((e) =>
+[entityKey(e), e]))`, which is last-wins, the `Map` constructor's ordinary
+behaviour on a repeated key. A duplicate-domain row is not hypothetical: it
+is the exact shape `export-kb.ts`'s own comment already documents ("Two rows
+with the SAME domain are one host reported twice — keeping the first is
+right") and its test suite already covers on the export side. On the diff
+side nothing did: `diffMaps` picks A's first row to compare against B, prints
+a sentence naming that move, and the table two lines below it read A's LAST
+row instead — two lines about the same key disagreeing about what "was".
+
+Verified directly: A with two rows on `a.com` (`competitor` then
+`substitute`), B with one (`adjacent`) — the sentence read "competitor ->
+adjacent" (diffMaps' first-wins pick) and the table read "was substitute"
+(the old last-wins `new Map`).
+
+Fixed by exporting `indexByKey` from `drift.ts` (the same private
+first-wins index `diffMaps` itself uses to decide `changed`/`left`/`entered`)
+and having `diff-runs.ts` build its table from it directly, rather than a
+second index built its own way — the same "a second copy of a rule is a rule
+that can disagree with itself" reasoning `export-kb.ts`'s own header already
+gives for importing `registrableHost` instead of restating it. The table
+logic was pulled into an exported `driftRows(diff, a, b)`, the same shape
+`parseRun`/`denoise` were already pulled out in one of D's own earlier
+commits, so it is no longer only reachable through the CLI's `invokedDirectly`
+gate. Added two tests: one reproducing the exact duplicate-domain case above
+(asserting the table agrees with `diffMaps`' own `changed` entry), one for
+the ordinary left/entered case. Reverted just the two `indexByKey` calls back
+to a literal `new Map(entities.map(e => [entityKey(e), e]))` to confirm the
+new test fails first — it read `"was substitute"` where `"competitor"` was
+asserted — then restored the fix.
+
+`pnpm check && pnpm test` both green: 3313 tests passing (up from 3311, two
+new), 13 skipped (same gated census as SELF-510 through SELF-516).
+
+Backlog item: SELF-517
