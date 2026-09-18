@@ -2,6 +2,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
+import type { SweepResult } from "@open-kb/sweep"
+import { createRun, finishRun } from "@/lib/runs"
 import { GET } from "./route"
 
 /**
@@ -41,12 +43,13 @@ const FAILED_UUID = "1b0c8f42-5d7a-4e19-9c33-7a2f6e5b40d1"
  *  reach the wire. If it is in the body, the whole run was serialised. */
 const BULK = "ENTITY-BULK-MARKER"
 
-function sweepResult() {
+function sweepResult(): SweepResult {
   return {
     anchor: "resend.com",
     decomposition: {
       sells: "transactional email",
       buyer: "developers",
+      brand: "Resend",
       products: [],
       capabilities: [],
       coinages: [],
@@ -54,7 +57,16 @@ function sweepResult() {
     // The three heavy fields. On the real corpus these are where the megabytes
     // are: `entities` carries every classified host with its prose, `queries`
     // every search and its hits.
-    queries: [{ q: `${BULK} query`, family: "f", hits: [] }],
+    queries: [
+      {
+        q: `${BULK} query`,
+        family: "plain",
+        intent: "discovery",
+        platform: "web",
+        why: BULK,
+        market: BULK,
+      },
+    ],
     entities: [
       { name: BULK, domain: "postmarkapp.com", kind: "company", what: BULK, relation: "competitor", why: BULK },
     ],
@@ -174,6 +186,34 @@ describe("GET /api/run/[id] — a run this process is not holding", () => {
     const res = await GET(...req("7c3d5e21-0f44-4a88-9bb1-2e6d7c4a1053"))
     expect(res.status).toBe(404)
     expect(await res.json()).toEqual({ status: "unknown" })
+  })
+})
+
+describe("GET /api/run/[id] — a run this process IS still holding", () => {
+  /* Coverage measured 2026-09-18 (a scoped, uncommitted local
+     `@vitest/coverage-v8@3.2.7` run) showed route.ts:46-47 — `return body(run)`
+     on the LIVE branch, `getRun(id)` answering directly — as the only
+     uncovered lines in this file. Every test above goes through the STORED
+     branch by construction: `OPENKB_RUNS_DIR` points at a run written straight
+     to disk, never through `createRun`, so `getRun(id)` is always undefined
+     there. That leaves the exact branch this file's own history already
+     called out as a drift risk (the doc comment above `body()`: "a future
+     edit cannot move one branch without the other") as the one half nothing
+     here would catch a regression in. */
+  it("answers with the run's summary, not the whole SweepResult, from the in-memory registry", async () => {
+    const record = createRun("resend.com", 12)
+    await finishRun(record.id, sweepResult())
+
+    const res = await GET(...req(record.id))
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { status: string; result: Record<string, unknown> }
+
+    expect(body.status).toBe("complete")
+    // Same assertion the stored-branch test above makes of `body()`'s other
+    // caller: `report`'s fields, not `SweepResult`'s.
+    expect(body.result.kept).toBe(7)
+    expect(body.result).toEqual(sweepResult().report)
+    expect(Array.isArray(body.result.entities)).toBe(false)
   })
 })
 
