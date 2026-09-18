@@ -182,6 +182,13 @@ hosted web app, or the repo itself would actually notice.
   text "0/0 (NaN%) in 0 calls" instead of the "nothing found to triage"
   the case actually means. Now reports `ok` with "0/0 hosts — nothing
   found to triage", the same fix shape as the second-look gap above.
+- `export-kb.ts`'s domain-collision fix (keeping only the first of two kept
+  entities that share a domain slug) never reached the exported KB's own
+  `relations/` or `segments/` pages or its README/SKILL.md/llms.txt entity
+  counts — all four still grouped over the raw pre-dedup list. A collision
+  could leave a `relations/*.md` page wikilinking an entity page that never
+  actually mentions that relation, and a printed count that didn't match
+  the pages the export actually wrote.
 
 ### Repo and docs
 
