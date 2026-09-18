@@ -582,19 +582,37 @@ export function exportKbFiles(run: ExportRunLike): ExportedFile[] {
     bySlug.set(slug, e)
     entitySlug.set(e, slug)
   }
-  // What `relations/` and `segments/` wikilink a kept entity by — `slugOf(e)`
-  // for everything except the domain-less rows disambiguated just above,
-  // which is why they, not `slugOf` directly, are the wikilink source below.
-  // `?? slugOf(e)` has no honest seam: the loop just above sets `entitySlug`
-  // for every `e` in `kept`, unconditionally, on both branches (the `continue`
-  // at line 578 and the fall-through at line 583) — there is no path through
-  // that loop that visits a kept entity and leaves it out of the map. Both
-  // call sites below (`relations/`'s `rows` and `segments/`'s `rows`) only
-  // ever pass entities drawn from `kept` (`sorted`/`list`, themselves sorted
-  // or filtered copies of `byRelation`/`bySegment` groupings built from
-  // `kept`), so `slugFor` never sees an entity `entitySlug` does not already
-  // hold. Kept as the honest fallback for what this function used to do
-  // before `entitySlug` existed.
+  // THE DOMAIN-COLLISION FIX ABOVE ONLY REACHED `entities/`. `relations/`,
+  // `segments/` and every count below used to loop over `kept` directly, the
+  // very array the comment above this one already says a same-host collision
+  // is a live path through — and `kept` still holds BOTH rows when that
+  // happens, only one of which gets a page. MEASURED: two kept rows sharing
+  // `domain: "same.example"`, one `relation: "competitor"`, one
+  // `relation: "substitute"` — `entities/same-example.md` correctly writes
+  // only the first (the fix above), but `relations/competitor.md` AND
+  // `relations/substitute.md` each still wikilinked `[[same-example]]`, so
+  // the substitute list pointed a reader at a page that never mentions a
+  // substitute relation at all, and the README's own count read "2 entities:
+  // competitor 1 · substitute 1" over the one page that actually exists.
+  // `rendered` is `kept`, deduplicated the same way `entities/` already is —
+  // exactly the entities a page was written for, in the same identity
+  // `entitySlug` already keys by — so every downstream count and wikilink
+  // agrees with the folder it is describing.
+  const rendered = [...bySlug.values()]
+  // What `relations/` and `segments/` wikilink a rendered entity by —
+  // `slugOf(e)` for everything except the domain-less rows disambiguated
+  // just above, which is why they, not `slugOf` directly, are the wikilink
+  // source below. `?? slugOf(e)` has no honest seam: the loop just above sets
+  // `entitySlug` for every `e` in `kept`, unconditionally, on both branches
+  // (the `continue` at line 578 and the fall-through at line 583) — there is
+  // no path through that loop that visits a kept entity and leaves it out of
+  // the map, and `rendered` is a subset of `kept`'s values. Both call sites
+  // below (`relations/`'s `rows` and `segments/`'s `rows`) only ever pass
+  // entities drawn from `rendered` (`sorted`/`list`, themselves sorted or
+  // filtered copies of `byRelation`/`bySegment` groupings built from
+  // `rendered`), so `slugFor` never sees an entity `entitySlug` does not
+  // already hold. Kept as the honest fallback for what this function used to
+  // do before `entitySlug` existed.
   const slugFor = (e: ExportEntity): string => entitySlug.get(e) ?? slugOf(e)
   // An edge is a wikilink, and a wikilink to a gated entity is a dead link. The
   // LINKED graph is therefore the induced subgraph on what survived — but the
@@ -628,7 +646,7 @@ export function exportKbFiles(run: ExportRunLike): ExportedFile[] {
   // Prose that explains how to read a field no shipped row carries is the most
   // checkable kind of lie a document can tell, so every tier sentence below is
   // conditional on the export actually having one.
-  const tiered = kept.some((e) => e.tier)
+  const tiered = rendered.some((e) => e.tier)
 
   const files: ExportedFile[] = []
 
@@ -724,7 +742,7 @@ export function exportKbFiles(run: ExportRunLike): ExportedFile[] {
 
   // relations/
   const byRelation = new Map<string, ExportEntity[]>()
-  for (const e of kept) {
+  for (const e of rendered) {
     const list = byRelation.get(e.relation) ?? []
     list.push(e)
     byRelation.set(e.relation, list)
@@ -750,10 +768,11 @@ export function exportKbFiles(run: ExportRunLike): ExportedFile[] {
      * future `because` phrasing needs no change here, and a list whose rows
      * genuinely differ keeps every word where it was.
      */
-    // `?? ""` has no honest seam: every entity in `sorted` came from `kept`
-    // (line 547), and `exportDrop`'s own `unexplained` gate (line 111) already
-    // dropped any `relation === "unknown"` entity whose `because` was falsy
-    // before `kept` was built. So whenever this ternary's `unknown` arm runs,
+    // `?? ""` has no honest seam: every entity in `sorted` came from
+    // `rendered`, itself drawn from `kept` (line 547), and `exportDrop`'s own
+    // `unexplained` gate (line 111) already dropped any `relation ===
+    // "unknown"` entity whose `because` was falsy before `kept` was built. So
+    // whenever this ternary's `unknown` arm runs,
     // `e.because` is already guaranteed truthy — the `?? ""` fallback is
     // reached by no entity that survives to this line.
     const becauses = sorted.map((e) => (e.relation === "unknown" ? (e.because ?? "") : "")).filter(Boolean)
@@ -803,7 +822,7 @@ export function exportKbFiles(run: ExportRunLike): ExportedFile[] {
   const groupKeyOf = (seg: string): string =>
     seg.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") ? seg : "unattributed"
   const bySegment = new Map<string, ExportEntity[]>()
-  for (const e of kept) {
+  for (const e of rendered) {
     const seg = groupKeyOf(segmentOf(e))
     const list = bySegment.get(seg) ?? []
     list.push(e)
@@ -866,7 +885,7 @@ export function exportKbFiles(run: ExportRunLike): ExportedFile[] {
   const usd = rep?.usd ?? run.stats?.usd
   const seconds = rep?.seconds ?? run.stats?.seconds
   const counts = new Map<string, number>()
-  for (const e of kept) counts.set(e.relation, (counts.get(e.relation) ?? 0) + 1)
+  for (const e of rendered) counts.set(e.relation, (counts.get(e.relation) ?? 0) + 1)
   const countLine = [...counts.entries()]
     .sort(([, a], [, b]) => b - a)
     .map(([k, v]) => `${k} ${v}`)
@@ -946,7 +965,7 @@ export function exportKbFiles(run: ExportRunLike): ExportedFile[] {
   ].filter(Boolean)
   files.push({
     path: "README.md",
-    content: `# ${anchor} — market map\n\n${run.decomposition?.sells ? `${run.decomposition.sells}\n\n` : ""}${kept.length} entities: ${countLine}.\n\n## Run health\n\n${health.join("\n") || "_No report block on this run._"}\n${gateBlock}\n## Where to start\n\n${starts.join("\n")}\n`,
+    content: `# ${anchor} — market map\n\n${run.decomposition?.sells ? `${run.decomposition.sells}\n\n` : ""}${rendered.length} entities: ${countLine}.\n\n## Run health\n\n${health.join("\n") || "_No report block on this run._"}\n${gateBlock}\n## Where to start\n\n${starts.join("\n")}\n`,
   })
 
   // AGENTS.md
@@ -1054,7 +1073,7 @@ description: Walk the ${anchor} market map — competitors, substitutes, segment
 
 # Swimming in this map
 
-${kept.length} entities around **${anchor}**${run.decomposition?.sells ? ` (${run.decomposition.sells.replace(/\.$/, "").toLowerCase()})` : ""}, every one carrying its evidence. You never need the app that built this — the files are the database.
+${rendered.length} entities around **${anchor}**${run.decomposition?.sells ? ` (${run.decomposition.sells.replace(/\.$/, "").toLowerCase()})` : ""}, every one carrying its evidence. You never need the app that built this — the files are the database.
 
 ## Recipes
 
@@ -1098,12 +1117,12 @@ ${trustRules.join("\n")}
    * keeps insisting on: a reader can finish an unknown and cannot correct an
    * invention.
    */
-  const refused = kept.filter((e) => e.relation === "unknown").length
-  const cited = kept.length - refused
+  const refused = rendered.filter((e) => e.relation === "unknown").length
+  const cited = rendered.length - refused
   files.push({
     path: "llms.txt",
     content:
-      `# ${anchor} market map\n\n> ${kept.length} entities: ${cited} with cited${tiered ? ", evidence-tiered" : ""} relations to ${anchor}` +
+      `# ${anchor} market map\n\n> ${rendered.length} entities: ${cited} with cited${tiered ? ", evidence-tiered" : ""} relations to ${anchor}` +
       `${refused ? `, and ${refused} the run refused to place` : ""}. ${countLine}.\n\n${llmsRows.join("\n")}\n`,
   })
 

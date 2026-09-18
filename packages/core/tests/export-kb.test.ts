@@ -1129,6 +1129,31 @@ describe("an edge to a gated entity is labeled, never deleted", () => {
     expect(pages[0]!.content).not.toContain("Second Name")
   })
 
+  // The fixture above only checks `entities/`. The absorbed second row used
+  // to still ride along through `relations/`, `segments/` and every count,
+  // because those loops read `kept` directly instead of the same
+  // one-page-per-slug view `entities/` already enforces. Reproduced with the
+  // two colliding rows on DIFFERENT relations, so the bug is visible as a
+  // wrong label rather than a merely-duplicated one: before the fix,
+  // `relations/substitute.md` also wikilinked `[[same-example]]` even though
+  // that page is entirely about the competitor row, and the README read "2
+  // entities: competitor 1 · substitute 1" over the one page that exists.
+  it("does not let a same-domain collision's absorbed row leak into relations/, segments/ or the counts", () => {
+    const files = exportKbFiles({
+      anchor: "anchor.example",
+      entities: [
+        { name: "First Name", domain: "same.example", kind: "company", relation: "competitor", what: "A rival.", why: "Same shortlist." },
+        { name: "Second Name", domain: "same.example", kind: "company", relation: "substitute", what: "A different vendor.", why: "Also same shortlist." },
+      ],
+    })
+    expect(files.find((f) => f.path === "relations/substitute.md")).toBeUndefined()
+    const competitor = files.find((f) => f.path === "relations/competitor.md")!.content
+    expect(competitor).toContain("[[same-example]]")
+    expect(files.find((f) => f.path === "segments/unattributed.md")!.content).not.toMatch(/same-example.*same-example/s)
+    const readme = files.find((f) => f.path === "README.md")!.content
+    expect(readme).toContain("1 entities: competitor 1")
+  })
+
   // The DIFFERENT bug the fixture above cannot reach: two domain-less rows
   // that are NOT the same host. `slugOf` falls back to `${kind}-${name}` only
   // when `domain` is empty, and that fallback has nothing else to key on —
