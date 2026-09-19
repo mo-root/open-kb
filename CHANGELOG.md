@@ -189,6 +189,17 @@ hosted web app, or the repo itself would actually notice.
   could leave a `relations/*.md` page wikilinking an entity page that never
   actually mentions that relation, and a printed count that didn't match
   the pages the export actually wrote.
+- `sniff`'s soft-404 guard tested a weaker HTML signal (`looksLikeHtml`, a
+  strict doctype/tag-prefix check on the raw body) than the extraction
+  decision right above it (`isHtml`, body + content-type + tag-shape) — a
+  doctype-less HTML error page on a `.txt` URL (a WAF block page, a soft
+  404) sailed past the guard and was extracted as real content once its
+  stripped text cleared 200 characters.
+- The web app's `SearchesPanel` computed each row's `id` from its position
+  in the currently filtered list, so toggling "only the empty" rows
+  re-indexed every surviving row on the same render; a row that never left
+  the screen could still get a new id, silently collapsing its open detail
+  panel with no click from the reader.
 
 ### Repo and docs
 
