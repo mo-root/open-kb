@@ -77,13 +77,27 @@ function hostOf(url: string): string {
   }
 }
 
+/** A search paired with the id that keys its own open/closed state, assigned
+ *  once over the FULL list before any filtering. `onlyEmpty` removes rows from
+ *  the middle of the list, and an id built from a row's position in the
+ *  post-filter array — `${s.query}-${i}` with `i` from `.map` on `shown` — would
+ *  shift under a row that never moved, silently collapsing it: toggle the
+ *  filter on with a barren search open, and its own row, still visible, stops
+ *  matching `open` because everything ahead of it in the filtered list just
+ *  lost an index. Keying off the full list first makes an id a row's identity,
+ *  not its current slot. */
+export function withRowIds(searches: readonly SearchView[]): { s: SearchView; id: string }[] {
+  return searches.map((s, i) => ({ s, id: `${s.query}-${i}` }));
+}
+
 export function SearchesPanel({ searches }: { searches: SearchView[] }) {
   const [open, setOpen] = useState<string | null>(null);
   const [onlyEmpty, setOnlyEmpty] = useState(false);
 
+  const rows = useMemo(() => withRowIds(searches), [searches]);
   const shown = useMemo(
-    () => (onlyEmpty ? searches.filter((s) => !s.ok || s.hits.length === 0) : searches),
-    [searches, onlyEmpty],
+    () => (onlyEmpty ? rows.filter(({ s }) => !s.ok || s.hits.length === 0) : rows),
+    [rows, onlyEmpty],
   );
 
   const totalHits = searches.reduce((n, s) => n + s.hits.length, 0);
@@ -127,8 +141,7 @@ export function SearchesPanel({ searches }: { searches: SearchView[] }) {
       </header>
 
       <ol className="divide-y divide-slate-900">
-        {shown.map((s, i) => {
-          const id = `${s.query}-${i}`;
+        {shown.map(({ s, id }) => {
           const isOpen = open === id;
           return (
             <li key={id}>

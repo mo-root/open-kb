@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server"
 import { describe, expect, it } from "vitest"
-import { readSearched, SearchesPanel, type SearchView } from "./SearchesPanel"
+import { readSearched, SearchesPanel, withRowIds, type SearchView } from "./SearchesPanel"
 
 /**
  * SearchesPanel.tsx had zero test coverage anywhere. D-scope sweep,
@@ -271,5 +271,32 @@ describe("SearchesPanel: each row's pre-click render reads its own search, not n
     expect(html).not.toContain("why it asked")
     expect(html).not.toContain("timed out")
     expect(html).not.toContain("a.example")
+  })
+})
+
+describe("withRowIds: a row's id is its identity, not its slot in a filtered view", () => {
+  it("keeps a row's id fixed no matter which other rows are dropped around it", () => {
+    const all = [
+      search({ query: "a", hits: [{ url: "https://a.example", title: "", description: "" }] }),
+      search({ query: "b", hits: [] }),
+      search({ query: "c", hits: [{ url: "https://c.example", title: "", description: "" }] }),
+    ]
+    const full = withRowIds(all)
+    const bRow = full.find((r) => r.s.query === "b")!
+
+    // The same filter SearchesPanel applies for "only the empty": drop every
+    // row that isn't barren or failed. "b" is barren and survives it, and its
+    // id must be the one from the id computed over the full list — otherwise
+    // toggling the filter on would make an already-open "b" panel read as
+    // closed even though it never left the list.
+    const onlyEmpty = withRowIds(all).filter((r) => !r.s.ok || r.s.hits.length === 0)
+    expect(onlyEmpty).toHaveLength(1)
+    expect(onlyEmpty[0]!.id).toBe(bRow.id)
+  })
+
+  it("assigns each row its own id even when two searches share the same query text", () => {
+    const all = [search({ query: "dup" }), search({ query: "dup" })]
+    const [first, second] = withRowIds(all)
+    expect(first!.id).not.toBe(second!.id)
   })
 })

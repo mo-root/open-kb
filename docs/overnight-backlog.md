@@ -877,3 +877,60 @@ named as too large; SELF-516 already gave it this same treatment.
 gated census as SELF-524; unchanged by a read-only, docs-only fire).
 
 Backlog item: SELF-525 - BLOCKED
+
+**SELF-526 (2026-09-19 overnight fire) — read `packages/web/components/build/
+SearchesPanel.tsx` end to end and found a row's expanded state can silently
+collapse under the "only the empty" toggle, even though the row never left
+the list.** Each row's `id` — the key `open === id` compares against, so a
+click can reopen the exact row it just closed — was built from the row's
+index in `shown`, the array AFTER `onlyEmpty` filtering: `shown.map((s, i) =>
+{ const id = `${s.query}-${i}`; ...})`. `shown` recomputes on every toggle
+(`useMemo` depends on `onlyEmpty`), and filtering drops rows from the middle
+of the list, not just the tail — so a row that survives the filter (it is
+itself barren or failed, matching `!s.ok || s.hits.length === 0`) can still
+shift to a new index once the rows ahead of it that DON'T survive are
+removed. Its `id` changes on the very re-render that keeps it visible, `open`
+stops matching, and `isOpen` goes false: a reader has a search's detail panel
+open, clicks "only the empty" to see the rest of the barren ones, and the one
+they already had open — never removed from the list — reads as collapsed
+with no click of their own to explain it.
+
+Verified by hand-tracing three searches: `X` (ok, has hits), `Y` (failed),
+`Z` (ok, zero hits). With the toggle off, `shown = [X, Y, Z]` and opening `Z`
+sets `open = "Z-2"`. Toggling "only the empty" on makes `shown = [Y, Z]` (`X`
+is dropped) — `Z` is still there, but now at index 1, so its freshly computed
+id is `"Z-1"` and `open === id` is false. `Z`'s own row never moved out of
+the list; only its position within the SHOWN array moved out from under it.
+
+Fixed by assigning each row its id once, over the full `searches` list,
+before any filtering — a new exported `withRowIds(searches)` — and having
+`shown` filter that already-tagged array (`rows.filter(({ s }) => ...)`)
+rather than filtering first and re-indexing after. An id is now a row's
+identity (its query plus its position in the run's own search order), not
+whatever slot it happens to land in after the reader's filter choice, so a
+row keeps its id — and therefore its open/closed state — for as long as it
+stays in `searches` at all.
+
+Added two tests against the new pure `withRowIds` export: one confirming a
+surviving row's id is the one computed over the full list, not one recomputed
+after filtering (mirrors the `X`/`Y`/`Z` trace above); one confirming two
+searches sharing the same query text still get distinct ids (guards the
+obvious wrong fix of dropping the index and keying on `s.query` alone).
+Verified non-vacuous by mutation: temporarily changed `withRowIds` to
+`id: s.query` (dropping the index) and reran — the duplicate-query test
+failed (`expected 'dup' not to be 'dup'`); restored the fix and reran clean.
+Could not mutation-test the id-*reassignment* bug itself end to end through
+the component — `open`/`onlyEmpty` only change from a click, and
+`SearchesPanel.test.tsx`'s own header comment already documents why nothing
+here can run one: no jsdom/RTL harness exists in this repo (the same
+limitation `TabBar.test.tsx`, `ThemeToggle.test.tsx` and
+`GraphSearch.test.tsx` note for their own interaction-gated parts). The two
+`withRowIds` tests are the closest a static-render-only suite can get to
+proving the fix, by testing the exact contract the component's `rows`/`shown`
+split now relies on.
+
+`pnpm install` first (fresh clone, no `node_modules`, same as SELF-515/525).
+`pnpm check && pnpm test` both green: 3324 tests passing (up from 3322, two
+new), 13 skipped (same gated census as SELF-524/525).
+
+Backlog item: SELF-526
