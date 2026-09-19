@@ -1028,3 +1028,98 @@ to be a previously-made, tested, deliberate call. `pnpm install` first
 skipped (same gated census as SELF-527) — unchanged by a read-only fire.
 
 Backlog item: SELF-528 - BLOCKED
+
+**SELF-529 (2026-09-19 overnight fire) — read the eight small/medium
+financial and address-safety modules the D section names or implies and
+never got a full adversarial pass, found nothing to fix; read this before
+re-reading any of them.** Continued the file-by-file sweep SELF-515/525/528
+established (git log confirmed zero or one prior touch on both source and
+test before opening each one): `core/src/ledger.ts` and `core/src/
+spend-cap.ts` (the two files the D section names by hand — "areas nobody
+has swept: `core/src/ledger.ts` and `spend-cap.ts`"), `core/src/breaker.ts`,
+`core/src/flags.ts`, `core/src/spans.ts`, `core/src/coverage.ts`,
+`core/src/evidence.ts`, and `core/src/url.ts` (the SSRF-guard module —
+`isReservedHost`/`isIpLiteral`/`registrableHost`/`canonicalUrl`).
+
+`ledger.ts`: traced every method (`reserve`, `settle`, `draw`, `warnAt`,
+`overrunAbort`, `affordTurn`, `spendable`) against its own doc comments and
+`packages/core/tests/ledger.test.ts`'s 25 cases. One thing that looked like
+a gap on first read — a ceiling under ~$0.15 makes `finishReserveUsd`
+($0.12 floor) exceed the whole pool, so `spendable()` starts negative and
+`reserve()` refuses even the cheapest (`peek`, $0.03) tier from the first
+call — is not a fresh find: `ledger.test.ts`'s own "a ceiling below the
+floor leaves nothing spendable, not a crash" and the sentence-formatting
+test right after it already exercise and title this exact shape as
+deliberate, tested fail-closed behaviour, not a gap to close. `affordTurn`
+is advisory-only (no hold), but every call site (`swarm/src/agent.ts:838`)
+follows it with a real `reserve()` in the same synchronous turn, so there
+is no window for two turns to both pass `affordTurn` against money only one
+of them can actually claim.
+
+`spend-cap.ts`: the ordering argument (announce → abort → record, abort
+BEFORE record on purpose, `stillRunning` racing a behind-the-log consumer,
+the `onRecordFailure` unhandled-rejection guard) is already the target of
+`packages/core/tests/spend-cap.test.ts`'s 13 cases, one per race this
+file's own comments name. Nothing in a full read added to that list.
+
+`breaker.ts`, `flags.ts`, `spans.ts`, `coverage.ts`, `evidence.ts`: all
+small, all clean. `spans.ts`'s fan-out (`#subscribers`, one cursor per
+`stream()` caller) resumes each parked subscriber via a Promise resolve,
+which schedules a microtask rather than re-entering `emit`'s own
+subscriber loop synchronously, so a subscriber added mid-`emit` cannot
+observe a torn iteration. `coverage.ts`'s `answerKeyRecall` takes an
+`anchorAliases` param that, undocumented but confirmed by reading both call
+sites (`orchestrator.ts:932`, `sweep.ts:7239`), is NEVER omitted in
+production — both always pass `anchorAliasSet`'s result, which always
+contains the anchor itself — so the function's own `if (opts.anchorAliases)`
+branch that skips host-based probe exclusion when the param is absent is
+dead in practice, not a hole: every real probe pool already has the anchor
+and its aliases filtered out one layer up in `run-evidence.ts`'s
+`recallProbePool` / `sweep.ts`'s inline `anchorAliasSet` call before
+`answerKeyRecall` ever sees the pages.
+
+One near-miss worth recording so it is not re-investigated as a security
+bug: `url.ts`'s own header states `ipv4Value` implements "inet_aton's
+grammar, which is also the WHATWG URL parser's... anything this reads as
+an address is an address `fetch` will connect to, and reading it any other
+way is the bug." It is not quite that grammar: WHATWG's IPv4 parser picks
+octal (radix 8) for any part with a leading zero and LENGTH > 1, then fails
+the WHOLE address if that part contains an invalid octal digit (8 or 9) —
+it never falls back to decimal. `ipv4Value`'s octal branch is
+`/^0[0-7]+$/`, and when a leading-zero part fails that test (e.g. "08") it
+falls through to the plain `/^\d+$/` decimal check instead of returning
+null, misreading "08" as decimal 8 rather than a parse failure. Confirmed
+against Node directly: `new URL("https://08.0.0.1/llms.txt")` throws
+`Invalid URL`, while `ipv4Value("08.0.0.1")` in this file returns
+134217729 (8.0.0.1) and `isReservedHost("08.0.0.1")` answers `false`.
+
+Traced whether this actually changes a real verdict, in both directions.
+Under-blocking (a false "not reserved" on something `fetch` really would
+reach): impossible from this gap alone — every host `new URL` fails to
+parse for THIS reason is a host `fetch` can never open a connection to
+either, guarded or not, so `isReservedHost`'s answer on it is moot. The one
+caller that sees the raw, un-parsed string before any `new URL` call
+(`normalizeDomain` in `web/lib/anchor.ts`) still lands on the identical
+"not reserved" verdict with or without this bug, confirmed directly
+(`isReservedHost("08.0.0.1")` and `isReservedHost("09.0.0.1")` both read
+`false` today; patching the octal branch to return null on an invalid digit
+does not change the answer, because the fallback path — "not an IP, does
+it end in `.local`/`.internal`/etc." — answers `false` for the same
+reason). Over-blocking is the only direction this bug can move a verdict:
+a leading-zero part whose decimal misreading happens to land in a reserved
+octet range (`"0229.0.0.1"` → decimal 229 ≥ 224 → flagged reserved) gets
+refused, but a four-label all-numeric string is never a real company
+domain to begin with — nobody types `0229.0.0.1` into the anchor field
+meaning a website. Not fixed: every path this could touch is either
+provably unreachable (the URL constructor already fails closed first) or
+already correct, so a diff here would be exactly the "arithmetic dressed
+as evidence" P1-8 and SELF-515 both already warn against — tightening a
+grammar with no case where the tighter version and the current one give a
+different, reachable answer.
+
+`pnpm install` first (fresh clone, no `node_modules`, same as SELF-515/
+525/526/528). `pnpm check && pnpm test` both green: 3325 tests passing, 13
+skipped (same gated census as SELF-527/528) — unchanged by a read-only
+fire.
+
+Backlog item: SELF-529 - BLOCKED
