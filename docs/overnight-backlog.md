@@ -934,3 +934,97 @@ split now relies on.
 new), 13 skipped (same gated census as SELF-524/525).
 
 Backlog item: SELF-526
+
+**SELF-528 (2026-09-19 overnight fire) — a fresh end-to-end read of eight
+files nobody had fully read found nothing to fix; read this before
+re-reading any of them.** SELF-527 (untracked here — a test-only commit,
+`d6e17da`) landed since SELF-526; git log is still the count that matters,
+not this file. Picked the D-scope's own prescription (a genuine logic read,
+not another coverage sweep) and targeted files with zero or one prior
+commit touching either the source or its test, confirmed with
+`git log a7bbc57..HEAD --oneline -- <src> <test>` per file before opening
+it, so this does not re-read ground SELF-509 through SELF-526 already
+covered (their own file lists checked first: `scorecard.ts`, `ui.ts`,
+`demo.ts`, `query-yield.ts`, `GraphLegend.tsx`, `TabBar.tsx`,
+`NodeGlyph.tsx`, `Donut.tsx`/`Gauge.tsx`, `board.ts`, `export-kb.ts`,
+`sniff.ts`, `orchestrator.ts` were all excluded on that basis before this
+fire started).
+
+Eight files, full read, none held a defect:
+
+- `app/api/run/[id]/stream/route.ts` + `lib/stream-adapter.ts` — the live
+  and replay NDJSON framing. Already the target of two prior fires' tests
+  (`c0d866d`, `e336041`) that drove every branch including the genuine
+  mid-stream-fault catch; `stream-adapter.ts` itself had never been read
+  end to end and turned out clean (the `ui.frame.agent` restore, the
+  cumulative cost counters, the narration/work split all check out against
+  their own doc comments).
+- `components/build/types.ts` (528 lines) — the wire contract for all five
+  streams. `AGENT_STAGE`'s "retired" keys (`read`, `discover`, `catalog`,
+  `search`, `classify`, `extract`, `complete`) are dead against the current
+  `Phase` type (`sweep.ts:1390` — `understand | plan | sweep | rank | link |
+  write`), confirmed by grepping every `say(agent, …)` call site in
+  `sweep.ts` and `swarm/src` for an `agent:` string outside that union: none
+  exists. Kept as-is — the comment already says why ("kept so a frame from
+  an older shape still lights the right stage"), and a stored older run's
+  spans replaying through this same route are exactly the shape that would
+  need them.
+- `swarm/src/family-ledger.ts` — traced whether `opened()`'s reuse of an
+  existing row (it resets `status`/`lens`/`priority`, never `nodesAdded`)
+  can under-report a family that landed once, was killed, and reopened.
+  It cannot: `board.kill` (`core/src/board.ts:170-176`) only removes a
+  QUEUED item — a claimed or landed mission has no path back to `killed`,
+  so any row `family-ledger.killed()` ever reaches still holds
+  `nodesAdded: 0`. The invariant is real, not assumed: grepped every
+  `families.landed`/`.killed` call site in `orchestrator.ts` and
+  `tools-control.ts` to confirm neither fires on a claimed key.
+- `core/src/grounding.ts` — `appears()`'s doc comment claims "same boundary
+  discipline as `namesHost`" (`coverage.ts`), but `namesHost` excludes
+  hyphen from its boundary class (`[^a-z0-9-]`, so "bright-sdk.com" does not
+  name "sdk.com") while `appears()` does not (`[^a-z0-9]`, so "sdk" reads as
+  grounded by "bright-sdk"). Confirmed the divergence is real with a
+  throwaway `node -e` check before touching anything, then found
+  `grounding.test.ts`'s own "a 2-gram matches across whitespace and
+  punctuation" case already asserts this exact behaviour and names it in
+  its comment ("1-grams both appear (hyphen is a boundary)") — a prior fire
+  already made this call deliberately. Left alone: "same discipline" in the
+  doc comment overstates it slightly (it means the shared over-collection
+  guard, not an identical character class), which is a wording nit, not a
+  functional bug, and not worth a diff that would only reword a comment
+  while an existing test pins the opposite of what a "fix" would do.
+- `core/src/investigator.ts` — already the target of four prior
+  branch-coverage fires (`28da7ca`, `a7e0033`, `7d5b3eb`, `b227714`); a full
+  read (as opposed to those fires' targeted-uncovered-line reads) found
+  nothing past what they already fixed.
+- `components/build/BuildWorkflow.tsx` (961 lines, the largest component in
+  the repo with only one prior commit — a coverage test for
+  `isSpendDecision`/`mergeEntities`). Read end to end. `mergeEntities`
+  relies on `Map#set` NOT reordering an existing key on update — verified
+  against spec, not assumed, so a re-classified entity keeps its screen
+  position. `calls`/`spendHistory`/`agentChunks` cap their arrays at
+  `length > N ? [...slice(-N), new] : [...old, new]`, which lets each grow
+  to N+1 before the next trim (`addFeed` two lines away does the same job
+  without the overshoot, checking length AFTER appending) — a real
+  inconsistency, but the consequence is an array one element over its
+  stated cap, never wrong data or a growth leak, nowhere near this
+  codebase's own bar for a fix (a quantified failure scenario). Left alone
+  as beneath the threshold rather than patched for its own sake.
+- `components/kb/KbBrowser.tsx` — the tab/note routing shell already
+  covered by SELF-141's coverage fix on `pickDefaultNote`/`resolveTab`/
+  `resolveNote`; the rest of the component (counts, command palette wiring,
+  the `port NOTE` comment already explained by SELF-525's near-miss entry)
+  held nothing new.
+- `lib/public-runs.ts` — the visitor daily-allowance gate (`runGate`,
+  `publicRunsPerDay`). Financial-critical, already the target of two prior
+  fires (a doc fix and a `runGate` branch test). Read end to end including
+  the UTC-day arithmetic and the fail-closed uncountable-store path;
+  `remaining = Math.max(0, limit - used)` floors correctly even if a race
+  let `used` exceed `limit`. Clean.
+
+No code change this fire — every candidate either already had its defect
+fixed by an earlier one, or the thing that looked like a defect turned out
+to be a previously-made, tested, deliberate call. `pnpm install` first
+(fresh clone). `pnpm check && pnpm test` both green: 3325 tests passing, 13
+skipped (same gated census as SELF-527) — unchanged by a read-only fire.
+
+Backlog item: SELF-528 - BLOCKED
