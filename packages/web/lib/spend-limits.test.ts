@@ -244,3 +244,80 @@ describe("the day cap refuses on real spend alone when the run cap is off", () =
     }
   })
 })
+
+/**
+ * `spendGate`'s "every limit off" early return (spend-limits.ts:696-699) had
+ * only ever run with a store configured: `app/api/map/limits.test.ts` sets
+ * `SUPABASE_URL` in its own `beforeEach` before its "says nothing and costs
+ * nothing when every limit is deliberately off" case, so `!db.configured()`
+ * had never been the true side there. The same scoped coverage pass that
+ * found the three dead `?? 0`s above (see that block's comment) named line
+ * 697 itself — `if (!db.configured()) noteRunStarted(...)` — as a real,
+ * live branch gap, not a dead one: nothing anywhere called this function
+ * with every limit off AND no store configured.
+ *
+ * The branch is not a no-op to skip testing. A storeless deployment can flip
+ * a limit back on without restarting — editing `.env.local` under `next dev`
+ * re-reads `process.env` on the next request, per `readLimits`'s own "read
+ * inside a function, never at module scope" note — and when it does,
+ * `claimInMemory` starts scanning the SAME in-memory ledger this early
+ * return would otherwise have left untouched. A run admitted while every
+ * limit was off has to already be in that ledger the moment a cap comes on,
+ * or the day's real spend undercounts by exactly the runs that started
+ * before anyone was watching.
+ */
+describe("the every-limit-off path still ledgers a run when there is no store to ask instead", () => {
+  const headers = new Headers({ "x-real-ip": "203.0.113.80" })
+  const T0 = Date.parse("2026-08-27T12:00:00Z")
+
+  beforeEach(() => {
+    resetLedger()
+    delete process.env.SUPABASE_URL
+    delete process.env.SUPABASE_SECRET_KEY
+    process.env[LIMIT_VARS.dayCap] = "off"
+    process.env[LIMIT_VARS.perVisitor] = "off"
+    process.env[LIMIT_VARS.atOnce] = "off"
+  })
+
+  afterEach(() => {
+    delete process.env[LIMIT_VARS.runCap]
+    delete process.env[LIMIT_VARS.dayCap]
+    delete process.env[LIMIT_VARS.perVisitor]
+    delete process.env[LIMIT_VARS.atOnce]
+  })
+
+  it("settles and counts against a day cap switched on later, in the same UTC day", async () => {
+    const whileOff = await spendGate({
+      id: "off-then-on-1",
+      domain: "meterco.example",
+      headers,
+      budgetQueries: 18,
+      runWindowMs: 300_000,
+      aboutSeconds: 250,
+      now: T0,
+    })
+    expect(whileOff.ok).toBe(true)
+    noteRunEnded("off-then-on-1", 0.2)
+
+    // Same UTC day, day cap now on: if the first claim had never reached the
+    // ledger, spentUsd would read 0 here and this would be admitted. Run cap
+    // stays off so readLimits does not also trip its own "day cap below run
+    // cap" refusal — this test is about the ledger, not that guard.
+    process.env[LIMIT_VARS.runCap] = "off"
+    process.env[LIMIT_VARS.dayCap] = "0.15"
+    const afterOn = await spendGate({
+      id: "off-then-on-2",
+      domain: "meterco.example",
+      headers,
+      budgetQueries: 18,
+      runWindowMs: 300_000,
+      aboutSeconds: 250,
+      now: T0 + 1_000,
+    })
+    expect(afterOn.ok).toBe(false)
+    if (!afterOn.ok) {
+      expect(afterOn.status).toBe(429)
+      expect(afterOn.log).toContain(LIMIT_VARS.dayCap)
+    }
+  })
+})
