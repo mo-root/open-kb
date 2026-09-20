@@ -1786,3 +1786,59 @@ since SELF-515). `pnpm check && pnpm test` both green: 3330 tests passing
 (unchanged — comment-only), 13 skipped (same gated census as SELF-541).
 
 Backlog item: SELF-542
+
+**SELF-543 (2026-09-20 overnight fire) — read `packages/web/lib/store/
+supabase.ts` end to end, the one file this D section names by hand
+(`web/lib/store/supabase.ts`) that had never been the subject of a dedicated
+read; found nothing to fix.** Every one of the file's 33 prior commits
+(`git log a7bbc57..HEAD --oneline -- packages/web/lib/store/supabase.ts
+packages/web/lib/store/supabase.test.ts`) is a targeted, coverage-driven
+single-branch test or a citation-drift doc fix — "countRunsSince had zero
+test coverage", "claimRun had an inner catch nobody's test ever tripped",
+and so on — never a synthesized full read of the file as its own unit the
+way SELF-509/510/512/513/514 gave the smaller D-scope files. That made it
+a genuinely open angle rather than a re-sweep: the branch-by-branch tests
+prove each individual line does what it claims, not that the file as a
+whole holds no cross-function bug a targeted test wouldn't think to ask
+about.
+
+Read all 447 lines (grown from whatever size it was when `009ba9a` started
+this file's own coverage drive) plus its 630-line test file, function by
+function: `config`/`configured` (the trailing-slash strip), `rest` (header
+merge order, `cache: "no-store"`), `quiet` (the never-throw wrapper every
+read/write but `claimRun` goes through), `upsertRun`, `appendSpans`,
+`listRuns` (the `running`-row drop, `toStored`'s null-return folded through
+`flatMap`), `countRunsSince` (the `Content-Range` parse — traced `0-0/137`
+and the no-match `*/0` shape against what PostgREST's own `count=exact`
+Prefer header actually returns, not just the two cases the test file
+already drives), `claimRun` (the fail-closed `unconfigured`/`unavailable`
+split spend-limits.ts's own `assertSpendAllowed` depends on — read that
+caller too, at `packages/web/lib/spend-limits.ts:697-742`, to confirm
+`claim.kind !== "claimed" && claim.kind !== "refused"` really does catch
+every non-money-safe outcome this file can return, which it does: the
+`ClaimResult` union has exactly four members and the caller's condition is
+the exact complement of the two the file may safely report as decided),
+`getRunRow`, `getSpans`, and the `errorColumn`/`noticeIn` pair (the
+first-occurrence-only split of the `error` column, re-verified against the
+comment's own claim that erring towards a truncated notice is the only
+safe direction).
+
+Nothing was wrong. The file already carries the same self-documenting
+density this branch's other financial/store code does (`ledger.ts`,
+`spend-cap.ts` in SELF-529) — every non-obvious choice (one round trip in
+`claimRun` instead of read-then-write, `quiet`'s fallback values chosen per
+caller, `toStored` keeping `running` and `failed` rows for a reason spelled
+out in a 15-line comment citing the exact bug a browser hit) has a comment
+proving it deliberate, and the test file's 46 `it()` blocks already probe
+every branch a full read turned up, including the two-postgrest-response-
+shape parsing (`0-0/137` vs `*/0`) and the `claimRun` unreachable-`!res`
+backstop SELF-<n>-style prior fires had already traced and left alone
+(`e64ab2d`'s own comment covers the `?? 0`/`|| 0` distinction this read
+re-confirmed rather than re-litigated).
+
+`pnpm install` first (fresh clone, no `node_modules`, same as every fire
+since SELF-515). `pnpm check && pnpm test` both green: 3330 tests passing
+(unchanged — a read-only fire, no code or test touched), 13 skipped (same
+gated census as SELF-542).
+
+Backlog item: SELF-543 - BLOCKED
