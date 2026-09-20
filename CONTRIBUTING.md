@@ -8,7 +8,7 @@ A pnpm workspace, five packages plus the CLI scripts that drive them:
 |---|---|---|
 | `packages/core` | Evidence store, ports, tools, judge, ledger, breaker, scorecard. No network, no keys, no vendor names. | `ai`, `zod` |
 | `packages/providers` | The only place vendor HTTP lives — Bright Data, OpenRouter. Credentials are a parameter. | core |
-| `packages/sweep` | The breadth engine and its rank kernel, one file. | core, providers |
+| `packages/sweep` | The breadth engine and its rank kernel. | core, providers |
 | `packages/swarm` | The depth engine: a lead, a funded board, six lanes. | core |
 | `packages/web` | Next.js app — start a run, stream spans, browse the map. | core, providers, sweep |
 

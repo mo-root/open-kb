@@ -2059,3 +2059,40 @@ skipped (same gated census as SELF-546).
 Backlog item: SELF-547 - BLOCKED
 
 Backlog item: SELF-545 - BLOCKED
+
+**SELF-548 (2026-09-20 overnight fire) — CONTRIBUTING.md's own workspace
+table claimed `packages/sweep` is "one file"; it never was, not even the day
+that table was written.** Cross-checked `CONTRIBUTING.md`'s and
+`ARCHITECTURE.md`'s workspace tables against `packages/sweep/src` on disk (a
+"genuinely different angle" per SELF-509/534's own advice — auditing the
+GitHub-facing docs' own claims, not another source-file sweep). `ls
+packages/sweep/src` shows five files: `sweep.ts` (7,777 lines, the engine),
+`rank.ts` (an 11-line re-export shim for `judgeHosts`, which
+`3bfdca5` moved to `packages/core/src/judge.ts` — SELF-533 already read this
+file and called it "a 12-line re-export shim, nothing to find"), `ui.ts` (71
+lines, the `ui:`-prefixed narration protocol `emitUi`/`readUi` — real logic,
+not a shim), `deadline.ts` (26 lines) and `index.ts` (a 2-line barrel).
+`git log --diff-filter=A` on each: `index.ts`, `ui.ts` and `rank.ts` all date
+to `1770fca` (v0.2.0, 2026-08-10 10:35 +03:00) — before `CONTRIBUTING.md`
+itself was added (`e5c4183`, 2026-08-23 01:42 UTC = 04:42 +03:00). So the
+table's "one file" was never true; it was wrong on arrival, not a claim that
+drifted afterward. `deadline.ts` came later that same day (`100ae589`,
+08:14 UTC), making the count five now, four then.
+
+`ARCHITECTURE.md`'s parallel row for the same package reads "The breadth
+engine and its rank kernel." with no file-count claim at all — already
+accurate, and left untouched. Fixed by dropping the false ", one file" from
+`CONTRIBUTING.md`'s row, matching `ARCHITECTURE.md`'s existing wording
+exactly rather than inventing new phrasing. Left "and its rank kernel" in
+both docs alone: `judgeHosts` itself lives in core (both tables already say
+so on core's own row — "judge" — and `rank.ts`'s header comment confirms the
+move), but the rank PHASE `sweep.ts` runs — the pool, `OPENKB_RANK_UNLOCK`
+escalation, narration — is still genuinely sweep's own code, so the phrase
+is not a second error riding along with the first.
+
+Doc-only change, no source or test touched. `pnpm install` first (fresh
+clone, no `node_modules`). `pnpm check && pnpm test` both green: 3330 tests
+passing (unchanged — a doc-only fix), 13 skipped (same gated census as
+SELF-547).
+
+Backlog item: SELF-548
