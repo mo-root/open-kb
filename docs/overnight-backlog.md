@@ -1842,3 +1842,61 @@ since SELF-515). `pnpm check && pnpm test` both green: 3330 tests passing
 gated census as SELF-542).
 
 Backlog item: SELF-543 - BLOCKED
+
+**SELF-544 (2026-09-20 overnight fire) — re-verified the D-section's file
+list is exhausted, then tried a genuinely new angle (package.json dependency
+hygiene across all six workspace manifests) and found one real-looking near
+miss that traces to a false lead; found nothing to fix.** Rebuilt the
+git-touch-count audit SELF-534/535 used (`git log a7bbc57..HEAD --oneline --
+<file>` per file, across `packages/*/src` and `packages/web/{app,lib,
+components}`) to check for any file still unread. Every zero- or low-touch
+file it surfaced (`scorecard.ts`, `investigator.ts`, `rank.ts`,
+`family-ledger.ts`, `grounding.ts`, `graph/layout.ts`, `graphIcons.ts`,
+`StageTracker.tsx`, and the rest) was already named and fully read by a
+prior fire (SELF-515, 525, 528, 534, 536, 537, or 539) — confirmed by
+grepping each filename against this document before opening it, not by
+memory. `orchestrator.ts` and `export-kb.ts`, the two files SELF-515 itself
+flagged as too large for one sitting, were also already each the subject of
+their own dedicated full read since (SELF-516-class entry above, and
+SELF-519/525). Nobody had read the six `package.json` manifests
+(`./package.json` plus one per workspace package) as their own artifact,
+cross-checked against what the code actually imports — a fresh angle in the
+same family as SELF-539's prompt-vs-code cross-check, just for dependency
+declarations instead of prose claims.
+
+Read all six end to end. Root's `dependencies` list `ai` and `zod`;
+grepping `scripts/*.ts` and `tests/**` for `from ["']zod["']` returns zero
+hits, which looked exactly like the `fatal.ts`-shaped "declared and never
+read" pattern `b436c5c` fixed. Traced it before touching anything, the same
+standard SELF-515/525/528/529/533/534/536 already held themselves to: ran
+`pnpm install` fresh and read `ai@7.0.48`'s own `package.json` at
+`node_modules/.pnpm/ai@7.0.48*/node_modules/ai/package.json` —
+`"peerDependencies": { "zod": "^3.25.76 || ^4.1.8" }`. Root's own
+`dependencies` list `ai` directly (needed for the `StepResult`/`ToolSet`
+type import in `scripts/discover.ts:11`, confirmed by grep — the only
+direct `ai`/`zod` import anywhere at root scope), so root's `zod` entry is
+what satisfies that peer requirement for root's own copy of `ai`, not dead
+weight — nothing imports zod BY NAME at root, but the dependency is real
+all the same. `packages/core`, `packages/sweep` and `packages/swarm` each
+also declare `zod` themselves (`^4.0.0`, satisfied by the same installed
+4.4.3), so this is not a version-skew case either — every declaration in
+the graph is independently justified. Not fixed, because there was nothing
+to fix: removing root's `zod` on the strength of a name-grep alone would
+have been exactly the false positive `check-test-collection.mjs`'s own
+near-miss reasoning (SELF-536) already warns this branch against —
+recorded here so a future dependency-pruning fire checks peer dependencies
+before removing anything a direct-import grep alone flags as unused.
+
+Also checked, no fixable gap: `.github/workflows/check.yml` (re-read past
+C2's own audit — the pinned-SHA comments, the `push`/`pull_request`
+trigger-scoping reasoning, the census step's `always()` — all already
+correct and already explained by their own comments); `ARCHITECTURE.md`
+and `CHANGELOG.md` (both already the subject of a dedicated fix this branch
+— `daf864a`, `bc5705b` — and a fresh read turned up nothing past those).
+
+No code change this fire. `pnpm install` first (fresh clone, no
+`node_modules`, same as every fire since SELF-515). `pnpm check && pnpm
+test` both green: 3330 tests passing (unchanged — a read-only fire), 13
+skipped (same gated census as SELF-543).
+
+Backlog item: SELF-544 - BLOCKED
