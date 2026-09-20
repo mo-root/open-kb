@@ -1555,3 +1555,66 @@ No code change this fire. `pnpm install` first (fresh clone, no
 (unchanged — no code touched), 13 skipped (same gated census as SELF-537).
 
 Backlog item: SELF-538 - BLOCKED
+
+**SELF-539 (2026-09-20 overnight fire) — a genuinely different angle (the
+`prompts/` tree itself, cross-checked word-for-word against the code and
+tests each prompt describes, rather than another `packages/`/`scripts/`
+sweep) found one real drift and confirmed the rest clean.** Every prior
+D-scope fire read source and test files; nobody had read the prompt
+markdown — `prompts/agents/*.md` and `prompts/doctrine/*.md` — as its own
+class, even though CONTRIBUTING.md names them explicitly
+("prompts-as-markdown-without-rebuild"). Built the untouched list the same
+way SELF-535 did (`git log a7bbc57..HEAD --oneline` per file): six agent
+prompts (`discover.md`, `group.md`, `investigator.md`, `orphan.md`,
+`triage.md`, `understand.md`) and five doctrine files (`01-the-thesis.md`,
+`03-evidence.md`, `04-search-craft.md`, `05-reading-the-web.md`,
+`06-breadth.md`) plus `prompts/swarm/skill.md` had zero commits against them
+anywhere in this branch's history.
+
+Read every one end to end and checked every checkable claim against the code
+it describes: tool names and schemas in `discovery.ts` against `discover.md`;
+`PEER_RELATIONS`/`OrphanStand` against `orphan.md`; `Grouping`/`Decomposition`
+against `group.md`; `RELATIONS`/`SWARM_RELATIONS`/`JUDGED_RELATIONS` against
+`02-relations.md` and `skill.md` (already reconciled by an earlier fire, and
+guarded by `tests/the-judge-and-the-map-teach-one-vocabulary.test.ts`); the
+tier dollar amounts, `WARN_FRACTION`, `LEAD_TURN_CAP`, `DEFAULT_LANES`,
+`OPEN_AT` and `MIN_QUOTE_LENGTH` in `skill.md` against `ledger.ts`,
+`agent.ts`, `orchestrator.ts`, `breaker.ts` and `evidence.ts` — all exact
+matches, nothing to fix.
+
+One real find: `understand.md`'s "Its comparison pages are read by something
+else" section and `packages/sweep/src/sweep.ts`'s own comment above
+`rivalsFromSitemap` (plus the dedicated
+`a-company-names-its-own-rivals.test.ts`) both cite the SAME measurement —
+shopify.com's sitemap, read into the same 4,251-entity map — but disagree:
+the code comment and its test say 40 comparison urls, 26 distinct rival
+names, five missing from the map (naming them: magento, etsy, woocommerce,
+wix, squarespace); `understand.md` said 42 urls, 34 distinct rivals, 12
+missing. Traced to the source: both were introduced in the SAME commit
+(`cf079e8`, predating this branch's base), the commit message itself citing
+"40 in those namespaces, 26 distinct names" — so the prompt's 42/34/12 was
+never a second, later measurement, just a transcription that drifted from
+the number the author had just measured and written into the code comment
+and the commit message beside it, the same "a number copied twice disagrees
+with itself" shape SELF-517/518/519 already found elsewhere on this branch,
+here in a prompt file instead of a code comment. The dedicated test pins the
+authoritative figure (26 rival names, five unmapped) as the one the engine's
+own behaviour is measured and tested against, which is what makes the
+prompt's 34/12 the wrong one to trust, not an ambiguous disagreement between
+two equally-measured facts.
+
+Fixed by editing `understand.md`'s sentence to read "40 such urls naming 26
+distinct rivals, five of which never reached that run's 4,251-entity map" —
+matching `sweep.ts`'s comment and the test verbatim. Text-only: this number
+is illustrative context for the model reading the prompt (explaining why
+collecting rivals is not its job), not a value any schema or test asserts
+against, so no test change was needed or possible — grepped
+`packages/*/tests` for "understand.md"/"42 such urls"/"34 distinct" first to
+confirm nothing already covers this file's prose.
+
+`pnpm install` first (fresh clone, no `node_modules`, same as every fire
+since SELF-515). `pnpm check && pnpm test` both green: 3330 tests passing
+(unchanged — a prompt-text-only fix, no schema or logic touched), 13 skipped
+(same gated census as SELF-538).
+
+Backlog item: SELF-539
