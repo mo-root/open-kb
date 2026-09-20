@@ -1426,3 +1426,64 @@ held themselves to. `pnpm install` first (fresh clone, no `node_modules`).
 gated census as SELF-535) — unchanged by a read-only fire.
 
 Backlog item: SELF-536 - BLOCKED
+
+**SELF-537 (2026-09-20 overnight fire) — individually re-read the seven small
+`app/api/kb*`/`app/api/run*` routes SELF-515 had only swept together in one
+bullet, plus the three untouched `app/` pages and every remaining barrel
+file; found nothing to fix, and one false lead worth recording so a future
+fire does not chase it as a gap.** SELF-515's own list read "every route
+under `kb/[id]/*`, `kb/route.ts`, `run/[id]/route.ts`,
+`run/[id]/cancel/route.ts`" as a single clause, shallower than the dedicated
+per-file treatment other D-scope entries gave `stream/route.ts` (SELF-528)
+or `middleware.ts`/`next.config.ts` (SELF-515 itself, in more depth). Read
+each of the seven on its own, end to end: `kb/[id]/export/route.ts` (the zip
+download — traced `new Uint8Array(zip).buffer`: the `TypedArray(typedArray)`
+constructor copies into a freshly sized buffer, so this is safe regardless
+of whether `zipOf`'s return value is ever a subarray of a larger buffer, not
+the "send extra bytes past a view's length" bug this shape usually hides),
+`kb/[id]/graph/route.ts`, `kb/[id]/note/route.ts`, `kb/[id]/route.ts`,
+`kb/route.ts`, `run/[id]/route.ts` (its own `body()` helper — confirmed
+`StoredRun`/`RunRecord` in `lib/runs.ts` carry identical `queries`/
+`startedAt`/`endedAt`/`status`/`error`/`result` shapes, so the "one function
+builds both" merge the file's own comment describes cannot drift the two
+call sites apart), and `run/[id]/cancel/route.ts`. All seven clean.
+
+Also read the three `app/` pages SELF-515/525's own file lists never named:
+`app/page.tsx`, `app/film/page.tsx`, `app/story/page.tsx`. The near-miss:
+`app/page.tsx` is 114 lines with zero commits touching it in
+`git log a7bbc57..HEAD`, which is exactly the zero-touch signal SELF-535's
+method flags as unread — but `page.test.tsx` is 541 lines, five `describe`
+blocks driving every branch (`!demo`/no-allowance, `!demo`/allowance-on,
+demo/no-allowance, demo/allowance-open, demo/allowance-spent,
+demo/uncountable-store, demo/maps-missing, a metered non-demo deployment),
+predating this branch's overnight work entirely (it ships with the
+`09280dc` demo-gallery-rewrite commit). A zero-touch file is not the same
+claim as an unread one; this is the gap in that heuristic, not a gap in the
+page. Read it against its own test file line by line anyway rather than
+trusting the census, on the same "verify, don't infer" standard the rest of
+this sweep holds — the early-return ordering (`publicRunsPerDay() === 0`
+checked before the first `await`, so an unmetered deployment reaches no
+disk), the `invite`/`gate` branching, and the `notice` field's
+`reason === "used-up"` filter (matched against `runGate`'s three
+`GateReason`s in `lib/public-runs.ts`, confirming `read-only` and
+`uncountable` are deliberately silent per the comment beside them) all check
+out. `film/page.tsx` and `story/page.tsx` are thin wrappers (a `<video>`
+tag; a bare `<ScrollFilm />`) with their own dedicated coverage tests
+(`9054f14`, `31c854c`) already added by an earlier fire without touching the
+source — the same shape SELF-535 already named for `EventFeed.tsx`/
+`BarMeter.tsx`. Nothing to fix in any of the three.
+
+Last, the five remaining pure re-export barrels this sweep's earlier passes
+had not individually listed: `packages/providers/src/index.ts`,
+`packages/sweep/src/index.ts` (2 lines, `export *` from `ui.js`/`sweep.js`),
+`packages/web/components/icons/index.ts`, `packages/web/components/viz/
+index.ts`. All `export { ... } from`/`export *` lines with nothing behind
+them, the same shape `swarm/src/index.ts` (SELF-536) and `sweep/src/rank.ts`
+(SELF-533) already confirmed inert.
+
+No code change this fire — every candidate was already correct. `pnpm
+install` first (fresh clone, no `node_modules`, same as every fire since
+SELF-515). `pnpm check && pnpm test` both green: 3330 tests passing, 13
+skipped (same gated census as SELF-535/536) — unchanged by a read-only fire.
+
+Backlog item: SELF-537 - BLOCKED
