@@ -1123,3 +1123,64 @@ skipped (same gated census as SELF-527/528) — unchanged by a read-only
 fire.
 
 Backlog item: SELF-529 - BLOCKED
+
+**SELF-533 (2026-09-20 overnight fire) — a fresh read of nine more small
+modules found nothing to fix; one near-miss worth recording so a future
+fire does not retest it with less rigor than this one did.** Continued the
+D-scope file-by-file sweep, picking files with zero commits against either
+source or test in `git log a7bbc57..HEAD` (checked per file before opening
+it, so this does not overlap SELF-509 through SELF-532's own lists):
+`core/src/scorecard.ts` + `scorecard-view.ts` (the finish-gate instrument
+and its web card, re-verified independently of SELF-515's own pass —
+traced `computeScorecard`'s yield-window arithmetic, every fraction's
+den-0 rule, and `scorecardObjections`'s threshold comparisons by hand
+against `scorecard.test.ts`'s 40-odd cases; all correct), `packages/swarm/
+src/family-ledger.ts` (re-confirmed SELF-515/528's own finding — a killed
+row's `nodesAdded` cannot leak from a landed one, because `board.kill` only
+releases a QUEUED key), `packages/sweep/src/rank.ts` (a 12-line re-export
+shim, nothing to find), `components/build/CostBreakdown.tsx` (155 lines,
+never read before — confirmed `byKind`/`byAgent` arrive pre-sorted
+descending by `usd` from `sweep.ts`'s own `lines()` at line ~1843, so
+`Lines`' `rows.slice(0, max)` truncation always folds the SMALLEST-dollar
+rows into the "+N more" tail, never hides the largest one — the one way
+this component's truncation could have misled a reader), `components/
+build/DecisionsStrip.tsx`, `StageTracker.tsx`, `components/viz/
+Sparkline.tsx`, `components/SkipLink.tsx`, `components/kb/layerMeta.tsx`
+(all already covered by a dedicated test file from an earlier fire —
+`DecisionsStrip.test.tsx` (SELF-85), `Sparkline.test.tsx`, `SkipLink.
+test.tsx`, `layerMeta.test.ts` — confirmed on this read that the test
+file's own edge cases match the source's actual branches, nothing missed),
+and `components/KbGallery.tsx`'s `sortedGallery` (hand-traced the "recent"
+sort's `(builtAtOf(b) ?? "").localeCompare(builtAtOf(a) ?? "")` comparator
+in both directions against its own doc comment's claim — "a run with no
+recorded finish time sorts last, not first" — and confirmed it holds
+whichever side of the pair is missing a timestamp, not just the one
+direction a hasty read would check).
+
+One near-miss, caught before it became a false "fix": a byte-level replay
+of `zip.ts`'s local file header looked, on a first hand-count of its
+`chunks.push(...)` call, like it wrote SIX 2-byte fields before the CRC
+(one too many for the ZIP spec's 30-byte local header) — a plausible bug
+shape given SELF-517's drift-in-a-second-copy precedent. Verified against
+a REAL unzip binary rather than trusting the hand count or the existing
+self-referential round-trip test (which only proves `zipOf` and its own
+`readZip` test helper agree with EACH OTHER, not with the ZIP spec): wrote
+the exact source line to a throwaway script, built an archive, and ran
+`unzip -l`/`unzip -p` against it. The apparent sixth field was a
+transcription slip made while retyping the line into the throwaway script,
+not a defect in `zip.ts` itself — `unzip -p` on an archive built from a
+byte-exact copy of the real `chunks.push(...)` line extracts both entries
+correctly, and re-reading `zip.ts` character-by-character (`python3 -c
+"print(repr(...))"`, to rule out an editor/tool reformatting the line) with
+a plain count confirms five 2-byte fields before the CRC, matching the
+30-byte header SELF-515 already byte-counted. Recorded so a future fire
+that eyeballs this same line does not repeat the miscount — the module
+itself is unchanged and correct.
+
+No code change this fire — every candidate was already correct, either
+newly confirmed or re-confirming a prior fire's own finding. `pnpm install`
+first (fresh clone, no `node_modules`). `pnpm check && pnpm test` both
+green: 3328 tests passing, 13 skipped (same gated census as SELF-529) —
+unchanged by a read-only fire.
+
+Backlog item: SELF-533 - BLOCKED
