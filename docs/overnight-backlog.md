@@ -1487,3 +1487,71 @@ SELF-515). `pnpm check && pnpm test` both green: 3330 tests passing, 13
 skipped (same gated census as SELF-535/536) — unchanged by a read-only fire.
 
 Backlog item: SELF-537 - BLOCKED
+
+**SELF-538 (2026-09-20 overnight fire) — a genuinely different angle (per
+SELF-515/537's own advice to stop re-sweeping files): audited every
+unlocaled `.toLocaleString()` call in `packages/web` for the classic
+Next.js bug where server-render and client-hydration disagree on number
+formatting because they resolve different default locales. Found the
+pattern is real and already fixed in one place, and traced why it is safe
+everywhere else — no code change, but worth recording so a future fire
+does not have to re-derive this.**
+
+`grep -rn "toLocaleString" packages --include="*.ts" --include="*.tsx"`
+(excluding tests) turned up 7 call sites. Two pin `"en-US"` explicitly
+(`KbCard.tsx:51`, `DemoHome.tsx:65`); five call it bare — `viz/StatTile.tsx:27`,
+`viz/BarMeter.tsx:44`, `build/CostBreakdown.tsx:134`, `app/runs/[id]/
+page.tsx:316`, `core/src/sniff.ts:311`. A bare `.toLocaleString()` uses the
+JS engine's own default locale, which is the server process's locale during
+SSR and the visiting browser's own locale during client hydration — a
+German-locale browser (`.` as the thousands separator) hydrating a number a
+US-locale Node process rendered as `"1,234"` is a real, if cosmetic, React
+hydration-mismatch class of bug, and this codebase already carries the
+fix in two places, which is what made this worth checking rather than
+assuming the two are the only two spots that need it.
+
+Traced each of the five instead of patching on suspicion. `sniff.ts:311` is
+core (Node-only, never hydrated — no browser involved at all). The other
+four are `packages/web` components, but none of them sit where a real
+SSR-then-hydrate mismatch can fire, for two different reasons:
+
+- `app/runs/page.tsx` and `app/runs/[id]/page.tsx` (the only callers of
+  `StatTile`/`CostBreakdown` fed by a server-computed number) carry no
+  `"use client"` directive anywhere in their tree — pure Server Components,
+  rendered to HTML once and never hydrated, so there is no second render to
+  disagree with the first.
+- `KbOverview.tsx` (`StatTile`) and `BuildWorkflow.tsx`/`ResultPanel.tsx`
+  (`CostBreakdown`, `BarMeter`) ARE `"use client"`, but neither receives its
+  numbers as an initial prop from the server. `KbOverview` starts
+  `loading` and only has a manifest after its own `GET /api/kb/<id>` fetch
+  resolves post-mount (verified: `if (loading) return <OverviewSkeleton />`
+  gates every `StatTile`); `BuildWorkflow`'s `cost`/`result`/`plan` state
+  all initialize to `null`/empty and only fill from the run's own stream
+  after the component is already mounted. The server-rendered HTML and the
+  first client hydration pass both render the empty/skeleton state — a
+  bare `.toLocaleString()` never runs on real data until after hydration
+  has already completed and there is nothing left to compare it against.
+
+`KbCard.tsx`/`DemoHome.tsx` are the one path that differs: `app/kb/
+page.tsx` (a Server Component) computes `KbSummary[]` — real manifest
+numbers — and passes it as a prop straight into `KbGallery.tsx`
+(`"use client"`), so the SAME real values format on both the server's SSR
+pass and the client's hydration pass through the identical RSC-serialized
+prop. That is exactly the shape the bug needs, and it is exactly the two
+files that already pin `"en-US"` — confirming the existing fix is
+deliberate and correctly scoped, not an accident that happened to dodge
+four other call sites.
+
+Not fixed, because nothing needs fixing: the four bare call sites were
+each traced to a component shape (pure SSR with no hydration, or client
+state that starts empty and only fills post-mount) that cannot reach the
+bug, verified by reading the actual `useState`/`loading` gates rather than
+inferring from the directive alone. Recorded here so a future
+locale/formatting sweep starts from this conclusion instead of re-tracing
+the same five call sites.
+
+No code change this fire. `pnpm install` first (fresh clone, no
+`node_modules`). `pnpm check && pnpm test` both green: 3330 tests passing
+(unchanged — no code touched), 13 skipped (same gated census as SELF-537).
+
+Backlog item: SELF-538 - BLOCKED
