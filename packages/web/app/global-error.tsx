@@ -123,8 +123,10 @@ export default function GlobalError({
   // Read at render, not in an effect. This component only ever runs on the
   // client (see the header comment), so the value is available on the first
   // render and there is no second paint to flip. `readStoredTheme` cannot
-  // throw; with no storage at all it answers "dark", which is this app's
-  // default and the reader most likely to be hurt by getting it wrong.
+  // throw; with no storage at all it answers "light" — `themeFromStored`'s
+  // own default (lib/theme.ts) — so an errored document with no stored
+  // preference reads exactly like every other unset page in this app, not a
+  // theme invented for this file alone.
   const theme = readStoredTheme();
   const c = PALETTE[theme];
 
