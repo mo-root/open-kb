@@ -1618,3 +1618,59 @@ since SELF-515). `pnpm check && pnpm test` both green: 3330 tests passing
 (same gated census as SELF-538).
 
 Backlog item: SELF-539
+
+**SELF-540 (2026-09-20 overnight fire) — read `scripts/check-skips.mjs` end to
+end and found its own census misreports one of its seven gates as dark no
+matter what `runs/` holds.** Six of the seven `GATES` entries gate a
+`describe` block, whose own title lands as the PREFIX of a name `vitest list
+--json` prints ("brightdata live > spends real money..."), which is the shape
+the census's `open` check was written for: `t.name.startsWith(\`${g.suite} >
+\`)`. `tests/run-doctor.test.ts`'s gate is the one exception — a gated `it`
+nested inside a plain, ungated `describe` — so its own title lands as the
+SUFFIX instead ("run-doctor over the runs on disk > survives every run
+file..."). `startsWith` can never match a suffix, so this specific gate prints
+"dark" unconditionally in the printed census, regardless of whether `runs/`
+genuinely has the >20 sweep files its own `skipIf` checks for.
+
+Confirmed directly rather than reasoned from the code shape alone: created 25
+dummy `runs/sweep-*.json` fixtures (content is never read — `vitest list`
+collects a test's declaration without executing its body, so only the
+directory's file count matters against the gate's `skipIf(files.length ===
+0)`) and ran `vitest list --json` by hand. The gate's test genuinely shows up
+in the collected list — proving it is open — while the old `open` check still
+read `t.name.startsWith(...)` as false and printed it dark. This bug is
+confined to the census's own informational summary (the "dark"/"runs" lines
+and the "N of M" sentence): the separate pass/fail reconciliation
+(`problems`, source-vs-manifest) never calls `open`, so `pnpm check` itself
+was never at risk of a false pass or fail — only the one line of output this
+whole script exists to make trustworthy ("the difference between two greens
+is readable instead of being ... invisible", per this file's own header) was
+wrong for this one gate, always.
+
+Fixed by splitting a collected name on the same `" > "` vitest joins segments
+with and checking membership instead of prefix: `t.name.split(" >
+").includes(g.suite)` matches both shapes — a describe title as the first
+segment, a leaf test's own title as the last (or the only) segment — where
+`startsWith` only ever matched the first.
+
+Verified non-vacuous by mutation, and by hand before writing a test: stashed
+just the `check-skips.mjs` fix, ran the new test with 25 real `runs/` fixture
+files staged — it failed printing "dark" for the run-doctor gate exactly as
+predicted; restored the fix, reran, passed. The regression test folds the
+`runs/`-populated scenario into the SAME already-expensive `execFileSync`
+call the existing "current skip census is clean" test already pays for
+(`vitest list --json` over ~3300 tests, measured elsewhere in this file at
+~30-70s), rather than adding a second one: doing that first and running the
+file surfaced a real, reproducible `[vitest-worker]: Timeout calling
+"onTaskUpdate"` unhandled error — two ~30-70s synchronous `execFileSync`
+blocks back to back in one file overran vitest's own internal, non-
+configurable worker heartbeat and turned `pnpm test`'s exit code non-zero
+even though every assertion passed. One call, two assertions, closed that
+before it became a flake landed on this branch.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both green: 3330 tests passing (unchanged — the new assertions extend
+an existing test rather than adding one), 13 skipped (same gated census as
+SELF-539).
+
+Backlog item: SELF-540

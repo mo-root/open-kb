@@ -235,8 +235,22 @@ if (problems.length) {
 // machine, so that the difference between two greens is readable instead of
 // being four tests wide and invisible.
 const seen = collected()
+// `g.suite` is a `describe` title for six of the seven gates, which lands as a
+// PREFIX of a collected name ("brightdata live > spends real money") — the old
+// `startsWith(\`${g.suite} > \`)` check was written for that shape. The
+// run-doctor gate is an `it.skipIf` nested inside a plain `describe`, so its
+// own title lands as the SUFFIX instead ("run-doctor over the runs on disk >
+// survives every run file..."): `startsWith` can never match it, so the
+// census printed this one gate "dark" unconditionally, even measured directly
+// against a `runs/` populated with 25 fixture files (`vitest list --json`
+// truly listed it, `startsWith` still said no). Splitting on the same " > "
+// vitest joins with and checking membership matches both shapes — the prefix
+// case (a describe title is the first segment) and the suffix case (a leaf
+// test's own title is the last).
 const open = new Set(
-  GATES.filter((g) => seen.some((t) => t.file === g.file && t.name.startsWith(`${g.suite} > `))).map((g) => g.suite),
+  GATES.filter((g) => seen.some((t) => t.file === g.file && t.name.split(" > ").includes(g.suite))).map(
+    (g) => g.suite,
+  ),
 )
 const dark = GATES.filter((g) => !open.has(g.suite))
 

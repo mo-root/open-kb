@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest"
 import { execFileSync } from "node:child_process"
-import { writeFileSync, rmSync, existsSync } from "node:fs"
+import { writeFileSync, rmSync, existsSync, mkdirSync } from "node:fs"
 
 /* The guard that notices a suite going dark without anyone saying so.
 
@@ -53,7 +53,7 @@ describe("skip census", () => {
   })
 
   it(
-    "the repo's current skip census is clean",
+    "the repo's current skip census is clean, and reads a leaf-test gate as open once it genuinely is",
     () => {
       // Only this branch shells out to `vitest list --json` over the whole repo
       // (the problems-found branch below exits before reaching it) — measured
@@ -64,11 +64,52 @@ describe("skip census", () => {
       // also runs in unattended overnight. 60_000 was already tight against the
       // 30s it was set for; it was flaking outright here. 150_000 keeps better
       // than 2x headroom over the slower measurement instead of matching it.
-      const { status, output } = runChecker()
-      expect(status).toBe(0)
-      expect(output).toContain("skip census:")
-      expect(output).not.toContain("undeclared skip")
-      expect(output).not.toContain("declared gate not found")
+      //
+      // The `runs/` fixtures below fold a second scenario into this same,
+      // already-expensive call rather than paying for `vitest list --json`
+      // over ~3300 tests a second time in its own test: two of those back to
+      // back tripped vitest's own worker RPC heartbeat ("[vitest-worker]:
+      // Timeout calling 'onTaskUpdate'") with a real, reproducible failure —
+      // neither call ever yields the event loop for the ~30-70s
+      // `execFileSync` blocks it, and the second one pushed the file's total
+      // blocked stretch past whatever this vitest version's own internal,
+      // non-configurable heartbeat tolerates. One call, two assertions, same
+      // cost as before.
+      const dir = "runs"
+      // Gitignored — a fresh checkout has no `runs/` directory at all, not
+      // just no files in it. Names deliberately do not match any OTHER
+      // gate's own hardcoded filename (`kb-from-run.test.ts`, `drift.test.ts`
+      // and `dead-end-smoke.test.ts` each key off one specific real run's
+      // name), so only the run-doctor gate's generic `sweep-*.json` count
+      // gate can react to them; content is `{}` because `vitest list` never
+      // executes a test body, only collects its declaration.
+      const fixtures = Array.from({ length: 25 }, (_, i) => `${dir}/sweep-probe-${process.pid}-${i}.json`)
+      const dirAlreadyExisted = existsSync(dir)
+      mkdirSync(dir, { recursive: true })
+      for (const f of fixtures) writeFileSync(f, "{}")
+      try {
+        const { status, output } = runChecker()
+        expect(status).toBe(0)
+        expect(output).toContain("skip census:")
+        expect(output).not.toContain("undeclared skip")
+        expect(output).not.toContain("declared gate not found")
+        // `tests/run-doctor.test.ts`'s gate is an `it` nested inside a plain,
+        // ungated `describe` — the one GATES entry whose own title lands as
+        // the SUFFIX of a collected name ("run-doctor over the runs on disk >
+        // survives every run file...") rather than the PREFIX every other
+        // gate's `describe`-level title lands as. The census's `open` check
+        // used to test only the prefix shape, so this specific gate printed
+        // "dark" unconditionally, regardless of what `runs/` held — confirmed
+        // directly against this same 25-file fixture before the fix existed.
+        expect(output).toContain(
+          "runs  tests/run-doctor.test.ts › survives every run file, across every engine version that wrote one",
+        )
+      } finally {
+        for (const f of fixtures) if (existsSync(f)) rmSync(f)
+        // Leave the tree exactly as found — this test's own `mkdirSync` is
+        // the only reason `runs/` would exist at all on a fresh checkout.
+        if (!dirAlreadyExisted) rmSync(dir, { recursive: true, force: true })
+      }
     },
     150_000,
   )
