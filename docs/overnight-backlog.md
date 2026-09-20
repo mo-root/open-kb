@@ -1674,3 +1674,50 @@ an existing test rather than adding one), 13 skipped (same gated census as
 SELF-539).
 
 Backlog item: SELF-540
+
+**SELF-541 (2026-09-20 overnight fire) — a doc-vs-code cross-check of
+`ARCHITECTURE.md` (never swept this way before — SELF-539 checked `prompts/`
+against code, nobody had checked the main architecture doc itself) found the
+`OPENKB_PAGES` paragraph describing the CLI's own default backwards, copied
+into two other files.** `ARCHITECTURE.md`'s sweep-phase section said "The CLI
+passes `OPENKB_PAGES`, default `4`, which collapses the pair... The web route
+passes no `pages` and gets the real 2→4 behaviour" — but `scripts/sweep.ts:241`
+reads `pages: Number(process.env.OPENKB_PAGES ?? 0) || undefined`, unset
+unless the env var is set, with its own adjacent comment stating "UNSET BY
+DEFAULT... Unset restores 2→4." The CLI and the web route are identical today:
+both leave `pages` unset and both get the real 2→4 behaviour Both were fixed
+in the SAME commit (`d740379`, "variable page depth was inert on every CLI
+run, and the docs caught up to the engine") — the code was fixed to unset the
+default, but this one paragraph, written in that same commit, kept describing
+the pre-fix behaviour it had just corrected, and no fire since caught it.
+
+Grepped the whole repo for the same claim rather than assuming
+`ARCHITECTURE.md` was the only carrier: `.env.example`'s `OPENKB_PAGES`
+comment said "The CLI defaults to 4" (same wrong claim, same origin — it
+was not touched by `d740379` either), and `scripts/experiment.ts`'s
+`baseline` arm description said "as it ships: 4 pages per query" for an arm
+whose `env: {}` leaves `OPENKB_PAGES` unset, i.e. the real 2→4 shape, not a
+flat 4. Three independent copies of the same stale fact, none of the ~500
+prior commits on this branch had corrected any of them.
+
+Fixed all three to state the actual default (unset, 2→4, same as the web
+route) and keep the collapse-to-4 case as what happens when `OPENKB_PAGES` is
+explicitly set, not the default. Text/comment-only: no logic changed, nothing
+asserts prose, so no test change needed or possible. Left `experiment.ts`'s
+`pages-2` arm alone despite a related near-miss worth recording: setting
+`OPENKB_PAGES=2` sets `SHALLOW_PAGES=2`, and since the CLI has no way to set
+`deepPages` independently, `DEEP_PAGES` still floors at its own `?? 4`
+default — making `pages-2` numerically identical to `baseline`'s now-correct
+2→4 description, not "half the pages" as its own `what` string claims. Not
+fixed: `experiment.ts` is a live-money manual harness this loop cannot run
+(`OPENKB_LIVE`/real OpenRouter calls) and giving the arm a genuinely
+different behaviour would mean adding a `deepPages` override the CLI has
+never had — a new capability, not a doc fix, and outside what a single fire
+can verify without a live run.
+
+`pnpm install` first (fresh clone, no `node_modules`, same as every fire
+since SELF-515). `pnpm check && pnpm test` both green: 3330 tests passing
+(unchanged — no schema or logic touched), 13 skipped (same gated census as
+SELF-540).
+
+Backlog item: SELF-541
