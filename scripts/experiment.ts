@@ -30,7 +30,7 @@ interface Arm {
  * env var is listed in the brief instead of pretended at here.
  */
 const ARMS: Arm[] = [
-  { key: "baseline", what: "as it ships: 4 pages per query, condensed docs, model linking on", env: {} },
+  { key: "baseline", what: "as it ships: 2 pages per query, promoted to 4 on real yield, condensed docs, model linking on", env: {} },
   {
     key: "pages-2",
     what: "half the result pages. Tests whether depth per query is buying anything",

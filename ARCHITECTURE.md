@@ -113,13 +113,15 @@ query naming the anchor or one of its coined words — **before it is bought**.
 default. A query opens at **two** SERP pages (`SHALLOW_PAGES`, `opts.pages ?? 2`)
 and a second, deeper search port stands at four (`DEEP_PAGES`,
 `opts.deepPages ?? 4`) for the products `assess` names — two ports, built once,
-and a product moves between them but never back. The CLI passes `OPENKB_PAGES`,
-default `4`, which collapses the pair: `DEEP_PAGES` is floored at
-`SHALLOW_PAGES`, so a terminal run reads four pages throughout and the `deepen`
-verdict has nothing left to buy. The web route passes no `pages` and gets the
-real 2→4 behaviour. Stored runs record `pagesPerQuery` as `4` except one at `3`
-and one at `2`; the two newest also carry `deepPagesPerQuery: 4` beside a
-`deepenedProducts` list, empty in both so far.
+and a product moves between them but never back. Both the CLI and the web route
+leave `pages` unset by default, so both get the real 2→4 behaviour. Setting
+`OPENKB_PAGES` (to `4`, say) collapses the pair: `DEEP_PAGES` is floored at
+`SHALLOW_PAGES`, so a terminal run at `OPENKB_PAGES=4` reads four pages
+throughout and the `deepen` verdict has nothing left to buy — the CLI's own
+default briefly did exactly this until `d740379` unset it. Stored runs record
+`pagesPerQuery` as `4` except one at `3` and one at `2`; the two newest also
+carry `deepPagesPerQuery: 4` beside a `deepenedProducts` list, empty in both so
+far.
 
 **assess** is the widening loop, and it runs *concurrent with* the workers so
 assessment overlaps searching instead of interrupting it. It reads a per-family,
