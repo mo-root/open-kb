@@ -1184,3 +1184,64 @@ green: 3328 tests passing, 13 skipped (same gated census as SELF-529) —
 unchanged by a read-only fire.
 
 Backlog item: SELF-533 - BLOCKED
+
+**SELF-534 (2026-09-20 overnight fire) — a genuinely different angle (the
+lowest-git-touch CLI scripts and provider modules, rather than another D-scope
+file-by-file sweep) found nothing fixable, plus one dead-output near-miss
+worth recording so a future fire does not chase it.** SELF-509's own advice
+("pick a genuinely different angle... rather than another instrumented
+sweep") and five straight BLOCKED sweeps since (515/525/528/529/533) argued
+against a sixth exhaustive file list. Instead, picked by `git log
+a7bbc57..HEAD --oneline -- <file>` count — the files this branch's 500+ prior
+commits had touched least — on the theory that a low touch count on a file
+that is not obviously dead code is where an undiscovered bug is likeliest to
+still hide: `scripts/overnight.ts`, `scripts/show-prompt.ts`,
+`scripts/fatal.ts`, `scripts/audit.ts`, `scripts/discover.ts`,
+`scripts/export-target.ts`, `packages/providers/src/pricing.ts`,
+`packages/providers/src/safe-fetch.ts`, `packages/core/src/verdict.ts`, and
+`packages/core/src/tools.ts`. Read every one end to end, including checking
+`overnight.ts`'s `parseSweepStdout` regexes against the exact template
+literals `scripts/sweep.ts`/`packages/sweep/src/sweep.ts` print (grepped
+every `console.log`/`say()` site that could produce a competing `$N ·`,
+`N on the map`, or `N products →` substring earlier in the same stdout, to
+rule out the unanchored-regex class of bug SELF-517 found in `diff-runs.ts`)
+and `safe-fetch.ts`'s redirect-hop counter by hand (confirms `maxRedirects`
+redirects are followed and the `(maxRedirects+1)`th throws, no off-by-one).
+All ten were already either bug-free or had their bug already fixed by an
+earlier fire and pinned by a test (`fatal.ts`, `show-prompt.ts`,
+`discover.ts`'s `costBreakdown` each carry a comment naming the prior fix).
+
+One dead-output near-miss, recorded so it is not mistaken for a live bug:
+`tools.ts`'s `remember` tool merges a second sighting of an existing node by
+pushing onto `existing.alsoWhat`/`alsoWhyHere` when the new value differs
+from `existing.what`/`whyHere` — but `existing.what` is set once at creation
+and never reassigned, so the guard only catches a repeat of the ORIGINAL
+value (exactly what `tools.test.ts`'s three-call test proves), not a repeat
+of a value already sitting in `alsoWhat` itself. A second and third sighting
+that agree with EACH OTHER but differ from the original would duplicate the
+same string in `alsoWhat`. Traced whether this is reachable in the product
+rather than assuming it from the code shape: `grep`ing every file in the repo
+for `alsoWhat`/`alsoWhyHere` outside `tools.ts` and its own tests returns
+nothing — `RunContext`/`makeTools`/`StoredNode` are wired only through
+`core/src/investigator.ts`, which is called only by
+`scripts/demo-investigate.ts` (a live-money manual harness, not the sweep or
+swarm pipeline `packages/sweep/src/sweep.ts` and
+`packages/swarm/src/orchestrator.ts` actually run — confirmed by grepping
+`orchestrator.ts`'s own imports for `investigate`/`makeTools`/`StoredNode`:
+none). `demo-investigate.ts`'s own print loop reads `n.what`/`n.whyHere`/
+`n.howFound`/`n.evidence` but never `n.alsoWhat`/`n.alsoWhyHere`, and its own
+comment says the demo gallery (`packages/web/lib/runs.ts`) never even lists a
+`demo-` run. So a duplicate in `alsoWhat` reaches the JSON file
+`demo-investigate.ts` writes (the field survives the `[...ctx.graph.nodes.
+values()]` spread) and then reaches nothing else at all — not a rendered
+page, not an export, not another script. Not fixed: a duplicate with zero
+observable reader is not the "quantified failure scenario" this branch's own
+bar requires, and this script sits beside the demo gallery this backlog
+already excludes, not inside the sweep/swarm pipeline the P0-P1/self-work
+above actually hardens.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both green: 3328 tests passing, 13 skipped (same gated census as
+SELF-533) — unchanged by a read-only fire.
+
+Backlog item: SELF-534 - BLOCKED
