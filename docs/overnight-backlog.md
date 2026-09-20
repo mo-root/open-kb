@@ -1992,4 +1992,70 @@ skipped (same gated census as SELF-545).
 
 Backlog item: SELF-546
 
+**SELF-547 (2026-09-20 overnight fire) — a full adversarial read of
+`scripts/swarm.ts` (429 lines, the swarm CLI entrypoint), the largest
+script in `scripts/*.ts` with no prior dedicated full-read entry visible in
+this document; found nothing to fix.** `git log a7bbc57..HEAD --oneline --
+scripts/swarm.ts` shows two prior commits — `e30d38f` (a real fix: an
+unparseable `ceilingUsd` CLI arg used to feed `NaN` into `Ledger`,
+silently making every reservation succeed) and `ac4c5bc` (the resulting
+`tests/swarm.test.ts` for the three pure env-parsing functions this file
+exports) — but neither commit, nor anything else `grep -n "scripts/swarm"
+docs/overnight-backlog.md` turns up, is a read of the file end to end the
+way SELF-516 read `orchestrator.ts` or SELF-519/525 read `export-kb.ts`.
+Read all 429 lines, cross-checked against `tests/swarm.test.ts` (which
+covers `wallClockMsFromEnv`, `ceilingUsdFromArg` and `familyFloorFromEnv`
+completely — every fallback and refusal branch has its own case) and
+against `packages/swarm/src/index.ts`'s exported surface.
+
+The three pure functions are exactly as tested: `wallClockMsFromEnv`
+defaults and falls back to 600_000 on anything non-finite or non-positive
+(a malformed wall only changes how long a run may take, so a default is
+safe); `ceilingUsdFromArg` REFUSES the same shape of bad input instead of
+defaulting, and its own comment gives the reason with a directly-verified
+claim (`new Ledger(Number("abc"))` — confirmed by reading `Ledger`'s
+`reserve()` guard — makes `amount > left + EPSILON` a comparison against
+`NaN`, always false, so a NaN ceiling makes every reservation succeed
+unconditionally); `familyFloorFromEnv` passes an out-of-range number
+through honestly rather than clamping, because the library it configures
+does the clamping, matching `packages/swarm/src/orchestrator.ts`'s own
+family-floor handling.
+
+The untested `invokedDirectly` CLI body (lines 164-429 — argv, real
+credentials, `runSwarm`, two watchdogs) holds together the same way:
+`RUN_CAP_USD` is derived from `ceilingUsd` (already validated finite and
+positive above it) rather than a flat default, so it cannot inherit the
+same NaN failure mode `ceilingUsdFromArg`'s own comment warns against; the
+`.catch` after `withSpendCap` returns `null` only when `capStop.trip` was
+actually set by the watchdog's own `record` callback, and the one
+`if (run === null && capStop.trip)` branch that follows is the only place
+that reads `run` before the unconditional `run!` a few lines later, so a
+`null` with no trip — which the catch's own branching makes impossible —
+is not a reachable state to write a probe for. `OPENKB_SWARM_LANES`
+parsing (`Number(env ?? 0) || undefined`) was checked by hand against
+`"0"`, unset, a valid number and a non-numeric string: all four fall back
+to the library's own six-lane default or pass through a real number,
+never `NaN` or `0` reaching `runSwarm`. No test harness change was needed
+or made — the spending body is deliberately unreachable from a test
+process, same as `sweep.ts`'s own CLI tail, and this fire found no new
+pure logic inside it worth extracting.
+
+Also re-confirmed, mechanically rather than by memory: every one of root
+`package.json`'s 14 `scripts` entries names a file that exists on disk,
+and the README's "Every command" block's `pnpm check` description
+("three guards, tsc, five test projects") matches the actual composition
+of the `check` script exactly — `check-core-purity.mjs`,
+`check-test-collection.mjs` and `check-skips.mjs` are the three guards;
+`tsc -b` plus the web package's own `tsc --noEmit` are the "tsc" the
+sentence names as one word; and `packages/{core,providers,sweep,swarm}/
+tsconfig.tests.json` plus `tsconfig.root.json` (confirmed by its own
+header comment: "the four tsconfig.tests.json cover only their own
+package's tests") are the five test projects.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both green: 3330 tests passing (unchanged — a read-only fire), 13
+skipped (same gated census as SELF-546).
+
+Backlog item: SELF-547 - BLOCKED
+
 Backlog item: SELF-545 - BLOCKED
