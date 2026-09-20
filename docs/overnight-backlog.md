@@ -1338,3 +1338,91 @@ new), 13 skipped (same gated census as SELF-534) — the KPI-grid file is new,
 `runs/page.test.tsx` itself unchanged.
 
 Backlog item: SELF-535
+
+**SELF-536 (2026-09-20 overnight fire) — a joint source+test zero-touch sweep
+read four more files end to end and found two theoretical gates gaps, both
+confirmed unreachable in this codebase; read this before re-chasing either.**
+Continued SELF-528/535's method (`git log a7bbc57..HEAD --oneline -- <src>
+<test>` per candidate, checked against both files together, not source
+alone): `packages/web/app/layout.tsx` (173 lines, the root layout and its
+no-FOUC script), `packages/swarm/src/index.ts` (184-line barrel), and the two
+`scripts/check-*.mjs` guards that had never been touched on this branch —
+`check-core-purity.mjs` and `check-test-collection.mjs` — read together with
+their dedicated probe suites, `tests/purity.test.ts` and
+`tests/collection.test.ts`.
+
+`layout.tsx`: already the most densely self-documented file this sweep has
+found (`viewport`'s own comment walks through what survives a throw in the
+component below it, measured against a real production build). One claim
+worth checking rather than trusting: "`mergeViewport` in Next's metadata
+resolver walks the keys this object actually has and leaves the rest of
+`createDefaultViewport()` alone." Read `mergeViewport` directly out of this
+repo's pinned `next@16.2.12`
+(`node_modules/.pnpm/next@16.2.12.../next/dist/lib/metadata/resolve-metadata.js:315`)
+— it does exactly that, a `for...in viewport` switch over a `structuredClone`
+of the already-resolved default. The no-FOUC script's own "must agree with
+`themeFromStored`" claim is likewise not asserted, it is tested:
+`theme.test.ts` extracts the real script text out of this exact file with a
+regex and runs it against a fake `document`/`localStorage`, so a future edit
+that breaks the agreement fails loudly rather than silently. Nothing to fix.
+
+`swarm/src/index.ts`: a pure re-export barrel, the same shape `sweep/src/
+rank.ts` was in SELF-533 — nothing behind an `export { ... } from` line for a
+sweep like this one to find.
+
+`check-core-purity.mjs` + `purity.test.ts`: the vendor/DOM/env rules are
+exercised branch-by-branch, including the one the suite's own comment says
+"had no probe at all until this one" (deleting the vendor regex left the
+whole suite green). Two things looked, on a first read, like the same class
+of gap that regex-vulnerability history warns about, and both turned out
+unreachable once checked against the real tree rather than assumed from the
+regex alone:
+  - The HTTP-framing rule's import/require branch only matches
+    `"node:https?"` — a bare `require("http")` or `import x from "https"`
+    would sail past it. Grepped the whole repo for `from ["']https?["']` and
+    `require(["']https?["'])`: zero matches anywhere, in or out of core —
+    every real import in this codebase already spells the `node:` prefix, so
+    the gap has no live target and hardening the regex would be exactly the
+    "arithmetic dressed as evidence" P1-8/SELF-529 already warn against.
+  - `\bfetch\s*\(` would flag a legitimate call THROUGH an injected port if
+    that port were ever callable directly (`ctx.fetch(url)`), which is
+    different from the `ctx.fetch.get(url)` shape the suite's own
+    "does not false-positive on a 'fetch' property declaration" test already
+    covers. Checked the real port instead of guessing: `FetchPort`
+    (`core/src/ports.ts:129`) is `{ get(url, mode, opts?): Promise<...> }` —
+    never a bare callable — and grepping `packages/core/src` for a direct
+    `.fetch(` call (as opposed to `.fetch.get(`) returns nothing. The shape
+    this rule could misfire on does not exist in the interface it is
+    guarding, so there is no reachable case to add a probe for.
+
+`check-test-collection.mjs` + `collection.test.ts`: the under-collection path
+(a test file vitest would not run) has two direct probes — the repo-root
+`UNREACHABLE` file and the `components/**` `.tsx`-reachability case — but the
+over-collection path (`foreign`: vitest collects a file git does not
+consider part of the repo) has none. Traced whether that is a real,
+constructible gap rather than assuming a missing test always is one:
+`vitest.config.ts`'s `include` is a hand-maintained allowlist (`tests/**`,
+`packages/*/tests/**`, `packages/web/{app,lib,components}/**`,
+`packages/web/*.test.*`, `packages/web/scripts/*.test.*`), and none of those
+paths overlap any `.gitignore` entry (`/docs/`, `/.superpowers/`,
+`/overnight/`, `/branding/`, the two `public/` scratch dirs — none of them
+under `app/`, `lib/`, `components/` or `scripts/`). An ordinary new untracked
+file inside an included directory is still caught by `git ls-files --others
+--exclude-standard`, so it lands in BOTH sets, not just `seen`. The only way
+to make `foreign` non-empty by construction is a nested git repository or
+worktree sitting inside one of the included directories — the exact case the
+script's own header names for `.claude/worktrees/`, which sits outside every
+included path today — and that is not a lightweight fixture two `writeFileSync`
+calls can stand up the way `UNREACHABLE`/`REACHABLE` do. Left untested,
+deliberately: a probe for a branch with no constructible trigger would be a
+test that always passes for a reason unrelated to the code, which is the
+same vacuity `purity.test.ts`'s own comments warn against elsewhere in this
+file's neighborhood.
+
+No code change this fire — both near-misses traced to ground rather than
+patched on suspicion, same standard SELF-515/525/528/529/533/534 already
+held themselves to. `pnpm install` first (fresh clone, no `node_modules`).
+`pnpm check && pnpm test` both green: 3330 tests passing, 13 skipped (same
+gated census as SELF-535) — unchanged by a read-only fire.
+
+Backlog item: SELF-536 - BLOCKED
