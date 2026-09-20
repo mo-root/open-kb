@@ -5507,7 +5507,13 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
             .describe("what it is, one line, from the page itself"),
           relation: z.enum(RELATIONS),
           // Declared here, right after `relation` and before `why`/`spans`,
-          // because classify.md:65-66 has always told the model to answer in
+          // because classify.md's "Answer with" line (line 76-77 today; two
+          // later prompt edits shifted it down from 65-66 without this
+          // comment's citation following — checked and corrected by this
+          // same fire, so cite the sentence, not the line number, from here:
+          // `classify-answers-in-the-order-its-prompt-teaches.test.ts` reads
+          // it out of the file directly and fails if it ever moves or
+          // changes again) has always told the model to answer in
           // exactly this order — state the decisive fact, THEN back it with
           // evidence — but the schema used to declare `reasoning` after
           // `spans`, contradicting its own prompt. Structured-output decoding

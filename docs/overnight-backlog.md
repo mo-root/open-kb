@@ -1721,3 +1721,68 @@ since SELF-515). `pnpm check && pnpm test` both green: 3330 tests passing
 SELF-540).
 
 Backlog item: SELF-541
+
+**SELF-542 (2026-09-20 overnight fire) — a genuinely different angle (`.md:NNN`
+line citations, which SELF-509's own citation-drift sweep explicitly excluded)
+found two real, confirmed drifts, one of them present since before this
+branch's own base commit.** SELF-509's automated sweep grepped "every
+`file.ts:NNN` comment citation across the repo, 260 of them" and found none
+stale — but that pattern only matches a `.ts` target, so a comment citing a
+line inside a `.md` file was never in its sample. Grepped for that shape
+directly (`\.md:[0-9]`) across every source and script file and found exactly
+two hits: `packages/sweep/src/sweep.ts:5510` citing `classify.md:65-66`, and
+`scripts/bakeoff.ts:181` citing `README.md:183`. Both were stale.
+
+`sweep.ts`'s citation was written by `41e477a` (P1-6's fix), pinned to
+`classify.md`'s "Answer with" line as it stood at that commit — verified
+directly with `git show 41e477a:prompts/agents/classify.md`, which does show
+that line at 65. Three later commits in this same branch's history
+(`9a96f2f`, `3a2519d`, `a983f23` — the placement-ladder feature and its two
+follow-on relation-ordering fixes) added lines to `classify.md` above that
+point without ever touching the citation in `sweep.ts`, so it drifted out
+from under itself: the sentence is genuinely still there, unchanged in
+wording, just eleven lines further down, at 76-77 today. The dedicated test
+this same P1-6 commit added,
+`classify-answers-in-the-order-its-prompt-teaches.test.ts`, carried an
+identical `classify.md:65-66` citation in its own header comment for the same
+reason — copied from the same commit, drifted the same way — even though the
+test's own assertion reads the line out of the file directly by regex and was
+never wrong about the substance, only the comment describing it.
+
+`bakeoff.ts`'s citation is older and stranger: `git log -S` traces both its
+half-citations (`README.md:183` and, in the same paragraph, `audit.ts:88-92`)
+to `1770fca`, the v0.2.0 commit that predates this branch's own base
+(`a7bbc57`) — so this was never introduced by an overnight fire. Checked
+directly with `git show 1770fca:README.md` and `git show 1770fca:scripts/
+audit.ts`: the `audit.ts:88-92` half was accurate at that commit (the
+`existsSync` refusal block sat right there), but `README.md:183` was wrong
+from the moment it was written — at `1770fca`, line 183 was unrelated prose
+about the investigator's spend wall, and the quoted phrase the comment
+attributes to README ("the winner of that table, not a preference") does not
+appear anywhere in this branch's README history at all, at any commit
+(`git log --all -S` on the phrase across the whole repo turns up only
+`1770fca` itself and one commit on an unrelated backup branch,
+`main-backup-20260819`, that is not an ancestor of this one). The nearby
+`audit.ts:88-92` half drifted separately, before this branch's base too:
+`audit.ts` picked up lines somewhere between `1770fca` and `a7bbc57` (main's
+own history, not this branch's — only one, test-only commit on this file
+appears in `a7bbc57..HEAD`), landing the real refusal block at 100-104 today.
+
+Fixed all three citations to name their current, verified location rather
+than re-pin a number a future edit could just as easily outdate again:
+`sweep.ts`/`classify-answers-...test.ts` now cite `classify.md`'s line
+76-77 and name the dynamic test that actually keeps the claim honest going
+forward; `bakeoff.ts` now cites `README.md:74-77` with the literal phrase
+that block actually contains today ("not a claim that it finds the most" —
+checked character-for-character against the file before quoting it) and
+`audit.ts:100-104` for its sibling citation. Text/comment-only across all
+three files: no schema, logic or test assertion changed, so `pnpm check &&
+pnpm test` needed no new coverage. Ran the same grep with `test`/`spec`
+paths included too, to confirm no fourth copy of either citation exists
+uncorrected: none does.
+
+`pnpm install` first (fresh clone, no `node_modules`, same as every fire
+since SELF-515). `pnpm check && pnpm test` both green: 3330 tests passing
+(unchanged — comment-only), 13 skipped (same gated census as SELF-541).
+
+Backlog item: SELF-542

@@ -7,9 +7,12 @@ import { runFixture } from "./fixture.js"
 /**
  * MEASURED: `reasoning` filled on only 26% of
  * classified entities (202 of 776, cursor.com run) against 85% for
- * `relationSpan`, the schema's other optional field. classify.md:65-66 has
- * always told the model to answer `name, kind, what, relation, reasoning,
- * why, spans, relationSpan` — decisive fact first, evidence after — but the
+ * `relationSpan`, the schema's other optional field. classify.md's "Answer
+ * with" line (76-77 today, not the 65-66 this comment and sweep.ts's own
+ * once both cited — two later prompt edits shifted the line down and neither
+ * comment followed, until this fire caught it) has always told the model to
+ * answer `name, kind, what, relation, reasoning, why, spans, relationSpan` —
+ * decisive fact first, evidence after — but the
  * zod schema declared `reasoning` AFTER `why` and `spans`, contradicting its
  * own prompt. Structured-output decoding fills an object in schema
  * declaration order, not prompt-mention order, so the model was asked for

@@ -178,15 +178,16 @@ for (const c of CONTESTANTS) {
 const table = renderTable(domain, queries, rows, new Date().toISOString().slice(0, 10))
 
 // Stamped, like the three CLIs — and for a reason none of them has. This table
-// is the receipt README.md:183 points at when it calls the default model "the
-// winner of that table, not a preference", and that claim stays checkable only
-// while the SERIES does: a bake-off is worth keeping precisely so the one taken
-// before a model default changed can be read beside the one taken after, and
-// unstamped, the re-run that would justify the new default was the very thing
-// that erased the evidence for the old. It stamps where its neighbour
-// audit.ts:88-92 refuses because that packet holds hand-filled verdicts and
-// refusing protects unsaved human work; this table is machine-generated, so the
-// answer is to keep every copy, not to block the second run. The heading's date,
+// is the receipt README.md:74-77 points at when it explains the default
+// model's cost/recall numbers as "not a claim that it finds the most", and
+// that claim stays checkable only while the SERIES does: a bake-off is worth
+// keeping precisely so the one taken before a model default changed can be
+// read beside the one taken after, and unstamped, the re-run that would
+// justify the new default was the very thing that erased the evidence for
+// the old. It stamps where its neighbour audit.ts:100-104 refuses because
+// that packet holds hand-filled verdicts and refusing protects unsaved human
+// work; this table is machine-generated, so the answer is to keep every
+// copy, not to block the second run. The heading's date,
 // read where `renderTable` is called above, is an earlier, separate `new Date()`
 // from the stamp below — but only by the microseconds between the two calls, both
 // of which fire after the contestant loop — so the two can disagree only across a
