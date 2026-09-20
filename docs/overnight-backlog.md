@@ -1900,3 +1900,61 @@ test` both green: 3330 tests passing (unchanged — a read-only fire), 13
 skipped (same gated census as SELF-543).
 
 Backlog item: SELF-544 - BLOCKED
+
+**SELF-545 (2026-09-20 overnight fire) — used `noUncheckedIndexedAccess` as a
+temporary bug-detector for `packages/web`, the one workspace package that
+does not carry it, and confirmed every hit is the same class of false
+positive already catalogued for the engine packages; found nothing to fix.**
+`tsconfig.base.json:7` turns this flag on for `core`/`providers`/`sweep`/
+`swarm`, and this branch's own history (SELF-347, SELF-348, SELF-441, and
+others) documents in place, at each call site the flag flags, exactly why
+the indexed read can never actually be `undefined` there — `.split()[0]`
+after a mandatory separator, a regex capture group inside a pattern where
+that group is not optional, a loop index bounded by the same array's own
+`.length`. `packages/web/tsconfig.json` never opted in, so no one had
+checked whether the same audit, run once against the web package, would
+turn up a genuinely different case — the "doctrine contradictions" angle
+this section names, applied to a flag rather than a runtime default.
+
+Temporarily added `"noUncheckedIndexedAccess": true` to `packages/web/
+tsconfig.json` (`pnpm install` first, fresh clone) and ran the project's own
+`pnpm --filter @open-kb/web exec tsc --noEmit` — not a bare `tsc`, which
+fails to resolve `next`/`vitest`/workspace packages outside pnpm's own
+resolution and produces unrelated noise. It surfaced ~90 errors across ~20
+files. Read every application-code site by hand (test-file fixture errors
+excluded — they are literal object construction hitting the same widened
+type, not a code path): `GraphCanvas.tsx` (`parseHex`'s `m[1]` regex-capture
+read, `hexToRgba`'s `m[1]`, and the fullscreen focus-trap's `els[0]`/
+`els[els.length-1]` after an `els.length === 0` early return), `lib/graph/
+cluster.ts` (`separationShoves`'s `discs[i]`/`discs[j]` inside a
+`for (i...) for (j = i+1...)` pair, already the most densely
+self-documented file this campaign has read, per its own header), `SiteIcon.
+tsx`'s `normalizeDomain`'s `.split(...)[0]`, `TabBar.tsx`'s `tabs[to]` where
+`to` is one of `i±1 % tabs.length`/`0`/`tabs.length-1`, `NotesTab.tsx`'s
+`flat[next]` under the identical modulo-bounded shape, `Donut.tsx`'s
+`ring[0]` gated by a `single` flag that is only true when `ring.length ===
+1`, `Sparkline.tsx`'s `x(n-1)`/`y(last)` where `n` is the same array's own
+`.length`, `AgentPanel.tsx`'s `shown[i-1]` short-circuited behind
+`i === 0 ||`, and `kb-from-run.ts`'s `RELATION_WEIGHT[e.relation] ??
+RELATION_WEIGHT.none` — the `.none` half also flagged, because
+`Record<string, number>`'s dot-notation access widens exactly like its
+bracket access under this flag, even though the object literal defines
+`none: 15` unconditionally two lines above.
+
+Every one of these is bounds-safe by construction, not by luck — the
+pattern this section's own prior fires named as the reason engine code
+needed no fixture rewrites when the flag was added there. No case in the
+web sweep introduced a NEW shape (a genuinely reachable `undefined` a
+comment would need to guard); it is the identical three-shape taxonomy
+already on record. Reverted `packages/web/tsconfig.json` before finishing —
+committing the flag now would demand ~90 defensive comments or non-null
+assertions across ~20 files for zero behavioural gain, which is exactly the
+"arithmetic dressed as evidence" P1-8 already warns this branch against:
+adding ceremony a type checker cannot verify is safer than the reasoning
+that already holds.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both green: 3330 tests passing (unchanged — no code or config
+committed), 13 skipped (same gated census as SELF-544).
+
+Backlog item: SELF-545 - BLOCKED
