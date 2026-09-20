@@ -1957,4 +1957,39 @@ that already holds.
 test` both green: 3330 tests passing (unchanged — no code or config
 committed), 13 skipped (same gated census as SELF-544).
 
+**SELF-546 (2026-09-20 overnight fire) — read the three files this branch's
+own history had added but never named (`packages/sweep/src/deadline.ts`,
+`packages/web/lib/scrollProgress.ts`, `packages/web/lib/typingGuard.ts`,
+per a fresh `git log --diff-filter=A` against the base) and, one file over
+from the third, found a stale duration claim.** `deadline.ts` and
+`typingGuard.ts` checked out clean — both already carry their own dedicated
+regression tests (`model-calls-have-a-deadline.test.ts` covers the
+`--expose-gc` GC-collection case `deadline.ts`'s header comment measures;
+`typingGuard.test.ts` covers every branch). `scrollProgress.ts` itself is a
+clean pure clamp, also fully tested — but its one caller, `ScrollFilm.tsx`,
+sits behind `app/story/page.tsx`, whose own header comment had never been
+checked against the constant the component next to it actually uses.
+`story/page.tsx` described the scroll-driven launch film as "25 seconds of
+montage." `ScrollFilm.tsx`'s own `TOTAL = 32.5` (sourced, per its comment,
+"from the rig itself"), the rig's own `packages/web/public/launch-rig.html:113`
+(`const TOTAL = 32.50;`), and `DemoHome.tsx`'s independent comment on the
+same film playing on the homepage ("the pitch in 32 seconds") all agree on
+~32.5 seconds — three independent sources, zero of which say 25. The 25
+never matched anything on disk; nothing suggests it was ever true, just
+unchecked since the page was written.
+
+Fixed by rewriting the comment to state 32.5 seconds and cite where that
+number comes from (`ScrollFilm.tsx`'s own `TOTAL`, cross-checked against the
+rig and `DemoHome.tsx`) — the same "cite what you can verify yourself"
+standard this document's own rules ask of every entry. No code or test
+changed: the claim was in a doc comment only, `story/page.test.tsx` doesn't
+(and shouldn't) assert on comment prose, and the component's actual
+behaviour was already correct.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both green: 3330 tests passing (unchanged — a comment-only fix), 13
+skipped (same gated census as SELF-545).
+
+Backlog item: SELF-546
+
 Backlog item: SELF-545 - BLOCKED
