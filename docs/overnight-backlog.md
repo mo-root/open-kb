@@ -1245,3 +1245,96 @@ test` both green: 3328 tests passing, 13 skipped (same gated census as
 SELF-533) — unchanged by a read-only fire.
 
 Backlog item: SELF-534 - BLOCKED
+
+**SELF-535 (2026-09-20 overnight fire) — a git-log-confirmed "zero prior
+touch" sweep, checked against source AND test this time, found one of three
+candidates held a real, verifiable UI bug.** Built the untouched-file list
+for every non-test `.ts`/`.tsx` under `packages/*/src`,
+`scripts/`, and `packages/web/{app,components,lib}`, checked
+`git log a7bbc57..HEAD --oneline -- <src> <its .test sibling>` together, not
+the source alone — SELF-528's own method, which SELF-534 had drifted back to
+counting source files only. The source-only version first returned several
+files (`components/build/EventFeed.tsx`, `components/viz/BarMeter.tsx`)
+that turned out to already carry dedicated, thorough test files added
+without ever touching the source — a few minutes of reading them before the
+joint check caught it, not a wasted fire, but the reason to record the
+correct method again here. Three files cleared the joint bar:
+`packages/web/app/runs/page.tsx`
+(read once before, in SELF-525's "kb/page.tsx, kb/[id]/page.tsx and
+runs/page.tsx" pass, but never edited or given its own test), and the two
+trivial re-export barrels `components/icons/index.ts` / `components/viz/
+index.ts` (7 and 14 lines, nothing but `export * from` — read, confirmably
+inert, not worth a diff).
+
+`runs/page.tsx`'s KPI row: `<div className={... grid grid-cols-2 ... ${
+failedCount > 0 ? "sm:grid-cols-4" : "sm:grid-cols-3"} }>` — the adjacent
+comment ("A fixed four would put the Failed tile alone on a second row with
+three empty cells beside it... three slate blocks would read as tiles whose
+numbers failed to load") proves the author reasoned carefully about
+avoiding an orphaned grid cell, and did, for the `sm:` breakpoint: 3 tiles
+at `sm:grid-cols-3` or 4 at `sm:grid-cols-4`, always an exact fit. The base
+`grid-cols-2`, sitting in the same className string, was never made
+conditional. Below `sm` (which is where a phone visitor actually is) the
+common case — no failed runs, 3 tiles — lays out 2-then-1: the third tile
+alone in row two, with an unfilled cell beside it that paints the
+container's own `bg-slate-800` rather than a tile's `bg-slate-900`
+(`StatTile.tsx`), which is the exact "reads as a tile whose number failed
+to load" defect the comment already names — just on the breakpoint it
+forgot, in the case (no failures) that is the common one, not the rare one.
+
+Also found, in the same paragraph: the comment itself has drifted.
+"Four columns, or five when there is a fifth tile" was true when this row
+carried four fixed tiles — Runs, Entities mapped, Spent, Unplaced — plus the
+conditional fifth, Failed (confirmed against `13fa081`'s own diff, which
+shows `failedCount > 0 ? "sm:grid-cols-5" : "sm:grid-cols-4"` on the removed
+side). `Spent` and `Unplaced` were both replaced by a single `Companies
+found` tile in that same commit ("feat(web): the runs page counts market,
+not the owner's bill, and says how to make one"), which dropped the tile
+count from 4/5 to 3/4 and changed the `sm:grid-cols-4/5` split to today's
+`sm:grid-cols-3/4` — but never touched the sentence describing it, the same
+"a fix landed but the sibling text/logic describing it did not" shape
+SELF-517/518/519 each already found elsewhere in this branch.
+
+Fixed both: made the base breakpoint conditional too —
+`failedCount > 0 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"` (three
+tiles fit exactly at every width with `grid-cols-3` alone, so no `sm:`
+override is even needed in that branch any more) — and rewrote the comment
+to state the current 3/4 tile count, explain why both breakpoints need the
+condition, and cite `13fa081` as where the count changed and the comment
+should have been updated but wasn't.
+
+Added `packages/web/app/runs/page-kpi-grid.test.tsx` (a new file rather than
+a new `describe` in the existing `runs/page.test.tsx`, on purpose:
+`lib/runs.ts` keeps an in-memory run registry that `listStoredRuns` merges
+in "even when the disk refused", per that file's own comment, and it is
+module-scoped — shared by every test in one file regardless of which
+`OPENKB_RUNS_DIR` a given test points at. `runs/page.test.tsx`'s own
+earlier describes already populate it with failed runs, so a `describe`
+appended there could never observe a clean "zero failures" state; tried
+exactly that first and watched the "no failures" assertion see 3 leaked
+failed runs from earlier tests in the same file before splitting it out.
+Vitest isolates modules per test FILE by default, so a dedicated file gets
+a fresh `runs.ts` and therefore an empty registry — confirmed by the same
+two tests failing for the RIGHT reason, an empty registry, once isolated).
+Two tests: the 3-tile case asserts `grid-cols-3` present and `grid-cols-2`
+absent (the string appears nowhere else on this page — confirmed by grep
+before relying on it); the 4-tile case asserts the exact contiguous string
+`grid-cols-2 sm:grid-cols-4`. Verified non-vacuous by mutation: `git stash`
+on just `page.tsx`, reran — both new tests failed against the un-fixed
+source. The 3-tile case failed as expected (`grid-cols-2` is present, from
+the old unconditional base class). The 4-tile case failed for a more
+specific reason worth recording: the un-fixed markup DOES contain both
+`grid-cols-2` and `sm:grid-cols-4`, just not adjacent to each other — the
+old template put six other classes (`gap-px overflow-hidden rounded-lg
+border border-slate-800 bg-slate-800`) between them, so the exact contiguous
+string the test looks for never appears until the fix moves the conditional
+class next to the base one. That is what makes the assertion a real check
+of the fix's own shape rather than a loose "both classes present somewhere"
+test — then `git stash pop` restored the fix and both passed clean.
+
+`pnpm install` first (fresh clone, no `node_modules`, same as SELF-533/534).
+`pnpm check && pnpm test` both green: 3330 tests passing (up from 3328, two
+new), 13 skipped (same gated census as SELF-534) — the KPI-grid file is new,
+`runs/page.test.tsx` itself unchanged.
+
+Backlog item: SELF-535

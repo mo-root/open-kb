@@ -181,14 +181,26 @@ export default async function RunsPage() {
         </p>
       ) : (
         <>
-          {/* Four columns, or five when there is a fifth tile. A fixed four
-              would put the Failed tile alone on a second row with three empty
-              cells beside it — and the cells are not empty-looking, the grid
-              paints its gaps, so three slate blocks would read as tiles whose
-              numbers failed to load. */}
+          {/* Three columns, or four when there is a Failed tile — conditional
+              at BOTH breakpoints, not just `sm:`. A fixed `grid-cols-2` base
+              left exactly the common case (no failures, three tiles) with an
+              orphan cell below `sm`: row two holds only the third tile, and
+              the empty column beside it is not empty-looking — the grid
+              paints its gaps, so an unfilled cell reads as a slate block, a
+              tile whose number failed to load, the identical defect this
+              comment already reasons about preventing at `sm:grid-cols-3`
+              vs. `sm:grid-cols-4`, just missed one breakpoint down.
+              `grid-cols-3` alone (no `sm:` override needed) fits three tiles
+              exactly at every width; `grid-cols-2 sm:grid-cols-4` still fits
+              four exactly, unchanged from before.
+              (This comment used to say "four columns, or five": true back
+              when this row also carried `Spent` and `Unplaced`, both
+              replaced by `Companies found` in 13fa081, which dropped the
+              tile count from 4/5 to 3/4 and never came back to update the
+              sentence describing it.) */}
           <div
-            className={`mb-8 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-slate-800 bg-slate-800 ${
-              failedCount > 0 ? "sm:grid-cols-4" : "sm:grid-cols-3"
+            className={`mb-8 grid gap-px overflow-hidden rounded-lg border border-slate-800 bg-slate-800 ${
+              failedCount > 0 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"
             }`}
           >
             {/* WHAT A READER WANTS FROM A ROW OF NUMBERS, which is not what an
