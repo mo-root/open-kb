@@ -53,6 +53,25 @@ describe("StatTile's compact() formats the headline value", () => {
     const html = renderToStaticMarkup(<StatTile label="Delta" value={-2000000} />);
     expect(html).toContain(">-2M<");
   });
+
+  it("re-routes to M once rounding a near-1e6 K value would read 1000.0K", () => {
+    // 999_999 / 1e3 = 999.999, toFixed(1) rounds to "1000.0" — reads as a
+    // million while still tagged K. Measured before the fix: compact(999_999)
+    // rendered "1000.0K"; this asserts it renders "1.0M" instead.
+    const html = renderToStaticMarkup(<StatTile label="Tokens" value={999_999} />);
+    expect(html).toContain(">1.0M<");
+    expect(html).not.toContain("1000.0K");
+  });
+
+  it("still renders K for a value close to but not crossing the rounded M boundary", () => {
+    const html = renderToStaticMarkup(<StatTile label="Tokens" value={999_949} />);
+    expect(html).toContain(">999.9K<");
+  });
+
+  it("re-routes a negative near-1e6 K value to M the same way", () => {
+    const html = renderToStaticMarkup(<StatTile label="Tokens" value={-999_999} />);
+    expect(html).toContain(">-1.0M<");
+  });
 });
 
 describe("StatTile's glyph, hint and trend are each independently optional", () => {

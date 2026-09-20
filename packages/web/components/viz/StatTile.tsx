@@ -7,12 +7,23 @@ import { Sparkline } from "./Sparkline";
    look loose), auto-compacted (1,284 / 12.9K / 4.2M). Text wears text tokens;
    the glyph carries the accent. Pure render, no hooks. */
 
+function scaled(v: number, unit: number, suffix: string): string {
+  return `${(v / unit).toFixed(v % unit === 0 ? 0 : 1)}${suffix}`;
+}
+
 function compact(v: number | string): string {
   if (typeof v === "string") return v;
   if (!Number.isFinite(v)) return "—";
   const abs = Math.abs(v);
-  if (abs >= 1e6) return `${(v / 1e6).toFixed(v % 1e6 === 0 ? 0 : 1)}M`;
-  if (abs >= 1e4) return `${(v / 1e3).toFixed(v % 1e3 === 0 ? 0 : 1)}K`;
+  if (abs >= 1e6) return scaled(v, 1e6, "M");
+  if (abs >= 1e4) {
+    const k = scaled(v, 1e3, "K");
+    // toFixed(1) rounds a value just under 1e6 (999,950-999,999) up to "1000.0K" —
+    // measured: compact(999_999) === "1000.0K" before this check. Re-route to the
+    // M branch once the ROUNDED magnitude, not the raw one, actually reaches it.
+    if (Math.abs(parseFloat(k)) >= 1000) return scaled(v, 1e6, "M");
+    return k;
+  }
   return v.toLocaleString();
 }
 
