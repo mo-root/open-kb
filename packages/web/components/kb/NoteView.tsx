@@ -46,7 +46,17 @@ import { KindChip, RelevanceBadge, TierBadge, TypeChip } from "@/components/ui";
 
 export function hostOf(url: string): string {
   try {
-    return new URL(url).host.replace(/^www\./, "");
+    // `.hostname`, not `.host`: this feeds `SiteIcon`'s `domain` prop directly
+    // (line 325 below), which documents itself as "Bare domain" and builds a
+    // DuckDuckGo favicon URL from it verbatim. `.host` keeps an explicit port
+    // (`example.com:8080`), which `SiteIcon`'s own `normalizeDomain` does not
+    // strip either, so a ported URL would both mislabel the source and 404
+    // its favicon. `SearchesPanel.tsx`'s sibling `hostOf` already reads
+    // `.hostname`; this one drifted from it. Unreachable today — checked
+    // `kb-from-run.ts:754,772`, the only two `sources[].url` builders, and
+    // both are `https://${domain}` with no port — but free to fix and keeps
+    // the two copies in agreement.
+    return new URL(url).hostname.replace(/^www\./, "");
   } catch {
     return url;
   }

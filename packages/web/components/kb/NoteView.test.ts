@@ -29,6 +29,14 @@ describe("hostOf strips a leading www. from a valid URL's host", () => {
   it("lowercases the host, the URL parser's own normalization", () => {
     expect(hostOf("https://EXAMPLE.com")).toBe("example.com")
   })
+
+  it("drops an explicit port rather than carrying it into the display host", () => {
+    // `.host` (the earlier implementation) keeps `:8080` here; `.hostname`
+    // does not. This feeds `SiteIcon`'s `domain` prop (line 325), which
+    // documents itself as "Bare domain" and builds a favicon URL from it
+    // verbatim — a port would both mislabel the source and break the icon.
+    expect(hostOf("https://example.com:8080/path")).toBe("example.com")
+  })
 })
 
 describe("hostOf falls back to the raw input when it is not a parseable URL", () => {
