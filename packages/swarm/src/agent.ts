@@ -771,7 +771,13 @@ async function oneTurn(o: {
   }
 }
 
-const isAbortError = (e: unknown): boolean => {
+// Exported rather than kept private: orchestrator.ts used to carry its own
+// byte-for-byte copy of this same check (same three branches, same regex) —
+// a hand-copied, unpinned duplicate of the exact shape SELF-128 already
+// fixed once for isTypingTarget. A fix or a widened guard landing in one
+// copy and not the other would silently change which failures the wall
+// treats as "ours" vs. "the model's" in only one of the two callers.
+export const isAbortError = (e: unknown): boolean => {
   const err = e as { name?: string; message?: string }
   return err?.name === "AbortError" || /abort/i.test(String(err?.message ?? ""))
 }

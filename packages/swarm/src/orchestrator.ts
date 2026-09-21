@@ -33,6 +33,7 @@ import type { SearchTrace } from "./tools-free.js"
 import {
   LEAD_TURN_CAP,
   TIER_DEADLINE_MS,
+  isAbortError,
   makeHarvestClassify,
   runInvestigator,
   runLead,
@@ -287,11 +288,6 @@ const TOOL_SPAN_KIND: Record<string, SpanKind> = {
   review: "spawn",
   next: "spawn",
   finish: "spawn",
-}
-
-const isAbortError = (e: unknown): boolean => {
-  const err = e as { name?: string; message?: string }
-  return err?.name === "AbortError" || /abort/i.test(String(err?.message ?? ""))
 }
 
 type Wake =

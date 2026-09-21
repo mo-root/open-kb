@@ -2351,3 +2351,56 @@ test` both green: 3330 tests passing (unchanged — docs only), 13 skipped
 (same gated census as SELF-551).
 
 Backlog item: SELF-552 - BLOCKED
+
+**SELF-553 (2026-09-21 overnight fire) — a different angle than the last few
+fires' single-file re-reads: grepped for a function DEFINED more than once
+across the repo, the exact shape SELF-128 already fixed once for
+`isTypingTarget`.** `grep -rnE "^(export )?function |^const .* = \("` over
+`packages/*/src` and `scripts`, tallied by function name, turned up
+`isAbortError` — the identical three-line predicate (`err?.name ===
+"AbortError" || /abort/i.test(String(err?.message ?? ""))`), byte-for-byte,
+defined separately in `packages/swarm/src/agent.ts:774` and
+`packages/swarm/src/orchestrator.ts:292`. Neither imported the other; each
+had its own private copy. (The other repeated names checked and cleared:
+`normalizeDomain` in `SiteIcon.tsx`/`anchor.ts` are deliberately different —
+one a display-only favicon-domain cleaner, the other a security validator
+with its own five-paragraph SSRF rationale that never mentions the display
+copy, so this is not the same drift risk. `tierOf` in `kb-from-run.ts`/
+`tools-free.ts` take different argument shapes entirely — different
+functions sharing a name, not a duplicate. `hostOf` in `NoteView.tsx`/
+`SearchesPanel.tsx` and `identityKey` in `export-kb.ts`/`judge.ts`/
+`sweep.ts` are small one-line normalizers with no independent test coverage
+either way to compare — deferred rather than touched this fire, since
+`isAbortError`'s two copies were both actively read from a live call site,
+which is the shape most likely to drift silently the next time either
+caller's failure handling changes.)
+
+Each copy is live: `orchestrator.ts:1423` uses it to decide whether a failed
+lead turn is charged to the wall/caller (skipped) or counted as a real fault
+(`leadFaults += 1`, can stop the run after 2); `agent.ts:1137` uses it to
+decide whether a crashed investigator turn is labelled `"timeout"` or
+`"crashed"`. A fix or a widened check (e.g. catching a provider's own
+`RequestAbortedError` shape) landing in one copy and not the other would
+silently keep the OTHER caller mis-attributing that failure — exactly the
+"a fix landing in one copy and not the other reopens the bug in whichever
+component was missed" risk SELF-128's own note names for `isTypingTarget`.
+
+Exported `isAbortError` from `agent.ts` (no behaviour change — same three
+lines) and had `orchestrator.ts` import it from `./agent.js`, which it
+already depends on for `runLead`/`runInvestigator`, rather than adding a new
+shared file for one three-line predicate. Removed orchestrator's own copy.
+
+Added `packages/swarm/tests/is-abort-error.test.ts`: neither existing abort
+test (`agent.test.ts`, `orchestrator.test.ts`) exercised the predicate
+directly, only end to end through a real turn that happens to abort. New
+tests cover each disjunct (name-only via a real `DOMException(..., 
+"AbortError")`, message-only under a different name, case-insensitivity)
+and the negative case, plus the two non-Error shapes `e: unknown` callers
+are not guaranteed to avoid — a plain string and `undefined` — confirming
+neither throws.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both green: 3334 tests passing (up from 3330, the 4 new ones), 13
+skipped (same gated census as SELF-552).
+
+Backlog item: SELF-553
