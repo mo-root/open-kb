@@ -1,15 +1,11 @@
 import type { CSSProperties, ReactNode } from "react";
+import { polar } from "./polar";
 
 /* Gauge, a single ratio against a limit, drawn as a 240° arc dial (dataviz:
    a meter, not a one-slice pie). The fill arc rides on a lighter same-ramp
    track so the state reads across the whole sweep; round caps, one hue. The
    centre carries the value as a proportional hero-style number (never tabular
    — tnum only belongs in aligned columns). Pure render, no hooks. */
-
-function polar(cx: number, cy: number, r: number, deg: number): [number, number] {
-  const a = (deg * Math.PI) / 180;
-  return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
-}
 
 function arcPath(
   cx: number,

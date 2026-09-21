@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
+import { polar } from "./polar";
 
 /* Donut, part-to-whole for a small set of categories (composition by node
    type). Segments are stroked ring arcs separated by a real angular gap so the
@@ -8,11 +9,6 @@ import type { CSSProperties, ReactNode } from "react";
 
    Colour follows the entity (each segment supplies its own token), never its
    rank — filtering the ring to non-zero slices never repaints the survivors. */
-
-function polar(cx: number, cy: number, r: number, deg: number): [number, number] {
-  const a = (deg * Math.PI) / 180;
-  return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
-}
 
 function arc(
   cx: number,

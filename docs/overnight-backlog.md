@@ -2839,3 +2839,51 @@ test` both exit 0: 3339 tests passing (unchanged — same function, same
 behaviour, one fewer copy), 13 skipped (same gated census as SELF-563).
 
 Backlog item: SELF-564
+
+**SELF-565 (2026-09-21 overnight fire) — same live-duplicate-function shape
+again, this time in `packages/web/components/viz`: `polar`, byte-for-byte
+identical in `Gauge.tsx` and `Donut.tsx`.** Found by listing every top-level
+function name defined across `packages/*/src` and `packages/web/{app,lib,
+components}` and grepping for one repeated with the same signature — `tierOf`
+and `dedupe` also repeat but take different argument shapes for genuinely
+different jobs (checked both pairs by hand before ruling them out); `polar`
+was the one real match. Both copies are the identical five-line SVG-arc
+helper:
+
+```ts
+function polar(cx: number, cy: number, r: number, deg: number): [number, number] {
+  const a = (deg * Math.PI) / 180;
+  return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+}
+```
+
+Unlike the `hostOf` pair SELF-553 deferred for lack of coverage, this one was
+never blocked on that: `Gauge.test.tsx` and `Donut.test.tsx` each already pin
+the exact rendered `d="…"` path string their own `arcPath`/`arc` produces
+(`Gauge.test.tsx`'s `/A59 59 0 1 1/` / `/A59 59 0 0 1/` assertions,
+`Donut.test.tsx`'s equivalent), which is `polar`'s output baked into a string
+— a widened formula in one copy and not the other would fail that copy's own
+existing test, not go unnoticed the way an unconsumed `hostOf` divergence
+would have.
+
+No shared geometry file existed under `components/viz` (checked — the
+directory holds five components and one barrel `index.ts`, nothing else), so
+rather than pick one of the two sibling files to own the other's import (an
+arbitrary choice neither `Gauge` nor `Donut` has priority for), added
+`polar.ts` as its own one-function module next to them, following this
+repo's one-purpose-file convention, and had both `Gauge.tsx` and `Donut.tsx`
+import `{ polar } from "./polar"` in place of their own copy. Neither file is
+in `viz/index.ts`'s barrel by its internal helpers (only the components are
+exported), so `polar.ts` needed no barrel entry either. No cycle: `polar.ts`
+imports nothing.
+
+No behaviour change — both bodies were already identical, so this is pure
+dedup. `arcPath` (Gauge) and `arc` (Donut) stay separate on purpose: Gauge's
+takes a `sweep` direction Donut's `arc` does not need, so unlike `polar` they
+were never actually the same function, just built from the same primitive.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3339 tests passing (unchanged — same function, same
+behaviour, one fewer copy), 13 skipped (same gated census as SELF-564).
+
+Backlog item: SELF-565
