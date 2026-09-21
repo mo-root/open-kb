@@ -2617,3 +2617,63 @@ pnpm test` both exit 0: 3339 tests passing, 13 skipped (same gated census as
 SELF-559; unchanged by a read-only fire).
 
 Backlog item: SELF-560 - BLOCKED
+
+**SELF-561 (2026-09-21 overnight fire) — tried `exactOptionalPropertyTypes` as
+the next flag-as-detector (the angle SELF-545/549 used for
+`noUncheckedIndexedAccess`/`noUnusedLocals`/`noUnusedParameters`), and found a
+real but out-of-scope pattern rather than a fixable bug.** Enabling it in
+`tsconfig.base.json` and running `tsc -b --force` (TS 5.9.3, installed fresh —
+`node_modules` was absent again) surfaced 78 errors across 15 files spanning
+all four packages: `core/src/{board,discovery,evidence,investigator,judge,
+sniff,spans,tools,testing/fake-provider}.ts`, `providers/src/brightdata.ts`,
+`swarm/src/{agent,orchestrator,run-evidence,tools-paid}.ts` and
+`sweep/src/sweep.ts`. Every single one is the same shape: a value typed
+`T | undefined` (an optional chain, a ternary, a field carried through from
+another optional) assigned into a property declared `field?: T` rather than
+`field?: T | undefined`. That is not a scattered handful of call sites to
+patch — it is this codebase's one recurring telemetry/IO shape
+(`Span`/`SpanInput`'s `error`/`servedBy`, `FetchResponse`/`SniffResult`'s
+`contentType`/`detail`/`reason`, `{ signal?: AbortSignal }` on every
+cancellable call, `BoardRow`'s `mission?`) hitting the same two-value
+convention everywhere it is used, because the convention itself (build the
+optional field from a variable that can be `undefined`, then spread or return
+it) is used consistently. Making the flag pass would mean widening a good
+dozen shared interface definitions to `field?: T | undefined` throughout, which
+changes nothing any of these 78 sites actually does — checked several by hand
+(e.g. `board.ts:117`'s `{ mission: undefined, skipped }`; its one caller reads
+`result.mission` truthy, never `"mission" in result`, so explicit-`undefined`
+and absent-key already behave identically here) — before concluding this is a
+type-strictness style adoption across ~10 shared type definitions, not a bug
+this branch's "one item, small, real, tested" scope owns, the same reasoning
+`SELF-516` used to decline `Board.popAffordable`'s redesign. Reverted the
+`tsconfig.base.json` edit before finishing (`git diff` clean, confirmed).
+
+Also checked, all clean, before landing on the flag experiment above: every
+file this branch's history shows fewer than 2 commits against it
+(`packages/sweep/src/{rank,deadline,index}.ts`, `packages/core/src/{flags,
+grounding,investigator,pricing,prompts,scorecard}.ts`,
+`packages/swarm/src/{family-ledger,index}.ts`,
+`packages/providers/src/index.ts`, `scripts/check-{core-purity,
+test-collection}.mjs`) — `rank.ts` is an 11-line re-export with a comment
+already explaining why it moved to `core/src/judge.ts` (SELF-533 read that
+target), and every other name on the list already carries a prior fire's
+full-read entry in this file (SELF-515 for `grounding.ts`/`investigator.ts`/
+`pricing.ts`/`prompts.ts`, SELF-528 for `scorecard.ts`) despite drawing no
+follow-up commit, i.e. read-and-found-nothing, not read-never. A basename
+grep against this file's own prose (used to shortlist candidates) is
+unreliable for the same reason: `clock.ts`, `from-sweep.ts`,
+`corroboration-arrival.ts` and `brightdata.ts` all miss a literal filename
+match here despite each having its own dedicated entry under a different
+description. `scripts/build-demo-maps.ts` was the one genuine miss and is the
+demo gallery's own rebuild script — out of scope by this file's own header.
+
+Confirmed no unchecked `- [ ]` item remains anywhere in this file (`grep -n
+'^\s*- \[ \]'`, zero hits) — sections A through D are each fully done or
+BLOCKED, so this and future fires are self-discovered work only until a human
+adds a new dated section.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3339 tests passing, 13 skipped (same gated census as
+SELF-560; unchanged — the only edit this fire kept is to this file).
+
+Backlog item: SELF-561 - BLOCKED
