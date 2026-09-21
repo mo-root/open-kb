@@ -2287,3 +2287,67 @@ test` both green: 3330 tests passing (unchanged — comment-only), 13
 skipped (same gated census as SELF-550).
 
 Backlog item: SELF-551
+
+**SELF-552 (2026-09-21 overnight fire) — read every source file this branch's
+history had genuinely never touched (one commit each, the original add) end
+to end, traced two promising leads to their roots, and found both already
+closed by earlier work.** `git log --oneline -- <file>` against every
+`packages/*/src` and `packages/web/{app,lib,components}` file gave five
+files with exactly one commit in the whole branch: `core/src/families.ts`,
+`core/src/ports.ts`, `web/lib/nodeTypes.ts`, `web/components/SiteIcon.tsx`,
+`web/scripts/bake-layouts.ts` (the last is demo-gallery tooling, out of
+scope). `ports.ts` is interfaces only, nothing to execute. `nodeTypeOf`/
+`SiteIcon`'s fallback logic read clean on a full trace.
+
+`families.ts` looked most promising: `rivalHand`'s pair loop
+(`names[i]` vs `names[i+1]`) never checks the two names it pairs are
+distinct, so `rivalHand(["wix", "wix", "magento"], 6)` genuinely does emit
+`"wix vs wix"` — a self-paired, wasted query — and the existing test at
+`tests/a-rival-is-not-the-anchor.test.ts:59-62` only asserts the OUTPUT
+strings are unique, which a nonsense self-pair satisfies trivially, so it
+would not have caught this. Traced both real callers to check whether a
+duplicate name can actually reach `rivalHand` in production:
+`rivalsFromComparisonUrls` (`core/src/catalog.ts:410-487`) keys its `found`
+Map by `rivalName()`'s output, which is always lowercased and therefore
+unique by construction — no caller-side duplicate is possible. The listicle
+harvest (`sweep.ts:5008-5017`) already deduplicates its `fresh` array by
+`.toLowerCase()` before ever calling `rivalHand(fresh, ...)`, precisely
+because an earlier fire (see that block's own comment) found and fixed the
+identical "wix vs wix" shape at that one caller who could hand it a
+case-variant duplicate. Both current call sites are structurally incapable
+of feeding `rivalHand` a repeat, so the gap in `rivalHand` itself is real
+but unreachable — fixing it now would be exactly the "arithmetic dressed as
+evidence" SELF-515's own BLOCKED note already warns against, not a second
+independent bug.
+
+Second lead, `DecisionsStrip.tsx`'s `clock(atSec)` (`packages/web/
+components/build/DecisionsStrip.tsx:36-40`): `s = atSec % 60` is never
+rounded or floored, so a fractional `atSec` prints as `"00:12.5"` rather
+than a real clock reading, and `Decision.atSec: number` (not restricted to
+integers) plus `types.test.ts:483-484`'s own passing case
+(`atSec: 12.5` survives `readProgress` unchanged) show the type contract
+allows exactly that shape. But the only producer of a `Decision`'s `atSec`
+in this codebase is `sweep.ts`'s `say()` (`atSec: sec()`,
+`sweep.ts:1758`: `sec = () => Math.round((Date.now() - t0) / 1000)`) — every
+progress frame this pipeline emits already carries a whole-second
+`atSec`, and `"progress"` namespace frames have exactly one emitter
+(grepped `packages/sweep/src`, `packages/swarm/src`, `packages/web/app`,
+`packages/web/lib` for the string). The swarm orchestrator's own
+unrounded `sec()` (`orchestrator.ts:308`) only reaches `landings[].atSec`,
+which `serialize.ts:220` writes into a stored run's `missions[].atSec` —
+a field no web surface currently reads (`grep`'d every `.atSec` use under
+`packages/web/lib`, `app`, `components`: only `DecisionsStrip`/
+`BuildWorkflow`/`types.ts`, all fed exclusively by the rounded `progress`
+stream). Same verdict as the first lead: a real gap in the function, no
+live path that reaches it.
+
+Not fixed, either one — both are documented here so the next fire that
+reads either file does not re-open ground this one already walked, the
+same service SELF-515's own entry did for the small-module sweep it
+closed.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both green: 3330 tests passing (unchanged — docs only), 13 skipped
+(same gated census as SELF-551).
+
+Backlog item: SELF-552 - BLOCKED
