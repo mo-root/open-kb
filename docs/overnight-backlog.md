@@ -2404,3 +2404,56 @@ test` both green: 3334 tests passing (up from 3330, the 4 new ones), 13
 skipped (same gated census as SELF-552).
 
 Backlog item: SELF-553
+
+---
+
+**SELF-557 (2026-09-21 overnight fire) — this backlog file itself lost sync
+with its own `Backlog item:` trailers for the three commits right above:
+SELF-554/555/556 each landed real work but none touched
+`docs/overnight-backlog.md`, breaking the file's own stated contract ("tracked
+on this branch and carries every item with its measured evidence and file:line
+pointers").** Confirmed with `git log a7bbc57..HEAD --oneline -- docs/
+overnight-backlog.md` next to a plain `git log a7bbc57..HEAD --oneline`:
+SELF-553 (7c863cf) is the last commit whose diff touches this file; SELF-554
+(949cfab), SELF-555 (fdaa39e) and SELF-556 (3f7fc63) each landed a real change
+but recorded nothing here — the same class of drift SELF-554 itself found and
+fixed for `CHANGELOG.md`, one file over. Catching up from each commit's own
+message, verified against the current source rather than restated blind:
+
+- **SELF-554** (949cfab, `docs(changelog)`) — `CHANGELOG.md`'s "Bug fixes"
+  section had missed two real fixes landed since SELF-530: SELF-532's
+  `StatTile` K/M-rounding bug and SELF-535's `/runs` KPI grid mobile layout.
+  Added both bullets. No code change.
+- **SELF-555** (fdaa39e, `fix(core)`) — `identityKey` (the fold
+  `text.toLowerCase().replace(/[^a-z0-9]/g, "")`) was byte-for-byte duplicated
+  across `packages/core/src/export-kb.ts`, `packages/core/src/judge.ts`
+  (module-level, called from `wrongDoorName` at judge.ts:249 and
+  `anchorIdentityTheft` at judge.ts:305) and `packages/sweep/src/sweep.ts`.
+  export-kb.ts's own copy carried a comment claiming it couldn't import
+  judge.ts's version because that version lived nested inside `judgeHosts` —
+  false; it was already module-level and already re-exported through
+  `index.ts`, just missing the `export` keyword. Exported it from judge.ts,
+  had export-kb.ts's suppression check (export-kb.ts:492-493) and sweep.ts's
+  "ONE SPELLING, ONE OWNER" pass import it instead of restating it. Added
+  `packages/core/tests/identity-key.test.ts` (4 tests) — no prior test
+  exercised the fold directly, only each consumer's higher-level behaviour.
+  This was SELF-553's own deferred lead.
+- **SELF-556** (3f7fc63, `fix(web)`) — `NoteView.tsx`'s `hostOf` read `new
+  URL(url).host`, keeping an explicit port, where `SearchesPanel.tsx`'s
+  sibling copy already reads `.hostname` and drops one. NoteView's result
+  feeds `SiteIcon`'s `domain` prop directly (NoteView.tsx:325-326); `SiteIcon`
+  never strips a port either, so a ported URL would mislabel the source and
+  404 its favicon. Confirmed unreachable today (`kb-from-run.ts`'s two
+  `sources[].url` call sites, lines 754 and 772, never carry a port) but the
+  fix is one word and removes a second copy free to drift independently on
+  its own. Added a test to `NoteView.test.ts`, verified non-vacuous by
+  reverting the fix and watching the new test fail. Also SELF-553's own
+  deferred lead.
+
+No code changed by this entry — doc-only, matching SELF-554's own precedent
+for treating a backlog/changelog sync gap as an item in its own right rather
+than leaving it silent. `pnpm install` first (fresh clone, no `node_modules`).
+`pnpm check && pnpm test` both exit 0: 3339 tests passing, 13 skipped
+(unchanged — same gated census as SELF-556; this touches only prose).
+
+Backlog item: SELF-557
