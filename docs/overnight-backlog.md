@@ -2730,3 +2730,68 @@ test` both exit 0: 3339 tests passing, 13 skipped (same gated census as
 SELF-561; unchanged — a read-only fire).
 
 Backlog item: SELF-562 - BLOCKED
+
+**SELF-563 (2026-09-21 overnight fire) — tried `noImplicitOverride` and
+`noPropertyAccessFromIndexSignature` as the next flag-as-detector pair, the
+angle SELF-545/549/550/561 already used for
+`noUncheckedIndexedAccess`/`noUnusedLocals`/`noUnusedParameters`/
+`noImplicitReturns`/`noFallthroughCasesInSwitch`/`exactOptionalPropertyTypes`.
+One is a clean pass like SELF-550's; the other is a second instance of
+SELF-561's own verdict — a real, systemic pattern, not a fixable bug.**
+
+`noImplicitOverride`: zero hits anywhere. Grepped every ` extends ` across
+`packages/*/src` and `packages/web/{app,lib,components}` first to confirm
+there was even a class hierarchy for the flag to check: three classes extend
+`Error` (`core/src/evidence.ts`'s `CitationError`, `providers/src/
+safe-fetch.ts`'s `BlockedHostError`, `web/lib/api-error.ts`'s `NamedFault`),
+none override an inherited method — each only adds a constructor, which
+`noImplicitOverride` does not gate. Added to `tsconfig.base.json` and
+(separately, web never inherits base per SELF-545/549/550) `packages/web/
+tsconfig.json`; ran every command `pnpm check` runs (`tsc -b`, web's own `tsc
+--noEmit`, all four `tsconfig.tests.json` projects, `tsconfig.root.json`) —
+zero errors. Kept, same "free insurance, no reason to revert" reasoning
+SELF-550 gave `noImplicitReturns`/`noFallthroughCasesInSwitch`: it costs
+nothing today and gates a real bug class the day this branch's currently
+override-free classes gain a sibling.
+
+`noPropertyAccessFromIndexSignature`: 128 hits in the engine build alone
+(`tsc -b tsconfig.root.json`), zero attempted on web (the engine result
+alone already settled the verdict). Read every hit rather than trusting the
+count. 61 are `process.env.OPENKB_*`/`BRIGHTDATA_*`/`OPENROUTER_*` reads
+across `scripts/*.ts`, `tests/live/*.ts` and `sweep.ts`/`from-sweep.ts` — the
+flag's own textbook noisy case, since `NodeJS.ProcessEnv` is itself typed
+with an index signature. The other 67 are every one of this codebase's
+`Record<string, ...>`-typed report/frontmatter shapes accessed by their own
+declared field names, not a typo class this flag can catch (it forces
+bracket notation on a correct key, it does not validate the key): `core/src/
+prompts.ts`'s `frontmatter: Record<string, string>` (`.agent`, `.doctrine`,
+`.includes` — deliberately open, since frontmatter's whole job per the
+file's own header is running whatever key an `.md` file declares);
+`scripts/run-doctor.ts`'s `diagnose(r: Record<string, any>)` (`.budget`,
+`.wire`, `.kernel`, …) — deliberately untyped because, per this same file's
+own `run-doctor.test.ts` entry, its job is surviving "every run file, across
+every engine version that wrote one," so a fixed interface here would be the
+bug; `scripts/experiment.ts`/`read.ts`'s cost-breakdown printers, `sweep.ts`'s
+own report literal, `tests/query-yield.test.ts`'s `plain`/`debranded`
+fixtures — all the same shape, a loosely-typed record deliberately, not
+narrowly. Reverted the `tsconfig.base.json` edit before finishing (`git diff`
+clean, confirmed) — this is `SELF-561`'s exact verdict a second time: a real
+but out-of-scope type-strictness style adoption across many call sites, not
+one bug.
+
+One process note for the next fire: running `tsc -b` directly against
+`tsconfig.base.json`/`tsconfig.root.json` outside `pnpm check`'s own command
+line emits stray `.js`/`.d.ts` next to every source file it touches — those
+two configs carry no `outDir` (only each package's own `tsconfig.json` does,
+via the reference graph `pnpm check`'s bare `tsc -b` walks from the *root*
+`tsconfig.json`, not `tsconfig.base.json`). Caught it via `git status`
+showing ~780 untracked files after the first probe, deleted every one (none
+were ever staged), and re-verified with `pnpm check`'s own command line
+afterward, which is unaffected. No stray file was committed.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3339 tests passing (unchanged — only `noImplicitOverride`
+survives, and it changed no code), 13 skipped (same gated census as
+SELF-562).
+
+Backlog item: SELF-563
