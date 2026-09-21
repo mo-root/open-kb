@@ -2199,3 +2199,55 @@ dead code or added an assertion that was already true, never changed
 behaviour), 13 skipped (same gated census as SELF-548).
 
 Backlog item: SELF-549
+
+**SELF-550 (2026-09-21 overnight fire) — pushed the same flag-as-detector
+angle one step further than SELF-549's landing spot and, unlike it, found
+nothing to fix — a clean pass, added anyway because it cost nothing.**
+`strict`/`noUncheckedIndexedAccess`/`noUnusedLocals`/`noUnusedParameters`
+say nothing about a function that returns a value on some paths and falls
+off the end on others, or a `switch` case that runs into the next one
+silently; this repo still carries no ESLint config to catch either class
+another way (re-checked, same as SELF-549: no `.eslintrc*`/`eslint.config*`
+outside `node_modules`).
+
+Added `noImplicitReturns`/`noFallthroughCasesInSwitch` to
+`tsconfig.base.json` (engine — reaches `core`/`providers`/`sweep`/`swarm`
+`src`, their `tests` via each package's `tsconfig.tests.json`, and
+`scripts`/`tests`/root `*.ts` via `tsconfig.root.json`, all of which
+extend it) and separately to `packages/web/tsconfig.json` (web never
+inherits base, per SELF-545/549). Ran every command `pnpm check` itself
+runs — `tsc -b`, the web package's own `tsc --noEmit`, all four
+`tsconfig.tests.json` projects, `tsconfig.root.json` — and got zero errors
+from either flag, anywhere in the repo.
+
+Before trusting a silent, zero-error result — the failure mode a wrong or
+misspelled flag name would produce identically — planted both bug shapes
+in a scratch file outside the repo (an `if` branch with no trailing
+return; a `case` with a statement but no `break`/`return` before the next
+`case`) and ran `tsc --strict --noImplicitReturns
+--noFallthroughCasesInSwitch --noEmit` against it directly: TS2366 and
+TS7029 fired exactly as expected, then the scratch file was discarded
+without being added anywhere in this repo. The codebase's own `switch`
+surface is small enough to state precisely: 4 real `switch` statements
+outside test files (`orchestrator.ts:1061`, `tools-free.ts:243`,
+`stream-adapter.ts:104`, `BuildWorkflow.tsx:404` — two other `catalog.ts`
+grep hits are the word "switch" inside a regex literal, not a statement),
+every one already `default`-terminated with each case returning or
+breaking.
+
+Committed rather than left unrecorded: unlike SELF-545's
+`noUncheckedIndexedAccess`-on-web experiment (90 hits, all false
+positives, reverting was the right call because keeping it would have
+demanded ~90 defensive comments for zero behavioural gain), a flag that
+finds zero violations costs literally nothing to keep — no code changed,
+no comment ceremony owed anywhere — while still standing permanent guard
+against two real bug classes the very next commit could introduce. Same
+"free insurance" reasoning SELF-549 gave for keeping its own two flags
+once they paid for themselves; this pair paid for itself before a single
+line needed to change.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both green: 3330 tests passing (unchanged — no source touched), 13
+skipped (same gated census as SELF-549).
+
+Backlog item: SELF-550
