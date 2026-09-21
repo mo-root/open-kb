@@ -2565,3 +2565,55 @@ test` both exit 0: 3339 tests passing (unchanged — no behavior change, pure
 dedup), 13 skipped (same gated census as SELF-558).
 
 Backlog item: SELF-559
+
+**SELF-560 (2026-09-21 overnight fire) — read every `packages/web` file this
+branch's own history had never named, from `git log a7bbc57..HEAD
+--name-only` against the current file tree; found nothing to fix.**
+Confirmed via `comm -23` between the full `packages/**/*.{ts,tsx}` source
+list and that name-only log which files had genuinely never been touched by
+a commit on this branch, then cross-checked the result against SELF-515's
+own read-list (which covers most of `packages/web/lib`) to find the
+sliver neither that entry nor any later one names: `packages/web/components/
+kb/TabBar.tsx` (the tablist — underbar measurement, ResizeObserver wiring,
+the ArrowLeft/Right/Home/End keyboard handler and its wraparound math),
+`packages/web/components/kb/GraphLegend.tsx` (the type-toggle/highlight
+overlay) and `packages/web/components/kb/layerMeta.tsx` (the three manifest
+accessors `KbCard` and `KbOverview` share), plus `packages/web/app/page.tsx`,
+`app/kb/page.tsx` and `app/film/page.tsx` (the three route shells choosing
+between the live run surface, the metered-demo box and the read-only
+gallery). `packages/web/components/icons/NodeGlyph.tsx` was also on the
+untouched-file list but already carries its own dedicated test file
+(`NodeGlyph.test.tsx`, added by a prior fire) covering `glyphForNotePath`'s
+folder-then-basename precedence end to end, so it was read for confirmation
+only, not as a gap.
+
+Read each end to end against the class of bug this branch's D-section keeps
+finding (a falsy check standing in for a real predicate, an index or `.find()`
+that can silently match the wrong slot, a boundary an invariant elsewhere
+assumes holds): `TabBar`'s `(i + 1) % tabs.length` / `(i - 1 + tabs.length) %
+tabs.length` wraparound is correct for every `tabs.length >= 1` (the
+`findIndex` guard above it already bails on `-1` before either runs);
+its `btnRefs` ref-callback deletes on unmount so a removed tab cannot leave a
+stale measurement target; the `ResizeObserver` cleanup unsubscribes both the
+list and every button it observed, not just the list, so no observer outlives
+a re-render. `GraphLegend`'s `visible`/`counts` reads are keyed by the same
+`NodeType` union the caller (`GraphCanvas.tsx`, confirmed by grepping its one
+call site) builds both records from, so there is no key drift to find; the
+`onPointerLeave` on both the container and each row is redundant, not buggy —
+confirmed by tracing the callback isn't referentially unstable across
+renders that would make the redundancy matter. `layerMeta.tsx`'s three
+accessors are pure and already exactly what `KbCard`/`KbOverview`/`KbBrowser`
+need per their own call sites (grepped all three). The three route shells
+were traced branch-by-branch against `lib/public-runs.ts`'s three `runGate`
+outcomes (`open`, `used-up`, `read-only`, `uncountable`) and `lib/demo.ts`'s
+`isDemo()` — every combination the comments claim is reachable renders the
+component the comment says, and the one early-return ordering the file's own
+comment flags as load-bearing (`publicRunsPerDay() === 0` checked before any
+`await`) does in fact skip `runGate()`'s directory read on that path.
+
+No code change — every file already correct. `pnpm install` first (fresh
+clone, no `node_modules`, same as SELF-557 through SELF-559). `pnpm check &&
+pnpm test` both exit 0: 3339 tests passing, 13 skipped (same gated census as
+SELF-559; unchanged by a read-only fire).
+
+Backlog item: SELF-560 - BLOCKED
