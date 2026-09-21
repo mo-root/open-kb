@@ -13,6 +13,7 @@
  * belongs upstream in the engine, so the folder always matches its run.
  */
 import { registrableHost } from "./url.js"
+import { identityKey } from "./judge.js"
 
 
 export interface ExportEntity {
@@ -362,11 +363,6 @@ export interface MintedEdge {
   to: string
   why?: string
 }
-
-/** Judge's identity key, restated: it lives inside `judgeHosts` and there is
- *  nothing to import. Case and punctuation go because "eGain", "e-gain" and
- *  "EGAIN" are one name. */
-const identityKey = (text: string) => text.toLowerCase().replace(/[^a-z0-9]/g, "")
 
 const norm = (host: string) => host.trim().toLowerCase().replace(/^www\./, "")
 

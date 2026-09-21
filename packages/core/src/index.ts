@@ -30,6 +30,7 @@ export {
   wrongDoorName,
   anchorIdentityTheft,
   capReceipts,
+  identityKey,
   JUDGED_KINDS,
   JUDGED_RELATIONS,
   type HostCandidate,

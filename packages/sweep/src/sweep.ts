@@ -50,6 +50,7 @@ import {
   checkQuote,
   descriptionGrounding,
   wrongDoorName,
+  identityKey,
   type FetchPort,
   type ModelPricing,
   type PageFacts,
@@ -6450,8 +6451,6 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
      * A host term always spells its own host, so a registrable-host match —
      * the strongest identification the pass has — can never lose this contest.
      */
-    const identityKey = (text: string) =>
-      text.toLowerCase().replace(/[^a-z0-9]/g, "");
     const claimants = new Map<string, string[]>();
     for (const { entity, terms } of spellings) {
       const host = entity.domain.toLowerCase().replace(/^www\./, "");

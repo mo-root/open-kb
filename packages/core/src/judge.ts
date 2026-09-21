@@ -161,13 +161,19 @@ export interface JudgeDeps {
 }
 
 /**
- * The anchor's own brand, as a string two spellings of it both reduce to.
+ * A string two spellings of the same name both reduce to.
  *
- * Only ever compared against a name the model wrote, so it has to survive the
- * ways a brand is written down: "Figma", "figma", "FIGMA". Punctuation goes
- * for the same reason — "e-gain" and "eGain" are one identity.
+ * Compared against names a model wrote, so it has to survive the ways a brand
+ * is written down: "Figma", "figma", "FIGMA". Punctuation goes for the same
+ * reason — "e-gain" and "eGain" are one identity.
+ *
+ * Exported because it is the shared identity-matching primitive: export-kb.ts
+ * (the anchor's own label) and sweep.ts (one-spelling-one-owner host claims)
+ * each need the exact same fold judge.ts uses here, not an approximation of
+ * it — two independently-tuned copies would let "is this the same name" drift
+ * to a different answer in each file for the same input.
  */
-const identityKey = (text: string) => text.toLowerCase().replace(/[^a-z0-9]/g, "")
+export const identityKey = (text: string) => text.toLowerCase().replace(/[^a-z0-9]/g, "")
 
 /** Either identity key contains the other — the one containment test this
  *  file runs on every label pair, named once instead of repeated inline. */
