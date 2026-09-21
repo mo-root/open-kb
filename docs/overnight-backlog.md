@@ -2251,3 +2251,39 @@ test` both green: 3330 tests passing (unchanged — no source touched), 13
 skipped (same gated census as SELF-549).
 
 Backlog item: SELF-550
+
+**SELF-551 (2026-09-21 overnight fire) — read `packages/web/lib/api-error.ts`
+end to end and found `demoMapsMissing`'s own JSDoc had drifted onto the
+wrong function.** `namedFaults`' own header states the rule this shelf
+depends on: "An entry's TEXT is a literal in this file" and each doc block
+exists to justify why that entry's sentence is safe to print verbatim. The
+original commit (1770fca) placed `demoMapsMissing`'s doc block (the
+"OPENKB_DEMO is on and the committed maps are not where they should be…"
+comment) directly above the `demoMapsMissing` function, as every other
+entry's doc block sits above its own function. A later commit (fda04249,
+same day, 13:22 vs. 10:11) inserted the new `runCostCeiling` entry — but
+inserted it BETWEEN `demoMapsMissing`'s doc block and the `demoMapsMissing`
+function itself, rather than after the whole entry. `git blame` confirms
+the split: lines 402-422 (the demo-maps doc block) still carry 1770fca's
+original timestamp, while `runCostCeiling`'s own doc block and function
+immediately below them carry fda04249's. The result: `runCostCeiling`
+read as if undocumented at a glance (its own doc block, added later by
+459cd8e for `runDeadline`, sits between the two), and `demoMapsMissing` —
+the function actually being described — had no doc comment directly above
+it at all, an easy trap for the next fire that reads this file top to
+bottom and reasonably assumes the header the compiler happens to sit under
+belongs to it.
+
+No behavior changed — this is prose only, same class as SELF-518's
+ThemeToggle.tsx fix. Fixed by moving the fifteen-line block to sit
+directly above `demoMapsMissing` again, after `runDeadline`'s entry,
+restoring the one-doc-block-per-entry shape every other item in the shelf
+already has. No test change: `api-error.test.ts`'s "the whole shelf" test
+asserts the object's exact keys, not comment placement, and nothing here
+touches a key.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both green: 3330 tests passing (unchanged — comment-only), 13
+skipped (same gated census as SELF-550).
+
+Backlog item: SELF-551

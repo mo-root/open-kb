@@ -400,27 +400,6 @@ export const namedFaults = {
   },
 
   /**
-   * OPENKB_DEMO is on and the committed maps are not where they should be —
-   * thrown by `demoMapsDir` in lib/runs.ts once its walk has come up empty.
-   *
-   * WHY IT IS ON THE SHELF and not a ref. The test in the header of this
-   * object is whether the operator has something to change, and here they have
-   * two things: the directory did not ship with the build, or the working
-   * directory is somewhere the walk cannot see it — and both are answered by
-   * one environment variable. A ref would send them to a log line that says
-   * the same thing to a smaller audience.
-   *
-   * WHY IT IS NOT SILENCE, which is the alternative it was chosen against. A
-   * demo deployment that cannot find its maps renders an empty gallery under
-   * "Nothing mapped yet.", and that is precisely the sentence 81bd308 spent a
-   * commit deleting: a reader told nothing was built goes and builds one, which
-   * on this deployment is the one thing demo mode exists to prevent them doing.
-   *
-   * Both holes are this app's own: `cwd` is a path this module resolved, and
-   * `expected` is a constant lib/runs.ts spells out. Nothing from a caught
-   * error, a provider or a URL crosses over.
-   */
-  /**
    * A run reached the most one map may cost here and was stopped at it —
    * thrown by `withSpendCap` in app/api/map/route.ts, from the watchdog that
    * reads the span stream's own running total.
@@ -484,6 +463,27 @@ export const namedFaults = {
     )
   },
 
+  /**
+   * OPENKB_DEMO is on and the committed maps are not where they should be —
+   * thrown by `demoMapsDir` in lib/runs.ts once its walk has come up empty.
+   *
+   * WHY IT IS ON THE SHELF and not a ref. The test in the header of this
+   * object is whether the operator has something to change, and here they have
+   * two things: the directory did not ship with the build, or the working
+   * directory is somewhere the walk cannot see it — and both are answered by
+   * one environment variable. A ref would send them to a log line that says
+   * the same thing to a smaller audience.
+   *
+   * WHY IT IS NOT SILENCE, which is the alternative it was chosen against. A
+   * demo deployment that cannot find its maps renders an empty gallery under
+   * "Nothing mapped yet.", and that is precisely the sentence 81bd308 spent a
+   * commit deleting: a reader told nothing was built goes and builds one, which
+   * on this deployment is the one thing demo mode exists to prevent them doing.
+   *
+   * Both holes are this app's own: `cwd` is a path this module resolved, and
+   * `expected` is a constant lib/runs.ts spells out. Nothing from a caught
+   * error, a provider or a URL crosses over.
+   */
   demoMapsMissing(cwd: string, expected: string): Error {
     return new NamedFault(
       `OPENKB_DEMO is on, so this deployment serves its committed maps and starts no runs — ` +
