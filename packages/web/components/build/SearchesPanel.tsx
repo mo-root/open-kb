@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { FAMILY_TONE } from "@/lib/viewTypes";
+import { hostOf } from "@/components/kb/NoteView";
 
 /**
  * Every question the run asked, why it asked it, and what came back.
@@ -67,14 +68,6 @@ export function readSearched(v: unknown): SearchView | null {
     usd: Number.isFinite(Number(o.usd)) ? Number(o.usd) : 0,
     hits,
   };
-}
-
-function hostOf(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return url;
-  }
 }
 
 /** A search paired with the id that keys its own open/closed state, assigned

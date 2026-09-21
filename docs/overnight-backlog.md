@@ -2795,3 +2795,47 @@ survives, and it changed no code), 13 skipped (same gated census as
 SELF-562).
 
 Backlog item: SELF-563
+
+**SELF-564 (2026-09-21 overnight fire) — the same live-duplicate-function
+shape SELF-553 found for `isAbortError` and SELF-559 found in `scripts/`,
+this time in `packages/web/components`: `hostOf` still had two separate
+bodies after SELF-553 itself deferred exactly this pair, on the grounds that
+neither copy had independent test coverage to compare against.** That
+blocker no longer holds — `NoteView.test.ts` (added by a later fire) now
+gives `NoteView.tsx`'s `hostOf` full branch coverage (www-strip, port-strip,
+case, the non-parseable and empty-string fallbacks), while
+`SearchesPanel.tsx`'s copy is only exercised indirectly through rendering
+(`SearchesPanel.test.tsx`'s own comment records it at 0% direct branch
+coverage in a prior `--coverage` run). Confirmed both bodies are still
+byte-for-byte identical (`new URL(url).hostname.replace(/^www\./, "")`,
+catch returns the raw input) — `NoteView.tsx:47`'s own comment already notes
+`SearchesPanel.tsx`'s sibling was the reference `hostOf` was resynced
+against — so this is the exact SELF-553/559 risk: a widened check (a port
+strip, a lowercase) landing in one copy and not the other would silently
+leave the other caller's rendering wrong.
+
+Unlike SELF-559's `scripts/` pair, `SearchesPanel.tsx` (`components/build/`)
+had no existing import relationship with `NoteView.tsx` (`components/kb/`)
+to lean on. Checked `packages/web/lib` for a shared URL-utility home first
+(the natural non-invasive fix) — none exists; the closest, `lib/anchor.ts`'s
+`normalizeDomain`, is a security validator with its own SSRF rationale, not
+a general-purpose host stripper (SELF-553 already confirmed the two must
+stay separate). Rather than open a new shared file for a five-line
+predicate — the same call SELF-553/559 made — exported `hostOf` from
+`NoteView.tsx` (already public; `NoteView.test.ts` already imports it the
+same way) and had `SearchesPanel.tsx` import it
+(`import { hostOf } from "@/components/kb/NoteView"`), removing its own
+copy. Checked for a cycle first: `NoteView.tsx` imports only `react`,
+`@open-kb/core`, `@/lib/viewTypes`, `@/components/SiteIcon` and
+`@/components/ui` — nothing under `components/build` — so the new edge is
+one-directional.
+
+No behaviour change: both bodies were already identical, so this is pure
+dedup, and `SearchesPanel.tsx`'s renders now run under `NoteView.test.ts`'s
+coverage of the same function instead of an untested copy.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3339 tests passing (unchanged — same function, same
+behaviour, one fewer copy), 13 skipped (same gated census as SELF-563).
+
+Backlog item: SELF-564
