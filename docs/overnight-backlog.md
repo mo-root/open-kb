@@ -2887,3 +2887,74 @@ test` both exit 0: 3339 tests passing (unchanged — same function, same
 behaviour, one fewer copy), 13 skipped (same gated census as SELF-564).
 
 Backlog item: SELF-565
+
+**SELF-566 (2026-09-21 overnight fire) — took SELF-509's own advice a second
+time: a fresh end-to-end read of files this file's own prose had never named,
+rather than another instrumented sweep. Found nothing to fix.**
+
+SELF-561/562/563 already showed a basename-grep against this file is
+unreliable (a fire can cover a file under a different description and miss a
+literal filename match), so this fire cross-checked candidates two ways:
+grepped every non-test `.ts`/`.tsx` under `packages/*/src` and
+`packages/web/{app,lib,components}` for a zero-or-one-hit basename here,
+then re-checked each survivor against its own exported function/const names
+(`useUrlView`, `GraphSettingsPanel`, `KindChip`, `judgeExportTarget`,
+`arrivalRow`, …) — a name match confirms a prior fire truly never engaged
+the file; a miss on the name but a hit on some other description (as
+`corroboration-arrival.ts` turned out to have, via `tests/
+corroboration-arrival.test.ts`) rules it back out without a wasted read.
+
+Read end to end, all clean:
+
+- `packages/web/lib/useUrlView.ts` + its one caller, `KbBrowser.tsx`. Traced
+  the mount-sync effect, the popstate handler and `go()`'s ref-outside-the-
+  updater trick (the file's own comment: React Strict Mode double-invokes a
+  state updater, which would double-push history) against every path `view.
+  note`/`view.tab` can take — including the case where the server passes no
+  `initialNote` and the client's mount effect reads `null` off a bare URL, a
+  potential resync mismatch that turns out not to fire because `KbBrowser`'s
+  `selected` is recomputed through `resolveNote(view.note, notes,
+  defaultNote)` every render rather than trusting `view.note` to already
+  carry the resolved default. `useUrlView.test.ts` already covers `readUrl`/
+  `writeUrl` directly; the hook itself has no jsdom harness per this file's
+  own B4, same limitation `TabBar.test.tsx` documents.
+- `packages/web/components/kb/GraphSettings.tsx` + `lib/graph/settings.ts`.
+  Checked every numeric field in all three `PRESETS` entries (quiet/airy/
+  detailed) against its own slider's `RANGES` bound by hand — the exact
+  drift class this file's own comment warns a test should catch — all in
+  bounds; `GraphSettings.test.ts` already asserts this same thing.
+  `loadSettings()`'s per-field validation (`clampNum`, the `?? default` vs
+  `=== true` split between opt-out and opt-in booleans) matches its own
+  comment in every case.
+- `packages/web/components/ui.tsx` and `packages/web/components/HeaderNav.tsx`
+  — the shared chip vocabulary and the route nav. `KIND_TONES`'s own comment
+  already documents its one known gap (`unknown` sharing `publisher`'s tone,
+  same shape as SELF-105/106); `ui.test.tsx` pins it. Nothing else to find.
+- `packages/core/src/testing/fake-provider.ts` — `FakeSearch`/`FakeFetch`.
+  Confirmed `search()`'s pre-dedupe-recording / post-dedupe-answering split
+  matches the billing contract its comment describes, and `FakeFetch`'s
+  `unlocked` row fallback (`row.unlocked ?? row`) correctly keeps every
+  existing single-row table answering both modes identically.
+- `scripts/corroboration-arrival.ts` and `scripts/export-target.ts` — both
+  looked like genuine misses by the basename-grep pass (1 mention apiece,
+  both only in passing lists) but both already carry dedicated, thorough
+  test files (`tests/corroboration-arrival.test.ts`, 7 cases;
+  `tests/export-target.test.ts`, 23 cases covering the file-vs-directory
+  confusion, foreign-contents-one-level-down and marker-forgery incidents
+  its own header narrates) — read-and-already-covered, not read-never.
+- `prompts/README.md` — verified against the files it describes rather than
+  taken on faith: the doctrine-file ownership table matches
+  `prompts/doctrine/*.md` on disk exactly; `agents/investigator.md`'s
+  `includes:` frontmatter matches the table's own example verbatim; the "eight
+  commercial and three channel" relation count matches both
+  `prompts/doctrine/02-relations.md`'s own headers (counted by hand) and
+  `packages/core/src/judge.ts`'s `JUDGED_RELATIONS` (13 entries: the same 11
+  plus the `unknown`/`none` placeholders the doc does not claim to cover).
+
+No code change — every candidate this fire's two-pass filter surfaced was
+either already correct or already tested for the exact drift this class of
+sweep looks for. `pnpm install` first (fresh clone, no `node_modules`).
+`pnpm check && pnpm test` both exit 0: 3339 tests passing, 13 skipped (same
+gated census as SELF-565; unchanged — a read-only fire).
+
+Backlog item: SELF-566 - BLOCKED
