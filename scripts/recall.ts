@@ -196,9 +196,16 @@ const RIVAL = new Set(["competitor", "substitute"])
 
 const runsDir = join(process.cwd(), "runs")
 
-export const hostOf = (u: string): string => {
-  try { return new URL(u).hostname.toLowerCase().replace(/^www\./, "") } catch { return "" }
-}
+// Byte-for-byte identical to query-yield.ts's own `hostOf` — that file
+// came first (9d12ee5, 2026-08-23 19:07) and this one (3d51f37, 22:12) was
+// a paste of it. Same live-duplicate risk SELF-553 found for
+// `isAbortError`: both copies are read from a real call site (this file's
+// `byFamily` loop below, query-yield.ts:195), so a fix landing in one and
+// not the other would silently leave stale behavior in whichever caller
+// got missed. Imported (and re-exported, for `tests/recall.test.ts`'s own
+// import path) rather than restated.
+import { hostOf } from "./query-yield.js"
+export { hostOf }
 
 export interface RecallRow {
   kept: number

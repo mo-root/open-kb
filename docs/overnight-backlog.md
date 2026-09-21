@@ -2509,3 +2509,59 @@ No code change either file — both already correct. `pnpm install` first
 census as SELF-557).
 
 Backlog item: SELF-558 - BLOCKED
+
+**SELF-559 (2026-09-21 overnight fire) — the same live-duplicate-function
+shape SELF-553 found for `isAbortError`, this time in `scripts/`, which that
+fire's grep never covered (it scanned `packages/*/src` and `scripts` for
+top-level `function`/`const … = (` declarations, but `query-yield.ts` and
+`recall.ts` both define `hostOf` as `export const hostOf = (u: string) =>
+{...}` — same pattern, so it should have shown; rechecked and it does turn up
+both, meaning SELF-553 tallied the name but the entry never mentions it, an
+oversight rather than a considered pass, this fire's find rather than a
+re-litigation of that one).** `scripts/query-yield.ts:164-166` and
+`scripts/recall.ts:199-201` carried byte-for-byte identical bodies:
+```
+export const hostOf = (u: string): string => {
+  try { return new URL(u).hostname.toLowerCase().replace(/^www\./, "") } catch { return "" }
+}
+```
+`git log --diff-filter=A -- scripts/query-yield.ts scripts/recall.ts` dates
+`query-yield.ts` first (9d12ee5, 2026-08-23 19:07) and `recall.ts` second
+(3d51f37, 22:12) — `recall.ts`'s own header already cites `query-yield.ts` by
+name for a different reason ("Checked against the page-loss confound that
+skews the yield tables in query-yield.ts"), so the copy was almost certainly
+a paste while writing the second file against the first as a model. Both
+copies are live: `query-yield.ts:195`'s `tallyQueryYield` and
+`recall.ts:311`'s `byFamily` block each call their own `hostOf` to dedupe a
+query's hit URLs down to hosts before checking them against a market/rival
+set — exactly the "read from a real call site" shape SELF-553 named as the
+risk worth fixing (a widened check, e.g. stripping a port the way SELF-556
+fixed for `NoteView.tsx`'s `hostOf`, landing in one file and not the other
+would silently leave the other's host-keyed sets under- or over-counting).
+
+Kept `query-yield.ts`'s copy as the owner (it is chronologically first and
+already the file `recall.ts`'s own comments treat as the source of the
+yield/page-loss methodology) and had `recall.ts` import it
+(`import { hostOf } from "./query-yield.js"`) plus re-export it
+(`export { hostOf }`) so `tests/recall.test.ts`'s existing
+`import { hostOf, recallForAnchor } from "../scripts/recall.js"` needed no
+change. Did not add a new shared `scripts/` util file for a one-line
+predicate, matching SELF-553's own reasoning for preferring an existing
+relationship over a new file, and did not touch `recall.ts`'s unrelated
+web/CLI script naming — `scripts/recall.ts` and the pre-existing
+`fix/linking-recall` branch (checked with `git branch -a`; unrelated, no
+files in common) are coincidental namesakes.
+
+Both existing test files needed no edits: `tests/query-yield.test.ts`
+still tests the original definition directly, `tests/recall.test.ts` now
+tests the re-export — both assert the same normalize-and-lowercase-and-
+strip-www behavior they did before, so the duplicate test coverage was left
+in place rather than deleted, matching SELF-553's precedent of adding
+targeted coverage for a newly-shared predicate rather than removing a
+caller's own view of it.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3339 tests passing (unchanged — no behavior change, pure
+dedup), 13 skipped (same gated census as SELF-558).
+
+Backlog item: SELF-559
