@@ -2457,3 +2457,55 @@ than leaving it silent. `pnpm install` first (fresh clone, no `node_modules`).
 (unchanged — same gated census as SELF-556; this touches only prose).
 
 Backlog item: SELF-557
+
+**SELF-558 (2026-09-21 overnight fire) — full adversarial reads of
+`scripts/batch.ts` (636 lines) and `scripts/bench.ts` (651 lines), the two
+largest files in `scripts/*.ts` with no prior dedicated full-read entry;
+found nothing to fix.** Both files carry real prior work — `git log
+a7bbc57..HEAD --oneline -- scripts/batch.ts` and `-- scripts/bench.ts` each
+show a handful of commits — but every one is a targeted coverage-driven test
+("`batch.ts` had zero test coverage anywhere", "argv parsing, dedup and
+per-attempt outcome had zero direct test coverage") or a single traced fix
+(bench's `$undefined`/`$Infinity`/`RangeError` guards, batch's own
+run-cost-figure duplication), never a synthesized read of either file as a
+whole the way SELF-516/519/525/543/547 gave `orchestrator.ts`,
+`export-kb.ts` (twice) and `supabase.ts`/`swarm.ts` — the same gap SELF-547
+named and closed for `swarm.ts` itself, one file over.
+
+`batch.ts`: read all 637 lines against its own header's three failure modes
+(a run that hangs, a run that dies, the batch itself dying) and the two
+pulled-out pure functions' tests (`readFlag`/`computeOutcome`,
+`batch.test.ts`). Traced `computeOutcome`'s three-way split (capped-with-a-
+map, capped-with-a-stopped-file, not-capped) against `EXIT.capped` and
+confirmed the two file-prefix scans (`mine`/`stopFile`, both keyed off
+`anchor.replace(/\W+/g, "-")`) cannot collide between concurrent workers for
+any two distinct real domains — `\W+` folds punctuation, not letters, so two
+different registrable domains never fold to the same prefix, and the only
+way to force a collision is to hand the list two anchors that are already
+identical after that fold, which is a malformed list, not a runtime race.
+Checked the retry loop's off-by-one against the header's own claim ("retried
+once by default"): `RETRIES=1` (the default) runs `attempt` from 2 while
+`attempt <= RETRIES + 1` (`2 <= 2`), so exactly one retry; `--retries 0`
+makes `2 <= 1` false immediately, matching the CLI's own worked example.
+Confirmed the child-process group-kill comment's claim against `EXIT.capped`
+and `spawn`'s `detached: true` — both do what the comment says.
+
+`bench.ts`: read all 652 lines. `deriveRun`'s CLI-vs-web `source` attribution
+(`file.startsWith("swarm-")`/`"sweep-"` else `"web"`) was the one lead worth
+tracing rather than trusting: confirmed against `packages/web/lib/runs.ts`
+(`FILE_PREFIX = "run-"`, `CLI_PREFIX = "sweep-"`, `SWARM_PREFIX = "swarm-"`)
+that a web-triggered run is always written `run-<id>.json`, never
+`sweep-`/`swarm-`-prefixed, so the `named ? "cli" : "web"` split cannot
+misattribute a web run as CLI. Every arithmetic guard already on record here
+(`Math.min(...[])` → `Infinity`, `?.toFixed()` → the literal string
+`"undefined"`, division by a zero `onMap`/`hosts`) has a corresponding `?? 
+null`/`!== null` check at its call site — checked each of the nine table
+columns and all six generated footnotes by hand, not just the three the
+prior fixes named.
+
+No code change either file — both already correct. `pnpm install` first
+(fresh clone, no `node_modules`). `pnpm check && pnpm test` both exit 0:
+3339 tests passing (unchanged — a read-only fire), 13 skipped (same gated
+census as SELF-557).
+
+Backlog item: SELF-558 - BLOCKED
