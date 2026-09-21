@@ -200,6 +200,18 @@ hosted web app, or the repo itself would actually notice.
   re-indexed every surviving row on the same render; a row that never left
   the screen could still get a new id, silently collapsing its open detail
   panel with no click from the reader.
+- `StatTile`'s compact-number formatter picked its K/M suffix from the raw
+  value, then rounded the formatted number with `toFixed(1)` — so a value
+  from 999,950 to 999,999 (a real sweep's total token count grows through
+  exactly this range) printed as `"1000.0K"` instead of rolling over to
+  `"1.0M"`, in both directions of sign.
+- The `/runs` page's KPI grid tied only its `sm:` column count to the tile
+  count, leaving the base (mobile) breakpoint fixed at two columns. The
+  common no-failures case (three tiles) laid out 2-then-1 below `sm:`,
+  leaving the empty fourth cell painted in the container's own background
+  — reading as a tile whose number failed to load, the exact defect the
+  grid's own layout comment already reasoned about preventing, just missed
+  on that breakpoint.
 
 ### Repo and docs
 
