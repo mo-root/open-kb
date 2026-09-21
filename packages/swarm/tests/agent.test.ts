@@ -25,7 +25,6 @@ import {
   INVESTIGATOR_TURN_CAP,
   TIER_DEADLINE_MS,
   DIGEST_TOKEN_CAP,
-  type LeadDeps,
   type InvestigatorDeps,
   type HarvestClassify,
   type SearchTrace,

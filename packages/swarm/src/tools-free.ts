@@ -4,7 +4,6 @@ import {
   extractText,
   isHtml,
   outboundHosts,
-  registrableHost,
   type Evidence,
   type Ledger,
   type UnreadableReason,

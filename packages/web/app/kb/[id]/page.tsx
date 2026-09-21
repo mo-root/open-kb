@@ -229,7 +229,6 @@ export default async function KbPage({
       brand={view.brand}
       notes={view.notes}
       counts={view.counts}
-      unplaced={summary.unplaced}
       noise={summary.noise}
       catalog={view.catalog}
       markets={view.markets}

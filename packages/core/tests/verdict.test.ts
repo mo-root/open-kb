@@ -3,10 +3,6 @@ import { outboundHosts, admit } from "../src/verdict.js"
 
 const CTX = { anchor: "anchor.com", aggregatorThreshold: 12 }
 
-function aggregatorHtml(n: number): string {
-  return Array.from({ length: n }, (_, i) => `<a href="https://vendor${i}.com/x">v${i}</a>`).join("\n")
-}
-
 describe("outboundHosts", () => {
   it("counts distinct external registrable hosts", () => {
     const html = `<a href="https://a.com/1"><a href="https://docs.a.com/2"><a href="https://b.io/">

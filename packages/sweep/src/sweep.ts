@@ -55,7 +55,6 @@ import {
   type PageFacts,
   type RivalLead,
   type SearchPort,
-  type SearchResult,
   type SpanStream,
   type FamilyQuery,
   type QueryFamily,

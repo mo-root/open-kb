@@ -304,6 +304,11 @@ describe("core purity", () => {
       )
       const { status, output } = runOverProbe()
       expect(status).toBe(0)
+      // Proves the probe was READ, not merely named — same vacuity guard every
+      // other "does not false-positive" case in this file carries (222, 283).
+      // Flagged by `noUnusedLocals` (SELF-549): this was the one case that
+      // destructured `output` and never asserted on it.
+      expect(output).toContain(`plus 1 under ${PROBE_DIR}`)
     })
   })
 })

@@ -209,11 +209,6 @@ interface D3Force {
 const PANE_H = "h-[min(78dvh,900px)] min-h-[min(70dvh,520px)]";
 const FALLBACK_H = 520; // only if clientHeight reads 0 mid-transition
 const STAR_EDGE_FRAC = 0.4; // banner threshold: one node carrying > this share of edges
-/* Screen radius a node must reach before it may claim a label. This IS the
-   zoom reveal: `r * scale` grows as the reader zooms in, so a lobe that was
-   anonymous dots at the overview names itself once they zoom into it. */
-const LABEL_MIN_SCREEN_R = 9;
-
 /* Ceiling on labels per frame. A deep zoom into a dense lobe can qualify
    hundreds; past this many the screen is not more informative, only slower. */
 const MAX_LABELS = 60;
@@ -860,16 +855,17 @@ export function GraphCanvas({
       (n) => showUnplaced || n.relation !== "none",
     );
     const nodeCount = Math.max(1, list.length);
-    const rng = mulberry32(hashStr(slug) ^ (nodeCount + resetSeed * 0x9e3779b1));
     const nodes: FNode[] = list.map((n) => {
       const type = nodeTypeOf(n.group);
       const deg = meta.degById.get(n.id) ?? 0;
       const sizeMetric = settings.sizeBy === "placement" ? n.relevance : n.prominence;
       const rel = Math.max(0, sizeMetric || 0);
       const isHub = n.id === meta.hubId;
-      // Seeded from the id, not from `rng()`: the old seed advanced per node, so
-      // the opening shape depended on iteration order and a reset produced a
-      // different map. Same graph, same opening, every time.
+      // Seeded from the id (seedPosition's own hashUnit), not from a slug/
+      // resetSeed-keyed rng: the old seed advanced per node, so the opening
+      // shape depended on iteration order and a reset produced a different
+      // map. Same graph, same opening, every time — resetSeed's only job
+      // (below) is to skip the remembered layout, not to reshuffle this.
       const seed = seedPosition({ id: n.id, deg, r: 0, isHub }, nodeCount, meta.maxDeg);
       return {
         id: n.id,

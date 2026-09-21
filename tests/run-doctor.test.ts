@@ -38,7 +38,7 @@ describe("run-doctor over the runs on disk", () => {
     let withGaps = 0
     for (const f of files) {
       const j = JSON.parse(readFileSync(join(runsDir, f), "utf8"))
-      const notes = diagnose(j.report ?? {}, j.stats ?? {})
+      const notes = diagnose(j.report ?? {})
       expect(notes.length, `${f} produced no findings at all`).toBeGreaterThan(0)
       for (const n of notes) {
         expect(["gap", "watch", "ok", "unknown"]).toContain(n.level)
@@ -56,7 +56,7 @@ describe("run-doctor over the runs on disk", () => {
     // The oldest runs carry none of this week's fields. Every one of those
     // has to come back `unknown`; a `gap` would be inventing a defect and an
     // `ok` would be inventing a measurement.
-    const notes = diagnose({}, {})
+    const notes = diagnose({})
     expect(notes.length).toBeGreaterThan(4)
     expect(notes.every((n) => n.level === "unknown")).toBe(true)
     for (const n of notes) expect(n.detail).toContain("not recorded")
@@ -65,8 +65,8 @@ describe("run-doctor over the runs on disk", () => {
   it("separates a stage that ran and found nothing from one that never ran", () => {
     // The distinction the whole script is built on, and the one the listicle
     // guard added to the engine: identical zeros, opposite meanings.
-    const looked = diagnose({ listicleHarvest: { starved: false, rowsScanned: 0, vendorsFound: 0, queriesFired: 0 } }, {})
-    const starved = diagnose({ listicleHarvest: { starved: true, rowsScanned: 0, vendorsFound: 0, queriesFired: 0 } }, {})
+    const looked = diagnose({ listicleHarvest: { starved: false, rowsScanned: 0, vendorsFound: 0, queriesFired: 0 } })
+    const starved = diagnose({ listicleHarvest: { starved: true, rowsScanned: 0, vendorsFound: 0, queriesFired: 0 } })
 
     const lookedNote = looked.find((n) => n.what === "listicle harvest")!
     const starvedNote = starved.find((n) => n.what === "listicle harvest")!
@@ -79,7 +79,7 @@ describe("run-doctor over the runs on disk", () => {
     // `sl.asked === 0` (every host placed on the first pass) used to fall
     // through every branch — not `ok`, not `unknown`, no note printed at
     // all, unlike every other zero-but-recorded case in this file.
-    const notes = diagnose({ secondLook: { asked: 0, rescued: 0, failed: 0 } }, {})
+    const notes = diagnose({ secondLook: { asked: 0, rescued: 0, failed: 0 } })
     const note = notes.find((n) => n.what === "second look")
     expect(note).toBeDefined()
     expect(note!.level).toBe("ok")
@@ -97,14 +97,14 @@ describe("run-doctor over the runs on disk", () => {
 
     // 1. Above the norm (35% get no page, over 28 runs) and past the 0.5
     // threshold — watch.
-    const over = diagnose({ secondLook: { asked: 10, rescued: 3, failed: 6 } }, {}).find(
+    const over = diagnose({ secondLook: { asked: 10, rescued: 3, failed: 6 } }).find(
       (n) => n.what === "second look",
     )!
     expect(over.level).toBe("watch")
     expect(over.detail).toBe("10 asked, 3 rescued, 6 got no page (60%)")
 
     // 2. Comfortably under the threshold — ok.
-    const under = diagnose({ secondLook: { asked: 10, rescued: 6, failed: 3 } }, {}).find(
+    const under = diagnose({ secondLook: { asked: 10, rescued: 6, failed: 3 } }).find(
       (n) => n.what === "second look",
     )!
     expect(under.level).toBe("ok")
@@ -113,7 +113,7 @@ describe("run-doctor over the runs on disk", () => {
     // 3. Exactly at the boundary — the check is `failRate > 0.5`, so a tie
     // must read `ok`, not `watch`. Pins the boundary rather than a value
     // comfortably past it.
-    const boundary = diagnose({ secondLook: { asked: 10, rescued: 5, failed: 5 } }, {}).find(
+    const boundary = diagnose({ secondLook: { asked: 10, rescued: 5, failed: 5 } }).find(
       (n) => n.what === "second look",
     )!
     expect(boundary.level).toBe("ok")
@@ -127,7 +127,7 @@ describe("run-doctor over the runs on disk", () => {
     // uses that matter, the same "absent must not print as NaN%" trap this
     // file's triage-skip branch hit once already (see its comment ~line 132).
     // Removing either one from the detail template fails this assertion.
-    const noFailedField = diagnose({ secondLook: { asked: 10, rescued: 8 } }, {}).find(
+    const noFailedField = diagnose({ secondLook: { asked: 10, rescued: 8 } }).find(
       (n) => n.what === "second look",
     )!
     expect(noFailedField.level).toBe("ok")
@@ -140,7 +140,7 @@ describe("run-doctor over the runs on disk", () => {
     // "(NaN%)" in the detail — the same zero-that-means-two-things trap the
     // second-look fix above exists to catch, just visible garbage instead
     // of a missing note.
-    const notes = diagnose({ triage: { hosts: 0, skipped: 0, kept: 0, calls: 0, failed: 0 } }, {})
+    const notes = diagnose({ triage: { hosts: 0, skipped: 0, kept: 0, calls: 0, failed: 0 } })
     const note = notes.find((n) => n.what === "triage skip")
     expect(note).toBeDefined()
     expect(note!.level).toBe("ok")
@@ -159,7 +159,7 @@ describe("run-doctor over the runs on disk", () => {
 
     // 1. Above the norm's own ceiling (13.3%) — watch, and the "failed open"
     // clause appended to the detail when t.failed is nonzero.
-    const over = diagnose({ triage: { hosts: 100, skipped: 20, calls: 4, failed: 2 } }, {}).find(
+    const over = diagnose({ triage: { hosts: 100, skipped: 20, calls: 4, failed: 2 } }).find(
       (n) => n.what === "triage skip",
     )!
     expect(over.level).toBe("watch")
@@ -167,7 +167,7 @@ describe("run-doctor over the runs on disk", () => {
 
     // 2. Comfortably inside the norm — ok, and no "failed open" clause when
     // t.failed is 0 (falsy, not just absent).
-    const under = diagnose({ triage: { hosts: 100, skipped: 10, calls: 4, failed: 0 } }, {}).find(
+    const under = diagnose({ triage: { hosts: 100, skipped: 10, calls: 4, failed: 0 } }).find(
       (n) => n.what === "triage skip",
     )!
     expect(under.level).toBe("ok")
@@ -177,7 +177,7 @@ describe("run-doctor over the runs on disk", () => {
     // threshold sits at 0.14 rather than the norm's 0.13 ceiling specifically
     // so a run defining that ceiling (13.3%) does not flag itself (see the
     // comment on this branch in run-doctor.ts). 14/100 must read `ok`.
-    const boundary = diagnose({ triage: { hosts: 100, skipped: 14, calls: 4, failed: 0 } }, {}).find(
+    const boundary = diagnose({ triage: { hosts: 100, skipped: 14, calls: 4, failed: 0 } }).find(
       (n) => n.what === "triage skip",
     )!
     expect(boundary.level).toBe("ok")
@@ -195,14 +195,14 @@ describe("run-doctor over the runs on disk", () => {
     // watch. The comment on this branch in run-doctor.ts explains the 0.16
     // vs. 0.156 gap the same way the triage-skip branch explains its own:
     // a run defining the ceiling must not flag itself.
-    const over = diagnose({ kernel: { modelJudged: 80, serpJudged: 20 } }, {}).find(
+    const over = diagnose({ kernel: { modelJudged: 80, serpJudged: 20 } }).find(
       (n) => n.what === "snippet-judged",
     )!
     expect(over.level).toBe("watch")
     expect(over.detail).toBe("20/100 hosts (20.0%) judged from a snippet, not a page")
 
     // 2. Comfortably under the threshold — ok.
-    const under = diagnose({ kernel: { modelJudged: 90, serpJudged: 10 } }, {}).find(
+    const under = diagnose({ kernel: { modelJudged: 90, serpJudged: 10 } }).find(
       (n) => n.what === "snippet-judged",
     )!
     expect(under.level).toBe("ok")
@@ -211,7 +211,7 @@ describe("run-doctor over the runs on disk", () => {
     // 3. Exactly at the boundary — the check is `share > 0.16`, so a tie
     // must read `ok`, not `watch`. Pins the boundary rather than a value
     // comfortably past it.
-    const boundary = diagnose({ kernel: { modelJudged: 84, serpJudged: 16 } }, {}).find(
+    const boundary = diagnose({ kernel: { modelJudged: 84, serpJudged: 16 } }).find(
       (n) => n.what === "snippet-judged",
     )!
     expect(boundary.level).toBe("ok")
@@ -219,7 +219,7 @@ describe("run-doctor over the runs on disk", () => {
 
     // 4. `unlocked` present appends its own clause — a distinct print branch
     // none of the three cases above exercise.
-    const unlocked = diagnose({ kernel: { modelJudged: 95, serpJudged: 5, unlocked: 3 } }, {}).find(
+    const unlocked = diagnose({ kernel: { modelJudged: 95, serpJudged: 5, unlocked: 3 } }).find(
       (n) => n.what === "snippet-judged",
     )!
     expect(unlocked.detail).toBe("5/100 hosts (5.0%) judged from a snippet, not a page, 3 recovered by the unlocker")
@@ -232,7 +232,7 @@ describe("run-doctor over the runs on disk", () => {
     // generic "calls an absent field unknown" test above, where `k` itself
     // is undefined). Removing `k.serpJudged == null` from the guard would
     // compute `0/50 = 0%` and print `ok` instead of `unknown` here.
-    const predates = diagnose({ kernel: { modelJudged: 50 } }, {}).find((n) => n.what === "snippet-judged")!
+    const predates = diagnose({ kernel: { modelJudged: 50 } }).find((n) => n.what === "snippet-judged")!
     expect(predates.level).toBe("unknown")
     expect(predates.detail).toBe("not recorded — run predates report.kernel.serpJudged")
   })
@@ -248,7 +248,7 @@ describe("run-doctor over the runs on disk", () => {
     // pooled value that would otherwise read comfortably `ok`. Pins that the
     // ternary checks probe count FIRST, not that a low pooled value just
     // happens to correlate with few probes in the real corpus.
-    const fewProbes = diagnose({ recall: { pooled: 0.5, probes: ["a", "b", "c"] } }, {}).find(
+    const fewProbes = diagnose({ recall: { pooled: 0.5, probes: ["a", "b", "c"] } }).find(
       (n) => n.what === "answer-key overlap",
     )!
     expect(fewProbes.level).toBe("unknown")
@@ -257,14 +257,14 @@ describe("run-doctor over the runs on disk", () => {
     )
 
     // 2. 5+ probes, pooled under the norm's own floor (8.9%) — watch.
-    const lowPooled = diagnose({ recall: { pooled: 0.05, probes: Array(10).fill("x") } }, {}).find(
+    const lowPooled = diagnose({ recall: { pooled: 0.05, probes: Array(10).fill("x") } }).find(
       (n) => n.what === "answer-key overlap",
     )!
     expect(lowPooled.level).toBe("watch")
     expect(lowPooled.detail).toBe("5.0% of hosts linked from 10 probe pages are on this map")
 
     // 3. 5+ probes, pooled comfortably over the floor — ok.
-    const highPooled = diagnose({ recall: { pooled: 0.2, probes: Array(10).fill("x") } }, {}).find(
+    const highPooled = diagnose({ recall: { pooled: 0.2, probes: Array(10).fill("x") } }).find(
       (n) => n.what === "answer-key overlap",
     )!
     expect(highPooled.level).toBe("ok")
@@ -273,14 +273,14 @@ describe("run-doctor over the runs on disk", () => {
     // 4. Exactly at the 0.089 boundary — the check is `rc.pooled < 0.089`, so
     // a tie must read `ok`, not `watch`. Pins the boundary rather than a
     // value comfortably past it.
-    const boundary = diagnose({ recall: { pooled: 0.089, probes: Array(10).fill("x") } }, {}).find(
+    const boundary = diagnose({ recall: { pooled: 0.089, probes: Array(10).fill("x") } }).find(
       (n) => n.what === "answer-key overlap",
     )!
     expect(boundary.level).toBe("ok")
 
     // 5. Exactly 5 probes — the check is `probes < 5`, so 5 itself must NOT
     // trip the too-few-probes gate.
-    const fiveProbes = diagnose({ recall: { pooled: 0.2, probes: Array(5).fill("x") } }, {}).find(
+    const fiveProbes = diagnose({ recall: { pooled: 0.2, probes: Array(5).fill("x") } }).find(
       (n) => n.what === "answer-key overlap",
     )!
     expect(fiveProbes.level).toBe("ok")
@@ -289,7 +289,7 @@ describe("run-doctor over the runs on disk", () => {
     // 6. `probes` absent entirely (a run predating that array, or a pooled
     // figure computed with none) — `rc.probes?.length ?? 0` must default to
     // 0 rather than throw, and read as "too few" the same as an empty array.
-    const noProbesField = diagnose({ recall: { pooled: 0.5 } }, {}).find(
+    const noProbesField = diagnose({ recall: { pooled: 0.5 } }).find(
       (n) => n.what === "answer-key overlap",
     )!
     expect(noProbesField.level).toBe("unknown")
@@ -300,7 +300,7 @@ describe("run-doctor over the runs on disk", () => {
     // 7. Singular vs. plural in the detail string — `probes === 1 ? "" : "s"`.
     // A distinct print branch none of the cases above exercise (3, 10, 5, and
     // 0 probes all take the plural arm).
-    const oneProbe = diagnose({ recall: { pooled: 0.5, probes: ["a"] } }, {}).find(
+    const oneProbe = diagnose({ recall: { pooled: 0.5, probes: ["a"] } }).find(
       (n) => n.what === "answer-key overlap",
     )!
     expect(oneProbe.detail).toBe(
@@ -312,7 +312,7 @@ describe("run-doctor over the runs on disk", () => {
     // itself being absent (covered by the generic "calls an absent field
     // unknown" test above, where `r.recall` is undefined): here `rc` is
     // truthy and it is `rc.pooled == null` that actually gates it.
-    const noPooled = diagnose({ recall: { probes: ["a", "b"] } }, {}).find(
+    const noPooled = diagnose({ recall: { probes: ["a", "b"] } }).find(
       (n) => n.what === "answer-key overlap",
     )!
     expect(noPooled.level).toBe("unknown")
@@ -323,8 +323,8 @@ describe("run-doctor over the runs on disk", () => {
     // The rival family is dealt last, so under a ceiling "names found, no
     // queries" is the budget working. Uncapped, the same pair is a real gap.
     const rivals = { found: 5, urlsScanned: 899, queries: 0, reachedMap: 0 }
-    const capped = diagnose({ rivals, budget: { maxQueries: 43 } }, {}).find((n) => n.what === "rival harvest")!
-    const uncapped = diagnose({ rivals }, {}).find((n) => n.what === "rival harvest")!
+    const capped = diagnose({ rivals, budget: { maxQueries: 43 } }).find((n) => n.what === "rival harvest")!
+    const uncapped = diagnose({ rivals }).find((n) => n.what === "rival harvest")!
     expect(capped.level).toBe("watch")
     expect(uncapped.level).toBe("gap")
     expect(uncapped.detail).toContain("no ceiling explains it")
@@ -339,7 +339,7 @@ describe("run-doctor over the runs on disk", () => {
     // this file) showed that statement's hit count as 0 across the whole
     // suite, the one arm of the if/else-if/else chain the test above never
     // reaches because its fixture always sets `queries: 0`.
-    const found = diagnose({ rivals: { found: 5, urlsScanned: 900, queries: 3, reachedMap: 2 } }, {}).find(
+    const found = diagnose({ rivals: { found: 5, urlsScanned: 900, queries: 3, reachedMap: 2 } }).find(
       (n) => n.what === "rival harvest",
     )!
     expect(found.level).toBe("ok")
@@ -357,7 +357,6 @@ describe("run-doctor over the runs on disk", () => {
     // 1. Every planned product got a search — ok, no name list appended.
     const full = diagnose(
       { wire: { products: 3, productsSearched: 3, productsUnsearched: [], termsFired: 5, termsWritten: 10 } },
-      {},
     )
     const fullNote = full.find((n) => n.what === "products searched")!
     expect(fullNote.level).toBe("ok")
@@ -368,7 +367,6 @@ describe("run-doctor over the runs on disk", () => {
     // the whole finding"), so it must appear in the detail, not just tally.
     const missed = diagnose(
       { wire: { products: 3, productsSearched: 2, productsUnsearched: ["Widgets"], termsFired: 5, termsWritten: 10 } },
-      {},
     )
     const missedNote = missed.find((n) => n.what === "products searched")!
     expect(missedNote.level).toBe("gap")
@@ -377,14 +375,14 @@ describe("run-doctor over the runs on disk", () => {
     // 3. Strip terms fired below the 30% threshold — watch, at the norm this
     // file cites (32%-65% across the 8 runs carrying wire, so 20% is a real
     // gap the norm itself would flag).
-    const starved = diagnose({ wire: { products: 1, productsSearched: 1, termsFired: 2, termsWritten: 10 } }, {})
+    const starved = diagnose({ wire: { products: 1, productsSearched: 1, termsFired: 2, termsWritten: 10 } })
     const starvedNote = starved.find((n) => n.what === "strip terms fired")!
     expect(starvedNote.level).toBe("watch")
     expect(starvedNote.detail).toBe("2/10 (20%)")
 
     // 4. Exactly at the 30% boundary — the check is `< 0.3`, so 3/10 must NOT
     // trip watch. Pins the boundary, not just a value comfortably past it.
-    const boundary = diagnose({ wire: { products: 1, productsSearched: 1, termsFired: 3, termsWritten: 10 } }, {})
+    const boundary = diagnose({ wire: { products: 1, productsSearched: 1, termsFired: 3, termsWritten: 10 } })
     const boundaryNote = boundary.find((n) => n.what === "strip terms fired")!
     expect(boundaryNote.level).toBe("ok")
   })
@@ -400,7 +398,7 @@ describe("run-doctor over the runs on disk", () => {
     // have nothing here to catch it.
 
     // 1. Declined before it started — the clock ruled it out entirely.
-    const skipped = diagnose({ budget: { linkingSkipped: true } }, {}).find((n) => n.what === "linking")!
+    const skipped = diagnose({ budget: { linkingSkipped: true } }).find((n) => n.what === "linking")!
     expect(skipped.level).toBe("gap")
     expect(skipped.detail).toContain("no model-made edges")
 
@@ -409,7 +407,6 @@ describe("run-doctor over the runs on disk", () => {
     // also carry a number for the same run.
     const midFlight = diagnose(
       { budget: { linkingSkipped: false, unlinkedPairs: 7, truncatedPairs: 3 }, linking: { truncated: 3 } },
-      {},
     ).find((n) => n.what === "linking")!
     expect(midFlight.level).toBe("gap")
     expect(midFlight.detail).toBe("7 pairs started and cut off mid-flight")
@@ -417,7 +414,7 @@ describe("run-doctor over the runs on disk", () => {
     // 3. Neither declined nor cut off — PAIR_CAP simply qualified more pairs
     // than the paid pass was allowed to ask, a busy-market fact rather than a
     // clock or a failure, so it is only a `watch`.
-    const capBound = diagnose({ budget: { linkingSkipped: false, unlinkedPairs: 0 }, linking: { truncated: 51_919 } }, {}).find(
+    const capBound = diagnose({ budget: { linkingSkipped: false, unlinkedPairs: 0 }, linking: { truncated: 51_919 } }).find(
       (n) => n.what === "linking",
     )!
     expect(capBound.level).toBe("watch")
@@ -427,7 +424,7 @@ describe("run-doctor over the runs on disk", () => {
     // unlike every other check in this file. Confirms that is deliberate
     // (a chain of `if`/`else if` with no final `else`) and not a fall-through
     // nobody noticed, matching this section's problems-only shape.
-    const clean = diagnose({ budget: { linkingSkipped: false, unlinkedPairs: 0 }, linking: { truncated: 0 } }, {})
+    const clean = diagnose({ budget: { linkingSkipped: false, unlinkedPairs: 0 }, linking: { truncated: 0 } })
     expect(clean.find((n) => n.what === "linking")).toBeUndefined()
   })
 
@@ -442,19 +439,19 @@ describe("run-doctor over the runs on disk", () => {
 
     // 1. Under-predicted — the run took longer than the model expected, which
     // is the case that matters: a deadline-bound run would have been cut.
-    const under = diagnose({ clock: { predictedSeconds: 50, actualSeconds: 100 } }, {}).find((n) => n.what === "clock model")!
+    const under = diagnose({ clock: { predictedSeconds: 50, actualSeconds: 100 } }).find((n) => n.what === "clock model")!
     expect(under.level).toBe("watch")
     expect(under.detail).toBe("predicted 50s, actual 100s (0.50x) — UNDER-predicted, a deadline run would have been cut")
 
     // 2. Over-predicted — the norm case (median 1.44x per this file's own
     // citation), and the warning sentence must not leak into a clean note.
-    const over = diagnose({ clock: { predictedSeconds: 150, actualSeconds: 100 } }, {}).find((n) => n.what === "clock model")!
+    const over = diagnose({ clock: { predictedSeconds: 150, actualSeconds: 100 } }).find((n) => n.what === "clock model")!
     expect(over.level).toBe("ok")
     expect(over.detail).toBe("predicted 150s, actual 100s (1.50x)")
 
     // 3. Exactly 1x — the check is `ratio < 1`, so a tie must read `ok`, not
     // `watch`. Pins the boundary rather than a value comfortably past it.
-    const tie = diagnose({ clock: { predictedSeconds: 100, actualSeconds: 100 } }, {}).find((n) => n.what === "clock model")!
+    const tie = diagnose({ clock: { predictedSeconds: 100, actualSeconds: 100 } }).find((n) => n.what === "clock model")!
     expect(tie.level).toBe("ok")
   })
 })

@@ -58,7 +58,7 @@ export interface Note { level: "gap" | "watch" | "ok" | "unknown"; what: string;
 
 const pct = (n: number, d: number) => (d ? `${Math.round((100 * n) / d)}%` : "—")
 
-export function diagnose(r: Record<string, any>, stats: Record<string, any>): Note[] {
+export function diagnose(r: Record<string, any>): Note[] {
   const out: Note[] = []
   /**
    * Whether a ceiling was in force, because it changes what a zero MEANS.
@@ -264,7 +264,7 @@ export function diagnose(r: Record<string, any>, stats: Record<string, any>): No
 
 function load(file: string) {
   const j = JSON.parse(readFileSync(join(runsDir, file), "utf8"))
-  return { j, notes: diagnose(j.report ?? {}, j.stats ?? {}) }
+  return { j, notes: diagnose(j.report ?? {}) }
 }
 
 /**

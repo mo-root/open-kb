@@ -74,7 +74,6 @@ export function KbBrowser({
   brand: companyBrand,
   notes,
   counts,
-  unplaced,
   noise,
   catalog,
   markets,
@@ -106,8 +105,6 @@ export function KbBrowser({
   notes: NoteRef[];
   /** Entities per node type, tallied by the reader off the run. */
   counts: TypeCounts;
-  /** Entities on the map that the classifier would not place. */
-  unplaced: number;
   /** Hosts the run paid for and the classifier threw away. */
   noise: number;
   /** The pages the understand stage read to write the catalog. */

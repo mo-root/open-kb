@@ -2096,3 +2096,106 @@ passing (unchanged — a doc-only fix), 13 skipped (same gated census as
 SELF-547).
 
 Backlog item: SELF-548
+
+**SELF-549 (2026-09-21 overnight fire) — a genuinely new angle (`noUnusedLocals`/
+`noUnusedParameters`, never tried by this campaign's prior flag experiments)
+found real dead code across six source files, one dropped feature's leftover
+plumbing, one exported function carrying a parameter nothing ever read, and
+one test that destructured a value it forgot to assert on — then committed
+the flags permanently, unlike SELF-545's reverted `noUncheckedIndexedAccess`
+experiment, because this one paid for itself.** SELF-509's own coverage-gap
+sweep and SELF-544/545's dependency/flag audits are the closest priors; both
+found nothing fixable. `tsconfig.base.json`'s `strict`/`noUncheckedIndexedAccess`
+say nothing about a declaration nobody reads, and this repo has no ESLint
+config at all (`find . -iname '.eslintrc*' -o -iname 'eslint.config*'`,
+nothing outside `node_modules`) — so "declared, never read" was the one class
+of drift no existing gate could catch. Added `noUnusedLocals` and
+`noUnusedParameters` to `tsconfig.base.json` (engine) and, separately, to
+`packages/web/tsconfig.json` (web never inherits base — the same fact
+SELF-545 recorded), then ran `tsc -b`, all four `tsconfig.tests.json`
+projects, `tsconfig.root.json`, and the web package's own `tsc --noEmit`.
+
+16 hits, each read and traced by hand rather than deleted on the compiler's
+say-so alone:
+
+- `packages/sweep/src/sweep.ts:58` (`type SearchResult`) and
+  `packages/swarm/src/tools-free.ts:7` (`registrableHost`) — both dead since
+  `1770fca` (v0.2.0, before this branch existed), confirmed by
+  `git log -S` on each import line; both survive only inside a comment
+  (`SearchResult.redirects`, `registrableHost's own TLD-collapse`), never as
+  real usage. Removed both imports.
+- `packages/web/components/kb/GraphCanvas.tsx`'s `LABEL_MIN_SCREEN_R` (a
+  hardcoded 9, dead since the same `1770fca` base commit) and its `rng`
+  local (a slug/resetSeed-keyed `mulberry32`, instantiated and never called
+  — its own neighbouring comment already said "not from `rng()`" without
+  anyone asking why `rng` existed at all). Traced what actually drives label
+  reveal and reset behaviour before deleting either: `minScreenR:
+  settings.labelThreshold` (line ~1738) is the live threshold, and its own
+  "zoom reveal" explanation already lives at `lib/graph/labels.ts:64-68`, so
+  deleting the orphaned copy loses nothing; `seedPosition` (`lib/graph/
+  layout.ts`) seeds every node from `hashUnit(n.id)` alone, and `resetSeed`'s
+  only real job (`GraphCanvas.tsx` ~914: "a reset … never consults memory")
+  is skipping the remembered layout cache, not reseeding a shape — so `rng`
+  was never load-bearing. Corrected `GraphCanvas.test.ts`'s own SELF-102
+  comment, which had credited `hashStr`+`mulberry32` with "the layout's
+  determinism" at "line ~862" — the exact dead line — since v0.2.0; that
+  claim was never true, not something this fire's own edit broke.
+- `packages/web/components/kb/GraphSearch.tsx:5` (`type NodeType`) — dead
+  since `1770fca`, same treatment.
+- `packages/web/components/kb/KbBrowser.tsx`'s `unplaced` prop (destructured,
+  typed, never read in the component body) and its caller,
+  `app/kb/[id]/page.tsx:232`'s `unplaced={summary.unplaced}`. Not a bug: the
+  component's own header comment (~line 200, "THE UNPLACED BADGE IS GONE
+  FROM THE HEADER — owner's call") already documents that this exact number
+  was deliberately pulled from the header, with the same count still shown
+  by `KbOverview` (its own independent `/api/kb/<id>` fetch, not this prop)
+  and the canvas legend. `summaryOf`'s `unplaced` field itself is not dead —
+  `app/runs/[id]/page.tsx` reads it directly — only this one unused hop was.
+- `scripts/overnight.ts:17` (`writeFileSync`) — dead since `1770fca`; the
+  file only ever appends (`appendFileSync`, which creates the file), never
+  writes fresh.
+- `scripts/run-doctor.ts`'s `diagnose(r, stats)` — `stats` was never read
+  inside the function, and every one of `tests/run-doctor.test.ts`'s 36 call
+  sites already passed `{}` for it, which is what made the gap findable by
+  eye once the compiler pointed at it rather than a real behavioural
+  question. Removed the parameter rather than `_`-prefixing it: the two real
+  callers (`scripts/run-doctor.ts`'s own `load()`, and `scripts/sweep.ts:641`
+  — which this fire's own grep found still passing `out.stats`, a second
+  caller `run-doctor.test.ts`'s header comment names but this file's own
+  history had not touched) both dropped the dead argument, and 36 test call
+  sites lost their trailing `, {}`.
+- Five test-file-only hits, each traced before touching: `packages/core/
+  tests/verdict.test.ts`'s `aggregatorHtml` helper (built HTML, never called
+  — checked whether the aggregator-threshold integration it implies is
+  untested anywhere else first: `judge.ts:801` wires `outboundHosts()` into
+  `admit()` for real, and `judge.ts:946-951`'s own comment already proves
+  that exact call site structurally dead by a different route, so this was
+  leftover scaffolding, not a coverage gap); `packages/swarm/tests/
+  agent.test.ts`'s `type LeadDeps` and `from-sweep.test.ts`'s
+  `RECALL_GAP_NAMES` (both plain dead imports); `packages/sweep/tests/
+  rank.test.ts:971`'s `text` and three `packages/sweep/tests/
+  second-look.test.ts` `.map((h, i) => …)` callbacks — all unused mock
+  parameters, `_`-prefixed rather than deleted since the position (before
+  `i`) is load-bearing.
+- `tests/purity.test.ts:305` was the one real bug, not dead code: `const {
+  status, output } = runOverProbe()` destructured `output` and never
+  asserted on it, in the one "does not false-positive" test in the file that
+  skipped the vacuity guard every sibling case (lines 222, 283) carries —
+  `expect(output).toContain(\`plus 1 under ${PROBE_DIR}\`)`, "proves the
+  probe was READ, not merely named," per that file's own comment about
+  exactly this failure mode. Added the missing assertion instead of deleting
+  the binding.
+
+Committed the flags rather than reverting them (SELF-545's call for
+`noUncheckedIndexedAccess` on web doesn't apply here): that flag found zero
+fixable cases and would have cost ~90 defensive comments for no behavioural
+gain; this one found sixteen, twelve genuinely fixable with a net negative
+line count, and the repo has no other mechanism that would ever catch this
+class of drift again.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both green: 3330 tests passing (unchanged — every fix here removed
+dead code or added an assertion that was already true, never changed
+behaviour), 13 skipped (same gated census as SELF-548).
+
+Backlog item: SELF-549

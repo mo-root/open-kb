@@ -9,7 +9,6 @@ import {
   fromSweepArgv,
   GAP_CLUSTER_CAP,
   GAP_CLUSTER_SIZE,
-  RECALL_GAP_NAMES,
   runSwarm,
   sweepSeedMissions,
   validateSweepRun,

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { NodeGlyph, TYPE_GLYPH } from "@/components/icons";
-import { TYPE_CSS, type NodeType } from "@/lib/nodeTypes";
+import { TYPE_CSS } from "@/lib/nodeTypes";
 import { isTypingTarget } from "@/lib/typingGuard";
 
 /* Finding one node on a map of three hundred.

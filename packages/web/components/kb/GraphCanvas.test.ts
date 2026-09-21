@@ -36,9 +36,13 @@ import {
  * why the function does not escape `'` — the one character that only matters
  * inside a single-quoted attribute, which nothing here uses.
  *
- * hashStr + mulberry32 (line ~862) are the layout's determinism: same KB slug
- * and reset count must reseed to the same starting positions, or a reset
- * would silently become a fresh random layout instead of a repeatable one.
+ * hashStr + mulberry32 are seeded-PRNG primitives this file exports; the
+ * layout's actual determinism is `lib/graph/layout.ts`'s `seedPosition`,
+ * seeded from each node's own id, not from either of these (SELF-549 found
+ * their one call site, a slug/resetSeed-keyed `rng` nothing ever read, and
+ * removed it — see that commit for the full trace). Tested here anyway as
+ * the general-purpose pure functions they are: deterministic per seed,
+ * in-range, and distinguishing the inputs a hash must distinguish.
  * mixHex/parseHex/hexToRgba are the theme-aware colour blending used to
  * recede unfocused nodes/links into the paper/navy background without the
  * transparency bug `globalAlpha` would cause (documented at mixHex's own

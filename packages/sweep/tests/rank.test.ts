@@ -968,7 +968,7 @@ describe("judgeHosts blocked-page recovery", () => {
     // of the caveat path it is named for. The test below covers that one.
     const out = await judgeHosts([{ ...rich("dark.com"), seenIn: 1 }], {
       fetcher: fakeFetcher({}),
-      classify: async (_h, text) => ({
+      classify: async (_h, _text) => ({
         name: "Dark", kind: "directory",
         what: "a directory ranking hosted log search vendors for platform teams",
         relation: "lists", why: "enumerates the vendors in this market",

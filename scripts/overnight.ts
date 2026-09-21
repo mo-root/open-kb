@@ -14,7 +14,7 @@
  * every run and the loop stops while there is still headroom, because a run cut
  * off by a 402 mid-classification wastes everything it already bought.
  */
-import { writeFileSync, appendFileSync, existsSync, mkdirSync } from "node:fs"
+import { appendFileSync, existsSync, mkdirSync } from "node:fs"
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 

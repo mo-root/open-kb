@@ -638,10 +638,7 @@ console.log(`\nwrote ${path} (${searched.length} queries logged)`)
  * a run this binary just wrote is never missing its own fields.
  */
 if (out) {
-  const notes = diagnose(
-    out.report as unknown as Record<string, unknown>,
-    out.stats as unknown as Record<string, unknown>,
-  )
+  const notes = diagnose(out.report as unknown as Record<string, unknown>)
   const loud = notes.filter((n) => n.level === "gap" || n.level === "watch")
   if (loud.length) {
     console.log("")

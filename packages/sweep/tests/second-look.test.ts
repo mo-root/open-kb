@@ -305,7 +305,7 @@ describe("second look", () => {
       description: "Unrelated to log search or uptime alerts.",
     }))
     const fetchTable = Object.fromEntries(
-      extra.map((h, i) => [
+      extra.map((_h, i) => [
         `https://second-look-cap-filler-${i}.example/`,
         { httpStatus: 200, contentType: "text/html", body: fillerFrontPage(i) },
       ]),
@@ -358,11 +358,11 @@ describe("second look", () => {
       description: "Unrelated to log search or uptime alerts.",
     }))
     const fetchTable = Object.fromEntries([
-      ...extra.map((h, i) => [
+      ...extra.map((_h, i) => [
         `https://${host(i)}/`,
         { httpStatus: 200, contentType: "text/html", body: fillerFrontPage(i) },
       ]),
-      ...extra.map((h, i) => [
+      ...extra.map((_h, i) => [
         `https://${host(i)}/pricing`,
         { httpStatus: 403, body: "", unlocked: { httpStatus: 403, body: "" } },
       ]),
