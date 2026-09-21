@@ -2677,3 +2677,56 @@ test` both exit 0: 3339 tests passing, 13 skipped (same gated census as
 SELF-560; unchanged — the only edit this fire kept is to this file).
 
 Backlog item: SELF-561 - BLOCKED
+
+**SELF-562 (2026-09-21 overnight fire) — checked whether SELF-526's
+row-identity-across-filter bug recurs anywhere else in `packages/web`;
+it does not.** SELF-526 found that `SearchesPanel.tsx` built each row's `id`
+from its own index in the array AFTER `onlyEmpty` filtering, so toggling the
+filter could re-index a row that never left the list and silently collapse
+its open detail panel — a filter changing WHICH slot a still-visible row sits
+in, not a bounds error (the class `noUncheckedIndexedAccess`'s SELF-545 sweep
+already covers). That is a narrower, easy-to-miss shape: local state keyed by
+a position that is only stable when nothing upstream of it is ever filtered.
+
+Grepped `packages/web/{components,app}` for every file combining `useState`
+with `.filter(` — the same two ingredients `SearchesPanel.tsx` had — and got
+seven hits: `KbGallery.tsx`, `GraphCanvas.tsx`, `KbOverview.tsx`,
+`NoteView.tsx`, `CommandPalette.tsx`, `AgentPanel.tsx` and
+`SearchesPanel.tsx` itself (already fixed). `KbGallery.tsx` is the demo
+gallery, out of scope by this file's own header. Read the other four end to
+end for this one question — does any locally-held state identify a row by a
+position computed from a filtered array:
+
+- `AgentPanel.tsx` has the closest shape (`shown = only ? entries.filter(...)
+  : entries`, an agent-lane toggle) but each `Entry`'s `id` is a counter
+  assigned once in `buildEntries`, over the full unfiltered chunk list,
+  before `only` ever filters anything (`AgentPanel.tsx:74`, `:94`, `:102`,
+  `:110`); `key={e.id}` never changes when the lane filter does.
+  `shown[i-1]` (`:234`) reads a post-filter index too, but only to decide
+  whether to print a speaker name on a hand-off — nothing is stored against
+  it across renders, so there is nothing to desync.
+- `CommandPalette.tsx` holds `cursor`, a numeric position into
+  `results.flat` (the filtered/ranked list) — structurally the same
+  "position into a filtered array" shape — but it is reset to 0 by a
+  dedicated `useEffect(() => setCursor(0), [q])` on every keystroke, the
+  only thing that changes what is filtered (`:225`), and `runAt` resolves a
+  click or Enter against `results.flat[i]` fresh at call time rather than
+  against a remembered identity (`:227-235`). Nothing persists a row's
+  position past the render that filtered it.
+- `GraphCanvas.tsx`, `KbOverview.tsx` and `NoteView.tsx` carry no per-row
+  open/expanded state at all keyed by list position — their `useState` hooks
+  hold a domain value instead (`peekId`/`focusId`/`detail`, `note`/`error`/
+  `loading`), which cannot drift when a list gets re-filtered because it was
+  never a position to begin with.
+
+`SearchesPanel.tsx` was the one place the shape existed, and SELF-526
+already fixed it (`withRowIds`, assigning identity once over the full list
+before any filter runs). No code change this fire — every other candidate
+already keys its state the safe way, most by construction rather than by a
+deliberate fix.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3339 tests passing, 13 skipped (same gated census as
+SELF-561; unchanged — a read-only fire).
+
+Backlog item: SELF-562 - BLOCKED
