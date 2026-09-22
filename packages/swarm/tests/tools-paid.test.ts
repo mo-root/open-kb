@@ -1374,6 +1374,42 @@ describe("harvestTool: per-host settlement honesty", () => {
     expect(room.remainingUsd).toBeCloseTo(0.05 - 2 * 0.03, 6)
   })
 
+  it("the dry check still fires when the hosts that exhaust it are judged noise — landOne's early returns must not skip it", async () => {
+    // Same shape as the test above, but every host is judged noise: `noise`
+    // returns out of landOne BEFORE the old code's dry check (which lived
+    // only on the remembered-node tail past both the noise and relation:none
+    // early returns), even though the fetch and classify dollars for that
+    // host were already drawn by the wrappers before landOne ever ran. A
+    // harvest whose candidates are mostly off-topic residue is exactly the
+    // realistic case this let slip past the reservation.
+    const pages: Record<string, string> = {}
+    for (const h of ["h1.com", "h2.com", "h3.com", "h4.com"]) pages[`https://${h}/`] = vendorHtml
+    const ledger = new Ledger(5)
+    const held = ledger.reserve(0.05) // a claim two hosts exhaust
+    if (!held.ok) throw new Error("reserve failed")
+    const noiseClassify: HarvestClassify = async () => ({
+      out: { name: "N", kind: "noise", what: "", relation: "none", why: "", spans: [] },
+      usd: 0.02,
+    })
+    const { ctx } = harvestCtx({
+      fetch: fakeFetcher(pages, { usd: 0.01 }),
+      classify: noiseClassify,
+      concurrency: 1,
+      ledger,
+      claimId: held.claimId,
+    })
+    const r = await harvestTool(ctx, { hosts: ["h1.com", "h2.com", "h3.com", "h4.com"], why: "t" })
+
+    const noise = r.rows.filter((x) => x.reason?.includes("judged noise"))
+    const dry = r.rows.filter((x) => x.reason?.includes("allowance ran dry"))
+    expect(noise).toHaveLength(2)
+    expect(dry).toHaveLength(2)
+    expect(r.spentUsd).toBeCloseTo(2 * 0.03, 6)
+    const room = ledger.draw(held.claimId, 0)
+    if (!room.ok) throw new Error(room.reason)
+    expect(room.remainingUsd).toBeCloseTo(0.05 - 2 * 0.03, 6)
+  })
+
   it("a spent allowance refuses the whole call before any money moves, in the skill's sentence", async () => {
     let called = 0
     const port: FetchPort = {

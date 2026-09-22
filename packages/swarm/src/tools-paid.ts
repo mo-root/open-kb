@@ -718,6 +718,25 @@ export async function harvestTool(ctx: HarvestCtx, input: HarvestInput): Promise
    *  rows array, so membership there cannot stand in for "was judged". */
   const judgedHosts = new Set<string>()
 
+  /** Per-host settlement honesty: the instant the claim runs dry, stop the
+   *  pool. Everything already judged stands; the unjudged rest is reported.
+   *  Called for EVERY judged host, whatever its verdict — the fetch and the
+   *  classify call that produced `e` already drew their real dollars (in the
+   *  `recordingFetch`/`classify` wrappers above, before `judgeHosts` ever
+   *  calls `onJudged`), so a host that lands here noise, none or rejected by
+   *  the mint has spent exactly as much as one that lands on the map. Living
+   *  only on the remembered-node tail (as this once did) let a run of
+   *  off-topic residue hosts — a realistic harvest shape, not an edge case —
+   *  keep drawing past the reservation because none of them ever reached
+   *  that tail. */
+  const checkDry = () => {
+    const r = ctx.ledger.draw(ctx.claimId, 0)
+    if (r.ok && r.remainingUsd <= EPSILON && !ranDry) {
+      ranDry = true
+      controller.abort()
+    }
+  }
+
   const landOne = (e: Judged) => {
     judgedHosts.add(e.domain)
     const row: HarvestRow = {
@@ -731,10 +750,12 @@ export async function harvestTool(ctx: HarvestCtx, input: HarvestInput): Promise
     rows.push(row)
     if (e.kind === "noise") {
       row.reason = "judged noise — genuinely unrelated to this market; noise leaves the map"
+      checkDry()
       return
     }
     if (e.relation === "none") {
       row.reason = "judged none — no relation to the anchor; the map draws no node for it"
+      checkDry()
       return
     }
 
@@ -775,20 +796,14 @@ export async function harvestTool(ctx: HarvestCtx, input: HarvestInput): Promise
     })
     if (out.rejected.length > 0) {
       row.reason = out.rejected[0]!.reason
+      checkDry()
       return
     }
     row.ok = true
     if (out.downgraded.length > 0) row.because = out.downgraded[0]!.because
     landed.nodes += out.added.nodes
     landed.merged += out.merged.nodes
-
-    // Per-host settlement honesty: the instant the claim runs dry, stop the
-    // pool. Everything already judged stands; the unjudged rest is reported.
-    const r = ctx.ledger.draw(ctx.claimId, 0)
-    if (r.ok && r.remainingUsd <= EPSILON && !ranDry) {
-      ranDry = true
-      controller.abort()
-    }
+    checkDry()
   }
 
   // ── run the kernel; an abort mid-pool is a partial harvest, never a throw ─

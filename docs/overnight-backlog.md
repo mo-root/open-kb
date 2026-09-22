@@ -2958,3 +2958,56 @@ sweep looks for. `pnpm install` first (fresh clone, no `node_modules`).
 gated census as SELF-565; unchanged — a read-only fire).
 
 Backlog item: SELF-566 - BLOCKED
+
+**SELF-567 (2026-09-22 overnight fire) — `packages/swarm/src/tools-paid.ts`
+had never had a dedicated end-to-end read for logic bugs (its one prior
+mention was a line-by-line `exactOptionalPropertyTypes` error list in
+SELF-561, not a read for behaviour) — a full read found a real per-host
+overspend bug in `harvestTool`.** The comment on the claim-dry check inside
+`landOne` says "the instant the claim runs dry, stop the pool" — but the
+check (`ctx.ledger.draw(ctx.claimId, 0)` then `controller.abort()`) sat only
+on the tail of the branch that successfully lands a host on the map, AFTER
+three earlier `return`s: `e.kind === "noise"`, `e.relation === "none"`, and
+`out.rejected.length > 0` (the mint refusing the node). All three fire
+before `rememberTool` and skip the dry check entirely — yet the real dollars
+for that host (the fetch, via the `recordingFetch` wrapper, and the classify
+call, via the `classify:` closure passed to `judgeHosts`) are already drawn
+against the claim by the time `judgeHosts` calls `onJudged` and `landOne`
+runs (confirmed in `packages/core/src/judge.ts`: `judgeOne` awaits
+`deps.fetcher.get` then `deps.classify`, THEN `emit()`s, which is the only
+caller of `deps.onJudged`). `worker()`'s own pool loop
+(`judge.ts:972-984`) checks `deps.signal?.aborted` before popping the next
+host, so `controller.abort()` genuinely does stop the pool from starting new
+work — the mechanism is sound, it just never fires when the hosts crossing
+zero are noise, none, or gate-rejected. A harvest whose candidates run
+heavy to off-topic residue (a realistic shape, not a contrived one — that is
+exactly what `kind: "noise"` and `relation: "none"` exist to describe) could
+keep drawing fetch and classify dollars past its reservation for every
+remaining candidate in the call, up to the full `MAX_HARVEST_HOSTS` (40),
+never once tripping the abort the comment promises.
+
+Fixed by factoring the check into a `checkDry()` closure and calling it from
+all four exit points of `landOne` — the three early returns plus the
+existing tail — instead of only the last one. No change to the check's own
+logic (still `remainingUsd <= EPSILON`, still `!ranDry` to abort at most
+once) and no change to what counts as "judged" (`judgedHosts.add` still runs
+unconditionally at the top, unaffected either way).
+
+Reproduced before fixing: added a test with `concurrency: 1`, a $0.05
+reservation, four hosts at $0.01 fetch + $0.02 classify each (the same
+shape `docs/overnight-backlog.md`'s existing "the allowance running dry
+aborts the pool" test uses), but with every host judged `noise` instead of
+landing. Pre-fix, the test failed — all 4 hosts were judged and drawn
+against (`r.spentUsd` came back 4 × 0.03, not 2 × 0.03) because the noise
+branch's early return skipped the dry check every time. Post-fix it passes:
+exactly 2 hosts judged before `ranDry` trips, 2 come back "allowance ran dry
+mid-harvest", `r.spentUsd` is exactly `2 * 0.03`. The three pre-existing
+dry-abort and kill-mid-harvest tests (which exercise the success path, where
+the check already fired correctly) still pass unchanged, confirming this
+was additive, not a behaviour change on the path that was already right.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3340 tests passing (up from 3339, the one new
+regression test), 13 skipped (same gated census as SELF-566; unchanged).
+
+Backlog item: SELF-567
