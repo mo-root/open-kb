@@ -147,6 +147,30 @@ describe("rivalsFromComparisonUrls", () => {
     ])
   })
 
+  /**
+   * `switch(?:ing)?-from` joined the `COMPARISON`/`NAMES_ONE_RIVAL` alternation
+   * in the same commit as `migrate` (4d34b08), on the same "single segment IS
+   * the name" reasoning — but unlike every other branch in the file, it carries
+   * no measured citation (no fetched sitemap is named for it, the way the
+   * commerce platform backs `compare`/`versus`/`alternatives` and the email
+   * vendor backs `migrate`) and, until now, no test exercised it at all: it was
+   * untested by construction, not merely by coverage. Added here so the branch
+   * that IS implemented — `/switch-from/<rival>` and `/switching-from/<rival>`
+   * as a namespace, exactly like `/migrate/<rival>` — has at least one fixture
+   * proving it does what `NAMES_ONE_RIVAL` says. This does not confirm any real
+   * vendor publishes that shape; a single hyphenated segment
+   * (`/switching-from-mailchimp`) is arguably the more natural slug and would
+   * need a namespace-less prefix check this file does not have — a distinct,
+   * unmeasured question this offline pass cannot settle without a live fetch.
+   */
+  it("takes the single segment under switch-from/switching-from, same as migrate", () => {
+    const leads = rivalsFromComparisonUrls(
+      [u("resend.com", "/switch-from/mailchimp"), u("resend.com", "/switching-from/sendgrid")],
+      "resend.com",
+    )
+    expect(leads.map((l) => l.name).sort()).toEqual(["mailchimp", "sendgrid"])
+  })
+
   it("reads the comparison that lives in the slug, not the namespace", () => {
     // The other real shape, off brightdata.com (6,845 urls, fetched
     // 2026-08-16): 135 comparison-shaped urls and not one under a comparison

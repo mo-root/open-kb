@@ -3060,3 +3060,54 @@ test` both exit 0: 3341 tests passing (up from 3340, the one new test case),
 13 skipped (same gated census as SELF-567; unchanged).
 
 Backlog item: SELF-568
+
+**SELF-569 (2026-09-22 overnight fire) — `packages/core/src/catalog.ts` had
+never had a dedicated end-to-end read; a full read found one alternation
+branch that is implemented but was untested by construction, not merely by
+coverage.** `COMPARISON` and `NAMES_ONE_RIVAL` both list eight alternatives
+(`compare|comparisons?|versus|vs|alternatives?|alternative-to|migrate(?:-
+from)?|switch(?:ing)?-from`), and every one of them traces to a specific
+fetched sitemap in this file's own comments — the commerce platform backing
+`compare`/`versus`/`alternatives` (838 urls, 2026-08-12), the email vendor
+backing `migrate` (2026-08-16) — except `switch(?:ing)?-from`, which joined
+both regexes in the same commit as `migrate` (4d34b08) on the same "single
+segment IS the name" reasoning, but carries no citation of its own and,
+confirmed by `grep -rn "switch-from\|switching-from"` across every `.ts`
+file in the repo, had zero test fixtures exercising it — the one alternative
+among eight with no measured example and no test, in a file whose own header
+says "MEASURED, against ground truth" is the whole method.
+
+Traced it by hand rather than trusting the regex: `COMPARISON.test("/switch-
+from/mailchimp")` and `NAMES_ONE_RIVAL.test("switch-from")` both return
+`true` (confirmed in a scratch `node -e`), so the namespace shape — a
+`/switch-from/<rival>` or `/switching-from/<rival>` folder, exactly like
+`/migrate/<rival>` — is correctly wired end to end. Not a logic bug: the
+branch does what `NAMES_ONE_RIVAL`'s own name says. What it lacks is
+evidence that any real vendor publishes that shape rather than the single
+hyphenated segment `-alternatives?$` already gets its own dedicated suffix
+check for (`/switch-from-mailchimp` as one segment, which this function does
+not catch under any branch — confirmed `COMPARISON.test("/switch-from-
+mailchimp")` is `false`, and the depth-two slug branch requires
+`segs.length === 2`, which a single segment never is). Fixing that gap would
+mean guessing at a new regex with no sitemap to check it against — exactly
+the kind of live-fetch-shaped work this offline pass is not scoped to do —
+so this fire narrowed to what a fixture can prove: that the branch as
+written matches its own stated intent.
+
+Added a test to the existing dedicated suite
+(`packages/core/tests/a-comparison-url-names-a-rival.test.ts`, next to the
+`migrate` test it mirrors) covering `/switch-from/mailchimp` and
+`/switching-from/sendgrid`. Confirmed non-vacuous by mutation: dropped
+`|migrate(?:-from)?|switch(?:ing)?-from)` down to `|migrate(?:-from)?)` in
+both `COMPARISON` and `NAMES_ONE_RIVAL`, reran — the new test failed
+(`[]` where `["mailchimp", "sendgrid"]` was expected) — then restored the
+original regexes and reran clean before staging. Left the source file's own
+comments untouched: adding a fabricated "MEASURED" citation for a shape this
+offline pass cannot verify against a live sitemap would be worse than
+leaving the gap visible.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3342 tests passing (up from 3341, the one new test case),
+13 skipped (same gated census as SELF-568; unchanged).
+
+Backlog item: SELF-569
