@@ -3467,3 +3467,53 @@ test` both exit 0: 3345 tests passing, 13 skipped (same gated census as
 SELF-574; unchanged by a dead-code-only removal with nothing new to test).
 
 Backlog item: SELF-575
+
+**SELF-576 (2026-09-22 overnight fire) — `lib/kb-lookup.ts` had only ever
+been mentioned in passing (grouped into a route-wiring-coverage commit), never
+given its own read; a full read against its one caller class found the exact
+"THREE STATES, NOT TWO" bug B4/a prior fire already found and fixed on the
+human-facing page, still live on the API surface that page's own comment
+sits fifteen lines above.** `app/kb/[id]/page.tsx` computes `running` and
+`failed` as two distinct booleans off `run.status`, with its own comment
+explaining why: "`failed` used to be 'there is a run and it has no map',
+which is also true of a run that is still going," and a visitor who followed
+the wait-strip's promise arrives on a run that is still running far more
+often than on one that died. `lib/kb-lookup.ts` — the shared `findKb` helper
+all four `/api/kb/[id]*` routes (`route.ts`, `note/route.ts`, `graph/
+route.ts`, `export/route.ts`) open with — never got the same fix: its
+`!isCompleted(run)` branch returned one hardcoded sentence, `` `run ${id}
+failed, so it built no knowledge base` ``, for both a failed run AND a
+still-running one, with only the `status` field in the body actually telling
+the two apart (confirmed the existing test for the running case asserted
+`status` but never `error`, matching the bug exactly).
+
+In practice the web app itself never hits this: `KbBrowser`/`GraphCanvas`/
+`NoteView` only fetch these four routes from inside a page that has already
+confirmed `isCompleted`, so no click in the UI reaches a running-run refusal
+today (checked every `fetch(`/api/kb/` call site — three, all inside
+components mounted post-completion). But the routes are public API surface
+independent of the web client — anyone polling `GET /api/kb/<id>` directly
+while a sweep is mid-run (the natural thing to try, since `GET /api/run/<id>`
+is the progress endpoint and `/api/kb/<id>` is the map endpoint) is told
+their run "failed" while it is, in fact, still working and may produce a map
+a minute later. That is a false statement from a codebase whose own header
+comment two lines above calls 404 here "the honest status."
+
+Fixed by branching on `run.status === "running"` the same way the page
+already does, with its own honest sentence (`` `run ${id} is still running —
+no knowledge base yet — ask /api/run/${id} for progress` ``) alongside the
+unchanged failed-run sentence; `status` in the body is unchanged (it already
+told the two cases apart). Updated the file's own header doctrine comment
+("WHY A FAILED RUN IS STILL A 404 HERE" → "WHY A NON-COMPLETED RUN IS STILL A
+404 HERE, EVEN WHILE RUNNING") to state the three-way split and point at the
+page's own comment rather than assert only the failed case exists. Updated
+`kb-lookup.test.ts`'s existing running-run test, which had asserted `status`
+only, to pin the new `error` sentence and assert it does not contain
+"failed" — the exact assertion gap that let the old bug ship untested.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3345 tests passing (same count as SELF-575 — one existing
+test's assertions changed, none added or removed), 13 skipped (same gated
+census as SELF-575).
+
+Backlog item: SELF-576

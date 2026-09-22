@@ -62,14 +62,17 @@ describe("findKb", () => {
     )
   })
 
-  it("refuses a still-running run the same way — no result yet is no result yet, whatever the status", async () => {
+  it("refuses a still-running run at 404 too, but says it is still running rather than that it failed", async () => {
     getStoredRun.mockResolvedValueOnce(stored({ status: "running", result: undefined }))
     const got = await findKb("r1")
 
     expect("refusal" in got).toBe(true)
     if (!("refusal" in got)) throw new Error("expected a refusal")
     expect(got.refusal.status).toBe(404)
-    expect((await got.refusal.json() as { status: string }).status).toBe("running")
+    const body = (await got.refusal.json()) as { error: string; status: string }
+    expect(body.status).toBe("running")
+    expect(body.error).toBe("run r1 is still running — no knowledge base yet — ask /api/run/r1 for progress")
+    expect(body.error).not.toContain("failed")
   })
 
   it("hands back the run itself, unwrapped, once it has completed", async () => {
