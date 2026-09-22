@@ -13,6 +13,7 @@
     "declaration": true,
     "skipLibCheck": true,
     "allowUnusedLabels": false,
-    "noUncheckedSideEffectImports": true
+    "noUncheckedSideEffectImports": true,
+    "erasableSyntaxOnly": true
   }
 }

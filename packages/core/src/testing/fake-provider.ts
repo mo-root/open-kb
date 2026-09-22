@@ -28,33 +28,38 @@ import type { SearchHit, SearchPort, SearchResult, FetchPort, FetchMode, FetchRe
  * query reports its failure inside that query's own SearchResult so a single bad query
  * never rejects the whole batch.
  */
+type FakeSearchOpts = {
+  failing?: string[]
+  /**
+   * Per-query override of the message a `failing` query reports. Every
+   * query not named here keeps the fixed "search provider refused this
+   * query" text below. Added so a test can put a specific reason on the
+   * wire — `sweep.ts`'s `serpSuspendedSaid` branch fires only on a
+   * reason matching `/suspended/i`, which the fixed text never does, so
+   * every `failing` test before this one exercised the generic-refusal
+   * path and none reached that branch.
+   */
+  failingErrors?: Record<string, string>
+  /**
+   * What every answered query reports as `pacedMs` — time it spent waiting
+   * for the provider's own rate limit before it was allowed to ask.
+   *
+   * Here so the sweep's aggregation of it can be tested at all. A real
+   * throttle needs a provider that sends one, and the port-level test
+   * covers that; this covers the half above the port, which is where the
+   * number becomes `report.serp.paced` and reaches a reader.
+   */
+  pacedMs?: number
+}
+
 export class FakeSearch implements SearchPort {
-  constructor(
-    private table: Record<string, SearchHit[]>,
-    private opts: {
-      failing?: string[]
-      /**
-       * Per-query override of the message a `failing` query reports. Every
-       * query not named here keeps the fixed "search provider refused this
-       * query" text below. Added so a test can put a specific reason on the
-       * wire — `sweep.ts`'s `serpSuspendedSaid` branch fires only on a
-       * reason matching `/suspended/i`, which the fixed text never does, so
-       * every `failing` test before this one exercised the generic-refusal
-       * path and none reached that branch.
-       */
-      failingErrors?: Record<string, string>
-      /**
-       * What every answered query reports as `pacedMs` — time it spent waiting
-       * for the provider's own rate limit before it was allowed to ask.
-       *
-       * Here so the sweep's aggregation of it can be tested at all. A real
-       * throttle needs a provider that sends one, and the port-level test
-       * covers that; this covers the half above the port, which is where the
-       * number becomes `report.serp.paced` and reaches a reader.
-       */
-      pacedMs?: number
-    } = {},
-  ) {}
+  private table: Record<string, SearchHit[]>
+  private opts: FakeSearchOpts
+
+  constructor(table: Record<string, SearchHit[]>, opts: FakeSearchOpts = {}) {
+    this.table = table
+    this.opts = opts
+  }
 
   /**
    * Every batch, exactly as it was handed over — duplicates kept, order kept,
@@ -106,19 +111,20 @@ export class FakeSearch implements SearchPort {
  * unlocker exists), and a row with no `unlocked` override keeps answering both modes
  * identically — every existing table in this repo, unchanged.
  */
+type FakeFetchRow = {
+  httpStatus: number
+  body: string
+  contentType?: string
+  providerError?: string
+  unlocked?: { httpStatus: number; body: string; contentType?: string; providerError?: string }
+}
+
 export class FakeFetch implements FetchPort {
-  constructor(
-    private table: Record<
-      string,
-      {
-        httpStatus: number
-        body: string
-        contentType?: string
-        providerError?: string
-        unlocked?: { httpStatus: number; body: string; contentType?: string; providerError?: string }
-      }
-    >,
-  ) {}
+  private table: Record<string, FakeFetchRow>
+
+  constructor(table: Record<string, FakeFetchRow>) {
+    this.table = table
+  }
 
   /**
    * Every call, with the options it was given.

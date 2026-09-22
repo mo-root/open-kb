@@ -3161,3 +3161,73 @@ test` both exit 0: 3342 tests passing (unchanged — no source file touched,
 only the two kept flags), 13 skipped (same gated census as SELF-569).
 
 Backlog item: SELF-570
+
+**SELF-571 (2026-09-22 overnight fire) — tried `erasableSyntaxOnly`
+(TS 5.8+, new since the last flag-as-detector triple) as the next untried
+strict flag; it flagged one file, and the file it flagged was a genuine
+house-style outlier, not a false positive.** `tsconfig.base.json` and
+`packages/web/tsconfig.json` carry nine strict-family flags between them
+already (`noUncheckedIndexedAccess`, `noImplicitReturns`,
+`noFallthroughCasesInSwitch`, `noImplicitOverride`, `allowUnusedLabels`,
+`noUncheckedSideEffectImports`, the three SELF-570 just added or confirmed);
+`erasableSyntaxOnly`, `verbatimModuleSyntax` and `isolatedDeclarations` were
+the three genuinely untried ones left (checked by grepping this file for
+each name — zero prior hits for all three, confirmed against the installed
+`typescript@5.9.3`, which supports all three). `isolatedDeclarations` and
+`verbatimModuleSyntax` both reshape how every export across the codebase is
+written (explicit return types on every exported function; `import type`
+everywhere a specifier is type-only) — too large a surface for a single
+fire to land safely, the same reasoning that has kept them off since
+`declaration: true` first shipped. `erasableSyntaxOnly` — TS1294 on any
+construct that cannot be erased to nothing at compile time (parameter
+properties, enums, namespaces, `<reference>` triple-slash directives) — is
+a narrow, binary check, the same shape as SELF-570's own triple, so tried it
+first.
+
+Added to `tsconfig.base.json` and, separately (web never inherits base, per
+SELF-545/549/550), `packages/web/tsconfig.json`, then ran `tsc -b` (the same
+command `pnpm check` runs). Exactly 3 hits, all `TS1294` on the same
+construct — TypeScript parameter-property shorthand
+(`constructor(private table: ...)`) — and all three inside one file,
+`packages/core/src/testing/fake-provider.ts`. Before deciding whether this
+was SELF-570's `allowUnreachableCode` verdict (a real, systemic, unfixable
+pattern) or a real gap, grepped every `constructor(` across
+`packages/*/src` and `packages/web` for a `private`/`public`/`protected`/
+`readonly` modifier anywhere near it: four other hits looked like the same
+shorthand at a glance (`ledger.ts`, `safe-fetch.ts`, `map.ts`,
+`graphIcons.ts`) but reading each one showed every single one already
+declares its fields explicitly and assigns them in the constructor body
+(`this.ceilingUsd = ceilingUsd`, etc.) — the grep matched a `private` field
+declared a few lines above or below the constructor, not the parameter list
+itself. `fake-provider.ts`'s two classes (`FakeSearch`, `FakeFetch`) were
+the only real use of the shorthand anywhere in the codebase — a one-file,
+three-call-site style outlier, not a project-wide pattern, so this landed
+in "small, fixable, tested" territory rather than "leave the flag out."
+
+Converted both constructors to the explicit-field-plus-assignment shape
+every other class in the codebase already uses: `table`/`opts` become
+declared `private` fields, assigned in the constructor body from
+plain (non-modified) parameters. `FakeSearch`'s `opts` type (three
+documented optional fields, `failing`/`failingErrors`/`pacedMs`) was
+previously written inline in the parameter list with its field-level doc
+comments attached to each property; pulled it out to a named
+`FakeSearchOpts` type above the class so the field declaration and the
+constructor parameter reference the same type instead of two independently-
+typed copies that could drift (`FakeFetch`'s row shape got the same
+treatment, as `FakeFetchRow`). Behavior is unchanged — same public
+constructor signature, same field names, same default `{}` for
+`FakeSearch`'s second argument — confirmed by the two classes' own call
+sites across the test suite needing no changes.
+
+`pnpm install` first (fresh clone, no `node_modules`). `tsc -b --force`
+after the fix: zero errors, so the flag has zero remaining hits across
+every project `tsc -b` builds. Kept `erasableSyntaxOnly` in both
+`tsconfig.base.json` and `packages/web/tsconfig.json` — same "free
+insurance" reasoning `SELF-550`/`SELF-563`/`SELF-570` gave the other
+strict-family additions: costs nothing today (the one real hit is fixed),
+and it keeps this codebase's own explicit-field convention machine-
+enforced rather than merely consistent by habit. `pnpm check && pnpm
+test` both exit 0: 3342 tests passing (unchanged — the two classes' public
+shape didn't move), 13 skipped (same gated census as SELF-570).
+
+Backlog item: SELF-571

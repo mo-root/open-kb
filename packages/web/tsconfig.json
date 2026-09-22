@@ -16,6 +16,7 @@
     "noImplicitOverride": true,
     "allowUnusedLabels": false,
     "noUncheckedSideEffectImports": true,
+    "erasableSyntaxOnly": true,
     "noEmit": true,
     "esModuleInterop": true,
     "module": "esnext",
