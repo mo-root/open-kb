@@ -91,5 +91,3 @@ export function BarMeter({
     </div>
   );
 }
-
-export default BarMeter;

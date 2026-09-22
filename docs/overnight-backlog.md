@@ -3418,3 +3418,52 @@ test` both exit 0: 3345 tests passing (up from 3344, the one new test case),
 13 skipped (same gated census as SELF-573).
 
 Backlog item: SELF-574
+
+**SELF-575 (2026-09-22 overnight fire) — a genuinely new angle (dead-export
+detection via `knip`, never tried by any prior fire) found six components
+each shipping one `export default` line with zero callers anywhere in the
+repo, the same shape as SELF-16's `usageSince`.** Every strict-flag-as-
+detector combination TypeScript itself offers has already been run
+(SELF-545/549/550/561/563/570/571), and every file this branch's own git
+log or prose shows a low touch count has already had a dedicated read
+(SELF-528/529/533/534/566 and the many single-file entries between them) —
+so this fire picked a tool instead of a file list: installed
+`knip@6.37.0` at the workspace root the same way SELF-509/566/573 installed
+`@vitest/coverage-v8` (temporary, `git checkout -- package.json
+pnpm-lock.yaml` before finishing) and ran it unconfigured against the whole
+pnpm workspace.
+
+Zero unused files, zero unused dependencies, zero unlisted dependencies —
+this repo is clean on all three, which is itself worth recording so a
+future fire does not re-run the same check expecting a different shape of
+result. The "unused exported types" list (24 entries) is entirely a
+components/lib library re-exporting its own prop and return types through
+`index.ts` barrels for callers that do not yet exist — normal API surface,
+not a bug, and indistinguishable in kind from `DonutSegment`/`StatTileProps`
+etc. that this same barrel already re-exports and uses. `noteRunStarted`
+(`spend-limits.ts`) and the `GLYPH_KINDS` re-export (`icons/index.ts`) are
+both live code reached through a different path than knip checked (called
+internally by `spendGate`; imported directly from `./NodeGlyph` by its own
+test) — flagged, not dead — and left alone.
+
+The one real, unambiguous item: `SiteIcon.tsx`, and `viz/{BarMeter,Donut,
+Gauge,Sparkline,StatTile}.tsx` each end with a bare `export default X;`
+carrying no comment explaining it, alongside the SAME component's own named
+export. Confirmed by hand, not by trusting the tool: grepped the whole repo
+for a default-shaped import of each of the six
+(`import (SiteIcon|BarMeter|Donut|Gauge|Sparkline|StatTile)\s*(,|from)`) —
+zero hits, including in every test file for these six. Every real call
+site (`KbOverview.tsx`, `ProductsTab.tsx`, `NoteView.tsx`, `ResultPanel.tsx`,
+`FindingsPanel.tsx`, `viz/index.ts`'s own barrel, all six `.test.tsx` files)
+imports the named export exclusively. Also checked whether a `next/dynamic`
+call anywhere needs the default form (the one thing that would make this a
+live seam rather than dead code): the only `next/dynamic` in the repo
+(`GraphCanvas.tsx`) wraps `react-force-graph-2d`, an external package, not
+one of these six. Removed the six dead lines; nothing else in any of the
+six files changed.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3345 tests passing, 13 skipped (same gated census as
+SELF-574; unchanged by a dead-code-only removal with nothing new to test).
+
+Backlog item: SELF-575

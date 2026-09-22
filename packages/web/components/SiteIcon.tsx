@@ -122,5 +122,3 @@ export function SiteIcon({
     </span>
   );
 }
-
-export default SiteIcon;

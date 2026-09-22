@@ -199,5 +199,3 @@ export function Donut({
     </div>
   );
 }
-
-export default Donut;

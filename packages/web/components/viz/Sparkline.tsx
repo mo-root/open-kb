@@ -111,5 +111,3 @@ export function Sparkline({
     </svg>
   );
 }
-
-export default Sparkline;

@@ -124,5 +124,3 @@ export function Gauge({
     </div>
   );
 }
-
-export default Gauge;

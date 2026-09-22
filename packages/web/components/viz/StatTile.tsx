@@ -86,5 +86,3 @@ export function StatTile({
     </div>
   );
 }
-
-export default StatTile;
