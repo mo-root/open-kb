@@ -28,6 +28,13 @@ describe("resolve", () => {
     expect(resolve("sweep-brightdata-com-20260821105321", files)).toBe("runs/sweep-brightdata-com-20260821105321.json")
   })
 
+  it("joins a bare filename ending in .json (no directory) onto runs/ instead of passing it through", () => {
+    const files = ["sweep-brightdata-com-20260821105321.json"]
+    expect(resolve("sweep-brightdata-com-20260821105321.json", files)).toBe(
+      "runs/sweep-brightdata-com-20260821105321.json",
+    )
+  })
+
   it("picks the lexically newest of several matches — the run filename's own timestamp suffix", () => {
     const files = [
       "sweep-brightdata-com-20260820090000.json",

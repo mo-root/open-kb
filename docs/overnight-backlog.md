@@ -3371,3 +3371,50 @@ test` both exit 0: 3344 tests passing (up from 3343, the one new test case),
 13 skipped (same gated census as SELF-572).
 
 Backlog item: SELF-573
+
+**SELF-574 (2026-09-22 overnight fire) — `scripts/read.ts`'s `resolve` had a
+one-mention basename hit (grouped with `experiment.ts` as "cost-breakdown
+printers", never a dedicated read); a full read of the file plus its own
+test suite found the exact input its own docstring promises to handle was
+the one it silently broke.** The header comment states `resolve` "accepts a
+domain, a run id, a filename or a path" specifically so a reader does not
+have to learn the run-file naming scheme. But the `.json`-suffix fast path
+(`if (arg.endsWith(".json")) return arg`, unedited since the initial commit,
+`1770fca`) could not tell "a filename" from "a path" — both end in `.json` —
+and always treated the arg as an already-correct path, handing it back
+unprefixed with `runs/`.
+
+The one input this breaks is the most natural one there is: `ls runs/`
+prints `sweep-brightdata-com-20260821105321.json`, and a reader who copies
+that name straight into `pnpm read <name>` (rather than stripping the
+extension, which the existing "bare run id" test shows already worked)
+hits the fast path, gets that literal string back with no directory, and
+`readFileSync` throws ENOENT from the repo root — where every `pnpm read`
+invocation runs. Verified directly: `resolve("sweep-brightdata-com-
+20260821105321.json", files)` returned the bare filename; the same arg
+without `.json` already returned `runs/sweep-brightdata-com-
+20260821105321.json` correctly, via the slug-match branch below it.
+
+Fixed by keying the fast path on whether the arg carries a directory
+component (`arg.includes("/")`), not merely the `.json` suffix: a `.json`
+arg with a slash (an absolute path, or one naming a directory other than
+`runs/` — the existing `"some/where/run.json"` test) still passes straight
+through unprefixed; a bare `.json` filename now joins `runs/` the same way
+a domain or a bare run id already does. No change to the domain/run-id
+slug-match branch, and no new case for a `.json` file that lives outside
+`runs/` under its own bare name — the docstring's four accepted shapes are
+domain, run id, a `runs/`-relative filename, and a full path, not a bare
+name elsewhere, so that input keeps failing exactly as before.
+
+Added one test to `tests/read.test.ts` pinning the fixed behaviour: a bare
+`sweep-brightdata-com-20260821105321.json` resolves to `runs/sweep-
+brightdata-com-20260821105321.json`. Confirmed non-vacuous by mutation:
+stashed just the `read.ts` change and reran — the new test failed, returning
+the bare filename where the `runs/`-prefixed path was expected — then
+restored the fix and reran clean before staging.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3345 tests passing (up from 3344, the one new test case),
+13 skipped (same gated census as SELF-573).
+
+Backlog item: SELF-574

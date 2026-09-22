@@ -41,8 +41,21 @@ interface Edge {
  * cbedb47) that direct coverage would have caught sooner.
  */
 export function resolve(arg: string, files: readonly string[]): string {
-  if (arg.endsWith(".json")) return arg
   const dir = "runs"
+  // A `.json` arg with a directory component is already a path (an absolute
+  // one, or one naming a directory other than `runs/`) and passes straight
+  // through. But `runs/` is exactly where `ls runs/` or a just-finished sweep
+  // hands a reader a BARE filename — no slash — and the docstring above
+  // promises "a filename" works the same as a domain or a run id. Before this
+  // fix, `pnpm read sweep-brightdata-com-20260821105321.json` (the literal
+  // name `ls runs/` prints) returned that string untouched, and
+  // `readFileSync` threw ENOENT from the repo root, where every `pnpm read`
+  // invocation actually runs — the one input shape the docstring names by
+  // example (typing back what `ls` just showed) was the one form of "a
+  // filename" this never handled. Typing the same name WITHOUT `.json`
+  // already worked, via the slug-match branch below (see the "bare run id"
+  // test) — only the `.json`-suffixed spelling was broken.
+  if (arg.endsWith(".json")) return arg.includes("/") ? arg : path.join(dir, arg)
   const jsonFiles = files.filter((f) => f.endsWith(".json"))
   const slug = arg.replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/\W+/g, "-")
   const matches = jsonFiles.filter((f) => f.includes(slug) || f.includes(arg))
