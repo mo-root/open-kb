@@ -1422,6 +1422,24 @@ export function suggest(host: string): string {
     // one character away: a doubled letter, a missing one, or two swapped
     if (tld.replace(/(.)\1/, "$1") === good) fixes.add(good);
     if (tld.length === good.length + 1 && tld.includes(good)) fixes.add(good);
+    // Two adjacent letters swapped ("ogr" -> "org", "cmo" -> "com"). The
+    // doc comment above has claimed "doubled or transposed" since this
+    // function was written, but only the doubled-letter and extra-character
+    // shapes were ever implemented — a transposed TLD fell through to the
+    // empty-string return. Same length as `good`, and identical everywhere
+    // except one adjacent pair that is reversed.
+    if (tld.length === good.length) {
+      for (let i = 0; i < tld.length - 1; i++) {
+        if (
+          tld[i] === good[i + 1] &&
+          tld[i + 1] === good[i] &&
+          tld.slice(0, i) === good.slice(0, i) &&
+          tld.slice(i + 2) === good.slice(i + 2)
+        ) {
+          fixes.add(good);
+        }
+      }
+    }
   }
   const alt = [...fixes][0];
   return alt ? `Did you mean ${[...parts.slice(0, -1), alt].join(".")}?` : "";

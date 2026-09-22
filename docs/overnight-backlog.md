@@ -3011,3 +3011,52 @@ test` both exit 0: 3340 tests passing (up from 3339, the one new
 regression test), 13 skipped (same gated census as SELF-566; unchanged).
 
 Backlog item: SELF-567
+
+**SELF-568 (2026-09-22 overnight fire) — read the small top-level helper
+functions in `packages/sweep/src/sweep.ts` that sit before the giant
+`sweep()` function itself (`walkUpForPrompts`, `promptsRoot`, `makePrompt`,
+`scopeToPlatform`, `mostCorroboratedFirst`, `resolves`, `suggest`, `onMap`,
+`rankThinkLine`, `runPool`) — none of them have a dedicated mention anywhere
+in this file by name, unlike almost everything else in `packages/sweep/src`
+at this point — and found `suggest()` does not do what its own two doc
+comments say it does.** The function-level comment ("A typo is nearly always
+a doubled OR TRANSPOSED letter in the TLD") and the in-loop comment ("one
+character away: a doubled letter, a missing one, or TWO SWAPPED") both name
+transposition as a shape this function corrects, but only two of the three
+branches were ever implemented: the doubled-letter regex and the
+length+1-and-includes extra-character check. There was never a branch for
+two adjacent letters swapped. Verified directly:
+`suggest("foo.ogr")` returned `""`, not "Did you mean foo.org?" — same as a
+typo with no fix at all, for exactly the shape (`ogr`/`org`, `cmo`/`com`,
+`oi`/`io`) both comments claim is handled. Not hypothetical: a same-length
+adjacent-swap is one of the two typo shapes real fat-fingering actually
+produces (the other, a doubled letter, is the one branch that already
+worked), so this silently dropped the useful reply for half its own
+documented cases, in the small window a user's very first look at this
+tool is likely to hit it (an anchor domain that fails the DNS preflight is
+the input `suggest` exists to help with).
+
+Fixed by adding the missing same-length,
+one-adjacent-pair-reversed check next to the other two, using the same
+`good` loop and `fixes` set — no change to the doubled-letter or
+extra-character branches, and no new collision risk: checked by hand that
+none of the eight `GOOD_TLDS`' own adjacent-swap forms (`ocm`/`cmo` for
+`com`, `oi` for `io`, `ia` for `ai`, `edv`/`dve` for `dev`, `pap` for `app`,
+`oc` for `co`, `ent`/`nte` for `net`, `rog`/`ogr` for `org`) collides with a
+DIFFERENT entry in the same list — the exact class of bug the early-return
+guard just above this loop (the co/com collision) was already written to
+prevent, so a new collision would have silently reopened it.
+
+Added three cases to the existing dedicated suite
+(`suggest-never-turns-a-real-tld-into-a-different-one.test.ts`, which
+SELF-466 added when the co/com collision was fixed): `foo.ogr` →
+`foo.org`, `foo.cmo` → `foo.com`, `foo.oi` → `foo.io`. Confirmed non-vacuous
+by mutation: stashed just the `sweep.ts` change and reran — the new test
+failed on the first assertion (`''` where `'Did you mean foo.org?'` was
+expected); restored the fix and reran clean before staging.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3341 tests passing (up from 3340, the one new test case),
+13 skipped (same gated census as SELF-567; unchanged).
+
+Backlog item: SELF-568

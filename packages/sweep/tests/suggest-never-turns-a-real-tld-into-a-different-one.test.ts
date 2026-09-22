@@ -19,6 +19,15 @@ import { suggest } from "../src/sweep.js"
  * into a different one. Fixed with an early return once `tld` is already in
  * `GOOD_TLDS`, which removes the whole class rather than special-casing the
  * one colliding pair.
+ *
+ * A second gap, found reading the function fully for SELF-568: its own
+ * function-level doc comment ("a doubled OR TRANSPOSED letter") and the
+ * in-loop comment ("a doubled letter, a missing one, OR TWO SWAPPED") both
+ * name transposition as a shape this function handles, but only the
+ * doubled-letter and extra-character branches were ever implemented —
+ * `suggest("foo.ogr")` (a swapped "org") returned `""`, same as a typo with
+ * no fix at all. Fixed by adding the missing same-length,
+ * one-adjacent-pair-reversed check.
  */
 describe("suggest", () => {
   it("never flags an already-valid .com as a typo of .co, the collision that broke this", () => {
@@ -37,6 +46,12 @@ describe("suggest", () => {
 
   it("catches one extra character", () => {
     expect(suggest("foo.coms")).toBe("Did you mean foo.com?")
+  })
+
+  it("catches two adjacent letters swapped", () => {
+    expect(suggest("foo.ogr")).toBe("Did you mean foo.org?")
+    expect(suggest("foo.cmo")).toBe("Did you mean foo.com?")
+    expect(suggest("foo.oi")).toBe("Did you mean foo.io?")
   })
 
   it("preserves every label before the TLD, including a subdomain", () => {
