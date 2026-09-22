@@ -274,6 +274,27 @@ describe("seedFamilyMissions: the template deck", () => {
     })
     expect(substitutes!.brief).toContain('"open source open source data pipeline"')
   })
+
+  // seed-families.ts:160-164 (`alternatives`/`best`/`vs`/`top`/`openSource`)
+  // each fall back with `?? ` off an ARRAY INDEX (`open[1]?.q`, `reserve[0..3]?.q`),
+  // not off `q()`'s find-miss like `bare` above — so they fire only when `open`
+  // and `reserve` come back EMPTY, not merely mismatched. That happens when
+  // `openingHand`'s own `t0` is falsy: `terms.map(t => t.trim()).filter(Boolean)`
+  // drops an all-whitespace or empty category before its `if (t0)` branch ever
+  // populates either array. `familyProfileFrom`'s `usable()` guarantees
+  // `category.length >= 3` on the one production path, so this is unreachable
+  // there — but `seedFamilyMissions` is exported and takes `FamilyProfile` as
+  // given, with no re-check of its own, so a direct caller that skips
+  // `familyProfileFrom` (as this test does) reaches it. Never crashes — every
+  // fallback is a plain template string — but worth pinning down since it was
+  // the one branch left uncovered by the fix (5a1b8bf) that introduced it.
+  it("an empty category empties open AND reserve, so every reserve-indexed fallback fires at once", () => {
+    const [market, competitors, substitutes, buyers] = seedFamilyMissions({ category: "", source: "capability" })
+    expect(market!.brief).toContain('"", "best ", "top  companies"')
+    expect(competitors!.brief).toContain('" alternatives", " vs"')
+    expect(substitutes!.brief).toContain('"open source "')
+    expect(buyers!.brief).toContain("Find who buys  and where they argue")
+  })
 })
 
 // ── the orchestrator wiring, offline ─────────────────────────────────────────

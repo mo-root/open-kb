@@ -3231,3 +3231,76 @@ test` both exit 0: 3342 tests passing (unchanged — the two classes' public
 shape didn't move), 13 skipped (same gated census as SELF-570).
 
 Backlog item: SELF-571
+
+**SELF-572 (2026-09-22 overnight fire) — set out to cross-check the doctrine/
+prompt tree against code again, found SELF-539 already did exactly that
+exhaustively; pivoted to a fresh coverage sweep scoped to what changed since
+SELF-509's snapshot, and found one real gap: `seed-families.ts`'s own fix
+commit had left its own new fallback lines untested.** Read
+`prompts/doctrine/{01,03,04,05,06,07}-*.md`, `investigator.md`, `assess.md`
+and `catalog.md` end to end against `packages/swarm/src/{agent,tools-free}.ts`
+and `packages/sweep/src/sweep.ts` (`scopeToPlatform`/`MAX_SCOPED_WORDS`
+specifically, catalog.md's "five words is the ceiling" claim) looking for
+drift — all of it checked out exactly, including the 42.8%/211-of-493 and
+0.85%/7-of-826 figures catalog.md and 07-query-families.md both cite (same
+measurement, quoted identically in both places). Before writing any of that
+up as this fire's finding, re-read SELF-539 in full and confirmed it had
+already read every one of those doctrine/agent files (its own list: six agent
+prompts plus five doctrine files, `01/03/04/05/06`) word-for-word against
+their code and fixed the one drift it found (`understand.md`'s rival-count
+prose) — so a second pass over the same files was this fire re-doing already-
+verified work blind, not new ground. `catalog.md`/`assess.md` were outside
+SELF-539's list only because they already carried earlier commits
+(07-query-families' own fix), which is exactly why they turned out clean
+here too.
+
+Switched to SELF-509's tool (coverage-v8) rather than its target — that fire
+explicitly said do not re-run ITS OWN sweep, not that coverage is exhausted
+as a method, and 62 SELF-tagged commits have landed against `packages/core`,
+`packages/swarm` and `packages/sweep` since its 2026-09-17 snapshot, several
+adding new branches. Installed `@vitest/coverage-v8@3.2.7` (matched to this
+repo's `vitest@3.2.7`, same as SELF-509; never committed — `git checkout --
+package.json pnpm-lock.yaml` before finishing) and ran it over
+`packages/{core,swarm,sweep,providers}`. Three packages came back exactly as
+SELF-509 left them (core 99.89%, providers 100%, sweep's one open line
+already dated); `packages/swarm/src` had moved to 99.41% branch-covered with
+one new file in the miss list SELF-509 never named: `seed-families.ts`,
+lines 160-164, 88.09% branch.
+
+Traced it: `git blame` puts those five lines at `5a1b8bf`
+("seed-families' template picker could swallow its own reserve slot"),
+committed the SAME day as SELF-509's sweep — the fix that introduced them
+landed either just before or just after that fire's snapshot, and either
+way nobody circled back to check its own new branches. The five lines
+(`alternatives`/`best`/`vs`/`top`/`openSource`) each read `open[1]?.q ??
+fallback` / `reserve[0..3]?.q ?? fallback` — an array-index fallback,
+distinct from `bare`'s `q()`-find-miss fallback three lines above (already
+covered by this same test file's "bare's equality check misses on an
+untrimmed category" case). The index fallback fires only when `open` and
+`reserve` come back EMPTY, which happens when `openingHand`'s own `t0` is
+falsy — an all-whitespace or empty category, which `terms.map(t =>
+t.trim()).filter(Boolean)` drops before its `if (t0)` branch ever runs.
+`familyProfileFrom`'s `usable()` guarantees `category.length >= 3` on the
+one production path that builds a `FamilyProfile`, so this branch is
+unreachable there — but `seedFamilyMissions` is exported and takes the
+interface as given, with no re-check of its own, so any direct caller that
+skips `familyProfileFrom` (this test file already does exactly that for
+several other cases) reaches it.
+
+Verified with `npx tsx -e` calling `seedFamilyMissions({ category: "",
+source: "capability" })` directly before writing the test, to get the exact
+fallback strings right rather than guess: `bare` comes back `""`,
+`alternatives` `" alternatives"`, `best` `"best "`, `vs` `" vs"`, `top`
+`"top  companies"`, `openSource` `"open source "` — never a crash, just a
+degenerate-but-syntactically-valid template. Added one test to
+`packages/swarm/tests/seed-families.test.ts` pinning exactly that: a
+directly-constructed empty-category profile, asserting all four affected
+briefs (market/competitors/substitutes/buyers) carry the fallback text
+computed above. Not a behaviour change — the fallback was already correct,
+just unexercised by any test since the day it was written.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3343 tests passing (up from 3342, the one new test case),
+13 skipped (same gated census as SELF-571).
+
+Backlog item: SELF-572
