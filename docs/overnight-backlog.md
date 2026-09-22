@@ -3111,3 +3111,53 @@ test` both exit 0: 3342 tests passing (up from 3341, the one new test case),
 13 skipped (same gated census as SELF-568; unchanged).
 
 Backlog item: SELF-569
+
+**SELF-570 (2026-09-22 overnight fire) — tried `allowUnreachableCode`,
+`allowUnusedLabels` and `noUncheckedSideEffectImports` as the next
+flag-as-detector triple, the angle SELF-545/549/550/561/563 already used for
+seven other strict-family flags; two are clean passes, the third is the same
+"real pattern, not a fixable bug" verdict those fires kept landing on.**
+Before reaching for a new flag, spent this fire's first pass re-reading
+`packages/web/lib/graph/{layout,layoutCache}.ts`, `scorecard-view.ts`,
+`notes-view.ts`, `zip.ts`, `graphIcons.ts`, `core/src/pricing.ts` and
+`prompts.ts` end to end looking for the falsy-check/wrong-slot/no-guard bug
+class SELF-510/512/513/514 found — all seven turned out to be exactly the
+files SELF-515 already read line 550-568 of this same document (grepping
+`packages/web/lib/graph/layout.ts` etc. by their un-prefixed basename earlier
+missed that entry's comma-separated file lists, which name most of them
+without a full path). No new ground there; recorded so a future fire's
+basename grep does not repeat the same miss, and switched angles.
+
+`allowUnreachableCode: false`: exactly 3 hits, all `tests/fatal.test.ts:25-27`
+inside `callFatal`'s helper — `fatal(e, what)` is typed `(e: unknown, what:
+string): never` (`scripts/fatal.ts:98`, since a real call always ends in
+`process.exit`), so TypeScript's flow analysis marks every statement after
+the call unreachable in every caller, including this one, where
+`process.exit` is `vi.spyOn`'d to a no-op specifically so execution CAN
+continue (the file's own header: "every case here stubs `process.exit` ...
+rather than calling through them"). The three lines the flag flags are the
+ones reading `exitSpy.mock.calls`/`errorSpy.mock.calls` after the call —
+exactly the assertions the test exists to make, and the suite passing today
+is the proof they already run. Not a bug: a `never`-typed function mocked
+for testing is an intentional, unavoidable type-lie, the same shape
+`SELF-561`/`SELF-563` already named for `exactOptionalPropertyTypes` and
+`noPropertyAccessFromIndexSignature` — a real, systemic pattern this flag
+cannot distinguish from an actual dead branch, not a call site to fix. Left
+out of both tsconfigs.
+
+`allowUnusedLabels: false` and `noUncheckedSideEffectImports: true`: zero
+hits in either `tsconfig.base.json`'s build (`tsc -b`, all four
+`tsconfig.tests.json` projects, `tsconfig.root.json`) or `packages/web`'s own
+`tsc --noEmit` — this codebase uses no labelled statements and no
+side-effect-only imports of an unresolvable specifier. Kept, same "free
+insurance, no reason to revert" reasoning `SELF-550`/`SELF-563` gave
+`noImplicitReturns`/`noFallthroughCasesInSwitch`/`noImplicitOverride`: costs
+nothing today, gates a real (if currently absent) bug class the day either
+shape is introduced. Added to both `tsconfig.base.json` and
+`packages/web/tsconfig.json` (web never inherits base, per SELF-545/549/550).
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3342 tests passing (unchanged — no source file touched,
+only the two kept flags), 13 skipped (same gated census as SELF-569).
+
+Backlog item: SELF-570

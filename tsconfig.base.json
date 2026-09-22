@@ -11,6 +11,8 @@
     "noFallthroughCasesInSwitch": true,
     "noImplicitOverride": true,
     "declaration": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "allowUnusedLabels": false,
+    "noUncheckedSideEffectImports": true
   }
 }
