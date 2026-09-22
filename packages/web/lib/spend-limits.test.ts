@@ -104,6 +104,45 @@ describe("readLimits refuses a run cap too small to buy anything", () => {
 })
 
 /**
+ * `quote()`'s truncation branch (spend-limits.ts's own `text.length > 40 ?
+ * ... : text`) had no test anywhere. Every bad-value test in this file and in
+ * `app/api/map/limits.test.ts` ("$5", "lots", "2.5", "-1", "Infinity", "NaN")
+ * is under 40 characters, so the untruncated arm is the only one any suite has
+ * ever exercised — found sweeping this file for a coverage gap after it had
+ * never had a dedicated end-to-end read (`@vitest/coverage-v8`, scoped to
+ * `packages/web/lib`: 94.16% branch on this file, this the only genuinely live
+ * gap of its eight uncovered branches — `bucket()`'s IPv6 zero-fill fallback,
+ * the ledger's 2-day prune, and the three `?? 0`s in `refusal()` are each
+ * unreachable through this file's own callers today, the same shape SELF-509
+ * found repeatedly in `packages/core`).
+ *
+ * `quote` exists because an operator's misconfigured value is "the one caught
+ * string this file is allowed to echo" back in a 503 — this pins that echoing
+ * it does not mean echoing it WHOLE. Realistic trigger: an operator pastes a
+ * URL, a JSON blob or a whole `.env` line into the wrong variable by mistake,
+ * and this is what stops that value riding untruncated into a stderr line
+ * (`spendGate`'s `log`) and, before this file replaced it, would have ridden
+ * into `error`, the sentence a stranger visiting the deployed demo reads.
+ */
+describe("a malformed limit longer than the quote's 40-character cutoff is truncated", () => {
+  afterEach(() => {
+    delete process.env[LIMIT_VARS.dayCap]
+  })
+
+  it("truncates the value in the refusal rather than echoing it whole", () => {
+    const junk = "https://example.com/not-a-dollar-figure?token=abc123&x=y"
+    expect(junk.length).toBeGreaterThan(40)
+    process.env[LIMIT_VARS.dayCap] = junk
+    const reading = readLimits(18)
+    expect(reading.ok).toBe(false)
+    if (!reading.ok) {
+      expect(reading.why).toContain(`"${junk.slice(0, 40)}…"`)
+      expect(reading.why).not.toContain(junk)
+    }
+  })
+})
+
+/**
  * The in-memory `claimInMemory`'s "at-once" refusal (spend-limits.ts around
  * line 770) had no test either. `app/api/map/limits.test.ts` drives the
  * at-once limit thoroughly, but always with `SUPABASE_URL` set, so every one

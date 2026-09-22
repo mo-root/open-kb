@@ -3304,3 +3304,70 @@ test` both exit 0: 3343 tests passing (up from 3342, the one new test case),
 13 skipped (same gated census as SELF-571).
 
 Backlog item: SELF-572
+
+**SELF-573 (2026-09-22 overnight fire) — `packages/web/lib/spend-limits.ts`
+(848 lines, the deployment's own money guard) had never had a dedicated
+end-to-end read; found one genuinely live, genuinely untested branch among
+eight.** Read all 849 lines against its own header doctrine ("FAIL CLOSED,
+EVERYWHERE") function by function — `runUsd`/`defaultRunCapUsd` (re-verified
+the $0.41/$1.51/$3.74 table by hand, matching SELF-509's own citation-check
+of the same figures), `setting`/`readLimits` (the three refusal shapes: cap
+too small, day cap below run cap, a bad value), `clientIp`/`bareAddress`/
+`bucket` (the last-entry-of-`x-forwarded-for` reasoning, the IPv4-in-IPv6
+unwrap, the IPv6 /64 expansion by hand against several addresses), the
+in-memory ledger (`noteRunStarted`'s 2-day prune, `noteRunEnded`'s finite-
+usd guard), `count`/`claimInMemory` (the visitor-then-day-then-at-once
+order, matching the doc comment's own stated priority), and `refusal`'s
+three sentences.
+
+Installed `@vitest/coverage-v8@3.2.7` (matched to this repo's `vitest@3.2.7`,
+same as SELF-509/572; never committed — `git checkout -- package.json
+pnpm-lock.yaml` before finishing) and ran it scoped to `packages/web/lib`
+rather than the whole app, since SELF-509's "no jsdom/RTL harness" verdict
+was measured against `.tsx` components and never actually checked whether
+that generalized to the package's plain `.ts` logic files. It does not:
+`packages/web/lib`'s non-component files came back 98.75% branch-blind-spot-
+free at the line level and 100% at the function level, `spend-limits.ts`
+itself included — a real, closeable angle B1-B4's jsdom verdict does not
+cover and no prior fire had measured. Its one file came back 94.16% branch,
+eight uncovered branches.
+
+Traced every one by hand rather than trusting the percentage. Seven are
+already unreachable through this file's own callers, each for a documented
+reason: `bucket()`'s `g || "0"` IPv6 zero-fill (dead once every group is
+already filled from an explicit `"0"` literal); the ledger's 2-day prune and
+`noteRunEnded`'s `Number.isFinite(usd) ? usd : 0` guard (this file's one
+caller, `app/api/map/route.ts:611`, passes `record.spans.totalUsd()`, and
+`packages/core/src/spans.ts`'s `SpanStream.emit` already forces every
+individual span's `usd` finite before accumulating `#total` — confirmed
+reading `emit()` itself — so the sum handed to `noteRunEnded` cannot be
+non-finite today); `count()`'s matching guard on an ended row's `usd`
+(same reason one layer up: every ledger entry's `usd` was already forced
+finite by `noteRunEnded`'s own guard by the time `count()` reads it); and
+the three `?? 0` fallbacks in `refusal()` (`claimInMemory` only ever
+returns `limit: "visitor"`/`"day"`/`"at-once"` when the matching
+`perVisitorPerDay`/`dayCapUsd`/`atOnce` is non-null, so the null case
+`refusal` defends against cannot arise from this file's own claim path —
+only the Postgres `claim_run` path could disagree, which is exactly why the
+guard is worth keeping and not worth deleting).
+
+The eighth was real: `quote()`'s `text.length > 40 ? ... slice(0, 40) + "…"
+: text` truncation arm. Every bad-value test in this file and in
+`app/api/map/limits.test.ts` (`"$5"`, `"lots"`, `"2.5"`, `"-1"`, `"Infinity"`,
+`"NaN"`) is under 40 characters, so the truncated arm — the one that stops
+an operator's misconfigured value (a pasted URL, a JSON blob, a whole `.env`
+line dropped in the wrong field) riding whole into the 429/503 sentence a
+stranger reads — had never fired in any suite. Added one test to
+`spend-limits.test.ts`: a 58-character junk value, asserting the refusal
+quotes exactly the first 40 characters plus `…` and never contains the
+value whole. Confirmed non-vacuous by mutation: temporarily replaced
+`quote`'s body with a bare `JSON.stringify(text)`, reran — the new test
+failed on its first assertion, comparing the untruncated message against
+the truncated expectation — then restored the original (`git diff` on the
+source file is empty; only the test file changed).
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3344 tests passing (up from 3343, the one new test case),
+13 skipped (same gated census as SELF-572).
+
+Backlog item: SELF-573
