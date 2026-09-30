@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { NodeGlyph } from "@/components/icons";
+import { normalizeDomain } from "@/lib/anchor";
 
 /* SiteIcon, a competitor / player favicon chip.
 
@@ -17,15 +18,14 @@ import { NodeGlyph } from "@/components/icons";
 
 const FAVICON_HOST = "https://icons.duckduckgo.com/ip3";
 
-/** Strip scheme / www. / path from a domain-ish string -> bare host. */
-export function normalizeDomain(input?: string | null): string {
-  if (!input) return "";
-  let d = input.trim().toLowerCase();
-  d = d.replace(/^[a-z][\w+.-]*:\/\//, ""); // scheme://
-  d = d.split(/[/?#]/)[0]; // drop path / query / hash
-  d = d.replace(/^www\./, "");
-  return d;
-}
+/** Strip scheme / www. / path from a domain-ish string -> bare host — and,
+ *  since this now shares `lib/anchor.ts`'s validator rather than carrying its
+ *  own copy of that strip, refuse a reserved or malformed host too. Neither
+ *  this component nor `KbBrowser.tsx` (the other importer, for the manifest's
+ *  root link) ever hands it one on a real run, so nothing observable changes
+ *  here — the win is one implementation instead of two that happened to
+ *  agree only by coincidence. */
+export { normalizeDomain };
 
 /** First alphanumeric of a name, uppercased, the monogram fallback glyph. */
 function monogram(name?: string): string {

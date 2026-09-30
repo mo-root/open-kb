@@ -35,8 +35,18 @@ import { isReservedHost } from "@open-kb/core"
  * sentence, rather than a run that is created, recorded, streamed, and reports
  * every surface unreadable for reasons it will not explain. And it refuses
  * BEFORE `createRun`, so a probe never becomes a row.
+ *
+ * Also the one this app's display code reuses (`components/SiteIcon.tsx`
+ * re-exports it for the favicon chip and `KbBrowser.tsx`'s manifest-root
+ * link): `input` accepts `null` too, on top of `undefined`, so a `.tsx`
+ * prop typed `string | null | undefined` can hand this function anything it
+ * has without an `?? undefined` at the call site. SiteIcon.tsx used to carry
+ * its own copy of the three-line scheme/path/www strip below, byte-for-byte,
+ * with no shape or reserved-host check — a display-only gap the favicon chip
+ * never needed closed, until it silently agreed with this validator's rule
+ * instead of independently rotting.
  */
-export function normalizeDomain(input: string | undefined): string {
+export function normalizeDomain(input: string | null | undefined): string {
   if (typeof input !== "string") return ""
   let d = input.trim().toLowerCase()
   if (!d) return ""
