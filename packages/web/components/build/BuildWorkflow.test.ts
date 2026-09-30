@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { isSpendDecision, mergeEntities } from "./BuildWorkflow"
+import { clockPrefix, isSpendDecision, mergeEntities } from "./BuildWorkflow"
 import type { EntityData } from "./FindingsPanel"
 
 /**
@@ -60,6 +60,26 @@ describe("isSpendDecision: only the plan agent's own verdict lines count", () =>
 
   it("does not match 'enough' or 'round N' mid-message", () => {
     expect(isSpendDecision("plan", "that was not enough, round 2 next")).toBe(false)
+  })
+})
+
+describe("clockPrefix: [mm:ss] for a progress line's elapsed marker", () => {
+  it("pads single-digit minutes and seconds", () => {
+    expect(clockPrefix(65)).toBe("[01:05] ")
+  })
+
+  it("renders atSec: 0 — a real timestamp, not an absent one", () => {
+    expect(clockPrefix(0)).toBe("[00:00] ")
+  })
+
+  it("returns empty when atSec is undefined", () => {
+    expect(clockPrefix(undefined)).toBe("")
+  })
+
+  it("floors a fractional atSec instead of printing raw float digits", () => {
+    // 65.3 % 60 is 5.299999999999997 in floating point, not 5.3 — flooring
+    // atSec first is what keeps this a clock rather than a float dump.
+    expect(clockPrefix(65.3)).toBe("[01:05] ")
   })
 })
 

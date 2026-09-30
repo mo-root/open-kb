@@ -156,6 +156,31 @@ export function isSpendDecision(agent: string, message: string): boolean {
 }
 
 /**
+ * `[mm:ss] ` for a progress line's elapsed marker, or `""` when there is
+ * none to show.
+ *
+ * Floors before splitting into minutes/seconds, the same fix and for the
+ * same reason as `DecisionsStrip.tsx`'s own `clock()`: `p.atSec` is a bare
+ * `number` (`readProgress`'s own test pins a fractional value as valid), and
+ * `atSec % 60` on an unfloored input can itself be fractional — worse, once
+ * floating-point rounding is involved (`65.3 % 60` is
+ * `5.299999999999997`, not `5.3`), `padStart(2, "0")` sees a string already
+ * longer than 2 and pads nothing, printing raw float digits into the feed
+ * instead of a clock. No progress line this app emits today carries a
+ * fractional `atSec` (`sweep.ts`'s own `sec()` rounds to a whole second
+ * before it is ever sent), so this was unreachable in practice, not merely
+ * untested — the same "type allows it, the one live producer never sends it"
+ * gap `DecisionsStrip.test.tsx` already pins on the sibling function.
+ */
+export function clockPrefix(atSec: number | undefined): string {
+  if (atSec === undefined) return "";
+  const whole = Math.floor(atSec);
+  const m = Math.floor(whole / 60);
+  const s = whole % 60;
+  return `[${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}] `;
+}
+
+/**
  * What a visitor who is not paying needs to know before they type.
  *
  * Passed in rather than read here, because only a server component can see
@@ -501,10 +526,7 @@ export function BuildWorkflow({
         }
         // The elapsed marker is what makes a slow stage visible: two minutes
         // between two lines reads as a stall, and sometimes it is one.
-        addFeed(
-          "muted",
-          `${p.atSec !== undefined ? `[${String(Math.floor(p.atSec / 60)).padStart(2, "0")}:${String(p.atSec % 60).padStart(2, "0")}] ` : ""}${p.agent}: ${p.message}`,
-        );
+        addFeed("muted", `${clockPrefix(p.atSec)}${p.agent}: ${p.message}`);
       },
       ctrl.signal,
       runIsOver,

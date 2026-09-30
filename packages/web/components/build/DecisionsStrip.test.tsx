@@ -75,4 +75,16 @@ describe("DecisionsStrip's clock formats seconds as mm:ss", () => {
     expect(html).not.toContain("tnum shrink-0");
     expect(html).toContain("no timestamp on this one");
   });
+
+  it("floors a fractional atSec instead of printing raw float digits", () => {
+    // `Decision.atSec` is a bare `number`; readProgress's own test (types.test.ts)
+    // pins a fractional value as valid input. 65.3 % 60 is 5.299999999999997 in
+    // floating point, not 5.3 — without flooring first, padStart sees a string
+    // already longer than 2 and pads nothing, so this would render
+    // "01:5.299999999999997" instead of a clock.
+    const html = renderToStaticMarkup(
+      <DecisionsStrip decisions={[{ id: 1, text: "round 2", atSec: 65.3 }]} />,
+    );
+    expect(html).toContain(">01:05<");
+  });
 });

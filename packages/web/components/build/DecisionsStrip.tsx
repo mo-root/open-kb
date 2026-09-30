@@ -34,8 +34,17 @@ export interface Decision {
 }
 
 function clock(atSec: number): string {
-  const m = Math.floor(atSec / 60);
-  const s = atSec % 60;
+  // Floor before splitting into minutes/seconds, not after: `Decision.atSec`
+  // is a bare `number` and `readProgress`'s own test pins a fractional value
+  // (12.5) as valid, so `atSec % 60` on an unfloored input can itself be
+  // fractional — and, once floating-point rounding gets involved (`65.3 % 60`
+  // is `5.299999999999997`, not `5.3`), `padStart(2, "0")` sees a string
+  // already longer than 2 and pads nothing, printing raw float digits instead
+  // of a clock. Flooring first guarantees `s` is a 0-59 integer, the only
+  // input this format was ever designed for.
+  const whole = Math.floor(atSec);
+  const m = Math.floor(whole / 60);
+  const s = whole % 60;
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 

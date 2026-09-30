@@ -3517,3 +3517,62 @@ test's assertions changed, none added or removed), 13 skipped (same gated
 census as SELF-575).
 
 Backlog item: SELF-576
+
+**SELF-577 (2026-09-30 overnight fire) — a basename cross-reference against
+the full `a7bbc57..HEAD` commit log (not just this doc, which SELF-509's own
+note already flagged as reset once) found `layerMeta.tsx` untouched by name;
+reading its actual importers instead turned up a real formatting bug in two
+files that HAD been read before, `DecisionsStrip.tsx` and `BuildWorkflow.tsx`.**
+`layerMeta.tsx` itself checked out clean — three small accessors, already with
+their own dedicated `layerMeta.test.ts` covering every branch, nothing to fix.
+Reading its callers for other outstanding gaps landed on `DecisionsStrip.tsx`'s
+`clock(atSec)`: `const s = atSec % 60` runs on `atSec` unfloored, and
+`Decision.atSec` is typed as a bare `number` — `types.test.ts`'s own test for
+the shared `readProgress` parser pins `atSec: 12.5` as valid input, so the type
+system and the existing test suite both already treat a fractional value as
+legitimate. `atSec % 60` on a fraction is itself fractional, and once floating-
+point rounding is involved the result is not even the tidy fraction it looks
+like: `65.3 % 60` is `5.299999999999997` in JS, not `5.3`. `padStart(2, "0")`
+only pads a string SHORTER than 2 characters, so a multi-digit float sails
+through unpadded — `clock(65.3)` returns `"01:5.299999999999997"`, not a
+malformed clock but a raw float dump inside what reads as a fixed-width
+`mm:ss` field. Verified directly in a scratch Node REPL before touching any
+file.
+
+The identical computation, duplicated, lives in `BuildWorkflow.tsx`'s
+`addFeed` call inside the `?ns=progress` handler — `p.atSec % 60` again,
+unfloored, building the elapsed-marker prefix on every feed line. Same root
+cause, same trigger, so both are one item: `clock()`'s local fix floors
+`atSec` before splitting into minutes/seconds; the `BuildWorkflow.tsx` site
+is pulled out into a new exported `clockPrefix(atSec)` (`"[mm:ss] "` or `""`),
+matching the file's existing pattern of testing pure logic as exports
+(`isSpendDecision`, `mergeEntities`) rather than the untestable JSX shell
+around it — B1-B4 already established this app has no jsdom/RTL harness, so
+the inline template-literal version could not have been pinned by a test at
+all.
+
+Not reachable today: `packages/sweep/src/sweep.ts`'s `say()` is the only
+producer that ever writes `atSec` onto the `?ns=progress` stream this app
+reads, and its own `sec()` (line 1777) is `Math.round(...)` — always a whole
+number. `packages/swarm/src/orchestrator.ts` writes a genuinely fractional
+`atSec` (`Math.round(sec() * 10) / 10`, one decimal) on its own `landings`,
+but nothing wires the swarm orchestrator's timeline into this stream today.
+So this is the same shape SELF-576 already argued for and the codebase's own
+test suite already treats as in-scope: a value the type and the existing
+tests both accept as legitimate, silently mishandled by a sibling function
+that assumed it could never arrive.
+
+Confirmed non-vacuous by mutation: stashed just the two `.tsx` fixes (kept
+the new tests) and reran — both new assertions failed with the exact
+predicted output (`"01:5.299999999999997"` in the rendered HTML,
+`clockPrefix is not a function` before the export existed); restored the
+fixes and reran clean before staging.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3350 tests passing (up from 3345, five new test cases —
+one in `DecisionsStrip.test.tsx`, four in `BuildWorkflow.test.ts` including
+`clockPrefix`'s existing-behaviour cases), 13 skipped (same gated census as
+SELF-576). Web-only change: type-checked and unit-tested per the routine's
+own limits, not visually verified in a browser.
+
+Backlog item: SELF-577
