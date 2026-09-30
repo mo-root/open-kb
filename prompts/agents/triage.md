@@ -1,7 +1,7 @@
 ---
 agent: triage
 ---
-Sixty hosts came back from searches about one market. Before this run spends a fetch and a
+These hosts came back from searches about one market. Before this run spends a fetch and a
 judgement on each, say which are worth it — from the search metadata alone.
 
 The market:
