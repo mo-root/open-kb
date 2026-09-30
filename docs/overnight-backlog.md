@@ -3652,3 +3652,71 @@ test` both exit 0: 3351 tests passing (same as SELF-578, docs-only change),
 13 skipped (same gated census).
 
 Backlog item: SELF-579
+
+**SELF-580 (2026-09-30 overnight fire) — `scripts/show-prompt.ts`'s own
+`promptStats` re-derived the frontmatter `includes` parse `core/src/
+prompts.ts`'s `composePrompt` already ran, byte-for-byte, with a third
+hand-copied instance in `prompts.test.ts`.** Same shape as SELF-555's
+`identityKey` and SELF-553's `isAbortError`: a private one-liner
+(`(agent.frontmatter.includes ?? "").replace(/[[\]]/g, "").split(",")
+.map(s => s.trim()).filter(Boolean)`) hand-copied across files that must
+agree, with nothing enforcing it — real drift risk since show-prompt.ts's
+whole reason to exist is reporting on the SAME prompt composePrompt sends,
+and it already imports composePrompt from that module.
+
+Fixed by exporting `parseIncludes(raw: string | undefined): string[]` from
+prompts.ts, having composePrompt call it, and pointing show-prompt.ts and
+the test's own assertion at the same export — no behaviour change, one copy
+instead of three. Added a dedicated 3-case test block (bracketed list, the
+`undefined` fallback, trailing-comma/empty-bracket handling); verified
+non-vacuous by mutation (swapped the parse regex for a no-op, 7 tests failed
+with the wrong output, restored the fix).
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3354 tests passing (up from 3351, three new), 13 skipped
+(same gated census as SELF-579).
+
+Backlog item: SELF-580
+
+**SELF-581 (2026-09-30 overnight fire) — `prompts/agents/triage.md`'s
+opening line told the model it always sees sixty hosts — twice the batch
+size it has been handed since e2e7ba3 halved `TRIAGE_BATCH` to 30.**
+`e2e7ba3` updated the constant and its doc comment after runs showed 60-row
+batches timing out at the 120s call ceiling, but never the prompt text a
+prior commit had written when the batch really was sixty — nothing diffs
+prompt prose against the constant it describes. `drop-confirm.md`, the
+sibling prompt with the same "hosts below" shape, already states no count
+at all ("each of these hosts"), sensible since a batch is capped, not
+fixed.
+
+Fixed by rewording the line to "These hosts came back from searches about
+one market." — no count claimed, matching drop-confirm.md's style. No code
+or schema touched; checked for a second copy of "Sixty hosts" anywhere else
+and found none.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3354 tests passing (same as SELF-580, prompt-text-only
+change), 13 skipped (same gated census).
+
+Backlog item: SELF-581
+
+**SELF-582 (2026-09-30 overnight fire) — backlog file lost sync with its own
+last two commits, same drift class SELF-557 already fixed once.** This
+file's own stated contract is that it "carries every item with its measured
+evidence and file:line pointers," but SELF-580 (4b76771, the `parseIncludes`
+de-duplication) and SELF-581 (d5bed71, the `triage.md` stale host count)
+each landed real work without either touching this file — confirmed by
+diffing `git log a7bbc57..HEAD --oneline` against `git log a7bbc57..HEAD
+--oneline -- docs/overnight-backlog.md`, whose last entry was SELF-579
+(daf864a's sibling read pass) before this fire.
+
+Appended the SELF-580 and SELF-581 entries above from their own commit
+messages, cross-checked against current source (`core/src/prompts.ts`'s
+`parseIncludes` export and its two call sites, `prompts/agents/triage.md`'s
+current opening line). No code changed.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3354 tests passing (unchanged — same gated census as
+SELF-581; this touches only prose).
+
+Backlog item: SELF-582
