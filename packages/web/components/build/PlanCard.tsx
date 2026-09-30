@@ -255,13 +255,21 @@ export function PlanCard({ plan }: { plan: PlanView }) {
         {plan.written !== undefined && (
           <Chip tone="slate">catalog wrote {plan.written}</Chip>
         )}
-        {dropped > 0 ? (
-          <Chip tone="amber">
-            {dropped} dropped before buying — named the company or its coinages
-          </Chip>
-        ) : (
-          <Chip tone="emerald">every written query survived the name filter</Chip>
-        )}
+        {/* Gated on `written` being present, not just on `dropped`. plannedDropped
+            returns 0 both when nothing was dropped AND when there is no `written`
+            figure to compare against (no catalog frame at all) — collapsing those
+            into one boolean would make this chip claim "every written query
+            survived" on a run where no written count is known, which is the exact
+            always-yes shape the comment above this file's history already retired
+            once (see the ported chip this one replaced). */}
+        {plan.written !== undefined &&
+          (dropped > 0 ? (
+            <Chip tone="amber">
+              {dropped} dropped before buying — named the company or its coinages
+            </Chip>
+          ) : (
+            <Chip tone="emerald">every written query survived the name filter</Chip>
+          ))}
       </div>
 
       {plan.queries.length === 0 ? (

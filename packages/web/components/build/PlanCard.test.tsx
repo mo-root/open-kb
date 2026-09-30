@@ -91,6 +91,18 @@ describe("PlanCard: the dropped-queries chip", () => {
     expect(html).toContain("every written query survived the name filter");
     expect(html).not.toContain("dropped before buying");
   });
+
+  it("shows neither chip when written never rode the frame — plannedDropped's 0 is 'unknown', not 'nothing dropped'", () => {
+    // plannedDropped(delivered, undefined) is 0 by contract (types.test.ts:
+    // "is zero when written is absent — no catalog frame to compare against"),
+    // the same 0 a real all-survived run reports. Gating the chip on `dropped`
+    // alone would render the emerald claim on a run with no written figure at
+    // all to back it — the always-yes shape this file's own history (the
+    // ported chip PlanCard replaced) already retired once.
+    const html = renderToStaticMarkup(<PlanCard plan={plan({ queries: [query({})] })} />);
+    expect(html).not.toContain("every written query survived the name filter");
+    expect(html).not.toContain("dropped before buying");
+  });
 });
 
 describe("PlanCard: requested/written chips", () => {

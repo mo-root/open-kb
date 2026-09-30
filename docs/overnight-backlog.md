@@ -3576,3 +3576,36 @@ SELF-576). Web-only change: type-checked and unit-tested per the routine's
 own limits, not visually verified in a browser.
 
 Backlog item: SELF-577
+
+**SELF-578 (2026-09-30 overnight fire) — a basename cross-reference found
+`PlanCard.tsx` itself never literally named in this doc (two prior fires,
+SELF-111/SELF-170, had read and tested it, but under commit messages this
+file never quoted), and a fresh adversarial read turned up a real bug: the
+survived-filter chip could claim a fact it had no data for.**
+`plannedDropped(delivered, written)` returns 0 both when the filter
+genuinely dropped nothing AND when `written` never rode the frame at all —
+its own test in `types.test.ts` pins the second case explicitly ("is zero
+when written is absent — no catalog frame to compare against"). `PlanCard.
+tsx`'s dropped-queries chip gated only on `dropped > 0`, so both zeros
+rendered the same emerald claim, "every written query survived the name
+filter" — on a run with no written count to back that claim, not just on
+one that measured zero drops. Ironic given the file's own comment two lines
+above (the "THE CHIP THAT COULD ONLY EVER SAY YES" note) already narrates
+retiring exactly this shape once, for the chip `dropped` replaced.
+
+Fixed by gating the chip pair on `plan.written !== undefined`, matching the
+precedent already set one chip over (`plan.requested !== undefined`, `plan.
+written !== undefined` for the two chips right above it) — when written is
+absent, PlanCard now shows neither chip rather than asserting a fact it
+cannot back. Added a test reproducing the exact case (a plan with queries
+but no `written` field); reverted just the `.tsx` fix to confirm it fails
+first (the emerald chip's text was present in the markup), then restored
+the fix.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3351 tests passing (up from 3350, one new), 13 skipped
+(same gated census as SELF-577). Web-only change: type-checked and
+unit-tested per the routine's own limits, not visually verified in a
+browser.
+
+Backlog item: SELF-578
