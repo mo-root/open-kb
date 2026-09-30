@@ -674,8 +674,10 @@ export const ROUNDUP_SHAPE = /alternatives|top \d+|best|vs\.?|comparison/i;
 
 /** How many roundup-shaped rows the listicle-harvest call may read at once.
  *  One model call reads all of them, so this bounds that call's input rather
- *  than batching it — TRIAGE_BATCH's precedent, sixty rows of title and
- *  description is comfortably inside one call's input floor. */
+ *  than batching it — sixty rows of title and description sat comfortably
+ *  inside one call's input floor back when TRIAGE_BATCH was itself 60 (see
+ *  above); the timeout-driven halving to 30 has never been re-checked
+ *  against this constant. */
 export const LISTICLE_MAX_ROWS = 60;
 
 /** How many fresh queries the listicle-harvest stage may fire in total. A
@@ -1251,8 +1253,9 @@ export interface SweepOptions {
    */
   discovery?: "call" | "agent";
   /**
-   * Ask a model, in batches of sixty and from search metadata alone, which
-   * hosts are worth a fetch and a judgement at all — before either is spent.
+   * Ask a model, in batches of TRIAGE_BATCH hosts and from search metadata
+   * alone, which hosts are worth a fetch and a judgement at all — before
+   * either is spent.
    *
    * A FLAG, NOT A MIGRATION, on the `discovery` precedent — and the A/B it was
    * gated on has now run and survived: 123 of 926 hosts skipped unfetched on

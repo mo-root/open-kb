@@ -3720,3 +3720,57 @@ test` both exit 0: 3354 tests passing (unchanged — same gated census as
 SELF-581; this touches only prose).
 
 Backlog item: SELF-582
+
+**SELF-583 (2026-09-30 overnight fire) — SELF-581 fixed `triage.md`'s stale
+"sixty hosts" but two comments inside `sweep.ts` itself, the file that
+actually halved `TRIAGE_BATCH`, still said the same wrong thing.** A
+basename cross-reference against the full commit log turned up
+`prompts/agents/group.md`, `investigator.md` and `link.md` as never-quoted
+prompt files; reading `group.md` end to end against its consumer
+(`sweep.ts`'s `prompt("group", ...)` call and `SweepOptions.discovery`'s doc
+comment describing it) found nothing wrong, but reading the surrounding
+`SweepOptions` doc block turned up the real gap. `grep -rn "sixty"
+packages/sweep/src/sweep.ts` found thirteen hits; twelve cite
+`SECOND_LOOK_CAP`/`DROP_CONFIRM_CAP` (both still 60, confirmed by reading
+both exports) or the hardcoded `.slice(0, 60)` sample size in the `assess`
+prompt builder (confirmed by reading it directly) — all correct. Two, both
+about `TRIAGE_BATCH`, were not:
+  - The `SweepOptions.triage` field's own doc comment: "Ask a model, in
+    batches of sixty and from search metadata alone, which hosts are worth a
+    fetch..." — `TRIAGE_BATCH` (sweep.ts:383) is 30, and its own comment
+    says why: "Was 60: ... showed timing out at the 120s call ceiling four
+    times in fourteen calls ... Thirty halves the rows." The field comment
+    documenting the same flag never got the update.
+  - `LISTICLE_MAX_ROWS`'s doc comment cited "TRIAGE_BATCH's precedent, sixty
+    rows of title and description is comfortably inside one call's input
+    floor" to justify its own 60-row cap — citing a number that was true
+    only while `TRIAGE_BATCH` was itself 60, before the same timeout halved
+    it. `LISTICLE_MAX_ROWS` was never touched by that halving and has no
+    measurement of its own on record.
+
+Fixed the first by naming the constant instead of a bare number ("batches of
+TRIAGE_BATCH hosts"), the same drift-resistant idiom the same doc block
+already uses two fields down ("`TRIAGE_KEEP_SEENIN`-many distinct
+queries") — a number in prose can go stale the moment the constant next
+changes; a name cannot. Fixed the second by historicizing the citation
+("sixty rows ... sat comfortably ... back when TRIAGE_BATCH was itself 60")
+rather than asserting a false current fact, and added the honest caveat
+that timeout-driven halving "has never been re-checked against this
+constant" — checked `LISTICLE_MAX_ROWS`'s only call site (sweep.ts:4960,
+`.slice(0, LISTICLE_MAX_ROWS)`) and no test or run measurement bounds its
+own call time, so leaving the cap at 60 rather than guessing a change is the
+right scope for a comment fix, not a behaviour one.
+
+`group.md`, `investigator.md` and `link.md` themselves: read all three
+against their consuming code (`prompt("group", ...)` / `prompt("link", ...)`
+call sites in sweep.ts; `packages/core/src/investigator.ts`'s
+`composePrompt("investigator", ...)` call against the tool set it hands the
+agent — `fetch`'s `direct`/`unlocked` modes in `packages/core/src/tools.ts`
+match `investigator.md`'s "free"/"slow expensive mode" claims exactly) — no
+stale claims found in any of the three.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3354 tests passing (unchanged — comment-only change, same
+gated census as SELF-582).
+
+Backlog item: SELF-583
