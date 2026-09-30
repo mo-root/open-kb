@@ -3609,3 +3609,46 @@ unit-tested per the routine's own limits, not visually verified in a
 browser.
 
 Backlog item: SELF-578
+
+**SELF-579 (2026-09-30 overnight fire) — a basename cross-reference against the
+full commit log turned up several `prompts/`/`skills/` files never named there;
+reading them against the code they describe found one stale fact in
+`skills/mapping-markets/references/troubleshooting.md`.** Its "It ran, but
+slowly" section reads: "A long gap before the first search is the catalog,
+three concurrent calls." `sweep.ts`'s own doc comments on the catalog stage
+(around line 714) say otherwise: a block headed "The three lenses the catalog
+is written through, in parallel" is immediately followed by a second one
+headed "The lenses are gone: the PRODUCT is the unit now" — the three-lens,
+three-concurrent-call design this troubleshooting line describes was replaced
+by a per-product catalog call, `CATALOG_CONC = 6` (sweep.ts:3296), run through
+`runPool` over every funded product. The file's own comment even narrates why
+6 and not "unleashed": `funded.length` is now the company's whole product
+count, so a bare `Promise.all` would fire that many concurrent model calls at
+once — a small pool, not a wide one, same fix already used elsewhere in this
+file. Checked for a second copy of the "three concurrent calls" claim
+elsewhere (ARCHITECTURE.md, SKILL.md, the other skills references, CHANGELOG.md)
+and found none — this was the only place it survived.
+
+The rest of that troubleshooting section held up under the same check:
+"calls run 20 at a time" matches `sweep.ts`'s default `CONC = Math.floor(opts.
+concurrency ?? 20)` (line 1619); "30s cap on any one page" matches the
+`timeoutMs` default of `30_000` in both `brightdata.ts:147` and
+`sweep.ts:666`; "the planner runs alongside the searching" matches the
+"planner runs beside them" comment at sweep.ts:4228; and the dev-server port
+(":3210") matches `packages/web/package.json`'s own `--port 3210`. Also read
+`prompts/agents/discover.md` and `prompts/agents/drop-confirm.md` end to end
+against their consuming code (`discovery.ts`'s `readPage`/`findDocs` tools,
+`tools.ts`'s `RELATIONS` enum) and `prompts/doctrine/05-reading-the-web.md`'s
+llms.txt hit-rate claim ("10 of 14... 12 with a docs subdomain") against
+`prompts/swarm/skill.md`'s copy of the same figure — all three matched their
+code and each other; no second bug found in this pass.
+
+Fixed by rewriting the one stale line to name the current mechanism instead
+of the retired one: "one model call per product, six concurrent
+(`CATALOG_CONC`)."
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3351 tests passing (same as SELF-578, docs-only change),
+13 skipped (same gated census).
+
+Backlog item: SELF-579

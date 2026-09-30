@@ -89,7 +89,8 @@ Look at the phase log's timestamps rather than the total.
 - **Search dominating** is normal. It is the actual work, and calls run 20 at a time with a 30s cap
   on any one page.
 - **Classification dominating** means many hosts. It scales with hosts, not queries.
-- **A long gap before the first search** is the catalog, three concurrent calls.
+- **A long gap before the first search** is the catalog — one model call per product, six
+  concurrent (`CATALOG_CONC`).
 - **Stalls between rounds** should not happen any more; the planner runs alongside the searching.
 
 ## Nothing in the browser
