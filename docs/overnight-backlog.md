@@ -3774,3 +3774,39 @@ test` both exit 0: 3354 tests passing (unchanged — comment-only change, same
 gated census as SELF-582).
 
 Backlog item: SELF-583
+
+**SELF-584 (2026-09-30 overnight fire) — `normalizeDomain` was exported
+twice, byte-for-byte identical over its first three lines, under the same
+name in two different files.** A sweep for repeated top-level function/const
+definitions across `packages/*/src` and `packages/web` (group every
+declaration by name, look for more than one hit) turned up
+`lib/anchor.ts:39` (the `POST /api/map` door — strip scheme/path/www, then
+refuse anything failing a hostname-shape check or `isReservedHost`) and
+`components/SiteIcon.tsx:21` (the favicon chip's own copy, carrying only the
+first three lines — no shape or reserved-host check). Both ran the identical
+scheme-strip / path-strip / www-strip in the same order with the same two
+regexes. `SiteIcon`'s copy was also the one `KbBrowser.tsx` already imports
+(`from "@/components/SiteIcon"`, line 133) for its own manifest-root link —
+one implementation, two addresses, no test tying them together.
+
+Checked reachability first: `SiteIcon`'s `domain` prop only ever receives an
+already-classified entity's `.domain` field or `hostOf(url)`'s output
+(SELF-556 already confined that to a bare hostname) — always a real
+registrable business hostname, never a bare IP, single-label name, or
+internal suffix, so adopting `anchor.ts`'s stricter rule changes nothing
+reachable today. Same "free fix, unreachable gap" shape as SELF-556/SELF-509.
+
+Fixed by widening `anchor.ts`'s `normalizeDomain` to accept `null` as well as
+`undefined` (its `typeof input !== "string"` guard already treated both
+identically) and having `SiteIcon.tsx` import and re-export that one
+implementation instead of carrying its own copy. `KbBrowser.tsx` needed no
+change. Every existing case in `SiteIcon.test.tsx` and `anchor.test.ts`
+passes unchanged under the shared function — ran both suites rather than
+adding a new test, since the two files already independently covered the
+shape this merges.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3354 tests passing (unchanged — no behaviour moved for any
+covered input), 13 skipped (same gated census as SELF-583).
+
+Backlog item: SELF-584
