@@ -3810,3 +3810,42 @@ test` both exit 0: 3354 tests passing (unchanged — no behaviour moved for any
 covered input), 13 skipped (same gated census as SELF-583).
 
 Backlog item: SELF-584
+
+**SELF-585 (2026-09-30 overnight fire) — a repeated coverage sweep (SELF-509's
+own snapshot, re-run to check for drift since 2026-09-17) confirmed no new gap
+had opened in 68 commits of activity, so this fire read `export-kb.ts`'s `fm()`
+end to end instead and found the frontmatter it writes is invalid YAML the
+moment a field holds a colon.** `fm()` built every value with
+`JSON.stringify(String(v)).slice(1, -1)` — `JSON.stringify` quotes and escapes
+the string, and the `.slice` then threw the quotes away while keeping the
+escaping, on every field including `name`, which is classifier-written free
+text, unlike `kind`/`relation`/`tier`'s fixed vocabulary. A colon-bearing name
+(`"Salesforce: Sales Cloud"`, the shape an ordinary product tagline takes)
+produced the frontmatter line `name: Salesforce: Sales Cloud` — a second,
+unquoted colon. Verified directly rather than assumed: generated that exact
+block and fed it to PyYAML (`yaml.safe_load`), which refused it outright —
+"mapping values are not allowed here" — the same failure a real YAML reader
+(js-yaml, Obsidian's own frontmatter parser, the tool this export's wikilinks
+are written for) gives. An embedded quote or backslash broke the same way,
+silently, for the same reason: the old code discarded `JSON.stringify`'s own
+escaping along with the quotes that made it valid.
+
+Fixed with a `yamlSafe(s)` predicate — no control character, quote or
+backslash, no `": "`/trailing `:`, no leading YAML-special character — that
+rides a value unquoted only when none of those apply, and wraps it in
+`JSON.stringify(s)` (quotes kept this time) otherwise. Verified against
+PyYAML: the fixed block for the same colon-bearing name now parses to
+`{"name": "Salesforce: Sales Cloud", ...}` cleanly. Added a test asserting the
+emitted line is `name: "Salesforce: Sales Cloud"`, not the old unquoted shape,
+and that an untouched vocabulary field (`relation: competitor`) still rides
+bare — no reformatting of what was never broken. Verified non-vacuous by
+mutation: stashed just the source fix, reran — the new test failed showing the
+exact broken line, restored the fix and reran clean before staging. Scope:
+`fm()` has exactly one call site (`entities/`'s frontmatter block) — checked
+by grep — so no other emitter needed the same fix.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3355 tests passing (up from 3354, one new), 13 skipped
+(same gated census as SELF-584).
+
+Backlog item: SELF-585

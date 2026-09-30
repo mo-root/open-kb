@@ -125,6 +125,35 @@ describe("exportKbFiles", () => {
     expect(note).toContain("> 175M+ ethically sourced IPs")
   })
 
+  // `fm()` used to strip `JSON.stringify`'s own quotes off every frontmatter
+  // value, including `name` — free text a classifier writes, unlike
+  // `kind`/`relation`/`tier`'s fixed vocabulary. A colon-bearing name (an
+  // ordinary product-tagline shape: "Salesforce: Sales Cloud") produced
+  // `name: Salesforce: Sales Cloud`, which a real YAML parser — js-yaml,
+  // PyYAML, Obsidian's own frontmatter reader, the tool this export's
+  // wikilinks target — refuses to parse ("mapping values are not allowed
+  // here"), confirmed directly against PyYAML on the emitted block.
+  it("a colon-bearing frontmatter value is quoted, not left as invalid YAML", () => {
+    const colonRun = {
+      entities: [
+        {
+          name: "Salesforce: Sales Cloud",
+          domain: "salesforce.example",
+          kind: "company",
+          relation: "competitor",
+          what: "A CRM suite.",
+        },
+      ],
+    }
+    const note = exportKbFiles(colonRun).find((f) => f.path === "entities/salesforce-example.md")!.content
+    expect(note).toContain('name: "Salesforce: Sales Cloud"')
+    // The bug's exact shape: an unquoted second colon on the `name:` line.
+    expect(note).not.toMatch(/^name: Salesforce:/m)
+    // Untouched vocabulary fields still ride unquoted — no reformatting of
+    // what was never broken.
+    expect(note).toContain("relation: competitor")
+  })
+
   it("edges become wikilinks and inferred confidence is marked", () => {
     const note = get("entities/oxylabs-io.md")
     expect(note).toContain("[[brightdata-com]]")

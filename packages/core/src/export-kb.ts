@@ -163,10 +163,32 @@ export function slugOf(e: Pick<ExportEntity, "name" | "domain" | "kind">): strin
     .replace(/^-+|-+$/g, "")
 }
 
+/**
+ * Can `s` ride a YAML frontmatter line unquoted? Conservative on purpose: this
+ * is a "may a reader misparse it" test, not a "is it typical" one.
+ *
+ * MEASURED, not theoretical: `fm()` used to strip the quotes `JSON.stringify`
+ * puts on, on every field including a classifier-written `name` — free text,
+ * unlike `kind`/`relation`/`tier`'s fixed vocabulary. `name: Salesforce: Sales
+ * Cloud` (a colon-bearing name, the shape a product tagline takes) is invalid
+ * YAML under a real parser (js-yaml, PyYAML, Obsidian's frontmatter reader —
+ * the tool this format's own wikilinks target): "mapping values are not
+ * allowed here". Confirmed with PyYAML directly on the emitted block. Any
+ * embedded quote or backslash broke the same way, silently, because the old
+ * code discarded `JSON.stringify`'s own escaping along with its quotes.
+ */
+function yamlSafe(s: string): boolean {
+  return s.length > 0 && !/[\r\n"\\]/.test(s) && !/: |:$/.test(s) && !/^[\s"'#*&!|>%@`,[\]{}?:-]/.test(s)
+}
+
 function fm(pairs: Array<[string, unknown]>): string {
   const lines = pairs
     .filter(([, v]) => v !== undefined && v !== null && v !== "")
-    .map(([k, v]) => `${k}: ${typeof v === "number" ? v : JSON.stringify(String(v)).slice(1, -1)}`)
+    .map(([k, v]) => {
+      if (typeof v === "number") return `${k}: ${v}`
+      const s = String(v)
+      return `${k}: ${yamlSafe(s) ? s : JSON.stringify(s)}`
+    })
   return `---\n${lines.join("\n")}\n---\n`
 }
 
