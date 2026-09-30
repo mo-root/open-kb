@@ -8,7 +8,7 @@
  *   npx tsx scripts/show-prompt.ts investigator --stats
  */
 import { readdirSync } from "node:fs"
-import { loadPrompt, composePrompt } from "../packages/core/src/prompts.js"
+import { loadPrompt, composePrompt, parseIncludes } from "../packages/core/src/prompts.js"
 
 const AGENTS = "prompts/agents"
 const DOCTRINE = "prompts/doctrine"
@@ -41,11 +41,7 @@ export interface PromptStats {
  */
 export function promptStats(name: string, agentsDir: string, doctrineDir: string): PromptStats {
   const agent = loadPrompt(name, agentsDir)
-  const includes = (agent.frontmatter.includes ?? "")
-    .replace(/[[\]]/g, "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean)
+  const includes = parseIncludes(agent.frontmatter.includes)
   const composed = composePrompt(name, agentsDir, doctrineDir)
   const share = (body: string) => Math.round((body.length / composed.length) * 100)
 

@@ -25,14 +25,27 @@ export function loadPrompt(name: string, dir: string): LoadedPrompt {
   return { frontmatter, body: m[2]!.trim() }
 }
 
-/** Compose an agent prompt with the doctrine files it declares in `includes`. */
-export function composePrompt(agent: string, agentsDir: string, doctrineDir: string): string {
-  const a = loadPrompt(agent, agentsDir)
-  const includes = (a.frontmatter.includes ?? "")
+/**
+ * Split a frontmatter `includes` field, e.g. `"[01-a, 02-b]"`, into an ordered
+ * list of doctrine names. Exported because `scripts/show-prompt.ts`'s
+ * `promptStats` needs the individual names (one row per doctrine file) and
+ * not just the joined body `composePrompt` returns — before this export it
+ * hand-copied this exact five-line chain, so a change here (a new frontmatter
+ * shape, a different separator) could compose one prompt while `--stats`
+ * silently reported the shares of another.
+ */
+export function parseIncludes(raw: string | undefined): string[] {
+  return (raw ?? "")
     .replace(/[[\]]/g, "")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean)
+}
+
+/** Compose an agent prompt with the doctrine files it declares in `includes`. */
+export function composePrompt(agent: string, agentsDir: string, doctrineDir: string): string {
+  const a = loadPrompt(agent, agentsDir)
+  const includes = parseIncludes(a.frontmatter.includes)
   const parts = includes.map((d) => loadPrompt(d, doctrineDir).body)
   return [...parts, a.body].join("\n\n---\n\n")
 }

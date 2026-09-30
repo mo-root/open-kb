@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest"
 import { readdirSync, readFileSync, mkdtempSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
-import { loadPrompt, composePrompt, render } from "../src/prompts.js"
+import { loadPrompt, composePrompt, parseIncludes, render } from "../src/prompts.js"
 import { RELATIONS } from "../src/tools.js"
 import type { QueryFamily } from "../src/families.js"
 
@@ -91,11 +91,7 @@ describe("prompt files", () => {
 
   it("every name in the investigator's includes resolves to a real doctrine file", () => {
     const agent = loadPrompt("investigator", AGENTS)
-    const includes = (agent.frontmatter.includes ?? "")
-      .replace(/[[\]]/g, "")
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean)
+    const includes = parseIncludes(agent.frontmatter.includes)
 
     expect(includes.length).toBeGreaterThan(0)
     for (const name of includes) {
@@ -152,6 +148,29 @@ describe("prompt files", () => {
     // because the ladder had no other word for "real business here, not a rival". Same rule as
     // both prior raises: it earns its length or it does not get raised for it.
     expect(composed.length).toBeLessThan(24_000)
+  })
+})
+
+/**
+ * `parseIncludes` had never run under a name of its own — every prior test exercised it only
+ * through `composePrompt`, with a real frontmatter file always supplying a well-formed value.
+ * Exported (self-discovered, D-scope) because `scripts/show-prompt.ts`'s `promptStats` had
+ * hand-copied this exact chain rather than importing it, a real drift risk: a change to how
+ * `includes` is written in frontmatter could compose one prompt while `--stats` reported the
+ * shares of another. These pin the shape composePrompt already relies on but never named.
+ */
+describe("parseIncludes", () => {
+  it("splits a bracketed, comma-separated list into trimmed names", () => {
+    expect(parseIncludes("[01-a, 02-b, 03-c]")).toEqual(["01-a", "02-b", "03-c"])
+  })
+
+  it("is an empty list for undefined, matching composePrompt's own `?? \"\"` fallback", () => {
+    expect(parseIncludes(undefined)).toEqual([])
+  })
+
+  it("drops empty entries from a trailing comma or blank brackets", () => {
+    expect(parseIncludes("[01-a, 02-b,]")).toEqual(["01-a", "02-b"])
+    expect(parseIncludes("[]")).toEqual([])
   })
 })
 
