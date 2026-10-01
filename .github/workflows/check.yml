@@ -123,6 +123,25 @@ jobs:
       # which is the same class of bug the census step exists to name.
       - run: pnpm test
 
+      # The web app's OWN build command, not folded into `pnpm check` above.
+      # SELF-586 found `next build --webpack` — the command every real
+      # deployment of this app runs — broken on this branch's HEAD at the
+      # time (an `UnhandledSchemeError` on `node:fs`, reached through
+      # `@open-kb/core`'s barrel from a `"use client"` component), and that
+      # neither `pnpm check` (type-checks only) nor `pnpm test` (vitest, never
+      # shells out to `next build`) had ever been able to see it. The fix
+      # landed two narrow regression tests (source-grep, in `NoteView.test.ts`
+      # and `anchor.test.ts`) that pin the two call sites already found, but a
+      # new client component doing the same bare `@open-kb/core` import would
+      # sail past both of those and `pnpm check` alike — only a real build
+      # catches that shape in general. SELF-586's own commit named this
+      # exact gap as "a legitimate next step, not this one". Telemetry
+      # disabled: this is a build check, not an opt-in to Next's phone-home,
+      # and a CI job is not where to make that call per-contributor.
+      - run: pnpm --filter @open-kb/web build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+
       # WHAT THIS RUN DID NOT COVER, on the run's front page.
       #
       # A runner is a clean checkout, so `runs/` — gitignored, megabytes of paid
