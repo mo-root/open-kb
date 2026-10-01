@@ -4242,3 +4242,31 @@ test` both exit 0: 3359 tests passing (up from 3357, two new), 13 skipped
 (same gated census as SELF-591).
 
 Backlog item: SELF-592
+
+**SELF-593 (2026-10-01 overnight fire) — own commit landed without updating
+this file; appended here.** `projectHeadings` in
+`packages/swarm/src/tools-free.ts` builds its HTML-heading projection with
+`if (line) out.push(...)` (line 70), skipping any `<h#>` whose
+`extractText()` reduces to `""`. Every test that had ever exercised this
+function gave it a heading with real inner text ("Acme Scraper"), so the
+skip arm — an image-only `<h2><img></h2>` with no words — had never run,
+the same gap the icon-only-link test immediately below it had already
+closed for `projectLinks`.
+
+Measured with a temporary `@vitest/coverage-v8@4.1.11` devDependency
+(matched this repo's vitest@4.1.11, reverted before finishing, same move
+as SELF-509): `tools-free.ts` sat at 95% branch coverage with this line
+named.
+
+Added a test recording a page whose raw HTML carries one image-only `<h2>`
+followed by a real `<h3>`, asserting the projected headings keep only the
+real one. Verified non-vacuous by mutation: removing just the `if (line)`
+guard made the new test fail (an empty "## " line ahead of "### Our
+team"); restored the guard and reran clean before committing.
+
+No source change — `tools-free.ts` already carried the loop as described;
+only the test was added. `pnpm install` first (fresh clone, no
+`node_modules`). `pnpm check && pnpm test` both exit 0: 3360 tests passing
+(up from 3359, one new), 13 skipped (same gated census as SELF-592).
+
+Backlog item: SELF-593
