@@ -4025,3 +4025,60 @@ types are unchanged.
 gated census as SELF-587 — a type-only import-path change adds no test).
 
 Backlog item: SELF-588
+
+**SELF-589 (2026-10-01 overnight fire) — closed the two transitive vulnerabilities
+SELF-586 named by hand as a future fire's job rather than widening its own
+`next@16.3.8` bump to cover.** SELF-586's `pnpm audit` after that bump read
+"13 findings, 0 critical, 0 high in anything this app's own dependency tree
+owns (the remaining 3 high/7 moderate/3 low are `undici` via the `ai` SDK and
+`nanoid`/`vitest`'s own path-traversal advisory via `vite`'s dev server — a
+different package each, a future SELF-<n>, not widened into this one)." Rechecked
+with a fresh `pnpm audit` before touching anything: same 13 findings, same
+three sources — `undici@7.29.0` (3 high, 2 moderate, 2 low, all patched at
+`>=7.29.1`) via `ai>@ai-sdk/provider-utils>undici`; `nanoid@3.3.16` (1 high,
+patched at `>=3.3.18`) via `vitest>vite>postcss>nanoid`; and
+`vitest@3.2.7`/`@vitest/mocker` (2 moderate, patched at `>=4.1.11`) via the
+direct `vitest` devDependency itself.
+
+The first two are one-patch-version-away transitive deps neither declared
+directly nor reachable through a version bump of anything this repo owns —
+`ai@^7.0.48` and `vitest@^3.0.0` both already resolve their own `undici`/
+`nanoid` ranges to the vulnerable patch; only `pnpm.overrides` reaches past
+them. Added two entries to a new `pnpm.overrides` block in the root
+`package.json` — `"undici@<7.29.1": "7.29.1"` and `"nanoid@<3.3.18":
+"3.3.18"` — pinned to the exact patched version each advisory names, not an
+open `>=` range: resolving to just-released `latest` is not what either
+advisory asks for and carries its own unreviewed blast radius (confirmed by
+trying the open-range form first — it resolved `undici` to `8.11.2` and
+`nanoid` to `6.0.1`, two major versions past what fixing the CVE needs, and
+was replaced with the exact-pin form before running the real verification
+below). Deliberately left the third finding alone: `vitest@4.1.11` is a
+major-version bump of this repo's actual test runner, not a transitive
+override, and SELF-545/549/550/561/563's own pattern of reverting or
+narrowly scoping risky changes applies here too — a runner major bump needs
+its own fire to read vitest 4's migration notes against this repo's test
+suite, not a few paragraphs inside a dependency-audit item. Recorded here so
+a future fire does not re-discover the same two closed findings: only the
+`vitest@4.1.11` path-traversal advisory remains open after this fire.
+
+Verified the override actually lands rather than trusting the manifest
+change alone: `pnpm install` then `grep '^  undici@\|^  nanoid@'
+pnpm-lock.yaml` shows `undici@7.29.1`/`nanoid@3.3.18` as the only resolved
+versions of either package in the lockfile (both were single entries before
+too — no duplicate-version split to worry about), and a second `pnpm audit`
+afterward dropped from 13 findings to 2, both the `vitest` advisory left
+alone on purpose. Neither package's own code is imported by anything this
+repo calls directly — `undici` only fires on an actual network round-trip
+through the `ai` SDK (gated behind `OPENKB_LIVE=1`, never exercised by an
+offline test) and `nanoid` is `postcss`'s own build-time id generator inside
+`vite`'s dev server, never loaded by code under test — so a patch-version
+bump of either carries no behavioural surface this test suite could catch
+regardless; `tsc -b` (already part of `pnpm check`) is what would catch an
+actual type signature change, and found none.
+
+`pnpm install` first (fresh clone, no `node_modules`, needed to re-resolve
+the lockfile against the new override). `pnpm check && pnpm test` both exit
+0: 3357 tests passing (unchanged — a dependency-pin change touches no test),
+13 skipped (same gated census as SELF-588).
+
+Backlog item: SELF-589
