@@ -4124,3 +4124,61 @@ test` both exit 0: 3357 tests passing, 13 skipped (same gated census as
 SELF-589). `pnpm audit`: 0 findings (down from 2).
 
 Backlog item: SELF-590
+
+**SELF-591 (2026-10-01 overnight fire) — closed the client-reachability
+question SELF-586 named by hand and left open: whether any of the eight
+`packages/web` files still importing the bare `@open-kb/core` root (or, for
+the `lib/` ones, a Node builtin directly) are pulled into the CLIENT
+bundle the same way `NoteView.tsx`/`anchor.ts` were.** SELF-586's own
+commit read "every one is either a route handler (server-only by
+construction) or a `lib/` file not checked here for client reachability, a
+genuinely open question for a future fire" — this is that check, not a
+guess from reading file headers: three of the eight
+(`api/kb/[id]/export/route.ts`, `api/map/route.ts`,
+`api/run/[id]/stream/route.ts`) are route handlers, server-only by
+construction as SELF-586 already said; the other five
+(`lib/spend-limits.ts`, `lib/stream-adapter.ts`, `lib/kb-from-run.ts`,
+`lib/runs.ts`, `lib/store/supabase.ts`) are plain modules a client
+component could in principle import.
+
+Grepped every `packages/web/{app,components}` file for a real (non-comment)
+import of each of the five, anchored on `^import` so a prose mention like
+"see lib/kb-from-run.ts's RELATION_WEIGHT" (both `GraphCanvas.tsx` and
+`KbOverview.tsx` carry several) could not be mistaken for a code
+dependency — an easy trap, since a first unanchored grep for the bare
+string `kb-from-run` and `lib/runs` did return those two "use client"
+files, `BuildWorkflow.tsx` and `DemoHome.tsx`, among its hits, and every
+one of those turned out to be a comment line, not an import, once
+re-checked against `^import`. With that anchor, the only real importers of
+the five are `app/**/page.tsx` (Server Components — none carries a `"use
+client"` directive, checked each by hand) and `app/api/**/route.ts` (server
+by construction), plus other `lib/` files and `scripts/bake-layouts.ts`
+(a build-time script, never shipped to the browser). The one indirect path
+worth tracing further: four client components (`GraphCanvas.tsx`,
+`KbOverview.tsx`, `NotesTab.tsx`, `ProductsTab.tsx`) import `lib/viewTypes.ts`,
+`lib/scorecard-view.ts` or `lib/notes-view.ts`, and those three do carry
+prose references to `kb-from-run.ts`. Read all three: each imports only
+`import type { ... } from "./viewTypes"` (or, for `viewTypes.ts` itself,
+`import type { NodeType } from "./nodeTypes"`) — type-only, erased before
+webpack ever sees a module graph — so the comment trail is documentation,
+not a runtime edge. `GraphCanvas.tsx` does pull one real (non-type) value
+across this boundary, `RELATION_BLURB` from `viewTypes.ts`, but `viewTypes.ts`
+defines it locally and has no runtime import of its own, so the value never
+touches `kb-from-run.ts`, `runs.ts` or any Node builtin.
+
+Conclusion: none of the five `lib/` files is reachable from a client
+component today, so the shape of break SELF-586 fixed for `NoteView.tsx`/
+`anchor.ts` cannot currently recur through any of the eight files it named.
+Recording this so a future fire does not re-open the same question — the
+risk instead sits one level up, at the moment any of these five files
+gains a new caller: nothing in this repo's `pnpm check` (type-checks only)
+would flag a new client import of a server-only module until the CI-only
+`pnpm --filter @open-kb/web build` step SELF-587 added actually runs it
+through webpack.
+
+No code change — the question was reachability, not a bug in any file
+touched. `pnpm install` first (fresh clone, no `node_modules`). `pnpm check
+&& pnpm test` both exit 0: 3357 tests passing, 13 skipped (same gated
+census as SELF-590; unchanged by a read-only fire).
+
+Backlog item: SELF-591
