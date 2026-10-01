@@ -4182,3 +4182,63 @@ touched. `pnpm install` first (fresh clone, no `node_modules`). `pnpm check
 census as SELF-590; unchanged by a read-only fire).
 
 Backlog item: SELF-591
+
+**SELF-592 (2026-10-01 overnight fire) — `scripts/corroboration-arrival.ts`'s
+own `hostOf` disagreed with the real engine's host identity for the exact
+field the whole script exists to study.** Read every `scripts/*.ts` file's
+`hostOf`-shaped helper against the real engine after noticing SELF-559 had
+only checked these for BYTE duplication (`recall.ts` copied from
+`query-yield.ts`), never for two helpers with the same name computing two
+different things. `corroboration-arrival.ts`'s own header says `seenIn` —
+"how many distinct queries returned a host" — is the field four real gates
+read, one of them (`TRIAGE_KEEP_SEENIN`) irreversible, and the whole point of
+this script is to price moving that gate earlier. But its `hostOf` was
+`registrableHost(new URL(u).hostname.toLowerCase())` — collapsing every
+subdomain of a registrable domain to one host — where the real `seenIn` the
+search loop builds (`packages/sweep/src/sweep.ts:4177-4178`, and the same
+exact expression again at 5186, 6305, 7510) is
+`new URL(h.url).hostname.toLowerCase().replace(/^www\./, "")`, which keeps
+`blog.x.com` and `shop.x.com` as two separate hosts. `query-yield.ts`'s own
+`hostOf` (line 164-166) already uses the correct, narrower form — so the two
+analysis scripts measuring the same `runs/` corpus were computing two
+different "hosts," and only one of them matched what the triage gate
+actually sees.
+
+The direction matters: folding two distinct subdomains into one bucket means
+two queries that each surface a DIFFERENT subdomain look like one host
+corroborating itself twice, which can only make a host cross any
+`--threshold` SOONER than the real `h.seenIn` would. That biases every
+percentage this script has ever reported toward "less late" than reality —
+the unsafe direction for a finding whose stated purpose is bounding how
+risky an earlier gate would be. Not a theoretical path: a page site commonly
+splits `blog.`, `shop.`, `docs.`, `support.` onto subdomains of one
+registrable domain, and SERP results surface those as distinct URLs.
+
+Fixed by importing `hostOf` from `query-yield.ts` (and re-exporting it, for
+this file's own test's import path) instead of restating it — the same move
+SELF-559 made for `recall.ts`'s copy, except that one was already
+byte-identical to its source and this one was not, which is exactly why it
+stood unnoticed through that pass. Removed the now-unused `registrableHost`
+import. Left the header's own measured numbers (2,975 hosts, 49%/25%, the
+38-69% per-run spread) in place with a caveat rather than inventing new ones
+— `runs/` is gitignored and this clone has none to re-measure against, and
+rewriting a measured number without a run to back it would be exactly the
+"arithmetic dressed as evidence" SELF-515's own BLOCKED note already warns
+against. A future fire with real runs on disk should re-run this script and
+replace the caveat with the corrected figures.
+
+Added two tests: `hostOf` keeps a subdomain distinct (`blog.example.com` stays
+`blog.example.com`, not `example.com`), and `arrivalRow` on two single-
+occurrence subdomains of one registrable domain returns `null` — neither
+alone reaches `seenIn >= 2` — where the old registrableHost-folding code
+merged them into one host that crossed the threshold at index 1. Confirmed
+non-vacuous by mutation: reverted just the source file (keeping the new
+tests), both new assertions failed exactly as predicted (`example.com`
+instead of `blog.example.com`; a real row instead of `null`), then restored
+the fix and reran clean before touching this file.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3359 tests passing (up from 3357, two new), 13 skipped
+(same gated census as SELF-591).
+
+Backlog item: SELF-592

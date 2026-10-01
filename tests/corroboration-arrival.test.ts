@@ -13,8 +13,18 @@ import { arrivalRow, hostOf } from "../scripts/corroboration-arrival.js"
  * `invokedDirectly` guard `query-yield.ts` and `run-doctor.ts` already use.
  */
 describe("hostOf", () => {
-  it("lowercases via registrableHost", () => {
+  it("lowercases and strips a leading www., same as the real engine's own hostname", () => {
     expect(hostOf("https://WWW.Example.com/path")).toBe("example.com")
+  })
+
+  it("keeps a subdomain distinct rather than folding it into its registrable domain", () => {
+    // This file's hostOf used to be registrableHost-based and collapsed
+    // `blog.example.com` to `example.com` — a different host than the real
+    // `h.seenIn` the search loop builds (sweep.ts:4177-4178 strips only
+    // `www.`), which let two queries surfacing two distinct subdomains count
+    // as one host corroborating itself twice. Imported from query-yield.ts
+    // now, so the two analysis scripts cannot drift back apart either.
+    expect(hostOf("https://blog.example.com/path")).toBe("blog.example.com")
   })
 
   it("returns an empty string for an unparseable url instead of throwing", () => {
@@ -76,5 +86,20 @@ describe("arrivalRow", () => {
     const withBad = searched.map((s, i) => (i === 5 ? { hits: [...s.hits, { url: "not a url" }] } : s))
     const row = arrivalRow("sweep-x-1.json", { searched: withBad }, 2)
     expect(row?.reached).toBe(1)
+  })
+
+  it("does not let two different subdomains of one registrable domain corroborate each other", () => {
+    // blog.rival.com (index 0) and shop.rival.com (index 1) each appear
+    // exactly ONCE — every other query surfaces a host unique to itself, the
+    // same shape as `searched` above — so by the real engine's hostname-
+    // minus-www identity neither ever reaches seenIn >= 2 and the function
+    // should see nothing to report. With the old registrableHost-based
+    // hostOf this file had, both would have folded into one "rival.com"
+    // bucket and that bucket would have crossed the threshold at index 1,
+    // same as the single real host `rival.com` does in the fixture above.
+    const distinctSubdomains = Array.from({ length: 20 }, (_, i) => ({
+      hits: [{ url: i === 0 ? "https://blog.rival.com/a" : i === 1 ? "https://shop.rival.com/a" : `https://only-query-${i}.com/a` }],
+    }))
+    expect(arrivalRow("sweep-x-1.json", { searched: distinctSubdomains }, 2)).toBeNull()
   })
 })

@@ -35,6 +35,20 @@
  * Nor of the threshold: at `--threshold 3` the same 42 runs give 48% and 23%
  * over 6,342 hosts.
  *
+ * THE FIGURES ABOVE WERE MEASURED WITH A HOST IDENTITY THIS FILE NO LONGER
+ * USES. `hostOf` folded every subdomain of a registrable domain into one
+ * bucket (`registrableHost`) instead of the plain www-stripped hostname the
+ * real `h.seenIn` is built from (see the import below) — two queries
+ * surfacing two different subdomains of the same domain looked like one host
+ * corroborating itself, which can only make a host cross a threshold SOONER
+ * than the real gate would. That biases every percentage above toward LESS
+ * late than the real `seenIn`, i.e. the unsafe direction for a finding whose
+ * whole purpose is to bound how risky an earlier gate would be — the numbers
+ * are not re-measured here (no `runs/` on this clone to re-measure them
+ * against; the conclusion below does not depend on their exact value) but a
+ * re-run of this script post-fix should be read as the current number, not
+ * a one-off wobble against the figures above.
+ *
  * SO THE NAIVE VERSION OF THE CHANGE IS UNSAFE, and by a wide margin.
  * Triaging at the halfway point would irreversibly drop about half the hosts
  * the exemption exists to protect — the change would buy 25-41% of wall clock
@@ -84,11 +98,26 @@
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
-import { registrableHost } from "../packages/core/src/index.js"
-
-export const hostOf = (u: string): string => {
-  try { return registrableHost(new URL(u).hostname.toLowerCase()) } catch { return "" }
-}
+// NOT a duplicate of query-yield.ts's `hostOf` — it was a DIFFERENT function
+// wearing the same name, and the difference was the bug. This file exists to
+// price moving the TRIAGE gate, which reads the real `h.seenIn` the search
+// loop builds from `new URL(h.url).hostname.toLowerCase().replace(/^www\./,
+// "")` (sweep.ts:4177-4178, 5186, 6305, 7510 — every site this repo's own
+// seenIn/hostsSeen/HOST_CEILING accounting uses). The registrableHost version
+// this file had instead folds every subdomain of one registrable domain into
+// one bucket — `blog.x.com` and `shop.x.com` both became `x.com` — so two
+// queries that each surfaced a DIFFERENT subdomain looked like one host
+// corroborated twice, reaching any `--threshold` sooner than the real engine
+// ever would. That moves this file's whole output the UNSAFE direction: it
+// makes corroboration look like it arrives earlier than `h.seenIn` really
+// does, understating exactly the lateness this script exists to measure
+// before anyone uses it to argue a gate can move earlier. Imported from
+// query-yield.ts (re-exported for this file's own test's import path)
+// instead of restated, the same fix SELF-559 already made for recall.ts's
+// byte-identical copy — not byte-identical here, which is why it stood
+// unnoticed through that pass.
+import { hostOf } from "./query-yield.js"
+export { hostOf }
 
 export interface Row { run: string; queries: number; hosts: number; reached: number; late: number; veryLate: number }
 export interface ArrivalRun { searched?: { hits?: { url: string }[] }[] }
