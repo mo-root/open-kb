@@ -4463,3 +4463,38 @@ test` both exit 0: 3364 tests passing (up from 3363, one new), 13 skipped
 (same gated census as SELF-596).
 
 Backlog item: SELF-597
+
+**SELF-598 (2026-10-01 overnight fire) — re-ran SELF-509's coverage sweep over
+`packages/providers/src` and `packages/sweep/src`, the two packages SELF-596
+and SELF-597 did not reach, and found `sweep.ts`'s whole reaction to a numeric
+`opts.queries` had zero test coverage.** Installed a temporary
+`@vitest/coverage-v8@4.1.11` devDependency (matched this repo's vitest,
+reverted before finishing, same move as SELF-509/593/596/597).
+`providers/src` is 100% lines (its remaining branch gaps are retry/backoff
+arms a live network failure would hit, not a fixture-reachable one — left
+alone, same shape SELF-509 already accepted for these two files).
+`sweep/src` dropped from SELF-509's measured 98.3% lines to 97.3% in the
+month since, naming a block this repo's tests had never touched:
+sweep.ts:3858-3867's two `say()` calls, reacting to `opts.queries` — not
+`opts.maxQueries` — a budget that clamps only the OPENING catalog. Every
+`sweep()` call from the CLI (`scripts/sweep.ts:222`, `queries: TARGET`) sets
+it; every sweep test on disk either left it unset or used `queries: [...]`
+as a catalog mock's own field, never as the numeric option. Grepped every
+test file for a numeric `sweepOptions: { queries: N }` and found none.
+
+Added `a-bounded-probe-clamps-the-catalog-and-says-so.test.ts`: the default
+fixture's two products write 16 queries total (`OPENING_WRITTEN`, already
+pinned by `sweep-fits-the-clock-it-was-given.test.ts`), so `queries: 10`
+exercises the over-budget arm ("catalog: model wrote 16 for a budget of 10 —
+using the first 10") and `queries: 20` exercises the under-budget arm
+("catalog: model wrote 16 of the 20 asked for"), plus a third case at
+`queries: 16` confirming neither fires exactly on budget. Verified
+non-vacuous by mutation: `&& false`-gating both conditions made the two new
+assertions on the `say()` text fail exactly as predicted; reverted before
+committing — no source change.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3367 tests passing (up from 3364, three new), 13 skipped
+(same gated census as SELF-597).
+
+Backlog item: SELF-598
