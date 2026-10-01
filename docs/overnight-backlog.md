@@ -4498,3 +4498,52 @@ test` both exit 0: 3367 tests passing (up from 3364, three new), 13 skipped
 (same gated census as SELF-597).
 
 Backlog item: SELF-598
+
+**SELF-599 (2026-10-01 overnight fire) — took SELF-509/566's own advice
+again, a fresh end-to-end read of files never dedicated-read rather than
+another instrumented sweep. Found nothing to fix.**
+
+Shortlisted candidates by basename-grep against this file (zero or one hit),
+the same first pass SELF-566 used, then read each in full:
+`packages/web/lib/graph/search.ts` (`rankMatches` — confirmed the score bands
+0/1/10+/20+ are spaced at least 1 apart and the degree tie-break is capped at
+0.4, so it can never cross a band or reorder two different `indexOf` hits
+within one); `packages/web/lib/nodeTypes.ts` (the type/colour/icon/order maps
+and `nodeTypeOf`/`groupLabel` — internally consistent, each exported const
+keyed on the same four-member `NodeType` union); `packages/web/lib/graph/
+cluster.ts` (`assignClusters`, `measureClusters`, `separationShoves` — the
+one-hop-only rule, the RMS-not-max radius, and the pinned/pinned,
+pinned/free, exact-overlap-tie branches in the separation shove all match
+their own comments and `cluster.test.ts` already exercises every branch
+named above, args-swapped included); `packages/core/src/alias.ts`
+(`aliasSignals`/`aliasSets`/`anchorAliasSet` — traced the first-canonical-
+wins rule through an unparseable first tag, which locks out a later valid
+cross-host canonical too; conservative-by-design for a module whose whole
+job is precision over recall, not a bug); `packages/core/src/clock.ts`
+(re-derived `rankSeconds`'s rescale arithmetic by hand — `hosts ×
+rankSecondsPerHost × rankPoolWidth / width` — against the file's own worked
+example, 0.63 × 8 / 24 = 0.21s/host, and it matches exactly).
+
+One near-miss, checked and ruled out: `packages/swarm/src/serialize.ts`
+hardcodes `stats.tokReasoning: 0` while `packages/sweep/src/sweep.ts` tracks
+a real per-call `reasoningTokens` figure for reporting (the comment at
+sweep.ts:2252 — "recorded so the reasoning share stops being inferred from
+arithmetic"). Looked like the same shape as a genuine gap, but
+`packages/swarm/src/agent.ts`'s `oneTurn` only ever reads
+`result.usage.inputTokens`/`outputTokens` — it has no reasoning-token read to
+wire up, so `tokReasoning: 0` is not a dropped value, it is the honest
+absence of one. And the one current reader of `stats.tokReasoning`,
+`scripts/experiment.ts:112`, only ever processes sweep-shaped run files
+(its `Arm`s shell out to `scripts/sweep.ts`); it never sees a swarm run,
+whose `decomposition` is a different, explicitly-empty shape (serialize.ts's
+own comment: "shape-compatible and honestly empty"). So today nothing reads
+a swarm run's `tokReasoning` at all — wiring it up would be a speculative
+addition with no reader to fix, not a bug with an observable symptom, the
+same reasoning this file's own rules use to decline work with no
+reachable failure.
+
+No code change. `pnpm install` first (fresh clone, no `node_modules`).
+`pnpm check && pnpm test` both exit 0: 3367 tests passing, 13 skipped (same
+gated census as SELF-598; unchanged by a read-only fire).
+
+Backlog item: SELF-599 - BLOCKED
