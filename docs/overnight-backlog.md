@@ -4329,3 +4329,63 @@ test` both exit 0: 3362 tests passing (up from 3360, two new), 13 skipped
 (same gated census as SELF-593).
 
 Backlog item: SELF-594
+
+**SELF-595 (2026-10-01 overnight fire) — ran `madge --circular` against
+`packages/web`, the one tree SELF-588's own sweep never reached, and
+confirmed its single cycle is the same erased, type-only shape SELF-588
+closed in core — except here there is no second file to redirect to, so
+nothing was changed.** SELF-588 ran `madge --circular --extensions ts` over
+`packages/sweep`, `packages/swarm`, `packages/providers` and `packages/core`
+only; `packages/web` — bigger, React/Next, and the one package whose own
+`tsconfig.json` defines a `@/*` path alias 65 files actually use — had never
+been swept by this tool.
+
+First pass, `madge --circular --extensions ts,tsx` over `app`, `lib`,
+`components`, `middleware.ts` and `next.config.ts`: one cycle, but 48
+warnings — madge cannot follow `@/...` without being told about the alias,
+so most of those 65 files' edges were silently missing and the result was
+not trustworthy as a completeness claim. Re-ran with `--ts-config
+tsconfig.json` (the package's own file, which declares `"@/*": ["./*"]`):
+same 217 files, same one cycle, warnings down to 4 — confirmed benign by
+reading them (`madge.warnings()` via a one-off node script, not committed):
+three workspace subpath exports outside the scanned dirs
+(`@open-kb/core/testing`, `@open-kb/core/url`, `@open-kb/core/export-kb`) and
+the `tailwindcss` CSS import, none of which can hide an edge inside
+`packages/web` itself. One real cycle, now measured with the alias actually
+resolved:
+
+```
+lib/runs.ts > lib/public-runs.ts > lib/store/supabase.ts
+```
+
+Traced by hand. `runs.ts` (1,247 lines) imports `./store/supabase` directly
+(`import * as db`, a value import) and also imports `./public-runs`, which
+itself imports `./store/supabase` the same way — both ordinary value edges,
+both outbound from `runs.ts`'s side. The only edge pointing back, closing
+the loop either through `public-runs.ts` or directly, is
+`store/supabase.ts:3`: `import type { RunStatus, StoredRun } from "../runs"`
+— `import type`, erased by `tsc` before anything runs, the identical shape
+SELF-588 found between `discovery.ts` and `core/index.ts` ("the cycle is
+erased before anything ever runs and nothing was actually broken").
+`supabase.ts`'s other two imports (`Span`, `SweepResult`) are type-only too,
+so no other edge contributes.
+
+Where this stops being SELF-588's case: `FetchPort`/`SpanStream` each had a
+real home outside the barrel that closed the loop (`ports.ts`, `spans.ts`),
+so redirecting two import lines removed the cycle for good. `RunStatus` and
+`StoredRun` have no second home — they are defined in `runs.ts` itself
+(lines 31 and 35, with the multi-paragraph comment on `StoredRun.result`
+and `.error` explaining what each field is for), because `runs.ts` is the
+in-memory run registry and `store/supabase.ts` is its one persistence
+backend, reading the registry's own types to describe what it stores. The
+only way to remove this cycle at the type level too would be lifting
+`RunStatus`/`StoredRun` into a third file neither `runs.ts` nor
+`supabase.ts` owns — a real structural change for a graph-hygiene payoff
+only, on two files with no other symptom, and the kind of drive-by
+abstraction this branch's own rules single out. Left as is.
+
+No code change. `pnpm install` first (fresh clone, no `node_modules`).
+`pnpm check && pnpm test` both exit 0: 3362 tests passing, 13 skipped (same
+gated census as SELF-594; unchanged by a read-only fire).
+
+Backlog item: SELF-595 - BLOCKED
