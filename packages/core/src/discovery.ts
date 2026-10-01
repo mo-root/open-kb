@@ -1,6 +1,14 @@
 import { ToolLoopAgent, stepCountIs, tool, type LanguageModel, type StepResult, type ToolSet } from "ai"
 import { z } from "zod"
-import type { FetchPort, SpanStream } from "./index.js"
+// Imported from their defining modules, not the `./index.js` barrel this file
+// is itself re-exported from (`export * from "./discovery.js"`) — the one
+// place in this package that imported back through its own barrel, and so the
+// one circular dependency `madge --circular packages/core/src` found. A
+// type-only import erases at compile time and never cycles at runtime, but
+// every sibling that needs `SpanStream` (`spend-cap.ts`, `tools.ts`) already
+// reaches it via `./spans.js` directly — this follows the same convention.
+import type { FetchPort } from "./ports.js"
+import type { SpanStream } from "./spans.js"
 import type { ModelPricing } from "./pricing.js"
 import { sniff } from "./sniff.js"
 import { candidatesFromSitemap, candidatesFromLinks, isSitemapIndex, sitemapChildren, readPageFacts } from "./catalog.js"

@@ -3986,3 +3986,42 @@ job timeout.
 gated census as SELF-586 — a CI-workflow-only change touches no test file).
 
 Backlog item: SELF-587
+
+**SELF-588 (2026-10-01 overnight fire) — a genuinely new angle, static circular-
+dependency analysis, never tried by any prior fire, found and fixed the only
+cycle in `@open-kb/core`.** Every prior self-discovered fire in this class
+either hand-read files one at a time or instrumented coverage/knip; none had
+run a dependency-graph tool. Installed `madge@8.0.0` via `pnpm dlx` (never
+added to `package.json`/`pnpm-lock.yaml`) and ran `madge --circular
+--extensions ts` over each of the four library packages' `src/`:
+`packages/sweep`, `packages/swarm` and `packages/providers` all came back
+clean; `packages/core` reported exactly one cycle: `discovery.ts > index.ts`.
+
+Traced it by hand: `discovery.ts` imported `FetchPort`/`SpanStream` with
+`import type { FetchPort, SpanStream } from "./index.js"` — the package's own
+barrel, which itself does `export * from "./discovery.js"` (`index.ts:49`),
+closing the loop. A `grep` across `packages/core/src` confirmed this was the
+only file in the package importing from its own `./index.js`. Both types are
+`import type`, so the cycle is erased before anything ever runs and nothing
+was actually broken — the real finding is that it is also unnecessary:
+`FetchPort` is defined in `ports.ts`, `SpanStream` in `spans.ts`, and two
+other files that need `SpanStream` (`spend-cap.ts`, `tools.ts`) already import
+it directly from `./spans.js` rather than through the barrel. `discovery.ts`
+was the one holdout, not a file with a real reason to go through `index.ts`.
+
+Fixed by pointing the import at the two defining modules instead
+(`./ports.js` for `FetchPort`, `./spans.js` for `SpanStream`), matching the
+convention every sibling file already follows, and left a comment at the
+import site naming the tool that found it and why the two types moved.
+Re-ran `madge --circular` after the edit: zero cycles in `packages/core/src`.
+No test added — this is a type-only import whose only observable effect is
+on the dependency graph a tool like `madge` reads, not on any runtime
+behaviour a vitest fixture could assert against; `tsc -b`, already part of
+`pnpm check`, is what proves the new import paths still resolve and the
+types are unchanged.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check && pnpm test` both exit 0: 3357 tests passing, 13 skipped (same
+gated census as SELF-587 — a type-only import-path change adds no test).
+
+Backlog item: SELF-588
