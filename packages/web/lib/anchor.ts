@@ -1,4 +1,10 @@
-import { isReservedHost } from "@open-kb/core"
+// From the `./url` subpath, not the package root: this file is imported by
+// `SiteIcon.tsx`, a `"use client"` component, and the root barrel
+// (`core/src/index.ts`) `export *`s `prompts.ts`, which touches `node:fs`/
+// `node:path` at module scope — enough to break `next build --webpack`
+// reading the client bundle, the same failure NoteView.tsx's own `./export-kb`
+// import fixed. `url.ts` imports nothing, so this subpath carries none of that.
+import { isReservedHost } from "@open-kb/core/url"
 
 /**
  * `https://Resend.com/pricing` → `resend.com`. Returns "" for anything that is

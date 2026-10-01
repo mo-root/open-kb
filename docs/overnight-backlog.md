@@ -3849,3 +3849,100 @@ test` both exit 0: 3355 tests passing (up from 3354, one new), 13 skipped
 (same gated census as SELF-584).
 
 Backlog item: SELF-585
+
+**SELF-586 (2026-10-01 overnight fire) — chasing three critical CVEs in the
+pinned `next@16.2.12` turned up something worse already on this branch:
+`next build --webpack`, the command every real deployment of this app runs,
+has failed outright since before this fire, on the version already shipping
+today, for a reason that has nothing to do with the version bump.** Started
+from `pnpm audit`, a genuinely new angle no prior SELF-<n> had tried: 3
+critical (Next.js RCEs, GHSA-p293-qw3h-jr36/2xp9-vwfh-vxw4/vcvr-r3jv-pc5j, all
+fixed by `>=16.3.3`/`>=16.3.6`), plus `next`'s own bundled `sharp`/`postcss`
+riding along at high/moderate. Bumped `packages/web/package.json`'s `next` to
+`16.3.8` (latest 16.x patch) and `pnpm install`d — `pnpm audit` dropped from 22
+findings to 13, all three criticals and both bundled-dependency highs gone,
+the remaining 13 all transitive through `ai`/`vitest`, a different package and
+a separate item. `pnpm check && pnpm test` both passed clean on the bump
+alone. Then, because neither of those two gates has ever once invoked the
+command `packages/web/package.json`'s own `"build"` script names, ran
+`pnpm --filter @open-kb/web build` as a third check before trusting the bump —
+and it failed: `UnhandledSchemeError: Reading from "node:fs" is not handled by
+plugins`, tracing through `core/src/index.ts` to `components/kb/NoteView.tsx`,
+a `"use client"` component.
+
+Reverted the version bump to isolate the cause (`git stash`, reinstall) and
+ran the same build against the UNCHANGED `next@16.2.12` already on this
+branch: identical failure, same `UnhandledSchemeError`, same `node:fs`/
+`node:path`, a different but structurally identical trace through
+`lib/anchor.ts` → `components/SiteIcon.tsx`. Not a regression from the bump —
+a pre-existing break neither `pnpm check` (type-checks only) nor `pnpm test`
+(vitest, never shells out to `next build`) has ever been able to see, on the
+version this branch has run since before night 1. `transpilePackages:
+["@open-kb/core", ...]` (`next.config.ts`) means webpack compiles
+`@open-kb/core` from source for every bundle it reaches, client included, and
+`core/src/index.ts`'s barrel does `export * from "./prompts.js"` — a module
+that imports `node:fs`/`node:path` at the top level for `loadPrompt`, used by
+nothing either client file calls. Webpack has to resolve every module an
+`export *` names before it can tree-shake any of them away, and resolving
+`node:fs` for a browser target fails before tree-shaking ever gets a turn.
+`NoteView.tsx` wanted only `receiptSource` (`export-kb.ts`, a pure string
+formatter); `anchor.ts` wanted only `isReservedHost` (`url.ts`, pure, imports
+nothing). Both are reachable through the same barrel as `prompts.ts`, so
+importing either one made webpack choke on an import neither file's export
+chain ever actually touches. Tried fixing it IN `next.config.ts` first — a
+`!isServer` `resolve.fallback: { fs: false, path: false }`, then a
+`resolve.alias` stripping the `node:` prefix before fallback — neither
+changed the error at all, byte-for-byte identical trace both times:
+`resolve.fallback`/`resolve.alias` only ever see a bare specifier, and
+webpack's `node:` URI SCHEME is rejected before either gets a turn (the error
+is "unhandled scheme", not "module not found"), confirmed by testing both
+and watching nothing change.
+
+Fixed at the actual boundary instead: added two narrow subpath exports to
+`packages/core/package.json` (`"./export-kb"` → `src/export-kb.ts`,
+`"./url"` → `src/url.ts`), the same convention this package already uses for
+`"./testing"`, and pointed `NoteView.tsx`/`anchor.ts` at those subpaths
+instead of the bare `@open-kb/core` root. Checked both new entry points'
+full transitive closure by hand before trusting them: `export-kb.ts` imports
+only `url.ts` and `judge.ts`; `judge.ts` imports `sniff.ts`, `verdict.ts`,
+`url.ts`, `coverage.ts`, `grounding.ts`, `evidence.ts`, `ports.ts` — none of
+those eight files has an `import` statement touching anything outside the
+package, let alone a Node builtin. `url.ts` itself imports nothing. Six other
+`packages/web` files import the bare `@open-kb/core` root today
+(`api/kb/[id]/export/route.ts`, `api/map/route.ts`,
+`api/run/[id]/stream/route.ts`, `lib/spend-limits.ts`, `lib/stream-adapter.ts`,
+`lib/kb-from-run.ts`, `lib/runs.ts`, `lib/store/supabase.ts`) — left alone:
+every one is either a route handler (server-only by construction) or a
+`lib/` file not checked here for client reachability, a genuinely open
+question for a future fire rather than this one, which fixes the two traces
+an actual failing build named.
+
+Added a regression test to each fixed file's own test file
+(`NoteView.test.ts`, `anchor.test.ts`): a source-grep asserting the subpath
+import is in place and the bare import is not. Verified non-vacuous by
+mutation — reverted both imports to the bare specifier, both new tests
+failed on the exact assertion the fix makes true, restored and reran clean.
+Not a substitute for a real build check in CI (this file's own rules allow
+no scope for adding `next build` to the hot `pnpm check` path from inside a
+single-item fire — a legitimate next step, not this one), but it pins the
+one thing a future edit could silently undo without ever running the build
+that would catch it.
+
+Re-applied the `next@16.3.8` bump on top of the import fix and reran all
+three gates end to end: `pnpm check` exit 0, `pnpm test` exit 0 (3357 tests
+passing, up from 3355 — the two new regression tests — 13 skipped, same
+gated census as SELF-585), and `pnpm --filter @open-kb/web build` completed
+with `✓ Compiled successfully`, all 16 routes generated, zero webpack errors.
+`pnpm audit` after the bump: 13 findings, 0 critical, 0 high in anything this
+app's own dependency tree owns (the remaining 3 high/7 moderate/3 low are
+`undici` via the `ai` SDK and `nanoid`/`vitest`'s own path-traversal advisory
+via `vite`'s dev server — a different package each, a future SELF-<n>, not
+widened into this one).
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3357 tests passing (up from 3355, two new), 13 skipped
+(same gated census as SELF-585). `pnpm --filter @open-kb/web build` also
+verified green, the first time this branch's history shows that command
+being run as part of landing a change.
+
+Backlog item: SELF-586

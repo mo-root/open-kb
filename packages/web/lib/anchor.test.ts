@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs"
+import { fileURLToPath } from "node:url"
 import { describe, it, expect } from "vitest"
 import { normalizeDomain } from "@/lib/anchor"
 
@@ -76,5 +78,22 @@ describe("normalizeDomain", () => {
     // hard-coded name to a spelling check, the real defence has been made to
     // look redundant and will be the next thing deleted.
     expect(normalizeDomain("127.0.0.1.nip.io")).toBe("127.0.0.1.nip.io")
+  })
+})
+
+describe("the import of isReservedHost stays off the package root", () => {
+  // Real regression: this file is imported by `SiteIcon.tsx` ("use client"),
+  // and bare `@open-kb/core` resolves through a barrel (`core/src/index.ts`)
+  // that `export *`s `prompts.ts` — `node:fs`/`node:path` at module scope.
+  // That landed `node:fs` in the client bundle and `next build --webpack`
+  // failed outright (`UnhandledSchemeError`) on a clean clone before this
+  // fix, the same failure NoteView.tsx's `./export-kb` import hit and fixed
+  // the same way. Neither `pnpm check` nor `pnpm test` runs `next build`, so
+  // this sat broken under an otherwise-green suite. `@open-kb/core/url`
+  // carries no Node builtin — `url.ts` imports nothing at all.
+  it("imports from the ./url subpath, not the bare package", () => {
+    const src = readFileSync(fileURLToPath(new URL("./anchor.ts", import.meta.url)), "utf8")
+    expect(src).toContain('from "@open-kb/core/url"')
+    expect(src).not.toMatch(/from "@open-kb\/core"/)
   })
 })

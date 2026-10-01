@@ -1,7 +1,18 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { receiptSource } from "@open-kb/core";
+// From the `./export-kb` subpath, not the package root: the root barrel
+// (`core/src/index.ts`) re-exports `prompts.ts` with `export *`, and
+// `prompts.ts` imports `node:fs`/`node:path` at module scope. This is a
+// `"use client"` file, so the whole barrel — webpack has to resolve every
+// module an `export *` names before it can tree-shake any of them away —
+// landed `node:fs` in the browser bundle and `next build --webpack` refused
+// to read it ("UnhandledSchemeError"), real on a clean clone, not a
+// hypothetical: confirmed by building before this fix existed. `export-kb.ts`
+// and everything it imports (`url.ts`, `judge.ts` and that file's own closure)
+// touch no Node builtin, so the subpath import gets `receiptSource` without
+// the module graph that broke the build.
+import { receiptSource } from "@open-kb/core/export-kb";
 import type { NoteRef, NoteView as NoteData } from "@/lib/viewTypes";
 import {
   FAMILY_TONE,
