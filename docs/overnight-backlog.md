@@ -4082,3 +4082,45 @@ the lockfile against the new override). `pnpm check && pnpm test` both exit
 13 skipped (same gated census as SELF-588).
 
 Backlog item: SELF-589
+
+**SELF-590 (2026-10-01 overnight fire) — closed the one `pnpm audit` finding
+SELF-589 left open on purpose: `vitest@3.2.7`/`@vitest/mocker`'s path-traversal
+advisory, patched at `>=4.1.11`.** SELF-589 named this explicitly as "a major
+version bump of this repo's actual test runner, not a transitive override...
+a runner major bump needs its own fire to read vitest 4's migration notes
+against this repo's test suite, not a few paragraphs inside a
+dependency-audit item" — this is that fire.
+
+Checked compatibility before touching anything: `vitest@4.1.11`'s own
+`package.json` declares `"engines": { "node": "^20.0.0 || ^22.0.0 ||
+>=24.0.0" }`, and this environment runs `node v22.22.0`, inside range.
+`vitest.config.ts` uses only `defineConfig`, a `resolve.alias` and
+`test.include` globs — none of the options vitest 4's migration notes flag
+as changed (no custom `pool`, no `deps.inline`, no snapshot serializer, no
+`environmentMatchGlobs`). Bumped `package.json`'s `"vitest": "^3.0.0"` to
+`"^4.1.11"`, the exact patched version the advisory names, matching
+SELF-589's own precedent of pinning to the advisory's fix version rather
+than an open range.
+
+`pnpm install` resolved `vitest@4.1.11` and its first-party `@vitest/*`
+packages (`expect`, `mocker`, `pretty-format`, `runner`, `snapshot`, `spy`,
+`utils`) to `4.1.11` throughout, `vite` itself staying at `7.3.6` (already
+in range, no transitive major bump riding along). `pnpm audit` afterward:
+**0 findings**, down from the 2 SELF-589 left open — the only remaining
+advisory in this tree is now closed.
+
+Verified rather than assumed: ran the full suite twice before touching the
+backlog file. `pnpm check && pnpm test` both exit 0 — identical census to
+SELF-589 (3357 tests passing, 13 skipped across the same 7 gated suites,
+230 test files collected) — so vitest 4's runner changes (its rewritten
+`@vitest/mocker`, the new `tinyrainbow` 3.x it pulls in place of 3.2.7's
+own) changed nothing this suite's assertions depend on. No test added: a
+devDependency version bump with an unchanged green census has no new
+behavior for a vitest fixture to pin, and `pnpm audit` itself is the
+regression check a future `pnpm-lock.yaml` edit could silently undo.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3357 tests passing, 13 skipped (same gated census as
+SELF-589). `pnpm audit`: 0 findings (down from 2).
+
+Backlog item: SELF-590
