@@ -4389,3 +4389,42 @@ No code change. `pnpm install` first (fresh clone, no `node_modules`).
 gated census as SELF-594; unchanged by a read-only fire).
 
 Backlog item: SELF-595 - BLOCKED
+
+**SELF-596 (2026-10-01 overnight fire) — re-ran SELF-509's coverage sweep
+rather than trusting its month-old result, and this time `packages/core/
+src/audit.ts` had a gap that file didn't have back then: the errorKind
+breakdown's own sort comparator had never been called.** Measured with a
+temporary `@vitest/coverage-v8@4.1.11` devDependency (matched this repo's
+vitest, reverted before finishing, same move as SELF-509/593): `audit.ts`'s
+function coverage sat at 94.73% (18 of 19), naming line 288 —
+`Object.entries(byErrorKind).sort((a, b) => b[1] - a[1] || (a[0] < b[0] ?
+-1 : 1))`, the comparator that orders the printed "wrong `<errorKind>`: N"
+breakdown by count descending, alphabetical on a tie.
+
+Every existing scoring test builds its wrong rows from `oneOfThirty`, which
+carries exactly one distinct `errorKind`. `Array.prototype.sort` never
+invokes its comparator on an array of 0 or 1 elements, so neither half of
+that comparator — the count ordering or the alphabetical tie-break — had
+ever actually run, on a function that is genuinely reachable (every
+`scoreAuditPacket` call with more than one kind of mistake hits it), not a
+structurally-dead branch like the other gaps this campaign has been
+finding and leaving alone.
+
+Added one test with three wrong rows across three of `AUDIT_ERROR_KINDS`,
+two of them tied at count 3 (`aggregator-as-competitor`, `wrong-relation`)
+and one at count 1 (`invented-capability`), asserting the sentences print
+in `["aggregator-as-competitor: 3", "wrong-relation: 3",
+"invented-capability: 1"]` order — count descending, alphabetical on the
+tie. Verified non-vacuous by mutation: dropped just the `|| (a[0] < b[0] ?
+-1 : 1)` tie-break from the comparator, reran — the new test failed
+(`wrong-relation: 3` sorted ahead of `aggregator-as-competitor: 3`, the
+unstable order `Array.sort` happened to produce without a tie-break);
+restored the comparator and reran clean before committing. No source
+change — `audit.ts` already carried the correct comparator; only the test
+was missing.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3363 tests passing (up from 3362, one new), 13 skipped
+(same gated census as SELF-595).
+
+Backlog item: SELF-596

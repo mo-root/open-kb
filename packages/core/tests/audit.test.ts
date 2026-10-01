@@ -333,6 +333,30 @@ describe("scoreAuditPacket scoring", () => {
     }
   })
 
+  it("orders the errorKind breakdown by count descending, alphabetical on a tie", () => {
+    // `oneOfThirty` and every other scoring test above carries at most one
+    // distinct errorKind, so audit.ts:288's sort comparator — count descending,
+    // `kind` ascending on a tie — had never actually been called (v8 function
+    // coverage: 0 invocations; a one- or zero-element array never calls its
+    // comparator). Three kinds, two of them tied at the same count, exercises
+    // both halves.
+    const p = fill(build(pool(40, 20), { n: 30 }), { secondReview: "both" }, (r, i) => {
+      if (i < 3) return { ...r, verdict: "wrong", errorKind: "wrong-relation", evidence: "url" }
+      if (i < 6) return { ...r, verdict: "wrong", errorKind: "aggregator-as-competitor", evidence: "url" }
+      if (i === 6) return { ...r, verdict: "wrong", errorKind: "invented-capability", evidence: "url" }
+      return r
+    })
+    const out = scoreAuditPacket(p)
+    expect(out.scored).toBe(true)
+    if (out.scored) {
+      expect(out.byErrorKind).toEqual({ "wrong-relation": 3, "aggregator-as-competitor": 3, "invented-capability": 1 })
+      const order = out.sentences
+        .map((s) => s.trim())
+        .filter((s) => s.startsWith("wrong-relation:") || s.startsWith("aggregator-as-competitor:") || s.startsWith("invented-capability:"))
+      expect(order).toEqual(["aggregator-as-competitor: 3", "wrong-relation: 3", "invented-capability: 1"])
+    }
+  })
+
   it("wrong-only second review prints the lower-bound caveat — the correction could only lower the rate", () => {
     const out = scoreAuditPacket(oneOfThirty("wrong-only"))
     if (out.scored) expect(out.sentences.some((s) => s.includes("rate is a lower bound: the re-review could only lower it"))).toBe(true)
