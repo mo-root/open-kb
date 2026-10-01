@@ -4428,3 +4428,38 @@ test` both exit 0: 3363 tests passing (up from 3362, one new), 13 skipped
 (same gated census as SELF-595).
 
 Backlog item: SELF-596
+
+**SELF-597 (2026-10-01 overnight fire) — SELF-509's coverage sweep never
+reached `packages/web`, so ran it there and found an untested branch in the
+quota-eviction path that matters for a reason other coverage gaps in this
+campaign have not: it shares localStorage with the rest of the app.**
+Installed `@vitest/coverage-v8@4.1.11` (matched this repo's vitest, reverted
+before finishing, same move as SELF-509/593/596), scoped to
+`packages/web/lib/**/*.ts`. Every file there sits at 96-100% except
+`useUrlView.ts` (54.76%), already explained and accepted by SELF-81's own
+comment: the hook needs React's render lifecycle this repo has no jsdom/RTL
+harness to drive, and the pure `readUrl`/`writeUrl` halves it exports for
+testing are fully covered.
+
+The one real gap: `lib/graph/layoutCache.ts:103`, inside `saveLayout`'s
+quota-exceeded retry. On a failed write it scans every `localStorage` key and
+evicts the ones matching `k.startsWith(PREFIX) && k !== key` to make room —
+but the existing eviction test (`layoutCache.test.ts:124`) only ever put
+other layout rows in storage, so the `startsWith(PREFIX)` guard's false arm
+had never run. That guard is the only thing stopping this retry from wiping
+out everything else sharing the store — concretely, `lib/graph/settings.ts`'s
+own `kb-graph-settings` row sits in the exact same localStorage a quota
+failure means is full.
+
+Added a test seeding `kb-graph-settings` before arming the quota failure,
+then asserting it survives the eviction that still lands the new layout and
+still evicts the other map's row. Verified non-vacuous by mutation: dropped
+just the `k.startsWith(PREFIX) &&` clause, reran — the new test failed
+(`kb-graph-settings` read back `undefined`); restored the guard and reran
+clean before committing.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3364 tests passing (up from 3363, one new), 13 skipped
+(same gated census as SELF-596).
+
+Backlog item: SELF-597

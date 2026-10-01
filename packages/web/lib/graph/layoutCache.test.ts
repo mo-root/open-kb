@@ -133,6 +133,26 @@ describe("save and load", () => {
     expect(loadLayout(other)).toBeNull()
   })
 
+  // The eviction loop's `k.startsWith(PREFIX)` guard had no test driving its
+  // false branch — every prior quota test left only layout rows in storage,
+  // so "skip a key that isn't one of ours" had never actually run. localStorage
+  // is shared with the rest of the app (lib/graph/settings.ts's own
+  // "kb-graph-settings" row lives beside these), so an unguarded sweep would
+  // silently take out a reader's graph settings to make room for a layout.
+  it("evicts only its own rows, leaving an unrelated localStorage key untouched", () => {
+    const store = fakeStorage()
+    withStorage(store)
+    store.rows.set("kb-graph-settings", '{"nodeScale":1}')
+    const other = layoutKey("elder", 5, true)
+    saveLayout(other, [{ id: "z", x: 1, y: 1 }])
+    store.armQuotaFailure()
+    const key = layoutKey("young", 2, true)
+    saveLayout(key, [{ id: "a", x: 3, y: 4 }])
+    expect(loadLayout(key)?.get("a")).toEqual({ x: 3, y: 4 })
+    expect(loadLayout(other)).toBeNull()
+    expect(store.rows.get("kb-graph-settings")).toBe('{"nodeScale":1}')
+  })
+
   it("gives up quietly when storage is unavailable even after eviction", () => {
     // Every setItem throws, so the post-eviction retry fails too — the
     // innermost catch (never exercised by the single-failure quota test
