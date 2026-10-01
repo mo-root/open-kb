@@ -128,6 +128,28 @@ describe("readTool", () => {
     expect(r.text).toBe("# Acme Scraper")
   })
 
+  // Every <h#> projectHeadings had ever been given had non-empty inner text
+  // ("Acme Scraper" above), so `if (line) out.push(...)` (tools-free.ts:70)
+  // had only ever taken its truthy arm — the same gap the icon-only-link test
+  // right below this one already closed for projectLinks. An <h2> wrapping
+  // only an <img>, no words, is the same ordinary markup (a section header
+  // rendered as a logo or banner image): extractText() reduces its
+  // stripped-tag content to "", and the heading must be dropped rather than
+  // emitted as a bare "## " line with nothing after it.
+  it("skips an html heading with no extractable text (an image-only <h#>)", () => {
+    const evidence = new RunEvidence()
+    const rec = evidence.record({
+      url: "https://rival.com/about",
+      text: RIVAL_TEXT,
+      raw: `<html><body><h2><img src="/banner.png"></h2><h3>Our team</h3><p>${RIVAL_TEXT}</p></body></html>`,
+      status: "found",
+      tier: "page",
+    })
+    const r = readTool({ evidence, ledger: ledger() }, { handle: rec.handle, project: "headings" })
+    if (!r.ok) throw new Error(r.reason)
+    expect(r.text).toBe("### Our team")
+  })
+
   it("projects links with anchor text, resolving relative hrefs against the page", () => {
     const s = seeded()
     const r = readTool(rctx(s), { handle: s.page.handle, project: "links" })
