@@ -3946,3 +3946,43 @@ verified green, the first time this branch's history shows that command
 being run as part of landing a change.
 
 Backlog item: SELF-586
+
+**SELF-587 (2026-10-01 overnight fire) — closed the gap SELF-586 named by
+hand as its own legitimate next step: `next build --webpack` ran nowhere
+except on a human's keyboard, so a regression of the same shape it just fixed
+would ship invisibly again.** SELF-586's own commit message says so directly:
+its two source-grep regression tests pin the two call sites that fire found,
+but "a real build check in CI... [is] a legitimate next step, not this one" —
+neither `pnpm check` (type-checks only, never resolves webpack's module
+graph for a browser target) nor `pnpm test` (vitest, never shells out to
+`next build`) can catch a *new* client component making the same bare
+`@open-kb/core` mistake, only a real build run against the whole client
+bundle can.
+
+Added `pnpm --filter @open-kb/web build` as its own step in
+`.github/workflows/check.yml`, after `pnpm test`, with
+`NEXT_TELEMETRY_DISABLED=1` on that step only (checked: unset, the build logs
+Next's phone-home notice and the telemetry client at least attempts a
+network call in the background; this repo's whole practice around outbound
+calls is to be deliberate about them, and a CI job is not the place to leave
+that implicit per-contributor). Deliberately NOT folded into the hot `pnpm
+check` path — SELF-586 already ruled that out for the same reason this item
+doesn't revisit it, and `pnpm check` is also what a contributor runs locally
+before every commit, where the extra ~20s would be paid on every edit rather
+than once per push.
+
+Verified rather than assumed: ran `pnpm --filter @open-kb/web build` locally
+with and without `NEXT_TELEMETRY_DISABLED=1` set — the banner
+("Attention: Next.js now collects completely anonymous telemetry...")
+appears only in the unset case, confirming the env var actually suppresses
+the thing it's there to suppress, not just a presumed no-op. Build itself:
+exit 0, 16 routes generated (`/`, `/kb`, `/kb/[id]`, `/runs`, `/runs/[id]`,
+five `/api/*` routes, `/film`, `/story`, `/_not-found`, proxy middleware),
+zero webpack errors, in ~23s — well inside `check.yml`'s existing 15-minute
+job timeout.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check && pnpm test` both exit 0: 3357 tests passing, 13 skipped (same
+gated census as SELF-586 — a CI-workflow-only change touches no test file).
+
+Backlog item: SELF-587
