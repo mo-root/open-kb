@@ -19,6 +19,10 @@
  * baked seed exactly like a remembered one, behind the same coverage gate, and
  * still runs its short relax under the real recipe.
  *
+ * SIZE METRIC follows `DEFAULT_SETTINGS.sizeBy` (lib/graph/settings.ts), the
+ * same switch GraphCanvas reads for a reader who has never opened the panel —
+ * which, on a first visit, is exactly who this bake is for.
+ *
  *   cd packages/web && npx tsx scripts/bake-layouts.ts
  *
  * Re-run whenever demo/maps changes or the recipe in lib/graph/layout.ts moves.
@@ -52,6 +56,7 @@ import {
   tetherStrength,
 } from "../lib/graph/layout"
 import { assignClusters, measureClusters, separationShoves } from "../lib/graph/cluster"
+import { DEFAULT_SETTINGS } from "../lib/graph/settings"
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const MAPS_DIR = join(HERE, "..", "..", "..", "demo", "maps")
@@ -94,7 +99,20 @@ function bakeVariant(
     adj.get(l.source)!.add(l.target)
     adj.get(l.target)!.add(l.source)
   }
-  const maxRel = Math.max(1, ...graph.nodes.map((n) => n.relevance || 0))
+  /* `sizeOf` mirrors GraphCanvas's own `meta` memo (GraphCanvas.tsx, the
+     block building `sizeMetric`): the drawn radius follows `relevance` only
+     under `sizeBy: "placement"`, and the shipped default is `"prominence"`.
+     This used to read `n.relevance` unconditionally, so every baked radius —
+     and, through `seatRadius`, every collide/charge/link distance derived
+     from it — was computed for a sizing mode nobody sees on a first visit.
+     Measured on the six committed demo maps (scripts/measure-sizing-drift.ts,
+     not committed): the two metrics disagree enough to move a node's radius
+     by a mean of 7.65-8.25 units and a max of 10.24-10.52, against the 4-16
+     unit range `r` is drawn in — more than half the node's size range, on
+     average, across every map in the corpus. */
+  const sizeOf = (n: { relevance: number; prominence: number }) =>
+    DEFAULT_SETTINGS.sizeBy === "placement" ? n.relevance : n.prominence
+  const maxRel = Math.max(1, ...graph.nodes.map((n) => sizeOf(n) || 0))
   let hubId = ""
   let hubScore = -1
   let maxDeg = 0
@@ -113,7 +131,7 @@ function bakeVariant(
   const nodes: SimNode[] = list.map((n) => {
     const deg = degById.get(n.id) ?? 0
     const isHub = n.id === hubId
-    const rel = Math.max(0, n.relevance || 0)
+    const rel = Math.max(0, sizeOf(n) || 0)
     const seed = seedPosition({ id: n.id, deg, r: 0, isHub }, nodeCount, maxDeg)
     return {
       id: n.id,

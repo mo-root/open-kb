@@ -119,4 +119,29 @@ describe("bake-layouts.ts's lobe force: pinned to GraphCanvas's makeClusterForce
     expect(canvas).not.toBeNull()
     expect(bake![1]).toBe(canvas![1])
   })
+
+  it("the size metric reads DEFAULT_SETTINGS.sizeBy, not an unconditional n.relevance", () => {
+    // bake-layouts.ts used to compute every node's radius (and, through
+    // `seatRadius`, every collide/charge/link distance derived from it) off
+    // `n.relevance` unconditionally — the `sizeBy: "placement"` reading.
+    // GraphCanvas's own `meta` memo and node-building block both gate the
+    // same choice on `settings.sizeBy`, and the shipped default
+    // (lib/graph/settings.ts's `DEFAULT_SETTINGS.sizeBy`) is `"prominence"`,
+    // not `"placement"` — so the bake was settling every demo map's physics
+    // for a sizing mode no first-time visitor ever sees. Measured on the six
+    // committed demo maps: the two metrics disagree enough to move a node's
+    // radius by a mean of 7.65-8.25 units and a max of ~10.5, against the
+    // 4-16 unit range `r` is drawn in.
+    expect(BAKE).toContain("DEFAULT_SETTINGS.sizeBy")
+    expect(BAKE).not.toMatch(/Math\.max\(0, n\.relevance \|\| 0\)/)
+    expect(BAKE).not.toMatch(/n\.relevance \|\| 0\)\)\s*$/m)
+  })
+
+  it("the size-metric ternary (sizeBy placement vs prominence) matches GraphCanvas's own", () => {
+    const re = /sizeBy === "placement" \? n\.relevance : n\.prominence/
+    const bake = BAKE.match(re)
+    const canvas = CANVAS.match(re)
+    expect(bake).not.toBeNull()
+    expect(canvas).not.toBeNull()
+  })
 })

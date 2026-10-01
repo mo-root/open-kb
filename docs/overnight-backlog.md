@@ -4270,3 +4270,62 @@ only the test was added. `pnpm install` first (fresh clone, no
 (up from 3359, one new), 13 skipped (same gated census as SELF-592).
 
 Backlog item: SELF-593
+
+**SELF-594 (2026-10-01 overnight fire) — `packages/web/scripts/bake-layouts.ts`
+sized every baked node off the wrong field: `n.relevance` unconditionally,
+where the canvas it is supposed to mirror sizes off `n.prominence` by
+default.** Read every file `git log --name-only` against this branch's own
+history had never touched (77 of them, the same census SELF-513 used) that
+still carries real logic rather than a barrel export; `bake-layouts.ts` was
+one of a dozen candidates, picked because its own docstring makes the
+strongest fidelity claim of any of them — "the bake cannot disagree with the
+app about what the graph IS" — which is exactly the kind of claim worth
+checking by hand rather than trusting.
+
+GraphCanvas.tsx's `meta` memo and its node-building block both size a node's
+drawn radius off `settings.sizeBy === "placement" ? n.relevance : n.prominence`,
+and `lib/graph/settings.ts`'s `DEFAULT_SETTINGS.sizeBy` is `"prominence"` — a
+count the run's own searches made (`seenIn`/`bestRank`, `kb-from-run.ts`'s
+`prominenceOf`), not the classifier's placement judgement `relevance` encodes
+(`RELATION_WEIGHT`). `bake-layouts.ts`'s `bakeVariant` read `n.relevance` for
+both `maxRel` and each node's own `rel` with no gate at all — the `"placement"`
+branch, unconditionally, on every bake, for a reader who (on a first visit,
+the one case this file exists to serve) has never touched the settings panel
+and is seeing the shipped default.
+
+Measured rather than assumed: a temporary script (not committed) ran both
+formulas — `4 + Math.sqrt(rel / maxRel) * 12`, byte-identical to the real
+one — over all six committed demo maps' `graphOf()` output. The two metrics'
+radii disagree by a mean of 7.65-8.25 units and a max of ~10.5, against the
+4-16 unit range `r` is drawn in, on every one of the six maps — more than
+half the node's size range, on average, with no map in the corpus landing
+close. Since `r` feeds `seatRadius` (collide, link distance's seat argument,
+the cluster pad) and `chargeStrength`'s non-hub branch directly, this was not
+a cosmetic radius miss: the entire baked physics settle — where every node
+ends up — was computed for a sizing mode nobody sees by default, which is
+the opposite of what a seed file exists to provide.
+
+Fixed by adding the same `sizeOf` gate GraphCanvas carries, keyed on
+`DEFAULT_SETTINGS.sizeBy` (imported from `lib/graph/settings.ts`) rather than
+a live `settings` object — there is no reader at build time, so the bake
+mirrors the shipped default, the same thing "at the shipped defaults (cohesion
+1, spacing 1)" already says about the lobe force two paragraphs up. Both call
+sites (`maxRel` and each node's `rel`) now route through it.
+
+`bake-layouts.test.ts` already exists for exactly this file, pinning five
+other hand-copied constants against GraphCanvas.tsx as text (importing
+`bake-layouts.ts` directly runs the whole bake — `readdirSync`/`mkdirSync` at
+module scope — so every existing test in that file reads both source files
+as strings rather than importing either). Added two more in the same style:
+one asserting the fixed file reads `DEFAULT_SETTINGS.sizeBy` and contains no
+unconditional `n.relevance` read, the other pinning the ternary's literal
+text against GraphCanvas's own. Verified non-vacuous by mutation: reverted
+just `bake-layouts.ts`, both new assertions failed (`not.toContain` tripped
+on the restored `n.relevance` read; the ternary pin found no match in the
+reverted file), then restored the fix and reran clean before committing.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3362 tests passing (up from 3360, two new), 13 skipped
+(same gated census as SELF-593).
+
+Backlog item: SELF-594
