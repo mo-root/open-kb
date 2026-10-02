@@ -4924,3 +4924,103 @@ flip with 100+ sites still failing the build.
 gated census as SELF-605) — unchanged, since nothing was kept.
 
 Backlog item: SELF-606 - BLOCKED
+
+**SELF-607 (2026-10-02 overnight fire) — a genuinely new angle, auditing every
+fire-and-forget promise in the engine and web packages for an unhandled
+rejection, never tried by any prior fire. Every single one traced out safe by
+construction; found nothing to fix.** Grepped this document for "floating
+promise"/"unhandled rejection" first (zero hits) before starting, then
+grepped the source tree itself for every `void <expr>.then(`/`void (async ()
+=> …)()` and every bare `.then(` chain not immediately followed by its own
+`.catch(` on the same statement, across `packages/*/src`,
+`packages/web/{app,lib,components}` and `scripts/`. A `.then`/`void` pair is
+exactly the shape that silently drops an error if anything downstream of it
+can still throw — the class of bug that shows up as a crashed run or a
+console "UnhandledPromiseRejection" with no code-path evidence, not as a
+wrong answer a fixture would catch.
+
+Ten call sites matched. Traced each one's full downstream chain by hand
+rather than trusting that the author's own comment already covers the
+question (most of these comments justify a DIFFERENT invariant):
+
+- `packages/providers/src/safe-fetch.ts:117` — `void work.then(resolve,
+  reject).finally(...)`. Both arms hand off to the enclosing `Promise`'s own
+  `resolve`/`reject`, which the spec guarantees never throw; `.finally`'s
+  callback is a plain `removeEventListener`. The settled promise this `void`s
+  can only ever be already-resolved.
+- `packages/swarm/src/orchestrator.ts:700` — `void
+  Promise.allSettled(ps).then(finish)`. `allSettled` never rejects by
+  definition; `finish` (:690-696) clears a timer, removes a listener, and
+  calls the enclosing `resolve` — none of which can throw.
+- `packages/swarm/src/orchestrator.ts:773-832` — `launch()`'s mission promise
+  `p`, stored in `inflight` and raced against in the main loop
+  (`Promise.race(waiters)` at :1321) with no further `.catch` anywhere on
+  this chain. The existing comment at :738-753 only proves `runInvestigator`
+  itself throw-free before its own `.catch()`; it says nothing about the
+  `.then(async (digest) => {...})` stage chained AFTER that catch, which is
+  the one that actually lands in `inflight`. Traced every statement in that
+  stage: `settleWithin` (:686, `Promise.allSettled` again), `ledger.draw`/
+  `.settle` (`core/src/ledger.ts:136-162`, both return `{ok:false,...}` on
+  any bad claim id rather than throw), `families.landed`
+  (`family-ledger.ts:65-69`, plain `Map` reads/writes), and `say()`
+  (`orchestrator.ts:305`, `opts.onLog?.(...)`) — whose only three callers
+  (`scripts/swarm.ts:318`, `scripts/sweep.ts:286`, `web/app/api/map/
+  route.ts:587`) all pass a bare `console.log`. Every statement is
+  throw-free for any input this orchestrator can construct; the chain simply
+  had no comment saying so the way the `runInvestigator` half does.
+- `packages/swarm/src/agent.ts:963` — `void
+  Promise.allSettled(landings).then(() => deps.ledger.settle(claimId,
+  r.usd + drawnOn(claimId)))`. `drawnOn` (:954-957) only calls
+  `ledger.draw`, already shown non-throwing above; `ledger.settle` the same.
+- `packages/swarm/src/tools-paid.ts:442-466` — `attempt` is built as
+  `ctx.fetch.get(...).then((raw) => ({raw}), (err) => ({err}))`, a
+  Result-wrapping `.then` that converts both the resolve and the reject arm
+  into an ordinary resolved value, so `attempt` itself can never reject;
+  `landing = attempt.then((outcome) => {...})` therefore has nothing to
+  reject from, whatever `ctx.evidence.land`/`settle` do internally.
+- `packages/sweep/src/sweep.ts:2855-2861` — each per-ask promise inside
+  `understandByCall`'s `Promise.all` carries its own `.then((d) => d, () =>
+  null)`, turning a refusal into `null` rather than a rejection; this is
+  already inside an `await`ed `Promise.all`, not a floating promise at all.
+- `packages/web/app/api/map/route.ts:714-730` — the deadline timer's `void
+  (async () => { ...; await failRun(...) ; ... })()`. `failRun`
+  (`lib/runs.ts:418-488`) is the one call here actually worth doubting: it
+  awaits `settle()` (:311-319), a `Promise.all` over three slots, and the
+  file's own header comment at :301-309 states the invariant plainly
+  — "every slot has to be non-rejecting." Checked that this is actually true
+  today rather than taking the comment on faith: `persist(r)` carries its
+  own inline `.catch` (:313-315), `r.pumped` is a tracked promise with no
+  independent throw site, and `db.upsertRun` (`store/supabase.ts:87-99`)
+  routes through `quiet()` (:76-83), whose own comment says "Never throws"
+  and whose body is a plain try/catch. `isFirstEnding` (`lib/runs.ts:377-381`)
+  only logs. So `failRun` cannot reject today, and this `void` is safe — but
+  the proof lives in a different file's comment than the `void` call site,
+  which is the one thing worth recording for a future fire that changes
+  `settle`'s contract without re-checking this caller.
+- `packages/web/app/api/map/route.ts:741-747` — `void task.then(() =>
+  {...}, () => {...})`, a two-arm `.then` whose callbacks only call
+  `clearTimeout`/`resolve`; neither can throw.
+- `packages/web/components/build/BuildWorkflow.tsx:473,504,535,547,561` — all
+  five `void readNdjson(...)` calls do carry their own `.catch(() => {})`
+  chained on the next line (`:474`, `:533`, `:545`, `:559`, `:578`) — missed
+  on the first single-line grep pass because the `.catch` sits on a wrapped
+  continuation line; re-grepped with the call's full multi-line span before
+  concluding these were a gap, and they are not.
+
+No case where an actually-reachable throw escapes a `void`'d or
+uncaught-chained promise. This codebase's own discipline (every ledger/board
+method returns `{ok, reason}` instead of throwing, every store write is
+wrapped in its own `quiet`/`.catch`) is exactly what makes every one of these
+fire-and-forget sites safe — the pattern this fire set out to audit turns out
+to be a consequence of a different, already-established house rule, not an
+accident. Recorded so a future fire does not re-run this same grep from
+scratch: the one soft spot worth re-checking after any change to
+`settle()`/`quiet()`/`ledger.draw`/`ledger.settle` is whether they are still
+non-throwing, since several `void`/uncaught `.then` sites depend on that
+without saying so locally.
+
+No code change. `pnpm install` first (fresh clone, no `node_modules`).
+`pnpm check && pnpm test` both exit 0: 3370 tests passing, 13 skipped (same
+gated census as SELF-606; unchanged — a read-only fire).
+
+Backlog item: SELF-607 - BLOCKED
