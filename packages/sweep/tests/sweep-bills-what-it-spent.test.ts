@@ -83,8 +83,15 @@ describe("what the run says it spent", () => {
     const byAgent = costOf(h.result).byAgent
     // Two calls on the link line since the orphan ask joined the phase: the
     // pair batch, and the where-do-you-stand batch for the map's unlinked
-    // entities (the fixture's forum co-occurs with nothing twice, so it is
-    // asked). Both are real spend the snapshot has to include.
+    // entities. Verified by instrumenting a run: the pair batch actually
+    // carries THREE pairs, including forum+tailwatch (both co-occur twice,
+    // same as grepstack+loglens) — forum is not the orphan, it gets a link
+    // edge. walled.example is: its front page 404s (no FETCH_TABLE row), so
+    // it only ever appears in one query ("log search", alongside grepstack
+    // and tailwatch), each pairing below the floor of two — it never reaches
+    // the pair selector and is the fixture's one unlinked entity. Both calls
+    // are real spend the snapshot has to include regardless of which entity
+    // is asked.
     expect(lineOf(byAgent, "link").calls).toBe(2)
     expect(lineOf(byAgent, "link").usd).toBeCloseTo(2 * USD_PER_MODEL_CALL, 9)
     expect(h.calls.filter((c) => c.phase === "link")).toHaveLength(1)

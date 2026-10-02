@@ -4601,3 +4601,54 @@ No code change. `pnpm install` first (fresh clone, no `node_modules`).
 gated census as SELF-599; unchanged by a read-only fire).
 
 Backlog item: SELF-600 - BLOCKED
+
+**SELF-601 (2026-10-02 overnight fire) — the one file never hand-read in
+this whole campaign, `packages/sweep/tests/fixture.ts` (zero basename hits
+anywhere in this document, the one genuine miss besides the out-of-scope
+`next-env.d.ts`), carried a comment misnaming which of its own six hosts
+ends up the fixture's orphan — and the same wrong name had been copied into
+a second file's comment too.** `fixture.ts`'s `SERP` doc comment claims
+"`grepstack`+`tailwatch` co-occur in three different queries and
+`grepstack`+`loglens` in two (the selector's floor), while every other pair
+co-occurs once and is dropped." Instrumented a real run (`runFixture({})`,
+default script, reading `h.calls` back through the exported `pairsOf()`)
+rather than trusting the hand count: the link call's prompt actually carries
+**three** pairs, not two — `forum.example`+`tailwatch.example` also co-occurs
+twice (`"uptime monitoring"` and `"synthetic checks from more than one
+region"` both list the pair), clearing the exact same floor
+`grepstack`+`loglens` does. `sweep.ts`'s own selector (`coPairs`, ~line 6327)
+confirms the floor is `n >= 2` with no further filter by entity kind — a
+`community`-kind host pairs exactly like a `company`-kind one.
+
+That is not a harmless undercount: `sweep-bills-what-it-spent.test.ts`'s
+"takes the total AFTER the linking phase" test carries a comment built on
+the same wrong premise — "the fixture's forum co-occurs with nothing twice,
+so it is asked [via the orphan pass]." Instrumenting the orphan call's own
+prompt (same run) shows exactly one orphan, and it is `walled.example`, not
+`forum.example`: `walled` has no `FETCH_TABLE` row (its front page 404s), and
+the only query that lists it (`"log search"`, alongside `grepstack` and
+`tailwatch`) pairs it with each just once — one below the floor — so it
+never reaches `coPairs` at all. `forum` clears the floor with `tailwatch`,
+gets a real link edge from the default script
+(`from: forum, to: tailwatch, relation: "competitor"`), and is never asked
+where it stands. The test's own assertions (`lineOf(byAgent,
+"link").calls` = 2, one link call + one orphan call) were already correct —
+only the prose explaining WHY was wrong, attributing the orphan ask to the
+wrong host.
+
+Fixed both comments: `fixture.ts`'s `SERP` doc now names all three
+qualifying pairs and says which single host (`walled`) is the actual orphan
+and why; `sweep-bills-what-it-spent.test.ts`'s comment now says the same,
+verified rather than asserted. No test added — this is a doc-only fix with
+no behavioural claim to pin; the existing `.toHaveLength(1)` /
+`.calls).toBe(2)` assertions already lock in the real shape (one link call
+carrying three pairs, one orphan call carrying one host) and would fail if
+either count ever drifted. Probe script (a throwaway `.test.ts` overriding
+nothing, reading `h.calls` through `pairsOf()`) deleted before committing —
+`git status` clean.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3367 tests passing (unchanged — comment-only), 13 skipped
+(same gated census as SELF-600).
+
+Backlog item: SELF-601

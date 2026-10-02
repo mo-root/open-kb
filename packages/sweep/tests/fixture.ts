@@ -154,10 +154,14 @@ const hit = (host: string, title: string, description: string): SearchHit => ({
  * What each query returns.
  *
  * Arranged so the pieces downstream have work to do: `grepstack`+`tailwatch`
- * co-occur in three different queries and `grepstack`+`loglens` in two (the
- * selector's floor), while every other pair co-occurs once and is dropped.
- * `loglens`'s own snippet names Tailwatch, so the FREE naming pass resolves
- * that pair before the model is asked about anything.
+ * co-occur in three different queries, and both `grepstack`+`loglens` and
+ * `forum`+`tailwatch` in two (the selector's floor) — three pairs clear it,
+ * not two; every other pair co-occurs once and is dropped. `walled` shares a
+ * query with `grepstack` and `tailwatch` but each of those pairs only once,
+ * so it is the fixture's one entity that never reaches the pair selector at
+ * all — not `forum`, which gets a link edge from `tailwatch` like any other
+ * qualifying pair. `loglens`'s own snippet names Tailwatch, so the FREE
+ * naming pass resolves that pair before the model is asked about anything.
  */
 export const SERP: Record<string, SearchHit[]> = {
   "log search": [
