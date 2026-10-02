@@ -1002,6 +1002,20 @@ describe("segments, provenance rendered as segmentation", () => {
     expect(v.segments).toEqual([])
     expect(summaryOf(segRun([entity("a.com", "competitor")])).segments).toEqual([])
   })
+
+  it("drops a non-string or blank foundBy entry instead of crashing on it", () => {
+    // `Entity["foundBy"]` is typed `string[]`, but nothing re-validates a run
+    // file's entities past `isStoredRun`'s top-level `Array.isArray(entities)`
+    // check (runs.ts) — a run adopted from disk (adoptCliRun, same file) hands
+    // every entity straight through. A non-string element would throw on
+    // `.trim()` and a whitespace-only one would otherwise mint a blank-label
+    // segment, so lanesOf's own doc comment promises both are dropped; nothing
+    // here had fed it either shape.
+    const v = viewOf(segRun([
+      { ...found("a.com", ["Web Scraping APIs"]), foundBy: ["Web Scraping APIs", null, "   ", 7] },
+    ]))
+    expect(v.segments).toEqual([{ name: "Web Scraping APIs", size: 1, straddlers: 0 }])
+  })
 })
 
 /**

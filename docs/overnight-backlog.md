@@ -5186,3 +5186,49 @@ tests passing (up from 3372, one new), 13 skipped (same gated census as
 SELF-609).
 
 Backlog item: SELF-610
+
+**SELF-611 (2026-10-02 overnight fire) — re-ran SELF-610's own coverage sweep
+one package further, `packages/web/lib`, and found one real crash-on-malformed-
+disk-data gap in `kb-from-run.ts`'s `lanesOf`.** Installed a temporary
+`@vitest/coverage-v8@4.1.11` devDependency (matched this repo's vitest,
+reverted before finishing, same move as every coverage-sweep fire since
+SELF-509), scoped to `packages/web/lib/kb-from-run.ts`. The JSON report (the
+text reporter's "Uncovered Line #s" column truncates wide ranges with `...`
+and, read carelessly, names the wrong lines entirely — confirmed by cross-
+checking both outputs on this exact file) named lines 500 and 502: the two
+guards inside `lanesOf` (`if (typeof raw !== "string") continue` and
+`if (!label) continue`, reacting to each `e.foundBy` entry) had never run
+their true arm.
+
+Traced whether that is reachable rather than assuming a typed field means
+clean data: `Entity["foundBy"]` is `string[]` only at the type level
+(sweep.ts:977, added by intersection, never zod-parsed on this path).
+`packages/web/lib/runs.ts`'s `isStoredRun` and `adoptCliRun` — the only two
+gates between a `runs/*.json` file on disk and this code — each check
+exactly `typeof result.anchor === "string"` and `Array.isArray(result.entities)`
+and nothing deeper; every entity, and every element of its `foundBy` array,
+reaches `kb-from-run.ts` exactly as the file on disk wrote it. Today's one
+producer (`sweep.ts:6037`) only ever pushes real market names, so this
+never fires against a run this engine just wrote — but `lanesOf`'s own doc
+comment ("entries trimmed, blanks dropped") is a promise about ANY run file
+on disk, including a hand-edited or legacy-engine one, which is exactly the
+class of input `runs.ts`'s surrounding comments already treat as untrusted.
+Without the first guard, a non-string element (`null`, a number — valid JSON,
+invalid against the TS type nothing enforces at this boundary) throws
+`TypeError: ….trim is not a function` out of `segmentsOf` and takes the whole
+KB summary/view down with it, for one bad array element in one entity.
+
+Added a test: a run whose one kept entity's `foundBy` carries a real market
+name alongside `null`, `"   "` and `7`, asserting the summary still derives
+the one real segment instead of crashing. Verified non-vacuous by mutation:
+stripped both guards down to a bare `const label = (raw as string).trim()`,
+reran — the new test failed with the exact predicted `TypeError` out of
+`lanesOf` (`kb-from-run.ts:500`); restored the guards and reran clean before
+committing. No source change — both guards were already correct; only the
+test was missing.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3374 tests passing (up from 3373, one new), 13 skipped
+(same gated census as SELF-610).
+
+Backlog item: SELF-611
