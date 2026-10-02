@@ -5074,3 +5074,47 @@ test` both exit 0: 3371 tests passing (up from 3370, one new), 13 skipped
 (same gated census as SELF-607).
 
 Backlog item: SELF-608
+
+**SELF-609 (2026-10-02 overnight fire) — SELF-597's coverage sweep scoped
+`packages/web` to `lib/` only; ran it over `packages/web/components` as
+well (never done before) and found one real untested branch that needed
+no jsdom/RTL harness to close.** Installed a temporary
+`@vitest/coverage-v8@4.1.11` devDependency (matched this repo's vitest,
+reverted before finishing, same move as every prior coverage-sweep fire)
+and ran it scoped to `packages/web/components/**/*.{ts,tsx}`.
+
+Most of the gaps are the same structural wall SELF-597 already named for
+`useUrlView.ts`: a component whose only untested lines are inside a
+`useEffect`, an event handler that needs a real DOM event + rerender
+(`SiteIcon.tsx`'s `onError`), or a hook like `usePathname` that needs a
+router context (`HeaderNav.tsx`) — this repo's tests render with
+`react-dom/server`'s `renderToStaticMarkup`, which never runs effects or
+handlers, and there is still no jsdom/RTL harness to drive them. Checked
+each of `HeaderNav.tsx`, `ThemeToggle.tsx` and `SiteIcon.tsx`'s uncovered
+lines by hand to confirm they are this same wall, not a new one, before
+moving on; `KbCard.tsx` and `DemoHome.tsx`'s gaps are the demo gallery,
+out of scope by this file's own header.
+
+`ui.tsx` was the one file with a gap that is plain server-rendered JSX, no
+hook involved: `SectionHead`'s `{blurb && <p>...}` line (:130). The
+existing `ui.test.tsx` already tests the sibling `count` prop's
+present/absent split (`"SectionHead and MicroHead omit the count span
+entirely rather than rendering an empty one"`) but never exercises
+`blurb` at all — grepped every `SectionHead` call site
+(`ProductsTab.tsx`'s four) and confirmed none of them actually passes
+`blurb` today (each writes its own `<p>` next to `SectionHead` instead),
+so the branch had literally never run, on a fixture or in production.
+
+Added one test, same `renderToStaticMarkup` style as its neighbours:
+asserts the `<p>` renders with the given text when `blurb` is passed, and
+that no `<p>` renders at all when it is omitted. Verified non-vacuous by
+mutation: temporarily dropped the `blurb &&` guard so the `<p>` always
+rendered, reran — the new test failed (`withNone` now contained `<p
+class="mt-0.5…"></p>`); restored the guard and reran clean before
+committing.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3372 tests passing (up from 3371, one new), 13 skipped
+(same gated census as SELF-608).
+
+Backlog item: SELF-609

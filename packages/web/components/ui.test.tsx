@@ -134,6 +134,18 @@ describe("SectionHead and MicroHead omit the count span entirely rather than ren
   });
 });
 
+describe("SectionHead's blurb paragraph only renders when one is given", () => {
+  it("renders the <p> when blurb is present, and omits it entirely when absent", () => {
+    const withBlurb = renderToStaticMarkup(
+      <SectionHead title="Products" blurb="Hand-picked for this market." />,
+    );
+    expect(withBlurb).toContain("<p");
+    expect(withBlurb).toContain("Hand-picked for this market.");
+    const withNone = renderToStaticMarkup(<SectionHead title="Products" />);
+    expect(withNone).not.toContain("<p");
+  });
+});
+
 describe("TypeChip renders a non-interactive span for a dead target even when given an onClick", () => {
   it("ignores onClick and drops the type colour once dead is true", () => {
     const html = renderToStaticMarkup(
