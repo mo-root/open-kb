@@ -4773,3 +4773,65 @@ test` both exit 0: 3369 tests passing (up from 3368, one new), 13 skipped
 (same gated census as SELF-602).
 
 Backlog item: SELF-603
+
+**SELF-604 (2026-10-02 overnight fire) — read five low-attention files end
+to end looking for SELF-602's exact bug shape (a stated invariant an
+unconditional write quietly breaks) and a reachable version of it;
+found nothing real.** Shortlisted by the same two-pass method SELF-566/599
+established (basename-grep against this document, then checked each
+survivor's actual exported names rather than trusting a zero/one hit
+alone): `packages/core/src/breaker.ts`, `packages/providers/src/
+safe-fetch.ts`, `packages/swarm/src/family-ledger.ts`,
+`packages/web/components/viz/polar.ts`. `packages/core/src/catalog.ts`
+looked like a fourth candidate (4 hits, all line-citations from a coverage
+sweep) but turned out to already carry its own full dedicated read —
+SELF-569, found by searching this document for the filename rather than
+trusting the grep count, same miss-class SELF-561/570 already named.
+
+`breaker.ts` (64 lines, `BreakerTable`): read against its own 11-case test
+suite and its one caller (`tools-paid.ts:373,437`) — `strike()` and
+`open()` both key on `originKey(url)` + `input.mode`, the same two values,
+so there is no derivation mismatch between the write side and the read
+side to find. `COUNT_WORDS[reasons.length]` indexes a 7-entry array that
+`#history` only ever reaches once `reasons.length >= OPEN_AT (2)`, and the
+`?? String(reasons.length)` fallback is exercised by the suite's own
+7-strike case — nothing unguarded.
+
+`safe-fetch.ts` (248 lines, the SSRF-guarding `publicOnlyFetch`): re-derived
+the redirect-hop arithmetic by hand independently of the prior fire that
+verified it (line 1208 of this document) rather than taking that citation
+on faith — traced hop 0 through hop 4 each following a redirect
+(`hop >= maxRedirects` false all five times) and hop 5 throwing on the
+sixth 3xx, confirming "5" really does mean 5 redirects followed, not 5
+requests. `assertPublic` runs again on every hop before the next fetch,
+closing the exact TOCTOU-shaped door the file's own header names as the one
+thing it does NOT cover (DNS rebinding between the check and the real
+resolve) without silently also leaving a redirect-time gap.
+
+`family-ledger.ts` (92 lines, `FamilyLedger`): `opened()` resets
+`existing.status` to `"queued"` unconditionally on any re-open, with no
+branch for `existing.status` already being `"claimed"` or `"landed"` — on
+its face the same shape as SELF-602's bug (a later write ignoring an
+earlier state it should defer to). Traced every call site that can reach
+it: `tools-control.ts`'s push handler (~438) and promote handler (~579)
+both gate on `Board.push`/`Board.promote` succeeding first, and
+`core/src/board.ts`'s `push` (:89-91), `promote` (:155-157) and `kill`
+(:172-174) each explicitly return `{ ok: false }` for any `dedupeKey`
+already in `#claimed` — and `release`'s own comment (:135-136) states a
+landed mission "is never released: it stays claimed... for the rest of the
+run." `#claimed` is therefore monotonic once a key lands, so none of the
+three paths that can trigger `FamilyLedger.opened()` can ever fire for a
+dedupeKey whose ledger row already reads `"claimed"` or `"landed"` — the
+same "looks reachable, traced to a sibling file's own guard, ruled out"
+shape SELF-602 itself hit with the orphan-ask counting convention. Not
+fixed; nothing to fix.
+
+`polar.ts` (SELF-559's own dedup of the `Gauge.tsx`/`Donut.tsx` arc-point
+formula): four lines, already deduplicated, matches both callers' own
+path-string tests.
+
+No code change. `pnpm install` first (fresh clone, no `node_modules`).
+`pnpm check && pnpm test` both exit 0: 3369 tests passing (unchanged — a
+read-only fire), 13 skipped (same gated census as SELF-603).
+
+Backlog item: SELF-604 - BLOCKED
