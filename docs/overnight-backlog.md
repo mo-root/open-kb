@@ -5277,3 +5277,65 @@ source change — the guard was already correct; only the test was missing.
 new), 13 skipped (same gated census as SELF-611).
 
 Backlog item: SELF-612
+
+**SELF-613 (2026-10-02 overnight fire) — re-ran the coverage-sweep tool over
+`packages/providers/src`, the one D-named package stalest since its last
+measurement (SELF-598, a day earlier than every other package's SELF-608
+through SELF-612 re-check), then widened to a basename cross-reference
+against this whole document when it came back with nothing new; found
+nothing fixable either way.** Installed a temporary
+`@vitest/coverage-v8@4.1.11` devDependency (matched this repo's vitest,
+reverted before finishing, same move as every prior coverage-sweep fire)
+and ran `vitest run --coverage --coverage.include="packages/providers/src/
+**/*.ts"`. Lines sat at 100%, identical to SELF-598's figure; the two
+uncovered branch spans (`brightdata.ts:504-533,545,609` and
+`safe-fetch.ts:113-115`) are the exact citations SELF-509/598 already
+traced and left alone, re-read end to end here rather than waved through on
+a stale citation alone — both are still the `signal.reason ?? new
+Error(...)` and `once()`'s four-`ok:false`-returns dead fallbacks their own
+inline comments already prove unreachable; nothing changed in either file
+since SELF-598.
+
+Widened to a basename cross-reference (the SELF-566/599/604 method) against
+every file this document's own low-attention-list named with two or fewer
+hits, to find a genuinely never-dedicated-read candidate rather than
+another instrumented sweep. Checked `GraphSettings.tsx` (427 lines, one
+hit) end to end — its `PRESETS` table and the slider/toggle chrome around
+it are already pinned by `GraphSettings.test.ts`'s two describe blocks
+(every preset's numeric fields fall inside their own `RANGES` bounds,
+every preset key is a real `GraphSettings` field); `GraphSearch.tsx` (145
+lines, one hit as a basename but previously touched only for a dead
+`type NodeType` import, SELF-549) — traced the keyboard-nav arithmetic
+(`Math.min`/`Math.max` clamps on `cursor`, the cursor-reset effect on `q`
+changing, the blur-delay-for-click-through) by hand and found it sound,
+matching `GraphSearch.test.tsx`'s own documented SSR-only ceiling;
+`PlanCard.tsx` and its `build/types.ts` wire contract (one and two hits
+respectively) both turned out to already carry a full dedicated read and
+fix (SELF-578's `plannedDropped`/chip-gating bug, and the full-file read
+SELF-528's "eight files" fire recorded) — a basename-hit count alone
+undercounts prior coverage the same way SELF-602 already warned about
+`SELF-480`, so each was confirmed by a targeted grep for the file's own
+path rather than trusted on the hit count.
+
+Re-verified `core/src/ledger.ts` and `spend-cap.ts` (this file's own D
+section still names them by hand as "nobody has swept") were in fact both
+already fully read, with every method traced, at SELF-529.
+
+Also confirmed structurally: every non-test `.tsx`/`.ts` file under
+`packages/web/components/` and `packages/web/lib/` has a colocated test
+file (`find … ! -name "*.test.*"` against `-f "${base}.test.ts"` / `.tsx`,
+zero misses) — so no component or lib module is silently invisible to
+every prior coverage-sweep fire the way an unimported file would be.
+`verbatimModuleSyntax`/`isolatedDeclarations` as a next flag-as-detector
+were already tried and declined at SELF-571; not retried. README.md's own
+measured-run numbers (the 17/28-sweep percentages, the per-host dollar
+figures) cite `runs/`, which is gitignored
+and absent from this checkout — the same live-data limitation every
+gated test in `pnpm check`'s own dark-suite list already states, so they
+are not independently re-checkable here either.
+
+No code change. `pnpm install` first (fresh clone, no `node_modules`).
+`pnpm check && pnpm test` both exit 0: 3376 tests passing, 13 skipped (same
+gated census as SELF-612; unchanged — a read-only fire).
+
+Backlog item: SELF-613 - BLOCKED
