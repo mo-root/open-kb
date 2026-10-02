@@ -5232,3 +5232,48 @@ test` both exit 0: 3374 tests passing (up from 3373, one new), 13 skipped
 (same gated census as SELF-610).
 
 Backlog item: SELF-611
+
+**SELF-612 (2026-10-02 overnight fire) — re-ran the coverage-sweep tool one
+package further still, `packages/swarm/src`, last measured at SELF-509 and
+never since; found one real untested method, `MapState.liveKeys()`.**
+Installed a temporary `@vitest/coverage-v8@4.1.11` devDependency (matched
+this repo's vitest, reverted before finishing, same move as every prior
+coverage-sweep fire) and ran it scoped to `packages/swarm/src/**/*.ts`.
+
+Most of the package's uncovered lines are SELF-509's own citations, just
+renumbered by intervening edits (`tools-control.ts`'s three retry-exhausted
+arms, `run-evidence.ts:383-393`'s two pending-handle guards, `tools-free.ts`'s
+four) or newly-added dead-by-construction lines that already carry their own
+proving comment (`tools-paid.ts:317`'s `hintFor` fallback, `:847`'s
+unreachable-abort-rethrow branch — both read end to end and confirmed
+unreachable before moving on, not just pattern-matched by line shift).
+
+`map.ts:268` was the one new real gap: `liveKeys()`'s `for (const [key, n] of
+this.nodes) if (!n.retracted) out.add(key)` had never run its loop body at
+all. Traced why: `landedBy` is the method's own doc comment's named consumer
+("so `landedBy` can tell what it FOUND from what was already here"), but
+`landedBy` takes `liveBefore` as a plain `ReadonlySet<string>` parameter —
+every one of `map.test.ts`'s six `landedBy` fixtures builds that set by hand
+(`new Set()`, `new Set(["old.com"])`), never by calling `liveKeys()` itself.
+The other call site, `agent.ts:1083`'s `deps.map.liveKeys()` at mission
+start, only ever runs against a freshly-constructed, still-empty `MapState`
+in every fixture in `agent.test.ts` — so in both places the method's `this.
+nodes` was always empty, and a `for...of` over an empty `Map` runs its body
+zero times regardless of what the guard inside says. Not reachable-only-in-
+theory: a real run calls `liveKeys()` after earlier missions have already
+landed retracted nodes on the shared map, which is exactly the shape neither
+fixture builds.
+
+Added two tests to a new `describe("MapState.liveKeys")` block in
+`map.test.ts`: one with a live node and a retracted one, asserting the
+retracted key is dropped; one on an empty map, asserting an empty set (the
+one shape every existing fixture already exercised, kept as the baseline).
+Verified non-vacuous by mutation: dropped the `if (!n.retracted)` guard
+entirely, reran — the new test failed, `liveKeys()` returning both keys
+instead of one; restored the guard and reran clean before committing. No
+source change — the guard was already correct; only the test was missing.
+
+`pnpm check && pnpm test` both exit 0: 3376 tests passing (up from 3374, two
+new), 13 skipped (same gated census as SELF-611).
+
+Backlog item: SELF-612

@@ -164,6 +164,47 @@ describe("landedBy", () => {
 })
 
 /**
+ * liveKeys' own doc comment ("so landedBy can tell what it FOUND from what
+ * was already here") names the exact consumer, but no fixture had ever
+ * called liveKeys() itself — every landedBy test above, and agent.ts's own
+ * `deps.map.liveKeys()` call at mission start, only ever ran it against an
+ * empty map, so its retracted-node filter (map.ts:268's `if (!n.retracted)`)
+ * had 0 hits in the full-suite coverage report. Mirrors the semantics
+ * `landedBy`'s own "a retracted node counts for nobody" case already pins,
+ * but exercises the real method instead of a hand-built Set.
+ */
+describe("MapState.liveKeys", () => {
+  const node = (key: string, extra: Partial<MapNode> = {}): MapNode => ({
+    key,
+    name: key,
+    domain: key,
+    kind: "company",
+    what: "",
+    relation: "unknown",
+    why: "",
+    tier: "page",
+    evidence: [],
+    also: [],
+    contributions: [],
+    ...extra,
+  })
+
+  it("returns every live key and drops retracted ones", () => {
+    const map = new MapState("anchor.com")
+    const live = node("live.com")
+    const gone = node("gone.com", { retracted: { why: "duplicate" } })
+    map.nodes.set(live.key, live)
+    map.nodes.set(gone.key, gone)
+    expect(map.liveKeys()).toEqual(new Set(["live.com"]))
+  })
+
+  it("an empty map yields an empty set", () => {
+    const map = new MapState("anchor.com")
+    expect(map.liveKeys()).toEqual(new Set())
+  })
+})
+
+/**
  * entityEdges' domainOf (map.ts:207) reads `this.nodes.get(key)?.domain ||
  * key` — a fallback to the raw key when the endpoint has no node entry.
  * tools-free.ts's endpointOf lets an edge name the anchor itself
