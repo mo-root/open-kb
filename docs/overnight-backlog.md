@@ -4835,3 +4835,58 @@ No code change. `pnpm install` first (fresh clone, no `node_modules`).
 read-only fire), 13 skipped (same gated census as SELF-603).
 
 Backlog item: SELF-604 - BLOCKED
+
+**SELF-605 (2026-10-02 overnight fire) — re-ran SELF-509's coverage sweep
+over `packages/swarm/src`, the one D-named package it originally covered
+but no later fire had re-measured since (SELF-596/597/598 already redid
+core/web/providers/sweep), and found one genuinely untested reachable
+branch among several that just looked new from shifted line numbers.**
+Installed a temporary `@vitest/coverage-v8@4.1.11` devDependency (matched
+this repo's vitest, reverted before finishing, same move as
+SELF-509/593/596/597/598/603), scoped to `packages/swarm/src/**/*.ts`.
+Lines sat at 99.41%, identical to SELF-509's figure, but the uncovered
+line numbers differed — not drift, just insertions earlier in each file
+pushing later lines down. Checked every one against SELF-509's original
+citations rather than trusting the new numbers at face value:
+`tools-control.ts:579` (the `if (row)` after a successful `promote` —
+`Board.promote` mutates the held item in place and never removes it from
+`#queued`, so `residue().find` in the very next statement can't miss it;
+structurally dead, same shape as SELF-509's own catalogue), `run-evidence.ts:293`
+(`land()`'s `if (slot)` — both call sites in `tools-paid.ts` always pass a
+handle freshly minted by `pending()` in the same closure, and `#pending`
+has no delete, so the slot always exists), and `tools-paid.ts:317,847`
+(both already carry their own "dead by construction" comment from a prior
+fire — just shifted lines, not new gaps).
+
+The one real gap: `tools-free.ts:744`, inside `rememberTool`'s edge-merge
+branch. `if (confidence === "measured") existing.confidence = "measured"`
+only ever fires on its true arm — every existing test that re-submits a
+duplicate edge does so with evidence attached, so `confidence` computes to
+`"measured"` every time (`tools-free.ts:714`, `e.confidence ?? (refs.length
+? "measured" : "inferred")`). The false arm (a later, evidence-free
+re-mention of an edge already proved) is a deliberate no-op — it leaves
+`existing.confidence` exactly as it was — and that no-op had never run: no
+test re-submits an existing edge WITHOUT evidence to check it doesn't slide
+a "measured" edge back down to "inferred". Not a structurally-dead branch
+like the others above: dropping the guard (tested directly, see below)
+silently downgrades a proven edge the moment a second, weaker account of
+the same relation arrives, which `tools-free.ts`'s own node-merge code
+(the `incomingStronger`/`downgradeIntoSupported` logic a few lines above,
+lines 641-672) goes out of its way to prevent for nodes — edges had no
+equivalent test proving the same discipline holds.
+
+Added a test: seed an edge with evidence (lands "measured", matching the
+existing "an edge without evidence is inferred" test's own shape), then
+re-submit the same `{from, to, relation}` with no evidence at all, and
+assert it still merges (`merged.edges === 1`) with `confidence` still
+`"measured"`. Verified non-vacuous by mutation: changed the guarded
+assignment to an unconditional `existing.confidence = confidence`, reran —
+the new test failed (`"inferred"` instead of `"measured"`); restored the
+guard and reran clean before committing. No source change — the guard was
+already correct; only the test was missing.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3370 tests passing (up from 3369, one new), 13 skipped
+(same gated census as SELF-604).
+
+Backlog item: SELF-605

@@ -1258,6 +1258,22 @@ describe("rememberTool", () => {
     expect(s.map.entityEdges()).toHaveLength(1)
   })
 
+  it("a measured edge re-claimed without evidence merges but does not downgrade to inferred", () => {
+    // tools-free.ts:744 only ever assigns on the true arm (`confidence ===
+    // "measured"`); the false arm — merging a second, evidence-free account
+    // of an edge the first account already proved — is a deliberate no-op,
+    // so an existing "measured" edge must survive a later unsupported
+    // re-mention unchanged rather than sliding back to "inferred".
+    const s = populated()
+    expect(s.map.edges.find((e) => e.relation === "covers")!.confidence).toBe("measured")
+    const again = rememberTool(s.ctx, {
+      edges: [{ from: "third.com", to: "rival.com", relation: "covers", why: "seen again, no new source" }],
+      why: "t",
+    })
+    expect(again.merged.edges).toBe(1)
+    expect(s.map.edges.find((e) => e.relation === "covers")!.confidence).toBe("measured")
+  })
+
   it("retract takes a node off the map with its why kept; retracting nothing is a sentence", () => {
     const s = populated()
     const r = rememberTool(s.ctx, {
