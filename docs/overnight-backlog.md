@@ -4890,3 +4890,37 @@ test` both exit 0: 3370 tests passing (up from 3369, one new), 13 skipped
 (same gated census as SELF-604).
 
 Backlog item: SELF-605
+
+**SELF-606 (2026-10-02 overnight fire) — tried `noPropertyAccessFromIndexSignature`
+as the next flag-as-detector (the angle SELF-545/549/561/563/570/571 used for
+every other unadopted strict flag), and found a real but out-of-scope pattern,
+the same shape SELF-561 hit with `exactOptionalPropertyTypes`.** Enabling it in
+`tsconfig.base.json` and running `npx tsc -b --force` (TS 5.9.3, `node_modules`
+installed fresh — absent again on this clone) surfaced 25 errors in only 3
+source files: `core/src/prompts.ts` (`frontmatter.agent`/`.doctrine`/`.includes`
+on a `Record<string, string>`), `sweep/src/sweep.ts` (12 `process.env.OPENKB_*`
+reads plus two `(linkingStats as Record<string, unknown>).orphans`/`.integrations`
+writes) and `swarm/src/from-sweep.ts` (a `Record<string, unknown>` cast of
+parsed JSON in `validateSweepRun`). That part looked exactly like the small,
+mechanical, adoptable case `noImplicitOverride`/`erasableSyntaxOnly` were —
+fixed all 25 with bracket notation, `tsc -b --force` came back clean. But
+`pnpm check` then ran the test projects and surfaced 5 more (identical shape,
+tests reading the same `frontmatter`/`skill` bags) — fixed those too — and
+then **108 more across 21 files in `packages/sweep/tests/`**, every one a test
+reading `h.result.report.<field>` or similar off a loosely-typed instrumentation
+bag (`queries`, `opening`, `budget`, `entities`, `kernel`, `families`, `triage`,
+etc.) that sweep's own tests treat as a free-form telemetry object by
+convention, not a handful of isolated call sites. Same conclusion SELF-561
+reached for `exactOptionalPropertyTypes`: a dozen source sites is adoptable,
+but the real size of the change is "`packages/sweep/tests/`'s entire
+convention for reading run telemetry," which is a test-suite-wide style
+migration, not "one item, small, real, tested." Reverted every edit
+(`tsconfig.base.json` and all six touched source/test files — `git status`
+confirmed clean, `git diff --stat` empty) rather than land a partial flag
+flip with 100+ sites still failing the build.
+
+`pnpm install` first (fresh clone, no `node_modules`). On the unmodified tree,
+`pnpm check && pnpm test` both exit 0: 3370 tests passing, 13 skipped (same
+gated census as SELF-605) — unchanged, since nothing was kept.
+
+Backlog item: SELF-606 - BLOCKED
