@@ -134,6 +134,36 @@ describe("/kb/[id]", () => {
     expect(html).not.toContain("Nothing has been mapped yet.")
   })
 
+  it("orders multiple near matches by build time, newest first", async () => {
+    // Line 66's `all.sort((a, b) => (b.built ?? "").localeCompare(a.built ?? ""))`
+    // had never actually run its comparator — `Array.prototype.sort` never
+    // calls one on an array of fewer than two elements, and every near-match
+    // test in this file up to now (the one above included) renders against a
+    // registry holding at most one completed run. Same class of gap as
+    // SELF-596's finding in audit.ts's own errorKind sort, here closed instead
+    // of just read-and-left: it costs nothing to make this registry hold two.
+    vi.useFakeTimers()
+    try {
+      const older = createRun("acme.com", 0)
+      await finishRun(older.id, sweepResult("acme.com") as never)
+      await vi.advanceTimersByTimeAsync(60_000)
+      const newer = createRun("globex.com", 0)
+      await finishRun(newer.id, sweepResult("globex.com") as never)
+
+      const html = await render("totally-unmatched-id")
+
+      const newerAt = html.indexOf(`href="/kb/${newer.id}"`)
+      const olderAt = html.indexOf(`href="/kb/${older.id}"`)
+      expect(newerAt).toBeGreaterThan(-1)
+      expect(olderAt).toBeGreaterThan(-1)
+      // Newest build first: if the comparator were reversed or dropped (e.g.
+      // `all` left unsorted), `older` would print first instead.
+      expect(newerAt).toBeLessThan(olderAt)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("reports a failed run as failed, not as a missing knowledge base", async () => {
     const bad = createRun("resend.com", 0)
     await failRun(bad.id, new Error("boom"))

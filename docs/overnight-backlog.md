@@ -5118,3 +5118,71 @@ test` both exit 0: 3372 tests passing (up from 3371, one new), 13 skipped
 (same gated census as SELF-608).
 
 Backlog item: SELF-609
+
+**SELF-610 (2026-10-02 overnight fire) — SELF-608/609's coverage sweep had
+reached `packages/web/lib` and `packages/web/components` but never
+`packages/web/app`; ran it there and found a comparator that had never
+actually been invoked.** Installed a temporary `@vitest/coverage-v8@4.1.11`
+devDependency (matched this repo's vitest, reverted before finishing, same
+move as every prior coverage-sweep fire) and ran it scoped to
+`packages/web/app/**/*.{ts,tsx}`. Most gaps are the same two walls this
+campaign already accepted: `app/error.tsx:125` and `app/global-error.tsx:212`
+both need a real click event to reach their `onClick`, and `app/layout.tsx`
+needs `next/font/google` plus a real render pass neither this repo's
+`renderToStaticMarkup`-only harness nor a fixture can give it. `app/page.tsx`'s
+one gap is inside the demo-gallery's own catch arm, out of scope by this
+file's own header.
+
+`app/kb/[id]/page.tsx` had a real one: `sortNear`'s comparator at line 66,
+`all.sort((a, b) => (b.built ?? "").localeCompare(a.built ?? ""))`, had never
+actually run — the exact pattern SELF-596 already found in
+`core/src/audit.ts`'s own `errorKind` sort. `Array.prototype.sort` never
+calls its comparator on an array of fewer than two elements, and this file's
+own `page.test.tsx` only ever renders against a registry holding at most one
+completed run by the time any near-match test reaches it (the whole file
+shares one on-disk `OPENKB_RUNS_DIR` tempdir across its `it`s, and no two
+completed runs had ever coexisted in it at once).
+
+Added one test, using `vi.useFakeTimers()`/`advanceTimersByTimeAsync` (the
+same idiom `app/api/map/route.test.ts` already uses) to give two completed
+runs distinct, deterministic build times, then asserting the newer one's
+link precedes the older one's in the rendered "Did you mean" list. Verified
+non-vacuous by mutation: flipped the comparator's two operands
+(`(a.built ?? "").localeCompare(b.built ?? "")`), reran — the new test
+failed asserting `793` less than `484` (older printing first); restored the
+original and reran clean before committing.
+
+The `?? ""` fallback on each side of that same comparator, and the sibling
+fallback at `k.built ? … : k.slug.slice(0, 8)` a few lines down, stay
+unclosed on purpose: `builtAt` is computed in `lib/kb-from-run.ts` as
+`new Date(run.endedAt ?? run.startedAt).toISOString()`, which is a string for
+every run `createRun`/`finishRun` can produce — there is no reachable
+completed run whose `built` is ever absent, so the fallback side of either
+`??` is structurally dead, the same class of gap this campaign has
+repeatedly read and left alone rather than fixture its way past.
+
+One flake worth recording so a future fire does not mistake it for this
+test's fault: a full-suite `pnpm test` run failed once with
+`tests/run-doctor.test.ts`'s gated `it` running instead of skipping
+(`files.length` nonzero but under its own `>20` floor). Root cause has
+nothing to do with this change — `tests/check-skips.test.ts` writes 25 real
+`runs/sweep-probe-<pid>-*.json` fixtures directly into the actual,
+un-sandboxed `runs/` directory at the repo root for the ~30-70s its own
+`vitest list --json` subprocess call takes (see that file's own comment),
+and `run-doctor.test.ts`'s `files` is a module-top-level `readdirSync` of
+that same real directory. Any test-file collection that lands inside that
+window sees a partially-populated or differently-sized `runs/` and reacts.
+Reran the full suite three more times with this fire's change in place: 3 of
+4 total runs came back clean (3373 tests passing, 13 skipped); the one
+failure matches this race exactly, not a logic error in `page.tsx` or its
+test. Not this fire's to fix — scoped narrower than one item, and the
+gate's own module-load-time `readdirSync` against an un-overridable relative
+`"runs"` path is deliberate (it is testing the real on-disk directory
+production also reads), not an oversight.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0 (confirmed clean 3/4 runs, the 1/4 explained above): 3373
+tests passing (up from 3372, one new), 13 skipped (same gated census as
+SELF-609).
+
+Backlog item: SELF-610
