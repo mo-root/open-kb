@@ -171,6 +171,38 @@ describe("the comparison urls a company publishes about itself", () => {
     expect(rv.found).toBe(0)
   }, 30_000)
 
+  it("does not crash on a robots.txt Sitemap: line that is not a valid URL", async () => {
+    /**
+     * `new URL(named)` throws on a relative path — no scheme, no host — and
+     * the sitemap protocol requires an absolute url there, but robots.txt is
+     * free text a site can get wrong. The surrounding `try`/`catch` at
+     * sweep.ts:2566-2570 (`sameHost = false` on either arm) existed before
+     * this test and had never been exercised: the sibling test above
+     * ("does not follow a robots.txt sitemap pointing at another host")
+     * only reaches the FALSE value of `sameHost`'s ordinary comparison, never
+     * the throw. Coverage gap found sweeping `packages/sweep/src/sweep.ts`
+     * itself (D-scope: "areas nobody has swept") — `vitest run --coverage
+     * --coverage.include="packages/sweep/src/**"` (`@vitest/coverage-v8`,
+     * not committed) named sweep.ts:2569 (the catch body) at 0 hits.
+     *
+     * A malformed line must read exactly like one pointing off-host: neither
+     * is something to follow, and the run must keep going rather than throw
+     * out of `sweep()` entirely on a line a company's robots.txt got wrong.
+     */
+    const h = await runFixture({
+      fetchTable: {
+        [`https://${ANCHOR}/robots.txt`]: {
+          httpStatus: 200,
+          contentType: "text/plain",
+          body: `Sitemap: /sitemap/sitemap.xml\n`,
+        },
+      },
+    })
+    const rv = h.result.report.rivals as { found: number; urlsScanned: number }
+    expect(rv.urlsScanned).toBe(0)
+    expect(rv.found).toBe(0)
+  }, 30_000)
+
   it("separates an anchor with no comparison pages from a run with no sitemap", async () => {
     /**
      * `found: 0` had two readings and no way to tell them apart. stripe.com is

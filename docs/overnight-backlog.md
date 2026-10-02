@@ -5024,3 +5024,53 @@ No code change. `pnpm install` first (fresh clone, no `node_modules`).
 gated census as SELF-606; unchanged — a read-only fire).
 
 Backlog item: SELF-607 - BLOCKED
+
+**SELF-608 (2026-10-02 overnight fire) — re-ran SELF-509's coverage-sweep
+tool over `packages/core/src` and `packages/sweep/src` once more, since
+both were last re-measured a day or more ago (core at SELF-596, sweep at
+SELF-598) and the branch has kept moving since; `core/src` turned up
+nothing new (both of its two uncovered lines are SELF-596's own already-
+documented hits, shifted a few lines by intervening edits), but
+`sweep.ts` named one real, never-exercised catch arm.** Installed a
+temporary `@vitest/coverage-v8@4.1.11` devDependency (matched this repo's
+vitest, reverted before finishing, same move as SELF-509/593/596/597/598/
+603/605) and ran it scoped to each package in turn.
+
+`core/src` sat at 99.78% statements, 97.81% branches — audit.ts:163 and
+judge.ts:966-968 are SELF-509's and the audit/judge comments' own already-
+traced dead arms (the `if (best === null) break` backstop and the twice-
+proven-impossible `admit()` gate respectively), just renumbered; every
+other file matched a prior citation exactly (catalog.ts:363-364,
+alias.ts:68,212, url.ts:162, export-kb.ts's six lines). No new ground.
+
+`packages/sweep/src` (one file, `sweep.ts`) had dropped further since
+SELF-598's 97.3%: 96.17% statements, 87.18% branches, 60 uncovered
+statement lines. Most matched the same shifted-citation pattern (SELF-509's
+`sweep.ts:5755,6878-6880` now reads 5781,6903-6904, a uniform +26 shift from
+intervening insertions) or are abort-signal/defensive-timeout checks no
+offline fixture can trigger without a real clock. One stood out as
+genuinely new and genuinely closeable: the `try { sameHost =
+registrableHost(new URL(named).hostname) === registrableHost(anchor) }
+catch { sameHost = false }` guard at sweep.ts:2566-2570, inside the
+robots.txt `Sitemap:` fallback. `a-company-names-its-own-rivals.test.ts`
+already has a dedicated test for a `Sitemap:` line pointing at a different
+host (`sameHost` computed `false` the ordinary way) but none for a line
+that is not a valid absolute URL at all — a relative path, which robots.txt
+being free text can and does contain — the one shape that reaches `new
+URL()`'s own throw rather than its ordinary comparison.
+
+Added one test: a `Sitemap: /sitemap/sitemap.xml` line (no scheme, no
+host) and asserted the run finishes normally, reading exactly like the
+off-host case (`rivals.found: 0`, `rivals.urlsScanned: 0`) rather than
+throwing out of `sweep()` entirely. Verified non-vacuous by mutation:
+temporarily removed the `try`/`catch` (letting `new URL()`'s throw
+propagate), reran — the new test failed with `TypeError: Invalid URL` at
+the exact line, every other test in the file still green; restored the
+guard and reran clean before committing. No source change — the catch was
+already correct; only the test was missing.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3371 tests passing (up from 3370, one new), 13 skipped
+(same gated census as SELF-607).
+
+Backlog item: SELF-608
