@@ -4652,3 +4652,60 @@ test` both exit 0: 3367 tests passing (unchanged — comment-only), 13 skipped
 (same gated census as SELF-600).
 
 Backlog item: SELF-601
+
+**SELF-602 (2026-10-02 overnight fire) — a fresh end-to-end read of
+`sweep.ts`'s link phase (second-look through the orphan ask, lines
+5718-7173, never the subject of its own dedicated entry — only cited
+before by single-line coverage-tool hits) found one real "first writer
+wins, except not" bug in the declared-integration matcher.** The doc
+comment directly above `byKey` (~line 7128) promises "first writer wins" —
+and the label tier right below it actually keeps that promise, with an
+explicit `!byKey.has(label)` guard. The name tier two lines later does not:
+`if (nk) byKey.set(nk, e)` is unconditional, so whichever of two kept
+entities sharing one name's `idKey` happened to be LAST in `keep` took the
+key, the opposite of the comment and of the label tier's own rule sitting
+right above it. Not a hypothetical collision: the naming pass's own "ONE
+SPELLING, ONE OWNER" measurement a few hundred lines earlier in this same
+file found 4-16 such same-name collisions per map on the ten biggest runs
+on disk (`react.dev`/`legacy.reactjs.org` both "React", for one) — this
+`byKey` map hits the identical shape, just for matching a declared
+integration's name against the map instead of for matching a mention.
+
+Fixed by tracking which keys are still holding a label-tier placeholder
+(`fromLabel`): the first name writer for a key still evicts a label
+placeholder (preserving "name outranks a label coincidence"), but a second
+name writer for an already-name-claimed key is turned away, matching the
+label tier's own first-wins rule. Added a test overriding `classify` so
+`tailwatch.example` answers to "Grepstack" too (the same name
+`grepstack.example` already carries in the fixture) and declaring an
+agent-mode integration named "Grepstack": asserts exactly one integration
+edge lands, and that it lands on whichever of the two is actually first
+into `keep` on this fixture (`tailwatch.example` — checked by running it,
+not assumed from `HOSTS`'s declaration order). Verified non-vacuous by
+mutation: stashed just the `sweep.ts` fix and reran — the new test failed,
+resolving to `grepstack.example` (the last-writer, the pre-fix bug) instead
+of `tailwatch.example`; restored the fix and reran clean before committing.
+
+Read the rest of the range adversarially and found nothing else: the
+second-look and drop-confirm stages' own "counted before the attempt"
+convention (each incrementing its `Asked` counter before the try, so a
+thrown call still counts as asked) holds in both; the orphan ask's own
+`stats.asked` deliberately does NOT follow that convention (incremented
+only after `call()` returns) but that asymmetry is already named in its
+own doc comment and pinned by `an-orphan-is-asked-where-it-stands.test.ts`
+("Unlike second-look's own fail-open catch, this one does NOT count the
+attempt") — read first, mistaken for a fresh find, then traced to that
+existing test and ruled out. The free naming pass's `isRival` dead-branch
+proof (the "THIS BRANCH DOES NOT FIRE TODAY" block, SELF-480) re-read
+clean on its own terms, just not findable by a basename grep of this file
+— SELF-480 itself is not retained in this document's text, confirmed via
+`git log --oneline --grep="SELF-480"` finding commit `e470c16`, which is
+why coverage claims from a basename count alone undercount what has
+actually been read; noted here so the next fire does not take this file's
+own grep-based coverage check at face value either.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3368 tests passing (up from 3367, one new), 13 skipped
+(same gated census as SELF-601).
+
+Backlog item: SELF-602

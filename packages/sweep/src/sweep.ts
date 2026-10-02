@@ -7126,15 +7126,36 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       const idKey = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, "");
       const anchorDom = anchor.toLowerCase();
       /** Name-first, domain-label second, first writer wins — a name match is
-       *  the company's own spelling and outranks a label coincidence. */
+       *  the company's own spelling and outranks a label coincidence.
+       *
+       *  "First writer wins" held for the label tier (the `!byKey.has(label)`
+       *  guard below) but not for this one: an unconditional `.set()` meant
+       *  the LAST entity in `keep` to share a name's `idKey` took the key,
+       *  not the first — silently contradicting the comment above it the
+       *  moment two kept entities answered to the same spelling. Not a rare
+       *  shape: the naming pass's own "ONE SPELLING, ONE OWNER" measurement a
+       *  few hundred lines up found 4-16 such collisions per map on the ten
+       *  biggest runs on disk (`react.dev` and `legacy.reactjs.org` both
+       *  "React", for one). `fromLabel` tracks which keys are still holding a
+       *  label-tier placeholder, so the first NAME writer can still evict one
+       *  (name outranks a label coincidence, per the comment) while a second
+       *  name writer for an already-name-claimed key is turned away (first
+       *  name writer wins, matching the label tier's own rule). */
       const byKey = new Map<string, Entity>();
+      const fromLabel = new Set<string>();
       for (const e of keep) {
         const label = idKey(e.domain.split(".")[0] ?? "");
-        if (label && !byKey.has(label)) byKey.set(label, e);
+        if (label && !byKey.has(label)) {
+          byKey.set(label, e);
+          fromLabel.add(label);
+        }
       }
       for (const e of keep) {
         const nk = idKey(e.name);
-        if (nk) byKey.set(nk, e);
+        if (nk && (fromLabel.has(nk) || !byKey.has(nk))) {
+          byKey.set(nk, e);
+          fromLabel.delete(nk);
+        }
       }
       const already = new Set(
         edges

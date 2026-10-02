@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { runFixture, ANCHOR, COINAGE, HOSTS } from "./fixture.js"
+import { runFixture, defaultScript, ANCHOR, COINAGE, HOSTS } from "./fixture.js"
 
 /**
  * Phase one as an agent: `discovery: "agent"` hands the reading of the company
@@ -183,6 +183,57 @@ describe("discovery: agent", () => {
     // edge invents it.
     expect(h.result.entities.some((e) => /pagerduty/i.test(e.name))).toBe(false)
     expect((h.result.edges ?? []).some((e) => /pagerduty/i.test(e.to))).toBe(false)
+  })
+
+  it("picks the first same-named entity, not the last, when a declared integration's name is claimed twice", async () => {
+    // tailwatch answers to "Grepstack" too, same as grepstack itself — the
+    // exact shape sweep.ts's own naming pass measures 4-16 times per map on
+    // the ten biggest runs on disk (two hosts answering to one spelling).
+    // `byKey`'s name tier used to let whichever of the two came LAST in
+    // `keep` win (an unconditional `.set()`, no `!byKey.has()` guard), the
+    // opposite of the "first writer wins" its own comment promises — and the
+    // opposite of grepstack.example's own first-of-the-two position in `keep`.
+    const base = defaultScript()
+    const h = await runFixture({
+      sweepOptions: { discovery: "agent" },
+      script: {
+        classify: (host, prompt) => {
+          const out = base.classify(host, prompt) as { name: string }
+          return host === HOSTS.tailwatch ? { ...out, name: "Grepstack" } : out
+        },
+        discovery: (turn) =>
+          turn === 0
+            ? {
+                tools: [
+                  {
+                    toolName: "submitProduct",
+                    input: { name: "Log Search Cloud", does: "searches application logs", foundAt: `https://${ANCHOR}/products/log-search` },
+                  },
+                  {
+                    toolName: "submitIntegration",
+                    input: { with: "Grepstack", does: "forwards alerts into Grepstack dashboards", foundAt: `https://${ANCHOR}/docs/integrations` },
+                  },
+                ],
+              }
+            : turn === 1
+              ? { tools: [{ toolName: "finish", input: { sells: "hosted log search", buyer: "a platform team", coinages: [COINAGE] } }] }
+              : { text: "done" },
+      },
+    })
+    const integrationEdges = (h.result.edges ?? []).filter(
+      (e) => e.from === ANCHOR && e.relation === "integration",
+    )
+    // Exactly one edge — the shared spelling must resolve to one entity, not
+    // both and not neither.
+    expect(integrationEdges).toHaveLength(1)
+    // tailwatch.example is first into `keep` on this fixture (checked by
+    // running it: `keep`'s order follows SERP arrival, not `HOSTS`'s own
+    // declaration order), so the first-writer-wins contract the comment
+    // states means the edge lands on it, not on grepstack — the host that
+    // merely happens to share its name.
+    expect(integrationEdges[0]!.to).toBe(HOSTS.tailwatch)
+    const stats = (h.result.report.linking as { integrations: { declared: number; matched: number } }).integrations
+    expect(stats).toEqual({ declared: 1, matched: 1 })
   })
 
   it("reports discovery: null on the default path — nothing was investigated", async () => {
