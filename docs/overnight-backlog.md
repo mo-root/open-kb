@@ -4547,3 +4547,57 @@ No code change. `pnpm install` first (fresh clone, no `node_modules`).
 gated census as SELF-598; unchanged by a read-only fire).
 
 Backlog item: SELF-599 - BLOCKED
+
+**SELF-600 (2026-10-02 overnight fire) — a fresh end-to-end read of
+`packages/core/src/drift.ts` and `scripts/diff-runs.ts` (the two files
+SELF-517's own fix touched, re-read as primary targets rather than as a side
+effect of that fix) plus one near-miss chased to ground. Found nothing to
+fix.**
+
+`drift.ts`: traced `entityKey`, `indexByKey`, `edgeEndpointKey`, `diffMaps`
+and `driftSentences` by hand against the module's own header rules (first-row-
+wins on a repeated key, a field absent on either side never counts as
+changed, display names never key). `changed`'s sort order (by key, built from
+`[...ia.keys()].filter(...).sort()`) survives into the `byKey` Map
+`driftSentences` folds it through — `Map` iteration order is insertion order,
+so `driftSentences`' per-key loop prints in the same sorted order `MapDrift`'s
+own doc comment promises, not a separate claim to go stale. `tierDirection`'s
+`TIER_RANK` lookup and the kind/relation/tier clause-assembly in
+`changedSentence` each matched their own worked example in the surrounding
+comments. `diff-runs.ts`: `parseRun`'s sweep/swarm/kernel shape-sniff,
+`denoise`'s noise-row exclusion, and `driftRows` (the function SELF-517 added)
+all read correctly against `drift.ts`'s exported `indexByKey` — confirmed
+`driftRows` shares that exact first-wins index rather than building a second
+one, which is the gap SELF-517 closed and the one most likely to have
+regressed since.
+
+One near-miss, chased and ruled out: re-reading the listicle harvest's
+vendor-dedup comment (`packages/sweep/src/sweep.ts:5013-5029`, "left
+case-sensitive, two spellings of one vendor both survive into `fresh`") against
+the code it sits directly above looked, on a first pass, like a comment
+describing a bug the code no longer has — the `seenLabel` Set below it keys
+on `v.toLowerCase()`, which already collapses a case-variant duplicate before
+`rivalHand` ever sees it. Checked the git history (`git log -L` on that
+hunk): both the comment and the lowercase key landed in the SAME commit
+(`6b776e0`), the comment explaining the bug that commit's own fix prevents,
+not a bug the current code still has. `listicle-harvest.test.ts`'s own
+"two case-variant spellings of one vendor collapse to a single query, never
+a self-pair" test (added by that same commit) already pins this. Recorded
+here only so a future fire reading that comment in isolation does not
+mistake past-tense rationale for a live gap.
+
+Also re-ran `pnpm audit --audit-level=moderate` (no known vulnerabilities,
+unchanged since SELF-595's dependency work) and read `packages/web/app/
+error.tsx` and `global-error.tsx` fresh — both carry their own dedicated
+tests (`error.test.tsx`, `global-error.test.tsx`) and neither's basename had
+ever matched a grep of this file before, which turned out to mean they were
+simply never cited by name in a past entry, not that they were unread: both
+files' own header comments already document the exact measurements (redaction
+text, digest plumbing, the no-stylesheet/no-pre-paint constraints) a fresh
+read would otherwise have had to re-derive.
+
+No code change. `pnpm install` first (fresh clone, no `node_modules`).
+`pnpm check && pnpm test` both exit 0: 3367 tests passing, 13 skipped (same
+gated census as SELF-599; unchanged by a read-only fire).
+
+Backlog item: SELF-600 - BLOCKED
