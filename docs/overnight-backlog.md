@@ -4709,3 +4709,67 @@ test` both exit 0: 3368 tests passing (up from 3367, one new), 13 skipped
 (same gated census as SELF-601).
 
 Backlog item: SELF-602
+
+**SELF-603 (2026-10-02 overnight fire) — ran SELF-509's coverage-sweep tool
+one more time, scoped to `scripts/*.ts` specifically rather than trusting
+its own category-wide dismissal of that whole directory, and found one
+real zero-coverage marker in `scripts/export-target.ts`.** Installed a
+temporary `@vitest/coverage-v8@4.1.11` devDependency (matched this repo's
+vitest, reverted before finishing, same move as SELF-509/593/596/597/598)
+and ran `vitest run --coverage --coverage.include="scripts/**/*.ts"`.
+Every file came back low, as SELF-509 already explained for this directory
+category-wide (`invokedDirectly`-guarded CLI bodies a wiring test already
+covers by source-grep) — except `export-target.ts`, at 94.73%/95.74%
+stmts/lines, the one file in `scripts/` whose exported functions are pure
+and already heavily tested (`tests/export-target.test.ts`, 23 cases before
+this fire). Its two uncovered lines (118, 182) were worth reading rather
+than waved through on the same category argument.
+
+Line 118 is `MARKERS`' `llms.txt` opener, one of four marker regexes
+`judgeExportTarget` checks in array order (`AGENTS.md`, `SKILL.md`,
+`llms.txt`, `manifest.json`) to decide whether a folder is a prior export
+safe to erase and rewrite. `Array.prototype.some` short-circuits on the
+first true, and every existing "prior-export" fixture in the test file
+either used the real `exportKbFiles()` output (which always writes
+`AGENTS.md` first) or hand-built a folder that still included `AGENTS.md`
+— so `AGENTS.md`'s own opener (line 116) had already returned `true` before
+`.some()` ever reached `llms.txt`'s on line 118. The one existing test that
+removes `llms.txt` ("clears an export written before SKILL.md and llms.txt
+existed") removes it FROM a fixture, so it is absent (`entries.includes`
+false, short-circuits at line 178) rather than present and read — never the
+`true` path, never even the `false` path. Confirmed by reading the coverage
+tool's own function-count (14 of 15 marker-array functions invoked; `llms.txt`'s
+is the 15th) rather than trusting the line-number list alone.
+
+Not a hypothetical gap: this is the one marker among the four that, unlike
+`AGENTS.md`/`SKILL.md`, never got its own dedicated "vouches alone" test
+the way the file's leading comment claims every marker can ("Any one of the
+four markers vouches for the folder"). Added a test building a folder that
+holds nothing but a real `llms.txt` (sliced from the same `exportKbFiles()`
+fixture every other test in the file already shares) and asserting
+`judgeExportTarget` still reads it as `"prior-export"` — the claim the file's
+own header comment makes and no test had exercised. Verified non-vacuous by
+mutation: changed line 118's regex from `market map` to `markett map`
+(breaking only the `llms.txt` opener), reran — the new test failed
+(`"unmarked"` instead of `"prior-export"`), every other test in the file
+still passed; restored the regex and reran clean before committing.
+
+Line 182 (the outer `catch { return false }` around `readFileSync` inside
+the same `.some()` callback) stays uncovered and was left alone: by the
+time that line can run, `foreignInside` has already `statSync`'d every
+`FILE_ENTRIES` name present (including all four markers) and would have
+already returned `foreign-contents` if any of them were a directory, so the
+only way `readFileSync` can still throw on one is a TOCTOU race (deleted or
+permission-changed between the two syscalls) — not reproducible
+deterministically, and (checked directly: `chmod 000` on a file then
+`readFileSync` it, as this container runs) root bypasses file-permission
+checks outright, the same reason `packages/web/lib/runs.test.ts`'s own
+EACCES fixture is gated dark in this environment. Defensive-only, the same
+shape as the structurally-dead branches SELF-509 catalogued and declined to
+chase with a test that cannot mean anything.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check && pnpm
+test` both exit 0: 3369 tests passing (up from 3368, one new), 13 skipped
+(same gated census as SELF-602).
+
+Backlog item: SELF-603

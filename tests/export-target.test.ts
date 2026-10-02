@@ -73,6 +73,19 @@ describe("judgeExportTarget", () => {
     expect(judgeExportTarget(dir("older", old)).because).toBe("prior-export")
   })
 
+  it("clears a folder vouched for by llms.txt alone", () => {
+    // AGENTS.md is written first (export-kb.ts) and its own marker is checked first
+    // (MARKERS' own order), so every other "prior-export" case above is actually
+    // decided before `MARKERS.some()` ever reaches llms.txt's opener — leaving
+    // export-target.ts:118 the one marker regex this suite never ran, true or
+    // false, despite being reachable the moment AGENTS.md/SKILL.md/manifest.json
+    // are all missing or foreign. A folder holding nothing but a real llms.txt is
+    // exactly that case: absence of the other three never counts against a folder
+    // (EXPORT_ENTRIES' own rule), so llms.txt alone has to be enough.
+    const onlyLlms = files.filter((f) => f.path === "llms.txt")
+    expect(judgeExportTarget(dir("llms-only", onlyLlms)).because).toBe("prior-export")
+  })
+
   it("clears an export whose manifest never landed — an interrupted run is not a wall", () => {
     // The half-written case. Keying on manifest.json alone would make a folder a crash
     // created un-overwritable forever, so the next run would have to --force past its own
