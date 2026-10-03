@@ -5921,3 +5921,49 @@ behavior change; nine line-number corrections across four files.
 gated census as SELF-621 — unaffected by a comment-only change).
 
 Backlog item: SELF-622
+
+**SELF-623 (2026-10-03 overnight fire) — a genuinely new angle, the install
+step itself rather than the source tree: ran `pnpm licenses list --prod`
+(clean, read-only) and investigated the `Ignored build scripts: esbuild`
+warning every `pnpm install` on this branch has printed since pnpm 10 made
+build scripts opt-in, which no prior SELF-<n> had looked at by name.**
+`pnpm licenses list --prod` returned MIT/Apache-2.0/ISC/BSD across the
+production dependency tree with nothing copyleft or unlicensed — a clean
+read, nothing to fix, recorded so a future fire does not re-run the same
+check expecting a different answer.
+
+The build-script warning looked, on first read, like something a future
+contributor would "fix" by running `pnpm approve-builds` the moment they saw
+it — exactly the kind of thing worth settling once rather than leaving for
+each new clone to rediscover. Traced rather than silenced: pnpm 10 blocks a
+dependency's install-time script by default (a supply-chain guard — an
+arbitrary `postinstall` is one of the more common real-world attack vectors
+in the npm ecosystem), and `esbuild` is the one package in this tree that
+ships one. Read `esbuild`'s own `install.js`: the script's job is to
+download a platform-specific binary ONLY when none of its `@esbuild/
+<platform>` optional dependencies resolved — a fallback path, not the
+primary one. Confirmed `@esbuild+linux-x64@0.28.1` is present in this
+sandbox's `node_modules/.pnpm` (pnpm resolved it as a normal optional
+dependency, no script required), then proved the binary actually works with
+the install script still blocked: `node node_modules/.pnpm/esbuild@*/
+node_modules/esbuild/bin/esbuild --version` printed `0.28.1` cleanly.
+`pnpm check && pnpm test` below is itself running on a `pnpm install
+--frozen-lockfile` with the same warning present and the same binary
+working, on every fire this whole branch has run — this is not a new
+condition, only a newly-explained one.
+
+Running `pnpm approve-builds` would not fix anything that is broken; it
+would let `install.js` execute on the next install where it currently does
+not, trading a working, script-free resolution for the exact class of risk
+pnpm's default exists to block. Left the default alone — nothing to
+approve — and added one paragraph to `CONTRIBUTING.md` right after the
+`pnpm install && pnpm check && pnpm test` block, so the next person who
+sees this warning on a clean clone reads why it's there and does not
+"fix" it into a worse state. No source-code change.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`;
+printed the exact warning this entry investigates). `pnpm check && pnpm
+test` both exit 0: 3378 tests passing, 13 skipped (same gated census as
+SELF-622 — a docs-only change touching neither package).
+
+Backlog item: SELF-623

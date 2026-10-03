@@ -25,6 +25,17 @@ pnpm check && pnpm test
 Both pass on a clean clone with no `.env` and no keys — that is deliberate,
 read on.
 
+`pnpm install` prints `Ignored build scripts: esbuild` on every clean clone.
+That is expected, not a problem: pnpm 10 blocks a dependency's install-time
+script by default, and esbuild's only runs to fetch a platform binary when
+none of its `@esbuild/<platform>` optional dependencies resolved — one
+always does here (verified: `node node_modules/.pnpm/esbuild@*/node_modules/
+esbuild/bin/esbuild --version` runs clean with the script still blocked).
+Running `pnpm approve-builds` to silence the warning would let that script
+execute on the next install instead of fetching nothing — a step backwards
+in exactly the supply-chain risk pnpm's default is there to block. Leave it
+blocked.
+
 ## The gate: `pnpm check && pnpm test`
 
 Everything you change has to clear both before it lands. Nothing here needs a
