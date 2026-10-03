@@ -527,6 +527,30 @@ describe("scorecard passthrough (swarm runs)", () => {
   })
 
   /**
+   * `fractionOf`'s own guard (kb-from-run.ts:233, `typeof f.num !== "number" ||
+   * typeof f.den !== "number"`) had zero branch hits — confirmed with
+   * `pnpm exec vitest run --coverage` before writing this. Every malformed-
+   * scorecard fixture above fails one level up instead, at `fractionOf`'s
+   * `!v || typeof v !== "object"` (line 231): a missing `familiesWithPageTier`
+   * field (`{ families: [] }`) or a scorecard that isn't an object at all
+   * ("yes"). None ever hands `fractionOf` an object that gets as far as being
+   * read as `{num, den}` and fails there — the shape a hand-edited or
+   * older-format run file carrying `{ num: "2", den: 3 }` (serialized as a
+   * string, say, by a future engine change) would actually produce. Same
+   * "malformed serialized JSON read off disk" class the families/gate
+   * fallbacks below already cover for a different field.
+   */
+  it("refuses a scorecard whose fraction has a non-numeric num or den", () => {
+    expect(
+      viewOf(fixtureRun({ report: { scorecard: { ...liveScorecard, familiesWithPageTier: { num: "2", den: 3 } } } }))
+        .scorecard,
+    ).toBeUndefined()
+    expect(
+      viewOf(fixtureRun({ report: { scorecard: { ...liveScorecard, pageTier: { num: 1 } } } })).scorecard,
+    ).toBeUndefined()
+  })
+
+  /**
    * Every scorecard fixture above hands `families` a well-formed array and
    * `gate` a well-formed object, so scorecardOf's own defensive fallbacks for
    * a malformed ENTRY within a well-formed families array, and for `gate`

@@ -5757,3 +5757,53 @@ No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
 13 skipped (same gated census as SELF-618; unchanged — a read-only fire).
 
 Backlog item: SELF-619 - BLOCKED
+
+**SELF-620 (2026-10-03 overnight fire) — a coverage sweep of `packages/web/lib`
+(SELF-509's tool, re-run after confirming it had already been applied here by
+SELF-597/`spend-limits.test.ts`'s own coverage comment) found one real zero-hit
+branch in `kb-from-run.ts`'s `fractionOf`, the guard a scorecard's own header
+comment says exists but that no fixture had ever reached.** Installed a
+temporary `@vitest/coverage-v8@4.1.11` devDependency (matched this repo's
+vitest, reverted before finishing, same move as SELF-509/593/596/597/598/603)
+and ran `vitest run --coverage --coverage.include='packages/web/lib/**'`.
+Every file in that tree came back explained already: `useUrlView.ts`'s low
+number is SELF-81's documented React-lifecycle limitation; `store/supabase.ts`
+:280, `graph/cluster.ts`'s four branches, and `spend-limits.ts`'s seven
+remaining gaps each already carry (or are named by) a comment proving the
+branch is structurally unreachable through today's callers — confirmed by
+reading every one of those comments before moving on, not by the file-level
+percentage alone.
+
+`kb-from-run.ts`'s single uncovered statement (line 233,
+`fractionOf`'s `typeof f.num !== "number" || typeof f.den !== "number"`) was
+the one new lead. `scorecardOf`'s own comment two lines above is explicit:
+"All four fractions must parse: a Coverage card missing half its instrument
+would render confidence the run never measured, so a malformed reading yields
+no card rather than a partial one" — a claim this function exists specifically
+to enforce, and the sibling fallbacks one function over (`alsoOf`'s malformed-
+entry filter, and the families/gate fallbacks `kb-from-run.test.ts:529-541`
+already names as a prior fire's fix) are tested for exactly this failure
+shape. `fractionOf` was not. Traced why: every malformed-scorecard fixture in
+the file fails one level up, inside `fractionOf`'s own first guard (`!v ||
+typeof v !== "object"`, line 231) — either the scorecard has no
+`familiesWithPageTier` key at all (`{ families: [] }`) or isn't an object
+("yes") — so `v` is never a truthy object that then has a wrong-typed `num`
+or `den`, the one shape a hand-edited or older-format run file (`report.
+scorecard` is read off disk, not constructed by this code) can actually
+produce.
+
+Added a test alongside the existing "refuses to invent a scorecard from a
+malformed one" case: a full `liveScorecard` with one fraction field replaced
+by `{ num: "2", den: 3 }` (string num) and another by `{ num: 1 }` (missing
+den), asserting `scorecardOf` still refuses the whole card rather than
+rendering it with one fraction blank. Verified non-vacuous by mutation:
+changed line 233's `||` to `&&` (so only a double-wrong fraction would be
+refused), reran — the new test failed on its first assertion, every other
+test in the file still passed; restored the `||` and reran clean before
+committing.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check && pnpm test` both exit 0: 3378 tests passing (up from 3377, one
+new), 13 skipped (same gated census as SELF-619).
+
+Backlog item: SELF-620
