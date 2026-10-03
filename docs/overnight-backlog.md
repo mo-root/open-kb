@@ -5967,3 +5967,37 @@ test` both exit 0: 3378 tests passing, 13 skipped (same gated census as
 SELF-622 — a docs-only change touching neither package).
 
 Backlog item: SELF-623
+
+**SELF-624 (2026-10-03 overnight fire) — chased four fresh angles (floating/
+unhandled promises, UTC-day boundary arithmetic, floating-point money
+comparisons, mutation aliasing beyond `.sort()`); all four were already
+closed by SELF-528/573/607/618 or fail safe by this codebase's own "fail
+closed" doctrine. The one real find was a factual error in SELF-617's own
+entry above, not a code bug: its item 4 claims `GraphCanvas.tsx:2005`'s
+`peekTimer` "is cleared on the next hover but not on unmount while a timer
+is in flight." That is wrong.** `grep -n "peekTimer"
+packages/web/components/kb/GraphCanvas.tsx` shows three hits, not the two
+SELF-617 traced: a declaration (`:586`), the hover-set/clear pair it
+inspected (`:2004-2005`), and a dedicated unmount cleanup effect at
+`:587-592` — `useEffect(() => () => { if (peekTimer.current != null)
+window.clearTimeout(peekTimer.current) }, [])`, forty lines above where
+SELF-617 was looking, directly beneath the ref's own declaration rather than
+its usage. `git log -S"peekTimer.current != null) window.clearTimeout"
+--oneline -- packages/web/components/kb/GraphCanvas.tsx` returns one commit,
+`1770fca`, the file's own initial commit — the cleanup has been there since
+before this backlog's first entry, not added since.
+
+SELF-617's bottom line ("not worth a change") still holds, but for the
+opposite of its stated reason: there is no gap to leave unfixed, because the
+unmount case it worried about was already handled. Left `GraphCanvas.tsx`
+untouched — there is nothing to fix in it — and left SELF-617's own entry
+text as the historical record of what that fire concluded rather than
+editing it after the fact; this entry is the correction a future fire should
+read first if it cites SELF-617 on this point.
+
+No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`). `pnpm check && pnpm test` both exit 0: 3378 tests passing,
+13 skipped (same gated census as SELF-623 — a docs-only change touching
+neither package).
+
+Backlog item: SELF-624
