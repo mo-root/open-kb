@@ -5618,3 +5618,61 @@ No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
 13 skipped (same gated census as SELF-616; unchanged — a read-only fire).
 
 Backlog item: SELF-617 - BLOCKED
+
+**SELF-618 (2026-10-03 overnight fire) — four fresh leads, each run down and
+ruled out rather than taken on faith; no gap survived inspection.**
+
+1. **Sort-mutation aliasing audit.** The classic shape: `arr.sort()` mutates
+   and returns the same reference, so if a caller still holds `arr` after
+   handing it to a function that sorts it, the caller's own copy silently
+   reorders. Grepped every direct (non-`[...x]`-copied) `.sort(` call across
+   `packages/{core,swarm,sweep}/src` and `packages/web/{lib,components}`
+   (`catalog.ts:205,485`, `audit.ts:135,169`, `from-sweep.ts:285`,
+   `sweep.ts:2892,5110`, `agent.ts:1045`, `KbGallery.tsx:50`, among others)
+   and traced each array back to where it was built. Every one is
+   constructed locally in the same function that sorts it (`catalog.ts`'s
+   `pool` is `[...kept, ...rooted]` or `kept`, both function-local;
+   `KbGallery.tsx`'s `rows` is `kbs.filter(...)` or `kbs.slice()`, never
+   `kbs` itself) — no case where a parameter or a value the caller still
+   reads afterward gets sorted in place. Nothing to fix.
+
+2. **Re-ran SELF-616's own `node:vm` regex-timeout fix by direct
+   measurement**, rather than trusting its commit message, because it is
+   the most recent and most security-sensitive change on this branch and
+   exactly what a fresh fire should re-check rather than re-derive from
+   scratch elsewhere. Built the exact shape `tools-free.ts`'s
+   `safeGrepLines` uses (`new Script(...).runInContext(createContext({text,
+   re}), {timeout: 200})`) in a scratch script and ran it against
+   `/(a+)+$/` over a 30-character string: threw `"Script execution timed
+   out after 200ms"` at 203ms, matching the prior fire's own measurement.
+   The mitigation still holds; no regression.
+
+3. **`GraphCanvas.tsx`'s `linkLabel` (:1493-1514) looked like a bug on
+   first read** — it resolves both `s` (`asNode(l.source)`) and `t`
+   (`asNode(l.target)`), guards `if (!s || !t) return ""`, then renders
+   only `t.title`; `s` is otherwise unused, and the adjacent "how" text for
+   a provenance edge reads "not a measured relation between these two
+   ends," which sounds like it presupposes two named ends. Traced before
+   touching anything: `FLink`'s own doc comment (:134-141) says the
+   relation label on a provenance edge "is the entity's relation to the
+   ANCHOR, not a claim about the two ends it joins — which is what the
+   link tooltip says out loud." The tooltip's job is to name the one
+   entity whose relation is shown and disclaim the edge itself, not to
+   restate both endpoints the canvas already draws as two connected dots
+   under the reader's cursor. Adding `s.title` would duplicate what the
+   line on screen already shows and blur the one thing the tooltip exists
+   to say. The asymmetry is the documented design, not a gap.
+
+4. **`FLink.hubLink` (:124, set at :943) looked like dead code** — grepped
+   `GraphCanvas.tsx` alone and found no reader beyond its own assignment.
+   Widened the grep before concluding anything: it is read by
+   `lib/graph/layout.ts`'s `linkDistance`/`linkStrength` (`layout.ts:191,
+   214`), both called with the live `FLink` object at `GraphCanvas.tsx
+   :1108,1110`, and exercised directly by `layout.test.ts:94-118`. Not
+   dead — the field simply has no reader inside the file that defines it.
+
+No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`). `pnpm check && pnpm test` both exit 0: 3377 tests passing,
+13 skipped (same gated census as SELF-617; unchanged — a read-only fire).
+
+Backlog item: SELF-618 - BLOCKED
