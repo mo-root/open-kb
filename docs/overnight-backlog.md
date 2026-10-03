@@ -6001,3 +6001,51 @@ No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
 neither package).
 
 Backlog item: SELF-624
+
+**SELF-625 (2026-10-03 overnight fire) — a genuinely new angle: compared two
+sibling files in the same directory instead of reading one file in
+isolation, the way every prior SELF-<n> in this class has worked.**
+`packages/web/components/build/` has two live feeds that solve the same
+problem — a stream of rows arriving while a run is `running`, read by
+someone who may scroll up mid-run to re-read an earlier line.
+`AgentPanel.tsx` solves it carefully: a `pinned` flag toggled by an
+`onScroll` handler (`scrollHeight - scrollTop - clientHeight < 40`), with
+its own comment stating the failure it exists to avoid — "yanking someone
+back to the bottom while they are reading is worse than not following at
+all." `EventFeed.tsx`, the other feed in the same directory, did exactly
+that: its auto-scroll effect ran `el.scrollTop = el.scrollHeight`
+unconditionally on every `items` change, with no `pinned` state and no
+`onScroll` handler at all.
+
+Confirmed this was not a deliberate difference. `git log --follow --
+packages/web/components/build/EventFeed.tsx` shows no commit on the file
+since the repo's initial commit (`1770fca`) other than the test-only commit
+that gave it coverage (SELF-143) — that fire documented the jsdom/RTL gap
+around the scroll effect but was scoped to coverage, not behavior, and did
+not compare it against `AgentPanel.tsx` sitting in the same folder.
+`AgentPanel.tsx`'s own `pinned` mechanism has been present since that same
+initial commit, so this is not a regression either file introduced — it is
+two components solving one problem differently since day one, with nobody
+having read them side by side until now.
+
+Confirmed reachable, not theoretical: `BuildWorkflow.tsx:900` renders
+`<EventFeed items={feed} running={running} />` on the live build page, the
+one surface a reader watches while a sweep is in progress.
+
+Fixed by porting `AgentPanel.tsx`'s `pinned`/`onScroll` pattern into
+`EventFeed.tsx` verbatim — same 40px threshold, same mechanism — rather than
+inventing a new one. Did not port `AgentPanel.tsx`'s "following/paused"
+button: that is a discoverability nicety on top of the fix, not the bug
+itself, and scrolling back near the bottom already re-pins automatically
+through the same `onScroll` handler. No test added — the behavior is
+scroll-event-driven DOM state, the same jsdom/RTL gap
+`EventFeed.test.tsx`'s own header comment already names for this exact file;
+its existing `renderToStaticMarkup` tests still pass unchanged, since the
+initial render (`pinned` starts `true`) produces identical markup to before.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check && pnpm test` both exit 0: 3378 tests passing, 13 skipped (same
+gated census as SELF-624 — unaffected by a web-only behavior change with no
+new test).
+
+Backlog item: SELF-625

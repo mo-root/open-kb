@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FeedItem } from "./types";
 
 /* The raw trail. Ported from public-kb's EventFeed unchanged in shape: a mono
@@ -17,10 +17,18 @@ const TONE: Record<FeedItem["tone"], string> = {
 
 export function EventFeed({ items, running }: { items: FeedItem[]; running: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
+  // Follow the tail, but stop the moment the reader scrolls up — same fix
+  // AgentPanel.tsx (this directory's sibling feed) already carries, with the
+  // same 40px threshold. Before this, every new item unconditionally reset
+  // `scrollTop`, so reading an earlier line while a run was still `running`
+  // got yanked back to the bottom on the next event — the anti-pattern
+  // AgentPanel.tsx's own comment names ("yanking someone back to the bottom
+  // while they are reading is worse than not following at all").
+  const [pinned, setPinned] = useState(true);
   useEffect(() => {
     const el = ref.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [items]);
+    if (el && pinned) el.scrollTop = el.scrollHeight;
+  }, [items, pinned]);
 
   return (
     <div className="flex h-full flex-col rounded-lg border border-slate-800 bg-slate-900/30">
@@ -32,6 +40,11 @@ export function EventFeed({ items, running }: { items: FeedItem[]; running: bool
       </div>
       <div
         ref={ref}
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+          if (atBottom !== pinned) setPinned(atBottom);
+        }}
         className="h-[320px] overflow-y-auto px-3 py-2 font-mono text-xs leading-relaxed"
       >
         {items.map((it) => (
