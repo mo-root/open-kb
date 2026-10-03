@@ -229,7 +229,7 @@ export function strongerTier(a: ProvenanceTier, b: ProvenanceTier): ProvenanceTi
  * `ownPage`/`snippetFor`'s `key`/`hostKey` (line 405, 481 below) trace to
  * either rememberTool's own `nodeKey` rejection — a company/product node
  * with no key is refused before either can be called (tools-free.ts) — or
- * orchestrator.ts:335's already-guarded `anchor` local; `tierOf`'s `key`
+ * orchestrator.ts:331's already-guarded `anchor` local; `tierOf`'s `key`
  * (tools-free.ts:567) is the same nodeKey-derived value; `seenInOf`'s
  * `registrableHost(host)` (tools-paid.ts:645) and the breaker's own
  * `originKey(url)` strike (tools-paid.ts:373, the same url `one()` already

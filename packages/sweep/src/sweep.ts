@@ -65,7 +65,7 @@ import {
 // whose options name a type nobody can import from that package is a package
 // you cannot write a caller for. It moved to core when the price table was
 // consolidated into @open-kb/providers, and this keeps @open-kb/sweep's public
-// surface what it was. Same move packages/swarm/src/agent.ts:126 already makes.
+// surface what it was. Same move packages/swarm/src/agent.ts:127 already makes.
 export type { ModelPricing };
 import {
   brightDataSearch,

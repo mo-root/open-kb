@@ -735,7 +735,7 @@ export function GraphCanvas({
         // a fixed sentence with the fault's ref spelled into it, and throwing
         // on the status alone discarded the one token that finds the cause in
         // the server log — "Graph unavailable: HTTP 500" is the dead end the
-        // ref exists to end. Same shape NoteView.tsx:107 already uses.
+        // ref exists to end. Same shape NoteView.tsx:129 already uses.
         if (!r.ok) {
           throw new Error(
             (await r.json().catch(() => ({}))).error || `HTTP ${r.status}`,

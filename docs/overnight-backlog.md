@@ -6139,3 +6139,83 @@ skipped — identical to SELF-626's own count, as expected for a read-only
 fire.
 
 Backlog item: SELF-627 - BLOCKED
+
+**SELF-628 (2026-10-03 overnight fire) — extended SELF-488/503/621/622's
+citation-drift sweep beyond the `sweep.ts`/`judge.ts`/`tools-free.ts`
+targets those four fires covered, to every other `file.ts:NNN` citation in
+the repo's non-test source comments.** SELF-621/622 each scoped to one or
+two target files chosen because they were the newest-modified file in the
+set; neither claimed to have checked every citation, and SELF-509's own
+260-citation census is from 2026-09-17 — stale by three weeks of commits.
+Grepped every `[A-Za-z0-9_-]+\.tsx?:[0-9]+(-[0-9]+)?` citation across
+`packages/*/src`, `packages/web/{app,components,lib}` and `scripts/*.ts`
+(excluding test files, `fixture.ts`, and this doc's own historical entries,
+same exclusions SELF-622 used), compared each citing line's own last-blamed
+commit against its target file's last-touched commit to shortlist
+candidates, then read every target line's actual current content against
+what the comment claims is there before changing anything — the same
+discipline SELF-621/622 used, not the date heuristic alone (several
+candidates the date check flagged, e.g. `tools-paid.ts:645`/`:373` cited
+from `run-evidence.ts:234-235` and `verdict.ts:102`/`:111` cited from
+`judge.ts:950,952`, turned out to still match exactly and were left alone).
+
+Thirteen citations across nine files had drifted, all simple line-number
+corrections with the underlying claim re-verified against current content,
+no reasoning changed:
+
+- `GraphCanvas.tsx:738` → `NoteView.tsx:107` is now `:129` (the
+  `.catch(() => ({}))).error` line moved when the component grew).
+- `KbOverview.tsx:817` → the same `NoteView.tsx:107` and `GraphCanvas.
+  tsx:745` are now `:129` and `:741`.
+- `lib/graph/cluster.ts:135` → `GraphCanvas.tsx:910` is now `:906`;
+  `bake-layouts.ts:128` is now `:146`; the same comment's self-citation
+  `assignClusters (line 107 above)` is now `88`.
+- `lib/kb-from-run.ts:986` → `map.ts:217` (citing `entityEdges()`'s
+  `domainOf` fallback) is now `:246`.
+- `sweep.ts:68` → `agent.ts:126` (the re-exported `ModelPricing` type) is
+  now `:127`.
+- `run-evidence.ts:232` → `orchestrator.ts:335` (the guarded `anchor`
+  local) is now `:331` — `335` is now where `orchestrator.ts`'s own `map =
+  new MapState(opts.domain)` lives, a coincidence confirmed by reading both
+  lines, not assumed from the number alone.
+- `orchestrator.ts:744-767`, the `.catch()`-is-dead-code proof: six
+  citations into `agent.ts` shifted by the same `agent.ts` growth
+  SELF-509/599 already measured elsewhere (`:1137`→`:1143`, `:1116-1183`→
+  `:1122-1186`, `:1053`→`:1059`, `:1055`→`:1061`, `:1054-1058`→`:1060-
+  1064`, `:1077`→`:1083`, `:1192`→`:1198`); its `board.ts:96` citation is
+  now `:110`, and since SELF-513 landed on this branch between when that
+  citation was written and now, the comment's literal quoted snippet
+  (`allowances[held.tier] <= spendableUsd`) no longer matches the source it
+  quotes either — updated the quote itself to `allowances[held.tier] <=
+  spendableUsd + EPSILON` rather than leave a direct quotation false; its
+  own self-citation `map at line 512 above` is now `:335` (confirmed
+  against the same `new MapState(opts.domain)` line the `run-evidence.ts`
+  fix above also resolves to).
+- `orchestrator.ts:893` → `map.ts:166` (`nodeKey`) is now `:153`.
+- `tools-paid.ts:833` → `judge.ts:397` (the signal-aborted throw inside
+  `judgeOne`) is now `:403`.
+- `scripts/export-target.ts`: three separate citations into `export-kb.ts`
+  had all drifted — the five `EXPORT_ENTRIES` plain-file line numbers
+  (`:978,948,1049,1104,1140` → `:1015,985,1086,1141,1177`, same order:
+  AGENTS.md, README.md, SKILL.md, llms.txt, manifest.json), the three
+  per-row `.md` write sites (`:722,:787,:844` → `:758,:824,:881`), and the
+  `SKILL.md` body-heading marker (`:1055` → `:1092`).
+- `scripts/corroboration-arrival.ts:105` → the four `sweep.ts` sites
+  sharing the `new URL(h.url).hostname...replace(/^www\./, "")` hostname
+  shape (`:4177-4178, 5186, 6305, 7510` → `:4192-4193, 4491, 5195, 6314`) —
+  the fourth site had moved from line ~7510 to a different function
+  (`hostOfHit` inside the per-family/per-product yield calculation,
+  :4491) entirely; confirmed by grepping the literal expression rather than
+  trusting the old line stayed near the same function.
+- `scripts/calibrate-kernel.ts:89` → `diff-runs.ts:38` and `audit.ts:51`
+  (the two sibling scripts' "not a run file this reads" throw sites) are
+  now `:43` and `:42`.
+
+No behavior change anywhere — every edit is inside a `//` or `/** */`
+comment. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`; same `esbuild` build-script warning SELF-623 already
+explains). `pnpm check && pnpm test` both exit 0: 3379 tests passing, 13
+skipped — identical to SELF-627's own count, as expected for a
+comment-only change.
+
+Backlog item: SELF-628

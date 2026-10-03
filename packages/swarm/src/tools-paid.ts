@@ -830,7 +830,7 @@ export async function harvestTool(ctx: HarvestCtx, input: HarvestInput): Promise
     //
     // `if (!controller.signal.aborted)`: dead by construction, not an
     // untested branch. judge.ts's judgeHosts has exactly one throw site that
-    // escapes judgeOne unguarded — judge.ts:397, `if (deps.signal?.aborted)
+    // escapes judgeOne unguarded — judge.ts:403, `if (deps.signal?.aborted)
     // throw err`, itself gated on that same check — every other call inside
     // judgeOne that could throw (the unlocker retry, both `deps.classify`
     // calls) sits in its own local try/catch and never rethrows. `signal`

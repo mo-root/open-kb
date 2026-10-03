@@ -102,7 +102,7 @@ import { join } from "node:path"
 // wearing the same name, and the difference was the bug. This file exists to
 // price moving the TRIAGE gate, which reads the real `h.seenIn` the search
 // loop builds from `new URL(h.url).hostname.toLowerCase().replace(/^www\./,
-// "")` (sweep.ts:4177-4178, 5186, 6305, 7510 — every site this repo's own
+// "")` (sweep.ts:4192-4193, 4491, 5195, 6314 — every site this repo's own
 // seenIn/hostsSeen/HOST_CEILING accounting uses). The registrableHost version
 // this file had instead folds every subdomain of one registrable domain into
 // one bucket — `blog.x.com` and `shop.x.com` both became `x.com` — so two

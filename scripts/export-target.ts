@@ -66,7 +66,7 @@ const EXPORT_ENTRIES = new Set([
 const IGNORED_ENTRIES = new Set([".DS_Store"])
 
 /** The five EXPORT_ENTRIES names the exporter always writes as a plain file
- *  (export-kb.ts:978,948,1049,1104,1140, in this set's own order). A folder
+ *  (export-kb.ts:1015,985,1086,1141,1177, in this set's own order). A folder
  *  using one of these names for a directory instead — a person's own
  *  "AGENTS.md/" of notes, say — passes the top-level name check the same way
  *  `entities/my-research` used to pass it before foreignInside() started
@@ -86,7 +86,7 @@ const FILE_ENTRIES = new Set(["AGENTS.md", "README.md", "SKILL.md", "llms.txt", 
  * one of them — six months of hand-written notes under `entities/`, a
  * transcript in `evidence/` — none of which the top-level check can see and all
  * of which the recursive delete takes. The exporter writes one flat `.md` per
- * row (export-kb.ts:722, :787, :844), so a subdirectory or any other name is
+ * row (export-kb.ts:758, :824, :881), so a subdirectory or any other name is
  * somebody else's.
  *
  * `evidence/receipts.md` is here for the exports that still have one. The
@@ -110,7 +110,7 @@ const DIR_CONTENTS: Record<string, (name: string) => boolean> = {
  * knowledge-base skill and not a fingerprint: an agent skill folder holding
  * just SKILL.md and README.md passes the name list, and `kb-notes` matched, so
  * the guard cleared somebody's skill and rewrote it as a market map. The body
- * heading below (export-kb.ts:1055) is the part no one writes by accident.
+ * heading below (export-kb.ts:1092) is the part no one writes by accident.
  */
 const MARKERS: ReadonlyArray<readonly [string, (raw: string) => boolean]> = [
   ["AGENTS.md", (raw) => raw.startsWith("# How to use this knowledge base")],

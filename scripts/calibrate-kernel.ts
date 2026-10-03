@@ -86,7 +86,7 @@ async function main(): Promise<void> {
     (x) => x.endsWith(".json") && MAP_PREFIXES.some((p) => x.startsWith(p)),
   )) {
     // Past the name gate, a file that will not parse or carries no entities is an error
-    // rather than a skip. diff-runs.ts:38 and audit.ts:51 refuse by name at exactly this
+    // rather than a skip. diff-runs.ts:43 and audit.ts:42 refuse by name at exactly this
     // point, read.ts joined them in b6ffd99, and this is their sentence — the only
     // difference is that they judge the one file a reader asked for and this judges every
     // map in the directory.
