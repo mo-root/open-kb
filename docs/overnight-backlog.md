@@ -5546,3 +5546,75 @@ return in any reasonable time without it.
 new), 13 skipped (same gated census as SELF-615).
 
 Backlog item: SELF-616
+
+**SELF-617 (2026-10-03 overnight fire) — four angles none of SELF-1 through
+SELF-616 had tried by name, plus a coverage re-check of the two files
+SELF-615/616 just changed; all came back clean.** Every section (P0, P1, B,
+C, D) in this document is `[x]`; the only open work left is this
+self-discovered tail, so the fire's job was finding a shape of bug the prior
+616 entries had not already looked for, not re-walking ground the
+`jscpd`/`eslint`/coverage/basename-cross-reference passes already covered.
+
+1. **Untrusted-`JSON.parse` audit.** Grepped every `JSON.parse` call in
+   `packages/*/src` (excluding tests): `packages/sweep/src/ui.ts:65` (an
+   `argsDigest` this process wrote itself earlier in the same run — not
+   external input) and `packages/providers/src/brightdata.ts:391` (the SERP
+   response body) are the only two production call sites. The second is the
+   one that parses genuinely hostile bytes, and it is already wrapped in its
+   own `try`/`catch` with a named fallback (`"serp returned unparseable
+   body"`) three lines below. `packages/web/lib/runs.ts:1076,1211,1232`
+   (disk-read run files) and `packages/web/lib/graph/layoutCache.ts:50` /
+   `settings.ts:218` (localStorage) are each inside their own `try`/`catch`
+   too, the last two further validating every field by hand before use
+   (`settings.ts`'s `clampNum`, confirmed field-by-field against
+   `GraphSettings.test.ts` rather than assumed). No unguarded parse of
+   external or disk data exists in this codebase.
+
+2. **Shell/argument-injection audit.** Grepped for `child_process` imports
+   across `packages/*/src` and root `scripts/`: every production call
+   (`scripts/overnight.ts`, `scripts/bakeoff.ts`, `scripts/batch.ts`) uses
+   `execFile`/`spawn` with an argument array and no `shell: true` — none of
+   them interpolate a string into a shell. `scripts/batch.ts:393`'s
+   `spawn("npx", args, ...)` passes the sweep's `anchor` string as one argv
+   element, not through a shell, so a domain containing shell metacharacters
+   cannot inject a second command; this is an operator-run dev script fed
+   from a local file, not reachable from any network input. Nothing to fix.
+
+3. **Coverage re-check of SELF-615/616's own new code**, since those are the
+   only two source files this branch has touched since SELF-613's
+   package-wide sweep and a prior fire's own new code is exactly the part of
+   a coverage report least likely to have been looked at yet. Installed the
+   same temporary `@vitest/coverage-v8@4.1.11` devDependency (reverted
+   before finishing), scoped to `packages/swarm/src/tools-free.ts` and
+   `packages/sweep/src/sweep.ts`. `sweptFromRival` (`sweep.ts:975`) and both
+   its call sites (`:3554`, `:5117`) are fully covered — not in the
+   uncovered-branch list. `tools-free.ts`'s `safeGrepLines` and its caller
+   (the `vm`-timeout path SELF-616 added) are fully covered too. The
+   branches the report does flag in both files (`tools-free.ts:182`'s
+   `rec.reason ? ... : ""`, `sweep.ts`'s long tail of defensive `if`/
+   `cond-expr` arms) are pre-existing and, where checked against this
+   document, already traced and left alone by name (`tools-free.ts:182` is
+   the exact dead branch SELF-509/604's "`RecordInput.reason?: string` has
+   no real producer that ever omits it" already covers) — not a fresh find.
+
+4. **React timer-cleanup audit** (a leaked `setInterval`/`setTimeout`
+   outliving its component — a class no prior SELF entry names). Read every
+   `setInterval`/`setTimeout` call under `packages/web/components` end to
+   end against its enclosing effect: `BuildWorkflow.tsx:320`'s elapsed-clock
+   `setInterval` and `GraphCanvas.tsx:1077`'s force-recipe retry `setTimeout`
+   both return a cleanup that clears them. `GraphCanvas.tsx:2005`'s
+   `peekTimer` is cleared on the next hover but not on unmount while a timer
+   is in flight — traced the consequence rather than stopping at "no
+   cleanup": the pending callback is only `setPeekId(id)`, and React 18
+   silently no-ops a `setState` call on an unmounted component (the
+   dev-mode warning for this was removed from React itself, not a project
+   choice) — not a crash, not a leak beyond one scheduled macrotask already
+   due to fire within `HOVER_PEEK_MS`. Not worth a change: the fix would add
+   an unmount-tracking ref for a callback whose only failure mode is already
+   a no-op.
+
+No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`). `pnpm check && pnpm test` both exit 0: 3377 tests passing,
+13 skipped (same gated census as SELF-616; unchanged — a read-only fire).
+
+Backlog item: SELF-617 - BLOCKED
