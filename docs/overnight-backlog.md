@@ -5807,3 +5807,57 @@ committing.
 new), 13 skipped (same gated census as SELF-619).
 
 Backlog item: SELF-620
+
+**SELF-621 (2026-10-03 overnight fire) — re-ran the citation-drift sweep
+(SELF-488/503's own tool, last applied to these exact two files on
+2026-09-16/17) and found it due again: `sweep.ts` has grown past both of its
+own self-citations, and past `judge.ts`, since.** Not a re-run of SELF-509's
+coverage-driven method — this is the narrower, file-targeted check
+`calibrate-kernel.ts`'s comment header itself names as its own precedent
+("Same trace as SELF-405's rivals doc"), picked because `git blame` showed
+every citation in both comments was last touched Sept 15-17 while
+`packages/sweep/src/sweep.ts` has taken dozens of commits since (7826 lines
+now, up from the ~7490 these citations were written against).
+
+Found two in-file `sweep.ts` comments (the `mapHosts` fallback trace at
+:7263-7275, and its declared twin in the `rivals` section at :7531-7549) and
+one `scripts/calibrate-kernel.ts` comment (:108-152, tracing why
+`e.domain || e.name || ""` has no live seam) all citing lines that have since
+shifted — same substance, stale addresses, exactly SELF-488/503's shape.
+Verified each by reading the target line directly before changing its
+citation, not by assuming a consistent offset:
+
+- `sweep.ts`'s two self-citations of its own `entities.push` sites, "(5641,
+  5648)", are now at 5677 and 5684 (confirmed: `entities.push(...judged.
+  entities.map(...))` and the triage-skip `entities.push({ name: t.host,
+  domain: t.host, ... })` immediately after it) — a uniform +36 shift.
+- Both citations of the `HostCandidate` build line, "built at line 5165",
+  are now at 5195 (`host = new URL(h.url).hostname.toLowerCase().replace(/^www\./, "")`)
+  — +30.
+- The `mapHosts` comment's self-reference to the `rivals` section's `onMap`,
+  "~line 7466", now resolves to 7530 (`const onMap = new Set<string>();`)
+  — +64, a different shift than the other two because it crosses more of
+  the intervening edits.
+- The same comment's citation of `judge.ts`'s ten entity-constructor lines,
+  "(406, 491, 767, 787, 812, 829, 881, 898, 961, 964)", is now a uniform +6:
+  grepped `packages/core/src/judge.ts` for `domain: h.host` directly and got
+  412, 497, 773, 793, 818, 835, 887, 904, 967, 970 — ten hits, same count,
+  same order, same `domain: h.host` shape at each.
+- `calibrate-kernel.ts`'s four `tools-free.ts` citations (`:522` for the
+  `nodeKey` call, `:585` / `:585-586` for the kind/relation downgrade,
+  `:615` for the node's `domain: n.domain` field) are now a uniform +45:
+  567, 630, 630-631, 660 (confirmed by reading `rememberTool`'s body at each
+  new address — same calls, same order).
+- `calibrate-kernel.ts`'s `map.ts:58`, `verdict.ts:31` and `verdict.ts:100-
+  109` citations still match exactly; left alone.
+
+No claim this makes was re-derived from the old citation — each new line
+number was read from the current file first, the same discipline SELF-488/
+503 used. Comment text and reasoning are otherwise unchanged; this is eleven
+line-number corrections across two files, nothing else. No behavior change.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check && pnpm test` both exit 0: 3378 tests passing, 13 skipped (same
+gated census as SELF-620 — unaffected by a comment-only change).
+
+Backlog item: SELF-621

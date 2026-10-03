@@ -118,9 +118,9 @@ async function main(): Promise<void> {
        * real host, never a value the fallback would ever need.
        *
        * Sweep is one source of both kinds: every entity it emits comes from
-       * exactly two pushes (sweep.ts:5641, 5648), both carrying `domain:
+       * exactly two pushes (sweep.ts:5677, 5684), both carrying `domain:
        * h.host` off a `HostCandidate` built from `new URL(h.url).hostname`
-       * (sweep.ts:5165) — `new URL` throws on anything malformed, so
+       * (sweep.ts:5195) — `new URL` throws on anything malformed, so
        * `h.host` cannot be "" or any other registrableHost("")-shaped
        * string. Same trace as SELF-405's rivals doc (8da632c).
        *
@@ -129,16 +129,16 @@ async function main(): Promise<void> {
        * read: `kind: string` (map.ts:58) is not restricted to
        * SWARM_NODE_KINDS at the type level, and `admit()`'s aggregator gate
        * (verdict.ts:100-109) can downgrade a claim's kind to "directory" at
-       * runtime (tools-free.ts:585, `kind = verdict.kind`). But that
+       * runtime (tools-free.ts:630, `kind = verdict.kind`). But that
        * downgrade only ever fires on a claim whose ORIGINAL kind was
        * "company" or "product" (verdict.ts:31 `COMPANY_LIKE`), and by the
        * time it fires, `nodeKey(n.kind, n.name, n.domain)` (tools-free.ts
-       * :522, run on the pre-downgrade kind) has already rejected the claim
+       * :567, run on the pre-downgrade kind) has already rejected the claim
        * outright if that key came out "" — the SELF-406/407 gate this
        * branch already traced, which requires a non-empty `n.domain` for
-       * company/product. The downgrade past that gate (tools-free.ts:585-
-       * 586) reassigns `kind` and `relation`, never `domain`, and the node
-       * stores `domain: n.domain` verbatim at creation (tools-free.ts:615)
+       * company/product. The downgrade past that gate (tools-free.ts:630-
+       * 631) reassigns `kind` and `relation`, never `domain`, and the node
+       * stores `domain: n.domain` verbatim at creation (tools-free.ts:660)
        * with no reassignment anywhere after (grepped tools-free.ts for
        * `.domain =`: zero matches). So a swarm "directory" node carries the
        * same already-proven-non-empty domain its company/product claim

@@ -7264,13 +7264,13 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
    * `e.domain || e.name` reads like the degenerate-host fallback already
    * fixed elsewhere on this branch (addressKey, entityKey, serialize's host
    * tally) — same proof as the `rivals` section's identical read below
-   * (`onMap`, ~line 7466): every row in `entities` traces to one of its two
-   * push sites (5641, 5648), both stamping `domain: h.host` off a
-   * `HostCandidate` built at line 5165 from `new URL(h.url).hostname` — a
+   * (`onMap`, ~line 7530): every row in `entities` traces to one of its two
+   * push sites (5677, 5684), both stamping `domain: h.host` off a
+   * `HostCandidate` built at line 5195 from `new URL(h.url).hostname` — a
    * URL a real search hit returned, so `h.host` cannot be "" and
    * `e.domain` never falls through to `e.name`. The `company`/`product`
    * filter here doesn't narrow that further: `judge.ts`'s every entity
-   * constructor (406, 491, 767, 787, 812, 829, 881, 898, 961, 964) sets
+   * constructor (412, 497, 773, 793, 818, 835, 887, 904, 967, 970) sets
    * `domain: h.host` the same way regardless of the kind it assigns.
    */
   const mapHosts = new Set(
@@ -7535,8 +7535,8 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
        * `domain` has no live producer for that shape here.
        *
        * Every entity in `keep` traces to `entities`, which only two sites
-       * ever push to (5641, 5648), and both stamp `domain: h.host` off a
-       * `HostCandidate` built at line 5165:
+       * ever push to (5677, 5684), and both stamp `domain: h.host` off a
+       * `HostCandidate` built at line 5195:
        * `new URL(h.url).hostname.toLowerCase().replace(/^www\./, "")` — the
        * hostname of a URL a real search hit actually returned. `new URL`
        * throws on anything that isn't a well-formed URL (caught, skipped,
