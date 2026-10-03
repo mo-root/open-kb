@@ -5339,3 +5339,72 @@ No code change. `pnpm install` first (fresh clone, no `node_modules`).
 gated census as SELF-612; unchanged — a read-only fire).
 
 Backlog item: SELF-613 - BLOCKED
+
+**SELF-614 (2026-10-03 overnight fire) — a genuinely new angle: checked
+whether eslint actually runs anywhere in this repo, then manually
+re-verified by hand the two correctness-relevant suppressions its four
+`eslint-disable` comments name, since the tool that would normally guard
+them turns out not to exist here; found nothing to fix.** `grep -rn eslint`
+over `package.json`, every `packages/*/package.json`, `pnpm-lock.yaml` and
+the whole tree for a config file (`.eslintrc*`, `eslint.config.*`) came back
+empty — no eslint devDependency is installed, no config exists, and
+`package.json`'s own `check` script (`node scripts/check-core-purity.mjs &&
+… && tsc -b && …`) and `.github/workflows/check.yml` run `tsc` and this
+repo's own check scripts, never eslint. Yet four source comments read
+`eslint-disable-next-line <rule>`, naming rules from Next.js's default
+scaffold config: `packages/web/components/KbCard.tsx:179` and
+`packages/web/components/SiteIcon.tsx:105` suppress
+`@next/next/no-img-element` (both already explained by an adjacent comment —
+a plain `<img>` is deliberate because the target is an unconfigured
+favicon/external host, not an oversight), and `packages/web/components/kb/
+GraphCanvas.tsx:955` and `packages/web/lib/useUrlView.ts:74` suppress
+`react-hooks/exhaustive-deps`.
+
+The `no-img-element` pair is a Next.js image-optimizer perf hint, not a
+correctness rule — nothing to re-verify by hand. `exhaustive-deps` is
+different: it exists to catch a real bug class (a hook reading a value from
+closure that is missing from its dependency array, so the hook keeps acting
+on a stale value after that value changes) — exactly the kind of thing a
+"found nothing" coverage sweep cannot see, since the code runs correctly on
+every fixture regardless of which prior render's closure it is reading.
+Because no linter ever checks these two sites in this repo, traced each by
+hand against the actual rule it suppresses, rather than trusting the
+suppression as proof it was once validated by a tool that is not there
+anymore:
+
+- `useUrlView.ts:74` — the mount-only `useEffect(() => {...}, [])` inside
+  `useUrlView`. Body reads `initial.tab` (closed-over prop, intentionally
+  read once — the adjacent comment says so: "Sync once on mount, then never
+  again from this effect") and `ref.current`/`setView`, both stable across
+  renders (a ref and a setState setter). No value that changes between
+  renders and should retrigger this effect is read here; `[]` is correct,
+  confirmed by this fire rather than carried over from SELF-56x's read of
+  the same file (which traced the mount-sync/popstate/`go()` logic but not
+  this specific suppression by name).
+- `GraphCanvas.tsx:955` — the `data` `useMemo` closing over `graph`, `meta`,
+  `slug`, `resetSeed`, `showUnplaced`, `bakedSeed` and `settings.sizeBy`.
+  Read every external reference in the ~110-line body
+  (`graph?.nodes`/`graph?.edges`, `meta.degById`/`.hubId`/`.maxDeg`/`.maxRel`/
+  `.adj`, `slug`, `resetSeed`, `showUnplaced`, `settings.sizeBy` via
+  `sizeMetric`) against the dependency array at line 956 one at a time — all
+  seven are present; the imported helpers it calls (`nodeTypeOf`,
+  `seedPosition`, `isHubDegree`, `assignClusters`, `loadLayout`,
+  `layoutKey`) are module-level functions, not hook state, so they need no
+  entry. `bakedSeed` is the one array member the memo body never reads, and
+  the comment directly above the disable already explains why it is there
+  anyway (to force a re-run once a baked layout lands in storage) — an
+  extra, deliberate dependency, not a missing one, and `exhaustive-deps`
+  only ever flags missing deps, so there was no actual lint violation left
+  for the disable comment to suppress once every used value is accounted
+  for. Nothing stale-closure-shaped found in either file.
+
+No code change — both hook suppressions are correct as written, and the
+`no-img-element` pair is not a correctness concern. Left the four comments
+in place: they are accurate (if currently unenforced) documentation of
+intent, and removing dead lint-suppression comments on the strength of "the
+tool isn't installed" is a drive-by this fire has no evidence-backed reason
+to make. `pnpm install` first (fresh clone, no `node_modules`). `pnpm check
+&& pnpm test` both exit 0: 3376 tests passing, 13 skipped (same gated
+census as SELF-613; unchanged — a read-only fire).
+
+Backlog item: SELF-614
