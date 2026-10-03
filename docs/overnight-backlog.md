@@ -5676,3 +5676,84 @@ No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
 13 skipped (same gated census as SELF-617; unchanged — a read-only fire).
 
 Backlog item: SELF-618 - BLOCKED
+
+**SELF-619 (2026-10-03 overnight fire) — four more fresh leads (client/server
+stream framing, the P0-2 pool's error semantics, a dormant rounding-bug class,
+and an accessibility/XSS sweep neither named by keyword before), all traced
+to a real explanation rather than a gap.**
+
+1. **Client-side NDJSON reconnect, `BuildWorkflow.tsx`'s `readOnce` (:104-137).**
+   Looked for the classic shape of this bug: a partial, unterminated final
+   line sitting in `buf` when the reader hits `done` and getting silently
+   dropped rather than carried into the next reconnect. Traced whether it is
+   reachable rather than assuming the shape implies it: both frame producers
+   in `app/api/run/[id]/stream/route.ts` — the live `ReadableStream` (:159,
+   `` `${JSON.stringify(frame)}\n` ``) and `replay()` (:51,
+   `` lines.push(`${JSON.stringify(frame)}\n`) `` then `lines.join("")`) —
+   terminate every single frame with `\n`, including the last one before the
+   stream closes. So `buf.split("\n")` on a complete response always leaves
+   an empty string as the final element after `lines.pop()`, never a torn
+   line. Not reachable from this server's own output; the `buf` carry-over
+   exists correctly for the case that matters (a chunk boundary landing
+   mid-frame), which a mutation check confirmed: a throwaway edit dropping
+   one trailing `\n` from `replay()`'s push made the existing
+   `stream.test.ts`/`BuildWorkflow` fixtures that round-trip a multi-frame
+   response fail immediately, confirming the two ends are actually coupled
+   and not coincidentally compatible.
+
+2. **`runPool`'s error semantics after the P0-2 chunked-barrier → continuous-
+   pool rewrite** (`sweep.ts:1553-1569`, the function both link dispatch
+   sites now call). Compared against the shape it replaced
+   (`for (i += LINK_CONC) { await Promise.all(slice) }`): a throw from one
+   item there rejects that slice's `Promise.all` immediately, stopping the
+   loop — later slices never start, and slice-mates already in flight keep
+   running to completion but their results are discarded by the caller's own
+   unwind. `runPool`'s `Promise.all(workers)` rejects the same way on the
+   first worker's `fn` throw — the other workers already inside their own
+   `await fn(...)` keep running until that call settles (nothing cancels
+   them), and the pool as a whole still rejects once the first failure
+   surfaces. Same propagation, same "in-flight work finishes, its result is
+   discarded" shape, same number of items left completely undispatched
+   relative to a mid-run abort. P0-2 changed the scheduling, not the failure
+   contract — not a regression.
+
+3. **Re-checked `StatTile.tsx`'s `compact()` K→M rollover** (the
+   `Math.abs(parseFloat(k)) >= 1000` reroute at :24, already fixed and
+   logged against SELF-535) for a sibling gap one level up: does the M
+   branch itself need an equivalent "rounds up past its own ceiling" guard?
+   It does not, by construction — `compact()` has no unit past `M`, so
+   `scaled(v, 1e6, "M")` rounding a value like 999,999,950 up to `"1000.0M"`
+   has nowhere further to reroute to, and nothing downstream
+   (`KbOverview.tsx`'s only caller, `grep`-confirmed) treats `"1000.0M"` as
+   wrong — it is the honest rendering of a number that large. The K-branch
+   fix closed the one case where a smaller unit's rounding crossed into a
+   bigger unit's range that already existed; there is no next rung for M to
+   cross into.
+
+4. **Accessibility / innerHTML-injection sweep** — a class no prior SELF
+   entry names by these words, run to close that gap rather than because a
+   specific line looked wrong. Grepped every `dangerouslySetInnerHTML`/
+   `innerHTML` use in `packages/web`: the one production
+   `dangerouslySetInnerHTML` (`app/layout.tsx:106`) is the no-flash theme
+   script, a static string literal with no interpolated data (confirmed
+   against `lib/theme.test.ts`'s own pinned `__html` snapshot); the other
+   two hits are a comment (`ThemeToggle.tsx:31`, describing a browser API
+   quirk, not code) and a test file (`GraphCanvas.test.ts`) that already
+   exists specifically to prove entity title/kind/relation/notes are
+   HTML-escaped wherever the canvas renders them as text, not markup — i.e.
+   the one place user- and model-derived strings reach the DOM already has
+   a dedicated regression test for this exact class. A broader `aria-`/
+   `role=` grep across `packages/web/components` and `app` found 42 files
+   already carrying one or the other; spot-checked `GraphCanvas.tsx`,
+   `KbOverview.tsx` and `NoteView.tsx` (the three richest views) by hand and
+   found labelled interactive controls throughout, consistent with the
+   file count rather than a thin pass. No gap found worth a diff this fire
+   could verify — the no-jsdom/RTL-harness limitation B1-B4 and SELF-528
+   already name means any further a11y claim here would be an unverified
+   visual read, not something `pnpm test` can pin.
+
+No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`). `pnpm check && pnpm test` both exit 0: 3377 tests passing,
+13 skipped (same gated census as SELF-618; unchanged — a read-only fire).
+
+Backlog item: SELF-619 - BLOCKED
