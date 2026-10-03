@@ -6077,3 +6077,65 @@ printed the same `esbuild` build-script warning SELF-623 already explains).
 new), 13 skipped (same gated census as SELF-625).
 
 Backlog item: SELF-626
+
+**SELF-627 (2026-10-03 overnight fire) — a sweep of every file never touched
+by a commit on this branch, cross-checked against the test tree; nothing
+survived.** `git diff --stat a7bbc57..HEAD` names every file this branch has
+ever changed; diffing that against `git ls-files` for `packages/**/*.ts` and
+`scripts/**/*.ts` turns up the files no prior SELF-<n> ever had reason to
+open. Read every non-trivial one end to end (`packages/core/src/scorecard.ts`,
+`grounding.ts`, `investigator.ts`; `packages/swarm/src/family-ledger.ts`;
+`packages/web/lib/scorecard-view.ts`, `zip.ts`, `graph/layoutCache.ts`,
+`graph/settings.ts`, `graph/search.ts`, `notes-view.ts`, `theme.ts`,
+`graphIcons.ts`; the seven thin API routes under `packages/web/app/api/kb`
+and `packages/web/app/api/run/[id]` including the 201-line `stream/route.ts`;
+`packages/sweep/src/rank.ts`, `packages/core/src/pricing.ts`). Checked each
+one against its own dedicated test file where one exists
+(`grounding.test.ts`'s 15 cases, `zip.test.ts`'s byte-level round-trip reader,
+`search.test.ts`'s prefix-vs-degree ordering tests, `scorecard-view.test.ts`,
+`notes-view.test.ts`, `graphIcons.test.ts`, `layoutCache.test.ts`) — every
+file in this set already carries coverage of this depth despite never having
+been the subject of a commit on this branch, which is the real finding here:
+"untouched by a SELF-<n> commit" does not mean "unaudited", it means the last
+read of it found nothing to fix, so the signal this sweep leaned on is weaker
+than night 3's "Areas nobody has swept" framing implied.
+
+Two near-findings, both run down and ruled out rather than shipped:
+
+1. `FamilyLedger.opened()` (`family-ledger.ts:46-56`) unconditionally resets
+   `status` to `"queued"` and deletes `because` on ANY existing row for a
+   re-opened `dedupeKey`, regardless of whether that row is currently
+   `"claimed"` or `"landed"` — nothing in the function itself guards against
+   clobbering an in-flight or finished family. Traced the only caller path
+   (`tools-control.ts:547` `ctx.board.promote`, gated by `wasUnreviewed` at
+   line 546, and `orchestrator.ts:628` `board.push(seed, "lead")` for the
+   seed) down to `packages/core/src/board.ts`, which was already touched
+   earlier on this branch: `Board.push` rejects a `dedupeKey` already in
+   `#claimed` (`board.ts:89-91`), `Board.promote` rejects the same
+   (`board.ts:155-157`), and `Board.release` — the only path back from
+   `#claimed` to `#queued` — is documented and implemented to never run for a
+   landed mission (`board.ts:135-136`, "A landed mission is never released: it
+   stays claimed so its key keeps rejecting duplicates for the rest of the
+   run"). So the event that would call `FamilyLedger.opened()` against a
+   claimed-or-landed row cannot reach it: both of the board's own gates
+   refuse first. Structurally dead, not a live bug — confirmed by reading the
+   caller chain, not by guessing from the ledger file alone.
+
+2. `packages/web/lib/graph/search.ts`'s `rankMatches`: the two "substring"
+   score bands (`10 + title.indexOf(q)` and `20 + domain.indexOf(q)`,
+   `search.ts:32-33`) can cross when a title match sits 11+ characters in,
+   letting a domain hit at index 0 outrank a title hit that starts later —
+   the file's own comment only guarantees prefix hits always beat substring
+   hits (true in every case: band 0-1 vs. band 10+), and never claims the two
+   substring bands stay ordered against each other. `search.test.ts` has no
+   case exercising that crossover. Not a verified defect against any stated
+   invariant — just an untested corner of a ranking heuristic — so left
+   alone rather than "fixed" against a guess at what the ranking should do.
+
+No source change. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`; same `esbuild` build-script warning SELF-623 already
+explains). `pnpm check && pnpm test` both exit 0: 3379 tests passing, 13
+skipped — identical to SELF-626's own count, as expected for a read-only
+fire.
+
+Backlog item: SELF-627 - BLOCKED
