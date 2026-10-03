@@ -962,6 +962,32 @@ export type SweptQuery = PlannedQuery & {
 };
 
 /**
+ * Lift a rival-grounded `FamilyQuery` into a `SweptQuery`. The one shape both
+ * `rivalHand()` call sites build (the sitemap-sourced rival hand and the
+ * listicle harvest) — found identical by `jscpd` after this file shipped with
+ * them as two separately-typed-out object literals. Pulled into one function
+ * for the same reason the `rail` lookup a few thousand lines down is a single
+ * computation rather than two: "a closed set with two mappings is a closed
+ * set that will disagree with itself" the first time either one is edited
+ * alone. `market` and `product` are always empty/undefined here because
+ * neither rival hand is about one product or market — see the call sites.
+ */
+function sweptFromRival(fq: FamilyQuery): SweptQuery {
+  return {
+    q: fq.q,
+    // A pair query is someone weighing two vendors, a bare `alternatives` is
+    // someone about to leave one — same reading for either rival hand.
+    intent: fq.q.includes(" vs ") ? "evaluation" : "switching",
+    platform: "web",
+    why: fq.why,
+    market: "",
+    family: fq.family,
+    product: undefined,
+    term: fq.term,
+  };
+}
+
+/**
  * `foundBy` is which of the anchor's markets' queries surfaced this host,
  * strongest first. Filled mechanically after classification — every hit knows
  * its query and every query knows its market — never by the model.
@@ -3525,18 +3551,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
       .map((r) => r.name)
       .filter((n) => !banned(n, "rival", anchorBanName, banCoinages)),
     brandedBought,
-  ).map((fq) => ({
-    q: fq.q,
-    // Same reading as the other hands make: a pair query is someone weighing
-    // two vendors, a bare `alternatives` is someone about to leave one.
-    intent: fq.q.includes(" vs ") ? "evaluation" : "switching",
-    platform: "web",
-    why: fq.why,
-    market: "",
-    family: fq.family,
-    product: undefined,
-    term: fq.term,
-  }));
+  ).map(sweptFromRival);
   if (rivalLeads.length) {
     say(
       "plan",
@@ -5095,18 +5110,12 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
         fresh.sort((a, b) => (mentions.get(b) ?? 0) - (mentions.get(a) ?? 0));
         if (fresh.length > 0) {
           // The SAME machinery a name the anchor's own sitemap publishes
-          // already gets — see `rivalHand` — not a second query-shape
-          // generator for a second kind of third-party name.
-          const harvested: SweptQuery[] = rivalHand(fresh, LISTICLE_MAX_QUERIES).map((fq) => ({
-            q: fq.q,
-            intent: fq.q.includes(" vs ") ? "evaluation" : "switching",
-            platform: "web",
-            why: fq.why,
-            market: "",
-            family: fq.family,
-            product: undefined,
-            term: fq.term,
-          }));
+          // already gets — see `rivalHand` and `sweptFromRival` — not a
+          // second query-shape generator for a second kind of third-party
+          // name.
+          const harvested: SweptQuery[] = rivalHand(fresh, LISTICLE_MAX_QUERIES).map(
+            sweptFromRival,
+          );
           const room =
             QUERY_CEILING === null ? harvested.length : Math.max(0, QUERY_CEILING - asked.length);
           const toFire = harvested.slice(0, room);

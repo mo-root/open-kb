@@ -5408,3 +5408,70 @@ to make. `pnpm install` first (fresh clone, no `node_modules`). `pnpm check
 census as SELF-613; unchanged — a read-only fire).
 
 Backlog item: SELF-614
+
+**SELF-615 (2026-10-03 overnight fire) — a genuinely new angle, copy-paste
+clone detection, never tried by any prior fire, found and fixed one real
+duplicate the file's own comments had already half-noticed.** Every prior
+self-discovered fire in this class used hand-reading, coverage, knip, or
+madge; none had run a clone detector. Installed `jscpd@5.4.0` via `pnpm dlx`
+(never added to `package.json`/`pnpm-lock.yaml`) and ran it with
+`--min-lines 10 --min-tokens 50` over the four library packages'
+`src/` (`core`, `sweep`, `swarm`, `providers`), excluding tests and
+generated output. It reported exactly two clone pairs, both in
+`packages/sweep/src/sweep.ts`.
+
+The first (lines 2248-2259 vs. 2348-2358 before this fire's edit, now
+2274-2285 vs. 2374-2384) is the token-accounting/billing block repeated
+between a model call's first attempt and its retry. Read both copies in
+full: they are deliberately parallel (the success path and the
+`catch`-then-retry path of the same `call()` closure), differ only in the
+`spans.emit` `argsDigest`/`servedBy` fields the surrounding code already
+needs distinct, and are not two independent descriptions of one invariant —
+a retry is structurally a second attempt, not a fact that could drift out of
+sync the way a copied constant could. Left alone.
+
+The second (lines 3528-3539 vs. 5100-5109) was a real instance of exactly
+the risk this file already names out loud two thousand lines earlier: the
+`rail` comment at (then) line 2316 reads "ONE COPY... a closed set with two
+mappings is a closed set that will disagree with itself." Both the
+sitemap-sourced rival hand and the listicle harvest built an identical
+`SweptQuery` from a `FamilyQuery` — same eight fields, same `" vs "` intent
+check, same `market: ""`/`product: undefined` — as two separately-typed-out
+object literals, and the listicle-harvest call site even carried a comment
+saying so ("the SAME machinery... not a second query-shape generator for a
+second kind of third-party name") without the code actually being one
+function. Confirmed both were byte-identical in every field before touching
+either.
+
+Fixed by lifting the shared shape into one module-level function,
+`sweptFromRival(fq: FamilyQuery): SweptQuery`, placed next to the
+`SweptQuery` type definition with a doc comment citing the `rail` precedent
+and naming `jscpd` as the tool that found it; both call sites now read
+`.map(sweptFromRival)`. Preserved the inline comment explaining the `" vs "`
+intent reasoning (moved onto the one line that now contains it, inside the
+helper). Deliberately left the two OTHER similar-looking mappings in this
+same file alone — `asFired` (~line 3393, per-product hands: `market` is the
+product's own market name, `product`/`term` are the product's own, `intent`
+keys off `fq.family === "plain"` not `" vs "`) and the `company` hand
+(~line 3415: `intent` is always `"switching"`, `term` is always
+`undefined`) — both read field-by-field against this one before deciding:
+neither is byte-identical to the rival mapping or to each other, and
+`jscpd` itself did not flag either, so merging them would be inventing a
+shared abstraction across genuinely different shapes rather than removing a
+real duplicate.
+
+Re-ran `jscpd` after the edit: the rival-mapping clone is gone; one clone
+remains (the token-accounting pair above, confirmed intentional, not
+touched). No behavior change — `sweptFromRival`'s body is a verbatim merge
+of the two prior object literals, which the existing test suite (`sweep.ts`
+has dedicated tests for both the rival-hand and listicle-harvest query
+shapes) already exercises as-is; `tsc`, already part of `pnpm check`, is
+what proves the extracted function's return type still satisfies
+`SweptQuery` at both call sites.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check && pnpm test` both exit 0: 3376 tests passing, 13 skipped (same
+gated census as SELF-614 — a same-package refactor with no new test
+surface).
+
+Backlog item: SELF-615
