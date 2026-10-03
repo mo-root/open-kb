@@ -66,6 +66,21 @@ describe("SkipLink's #main target actually exists in layout.tsx", () => {
     if (!idMatch) throw new Error("no <main id=\"...\"> found in layout.tsx")
     expect(renderedHref()).toBe(`#${idMatch[1]}`)
   })
+
+  // The component's own header comment claims more than an id match: it
+  // "lands focus on <main> rather than merely scrolling to it, so the next
+  // Tab continues inside the page." A bare <main> is not natively focusable
+  // (only interactive elements and anything carrying tabindex are), so
+  // hash-navigating to #main would scroll to it without actually focusing
+  // it unless the element itself opts in with tabIndex={-1} — the standard
+  // skip-link target technique. Nothing before this checked for it; the id
+  // match alone is not enough to make the comment's claim true.
+  it("the #main target carries tabIndex={-1}, so landing on it is a real focus move, not just a scroll", () => {
+    const mainTag = /<main\b[^>]*>/.exec(LAYOUT)
+    if (!mainTag) throw new Error("no <main ...> opening tag found in layout.tsx")
+    expect(mainTag[0]).toContain('id="main"')
+    expect(mainTag[0]).toContain("tabIndex={-1}")
+  })
 })
 
 describe("SkipLink renders before every other focusable element in layout.tsx", () => {

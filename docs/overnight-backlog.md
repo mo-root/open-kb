@@ -6049,3 +6049,31 @@ gated census as SELF-624 — unaffected by a web-only behavior change with no
 new test).
 
 Backlog item: SELF-625
+
+**SELF-626 (2026-10-03 overnight fire) — read `components/SkipLink.tsx` and
+its own dedicated test (SELF-181) side by side and found the test enforces
+only half of the component's header-comment claim.** The comment says the
+skip link "lands focus on `<main>` rather than merely scrolling to it, so
+the next Tab continues inside the page." `SkipLink.test.tsx` already pins
+`href="#main"` against `layout.tsx`'s `id="main"` (SELF-181's own find —
+nothing cross-checked the two literals), but a bare `<main>` has no native
+focusability: only interactive elements and anything carrying `tabindex`
+are focus targets for hash navigation, so the id match alone gets you a
+scroll, not the focus move the comment actually promises. `layout.tsx:139`
+does carry `tabIndex={-1}` on that same `<main>` — the standard skip-link-
+target technique — so the code is correct; no test enforced it.
+
+Added one test in the existing "SkipLink's #main target actually exists in
+layout.tsx" block: extract the `<main ...>` opening tag and assert it
+contains both `id="main"` and `tabIndex={-1}`, the same string-matching
+style (not simulated browser focus — jsdom doesn't model hash-navigation
+focus) the rest of this test file already uses. Verified non-vacuous by
+mutation: removed `tabIndex={-1}` from `layout.tsx`, reran — the new test
+failed; restored it and reran clean before committing. No source change.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`;
+printed the same `esbuild` build-script warning SELF-623 already explains).
+`pnpm check && pnpm test` both exit 0: 3379 tests passing (up from 3378, one
+new), 13 skipped (same gated census as SELF-625).
+
+Backlog item: SELF-626
