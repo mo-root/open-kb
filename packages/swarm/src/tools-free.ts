@@ -1,3 +1,4 @@
+import { Script, createContext } from "node:vm"
 import {
   admit,
   descriptionGrounding,
@@ -105,6 +106,45 @@ function projectLinks(text: string, raw: string | undefined, baseUrl: string): s
 }
 
 /**
+ * `grep` is the one `RegExp` in this codebase where the PATTERN comes from
+ * the model and the TEXT it runs against comes from a hostile page
+ * (`run-evidence.ts`'s own `MAX_STORED_BYTES` comment: "4MB is the ceiling
+ * on hostile ones"). Every other `new RegExp` call here matches constant or
+ * already-escaped text, so this is the only one that can be handed a
+ * catastrophic-backtracking pattern over attacker-reachable input — and the
+ * SyntaxError catch two lines below `grep`'s call site only catches a
+ * MALFORMED pattern, not a valid-but-exponential one. Measured directly:
+ * `/(a+)+$/` against `"a".repeat(25) + "!"` — a 26-character string — still
+ * had not returned after two minutes. Nothing in this engine runs tool
+ * execution off the main thread (no worker, no child process), so that one
+ * `.test()` call does not just fail this read: it freezes the whole swarm,
+ * including the wall-clock budget every other part of this engine is priced
+ * against, because that budget can only fire from the same event loop a
+ * stuck regex blocks.
+ *
+ * Bounded here by running the match inside a `vm` context with a timeout —
+ * V8's own loop-interrupt check inside the regex engine is what actually
+ * cuts a runaway match off (confirmed directly: the pattern above, given a
+ * 50ms budget, throws at 50ms rather than hanging); a `Promise.race`-style
+ * timeout could not, since nothing can run concurrently with a blocked
+ * thread. `GREP_TIMEOUT_MS` is generous for the honest case: a benign
+ * pattern over 50,000 lines / 4.2MB (`MAX_STORED_BYTES`'s own worst case)
+ * measured at 15ms here, well under the 200ms this gives it.
+ */
+const GREP_TIMEOUT_MS = 200
+
+/** `null` on timeout — the caller falls back to literal matching, the same
+ *  degrade the syntax-error catch already uses for a malformed pattern. */
+function safeGrepLines(text: string, re: RegExp): string[] | null {
+  try {
+    const script = new Script('text.split("\\n").filter((l) => re.test(l))')
+    return script.runInContext(createContext({ text, re }), { timeout: GREP_TIMEOUT_MS }) as string[]
+  } catch {
+    return null
+  }
+}
+
+/**
  * FREE. Re-read bytes the run already fetched — projected, grepped, ranged —
  * without a provider call. This is what turns 65KB into a few hundred bytes
  * at zero cost and keeps an 880KB page out of every prompt.
@@ -163,7 +203,13 @@ export function readTool(ctx: ReadCtx, input: ReadInput): ReadReturn {
     } catch {
       re = new RegExp(input.grep.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i")
     }
-    const kept = text.split("\n").filter((l) => re.test(l))
+    // `re` passed the syntax check above but can still be a valid,
+    // catastrophic-backtracking pattern — safeGrepLines bounds that case and
+    // answers null instead of hanging; the literal fallback is the same move
+    // the syntax-error catch above makes, just reached from a timeout rather
+    // than a parse failure.
+    const literalRe = new RegExp(input.grep.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i")
+    const kept = safeGrepLines(text, re) ?? text.split("\n").filter((l) => literalRe.test(l))
     matches = kept.length
     text = kept.join("\n")
   }

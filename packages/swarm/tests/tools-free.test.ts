@@ -278,6 +278,31 @@ describe("readTool", () => {
     if (!r.ok) throw new Error(r.reason)
     expect(r.text).toBe("price (usd")
   })
+
+  // `(a+)+$` is syntactically VALID — the SyntaxError catch above never sees
+  // it — but catastrophic: measured directly against node, `/(a+)+$/.test("a"
+  // .repeat(25) + "!")` had not returned after two minutes. A hostile page
+  // supplies the text this grep runs over (run-evidence.ts's own
+  // MAX_STORED_BYTES comment: "4MB is the ceiling on hostile ones"), so this
+  // is a real DoS surface, not a contrived one, and the test itself must not
+  // hang the suite to prove it is now bounded.
+  it("a syntactically valid but catastrophic-backtracking grep pattern degrades to literal matching instead of hanging", () => {
+    const evidence = new RunEvidence()
+    const haystack = "a".repeat(30) + "!"
+    const rec = evidence.record({
+      url: "https://l.com/",
+      text: `${haystack}\nnote: see pattern (a+)+$ for details\nunrelated line`,
+      status: "found",
+      tier: "page",
+    })
+    const r = readTool({ evidence, ledger: ledger() }, { handle: rec.handle, grep: "(a+)+$" })
+    if (!r.ok) throw new Error(r.reason)
+    // The catastrophic line never completes within the timeout, so the whole
+    // call falls back to literal matching of the pattern string itself —
+    // which matches the line that quotes it verbatim and nothing else.
+    expect(r.text).toBe("note: see pattern (a+)+$ for details")
+    expect(r.matches).toBe(1)
+  }, 10_000)
 })
 
 // ── recall ───────────────────────────────────────────────────────────────────

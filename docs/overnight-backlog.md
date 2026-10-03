@@ -5475,3 +5475,74 @@ gated census as SELF-614 — a same-package refactor with no new test
 surface).
 
 Backlog item: SELF-615
+
+**SELF-616 (2026-10-03 overnight fire) — a genuinely new angle, auditing
+every `new RegExp` for an untrusted pattern over untrusted text, found one
+real catastrophic-backtracking DoS and bounded it.** Of the eight
+`new RegExp(...)` call sites in `packages/{core,swarm,sweep}/src`
+(`sweep.ts:6442`, `run-evidence.ts:187`, `tools-free.ts:162,164`,
+`alias.ts:62`, `sniff.ts:148,150,152`, `tools.ts:183`), seven build their
+pattern from a constant string or from text the SAME code already escapes
+with `.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")` before it reaches `RegExp` —
+so none of those can express backtracking at all. `tools-free.ts:162`
+(`readTool`'s `grep` param, `re = new RegExp(input.grep, "i")`) is the one
+exception: the pattern is whatever the model's tool call supplies, tested
+against `rec.text` — the extracted text of a page this run fetched, and
+`run-evidence.ts`'s own `MAX_STORED_BYTES` comment says plainly "4MB is the
+ceiling on hostile ones." That is a model-chosen pattern over
+attacker-reachable text, and the existing `try { new RegExp(...) } catch`
+two lines down only guards a MALFORMED pattern (a `SyntaxError` at
+construction) — it does nothing for a pattern that parses fine and then
+backtracks forever.
+
+Verified directly, not assumed: `/(a+)+$/.test("a".repeat(25) + "!")` — a
+26-character string against an 11-character pattern — was still running
+after two minutes (killed by hand rather than waited out). Traced every
+caller of `readTool` (`agent.ts:380`, the one call site) and confirmed it
+runs fully synchronously inside the tool's `execute`, with no
+`Promise.race`/deadline wrapper the way model calls get from `withDeadline`
+(P0-4's own fix) — and nothing in this engine runs tool execution off the
+main thread (grepped for `worker_threads`/`new Worker(` across every
+package: zero hits). So a single bad `grep` does not just fail that one
+`read` call; it freezes the entire swarm, including the wall-clock budget
+every other part of the engine is priced against, because that budget can
+only fire from the same event loop the stuck regex has blocked. Not
+hypothetical and not rare-input-shaped: the model picks the pattern on every
+`read` call with `grep` set, over text a hostile site fully controls.
+
+Fixed by running the match inside a `node:vm` context with a timeout,
+rather than calling `.test()` directly. Confirmed first that this actually
+works for THIS failure mode, not assumed from the API's name: the exact
+pattern above, given a 50ms vm timeout, throws `"Script execution timed out
+after 50ms"` at 50ms rather than hanging — V8's own loop-interrupt check
+inside the generated regex bytecode is what a `vm` timeout can actually
+reach, which is why this works where a `Promise.race` timeout structurally
+cannot (nothing can run concurrently with a blocked single thread to race
+against it). On a timeout, `safeGrepLines` returns `null` and the caller
+falls back to literal-escaped matching of the same pattern string — the
+same degrade the existing `SyntaxError` catch already uses for a malformed
+pattern, just reached from a different failure (a timeout instead of a
+parse error), so a catastrophic `grep` now degrades to a literal string
+search instead of hanging, the same way a broken one already degrades
+instead of being refused.
+
+`GREP_TIMEOUT_MS = 200` is measured, not guessed: a benign pattern run
+through the same `vm` path over 50,000 lines / 4.2MB of text — `grep`'s own
+worst case, `MAX_STORED_BYTES`'s 4MB ceiling — completed in 15ms here, so
+200ms leaves over 13x headroom for the honest case while still bounding the
+dishonest one tightly. Added a test with the exact `/(a+)+$/`-shaped
+pattern against a 31-character line mixed into a 3-line page, asserting the
+call returns (rather than hanging the suite) and correctly falls back to
+literal matching — matching the one line that quotes the pattern verbatim
+and no others; it runs in 202ms, confirming the timeout path is actually
+exercised rather than the pattern happening to resolve fast. Did not re-run
+the un-fixed code to confirm it hangs (that would mean deliberately hanging
+a test run); the two-minutes-and-killed-by-hand measurement above, done
+before writing the fix, already established that this exact shape does not
+return in any reasonable time without it.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check && pnpm test` both exit 0: 3377 tests passing (up from 3376, one
+new), 13 skipped (same gated census as SELF-615).
+
+Backlog item: SELF-616
