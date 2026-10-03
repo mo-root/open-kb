@@ -226,11 +226,11 @@ export function strongerTier(a: ProvenanceTier, b: ProvenanceTier): ProvenanceTi
  * outright as "bad-url" before `originKey` is ever asked again for that same
  * url). The rest compare the result against a target that is independently
  * guaranteed non-empty, so a "" origin can mismatch but never falsely match:
- * `ownPage`/`snippetFor`'s `key`/`hostKey` (line 379, 456 below) trace to
+ * `ownPage`/`snippetFor`'s `key`/`hostKey` (line 405, 481 below) trace to
  * either rememberTool's own `nodeKey` rejection — a company/product node
  * with no key is refused before either can be called (tools-free.ts) — or
  * orchestrator.ts:335's already-guarded `anchor` local; `tierOf`'s `key`
- * (tools-free.ts:454) is the same nodeKey-derived value; `seenInOf`'s
+ * (tools-free.ts:567) is the same nodeKey-derived value; `seenInOf`'s
  * `registrableHost(host)` (tools-paid.ts:645) and the breaker's own
  * `originKey(url)` strike (tools-paid.ts:373, the same url `one()` already
  * validated) both trace to `cleanHost`'s regex

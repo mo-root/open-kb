@@ -892,7 +892,7 @@ export async function runSwarm(opts: SwarmOptions): Promise<SwarmRun> {
     // `n.domain || n.name`: dead by construction for this filter, not an
     // untested branch. `nodeKey` (map.ts:166) keys a company/product node by
     // its host ALONE, with no name fallback, and rememberTool (tools-free.ts:
-    // 517-527) rejects any node whose key comes out "" before it ever reaches
+    // 567-576) rejects any node whose key comes out "" before it ever reaches
     // `ctx.map.nodes.set` — the rejection message is literally "a company/
     // product is its domain; say which host this is". `admit` (verdict.ts)
     // is the only thing that can change a node's kind after that gate, and it

@@ -5861,3 +5861,63 @@ line-number corrections across two files, nothing else. No behavior change.
 gated census as SELF-620 — unaffected by a comment-only change).
 
 Backlog item: SELF-621
+
+**SELF-622 (2026-10-03 overnight fire) — the same citation-drift sweep
+SELF-488/503/621 ran against `sweep.ts`/`judge.ts`/`calibrate-kernel.ts`,
+pointed instead at every other source comment citing a line inside
+`packages/swarm/src/tools-free.ts`, the one target file those three fires
+never covered.** Grepped every `*.tsx?:[0-9]+` citation across
+`packages/*/src`, `packages/web/{app,components,lib}` and `scripts/*.ts`
+(57 total, excluding test files and this doc's own historical entries,
+which are a log of what a past fire did and are not meant to track a
+moving target), then compared each citing comment's own last-touched commit
+(`git blame` on the comment's line) against its target file's last-touched
+commit. `tools-free.ts` is the newest-modified target in the whole set
+(2026-10-03, newer than the citations bumped by SELF-621 itself), so every
+comment citing a line inside it was a candidate; verified each by reading
+the cited line's actual content against what the comment claims is there,
+the same discipline SELF-621 used, not by trusting the timestamp heuristic
+alone (it also flagged ~30 other citations whose target file changed
+elsewhere in ways that left the cited line untouched — confirmed by reading
+each candidate before touching anything, and left those alone).
+
+Eight citations into `tools-free.ts`, across four files, had drifted:
+
+- `run-evidence.ts:229` — `ownPage`/`snippetFor`'s own line numbers ("line
+  379, 456 below", a self-citation within the same file) → 405, 481 (their
+  function defs: `ownPage(key: string)`, `snippetFor(hostKey: string)`).
+- `run-evidence.ts:233` — `tierOf`'s `key` ("tools-free.ts:454") → 567
+  (`const key = nodeKey(n.kind, n.name, n.domain)`, immediately above
+  `tierOf`'s call site at line 581).
+- `map.ts:228` — "the only place a MapNode is ever minted" ("tools-free.
+  ts:612") → 657 (`ctx.map.nodes.set(key, {`).
+- `map.ts:230` — `descGrounded`'s computation ("tools-free.ts:560-566") →
+  605-611 (the `Math.round(descriptionGrounding(...).score * 100) / 100`
+  block, confirmed still 7 lines).
+- `map.ts:231` — the merge path's reassignment ("tools-free.ts:654") → 699
+  (`existing.descGrounded = descGrounded`).
+- `map.ts:309` — `MapNode.contributions`'s two write sites ("tools-free.
+  ts:603/617") → 672/686 (the mint's `contributions: [{ writer, tier }]`
+  literal, then the merge path's `stampContribution(existing, writer,
+  tier)` call — still a 14-line gap between them, same as the original
+  603/617, confirming the pairing survived even though both shifted).
+- `orchestrator.ts:894` — the empty-key rejection block ("tools-free.
+  ts:517-527") → 567-576 (`const key = nodeKey(...)` through its `if
+  (!key)` rejection's `continue`, still an 11-line-wide guard).
+- `agent.ts:994` — the map's one edge-writing site ("tools-free.ts:749") →
+  794 (`ctx.map.edges.push({ from, to, relation: e.relation, ... })`,
+  confirmed it is still the only `ctx.map.edges.push` in the file).
+- `agent.ts:1006` — `rememberTool`'s per-call `{added, merged}` return
+  ("tools-free.ts:793") → 838 (`return { added, merged, rejected,
+  downgraded, poolLeftUsd: ... }`).
+
+Comment text and reasoning are otherwise unchanged — every claim these nine
+corrections sit inside was re-verified against the target's current content,
+not re-derived from the stale number, the same check SELF-621 ran. No
+behavior change; nine line-number corrections across four files.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check && pnpm test` both exit 0: 3378 tests passing, 13 skipped (same
+gated census as SELF-621 — unaffected by a comment-only change).
+
+Backlog item: SELF-622

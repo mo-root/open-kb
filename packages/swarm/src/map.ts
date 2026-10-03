@@ -225,10 +225,10 @@ export class MapState {
         ...(n.unreadableReason ? { unreadableReason: n.unreadableReason } : {}),
         ...(n.settledBy ? { settledBy: n.settledBy } : {}),
         // `!== undefined ? ... : {}`: dead by construction, not an untested branch.
-        // tools-free.ts:612 is the only place a MapNode is ever minted, and its
+        // tools-free.ts:657 is the only place a MapNode is ever minted, and its
         // object literal always carries a `descGrounded` field (a rounded number,
-        // computed at remember() time — see tools-free.ts:560-566); the merge path
-        // (tools-free.ts:654) only ever reassigns it to another such number. No
+        // computed at remember() time — see tools-free.ts:605-611); the merge path
+        // (tools-free.ts:699) only ever reassigns it to another such number. No
         // node this loop can see was ever constructed without it.
         ...(n.descGrounded !== undefined ? { descGrounded: n.descGrounded } : {}),
         tier: n.tier,
@@ -306,7 +306,7 @@ export function pageTierByWriter(map: MapState): Map<string, number> {
  * 202608060833.json` reports 93 nodes across 16 missions against a 28-node
  * map, with `verify:scrapfly.io` and `verify:decodo.com` landing 0.3s apart
  * each claiming the same 7 nodes and 7 edges. The stamps already record who
- * wrote what (`MapNode.contributions`, tools-free.ts:603/617); this reads them.
+ * wrote what (`MapNode.contributions`, tools-free.ts:672/686); this reads them.
  *
  * BOTH HALVES ARE INVARIANT TO THE NEIGHBOURS, which is the property the delta
  * lacked: the only inputs are this writer's own stamps and a snapshot taken
