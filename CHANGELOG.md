@@ -116,6 +116,12 @@ hosted web app, or the repo itself would actually notice.
 - `adjacent` — often the single largest relation on a modern map — is now a
   first-class citizen everywhere the web app enumerates relations: colour,
   order, and group copy in the "who's in this market" and ecosystem panels.
+- `EventFeed` (the live event stream on the build page) pulled a reader back
+  to the bottom on every new event, even mid-scroll reading an earlier line.
+  Its sibling `AgentPanel`, solving the identical problem, already guarded
+  this with a `pinned` flag toggled on scroll — a fix present since the
+  repo's initial commit that `EventFeed` never received. Ported the same
+  pattern.
 - A run that completes with zero entities no longer falls through into a
   bare one-node force graph; it now shows the same "nothing on the map"
   empty state used elsewhere in the app.
@@ -212,6 +218,15 @@ hosted web app, or the repo itself would actually notice.
   — reading as a tile whose number failed to load, the exact defect the
   grid's own layout comment already reasoned about preventing, just missed
   on that breakpoint.
+- The swarm's `readTool` ran a model-chosen `grep` pattern directly against
+  page text a hostile site fully controls; a catastrophically-backtracking
+  pattern (e.g. `/(a+)+$/` against a crafted suffix) hung indefinitely on
+  the engine's single event loop, including the wall-clock budget that can
+  only fire from that same loop. The existing try/catch only ever caught a
+  malformed pattern at construction, never a valid one that never returns.
+  Now bounded in a `node:vm` context with a 200ms timeout, falling back to
+  literal-escaped matching on timeout — the same degrade already used for a
+  pattern that fails to parse.
 
 ### Repo and docs
 
