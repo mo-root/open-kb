@@ -423,6 +423,20 @@ export interface RememberNodeInput {
   settledBy?: "predicate" | "model"
   because?: string
   unreadableReason?: UnreadableReason
+  /**
+   * The harvest's own classify call answers these from classify.md, same as
+   * `what`/`why`/`spans` above — unlike the trio above, a model CAN claim
+   * them, just not through the LEAD's own `remember` tool: its zod schema
+   * (agent.ts) has no slot for either, so this stays reachable only from the
+   * harvest path (tools-paid.ts's `landOne`), which reads them straight off
+   * a judgeHosts verdict the same way it already reads `because`.
+   * `reasoning` is the one-sentence fact that settled kind/relation;
+   * `relationSpan` is `spans`'s counterpart for the relation specifically —
+   * see packages/sweep/src/sweep.ts's classifyHost schema, the schema this
+   * mirrors field-for-field.
+   */
+  reasoning?: string
+  relationSpan?: string
 }
 
 export interface RememberEdgeInput {
@@ -665,6 +679,8 @@ export function rememberTool(ctx: RememberCtx, input: RememberInput): RememberRe
         ...(because ? { because } : {}),
         ...(unreadableReason ? { unreadableReason } : {}),
         ...(n.settledBy ? { settledBy: n.settledBy } : {}),
+        ...(n.reasoning ? { reasoning: n.reasoning } : {}),
+        ...(n.relationSpan ? { relationSpan: n.relationSpan } : {}),
         descGrounded,
         tier,
         evidence: minted.evidence,
@@ -714,6 +730,14 @@ export function rememberTool(ctx: RememberCtx, input: RememberInput): RememberRe
         // The reason code rides with the because it explains, never without it.
         if (unreadableReason) existing.unreadableReason = unreadableReason
         else delete existing.unreadableReason
+        // Same rule as kind/relation just above, which these explain: the
+        // account that now owns the scalar fields owns the receipts for them
+        // too, so a stronger claim with no reasoning does not leave a stale
+        // one behind from the account it just displaced.
+        if (n.reasoning) existing.reasoning = n.reasoning
+        else delete existing.reasoning
+        if (n.relationSpan) existing.relationSpan = n.relationSpan
+        else delete existing.relationSpan
       }
       existing.tier = tier
     } else {

@@ -507,7 +507,19 @@ export type HarvestClassify = (
   pageText: string,
   opts?: { signal?: AbortSignal },
 ) => Promise<{
-  out: { name: string; kind: string; what: string; relation: string; why: string; spans: string[] }
+  out: {
+    name: string
+    kind: string
+    what: string
+    relation: string
+    why: string
+    spans: string[]
+    /** Optional, same as sweep.ts's classify schema: the single decisive
+     *  fact behind kind/relation, and the relation's own verbatim receipt.
+     *  classify.md asks for both; see `landOne` below for where they land. */
+    reasoning?: string
+    relationSpan?: string
+  }
   usd: number
 }>
 
@@ -737,7 +749,16 @@ export async function harvestTool(ctx: HarvestCtx, input: HarvestInput): Promise
     }
   }
 
-  const landOne = (e: Judged) => {
+  // `& { reasoning?; relationSpan? }`: core's `Judged` (judge.ts) declares
+  // neither field — its `JudgeDeps.classify` return type is deliberately
+  // narrow, the same "rigid" contract sweep.ts's own classifyHost comment
+  // names (packages/sweep/src/sweep.ts:5600-5607) and works around with an
+  // `as Entity` cast once it holds pageText again. This harvest's classify
+  // closure below returns the real, wider object (HarvestClassify's own
+  // type has both fields now), so at runtime `e` carries them; this
+  // annotation only tells the type-checker, and is safe to add because both
+  // fields are optional — a plain `Judged` already satisfies it.
+  const landOne = (e: Judged & { reasoning?: string; relationSpan?: string }) => {
     judgedHosts.add(e.domain)
     const row: HarvestRow = {
       host: e.domain,
@@ -790,6 +811,8 @@ export async function harvestTool(ctx: HarvestCtx, input: HarvestInput): Promise
           settledBy: e.settledBy,
           ...(e.because ? { because: e.because } : {}),
           ...(e.unreadableReason ? { unreadableReason: e.unreadableReason } : {}),
+          ...(e.reasoning ? { reasoning: e.reasoning } : {}),
+          ...(e.relationSpan ? { relationSpan: e.relationSpan } : {}),
         },
       ],
       why: input.why,

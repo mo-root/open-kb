@@ -1085,6 +1085,47 @@ describe("harvestTool: the port-recording wrapper", () => {
     if (cite.ok) expect(cite.evidence.tier).toBe("page")
   })
 
+  it("reasoning and relationSpan ride a harvested verdict onto the node and into entities()", async () => {
+    // classify.md asks for both (the doctrine this closure renders is the
+    // same file sweep.ts's own classify call renders) — this is the harvest
+    // path's own copy of that contract, confirming a verdict that carries
+    // them actually lands them on the map rather than dropping them at the
+    // judge-kernel seam (core's `Judged` type does not declare either field;
+    // see landOne's own comment in tools-paid.ts for why that is fine).
+    const classify: HarvestClassify = okClassify()
+    const richClassify: HarvestClassify = async (...args) => {
+      const r = await classify(...args)
+      return { ...r, out: { ...r.out, reasoning: "ranks vendors, including the anchor", relationSpan: "We sell a scraping API to developers" } }
+    }
+    const { ctx } = harvestCtx({ fetch: fakeFetcher({ "https://acme.com/": vendorHtml }), classify: richClassify })
+    await harvestTool(ctx, { hosts: ["acme.com"], why: "judge the wave" })
+
+    const node = ctx.map.nodes.get("acme.com")!
+    expect(node.reasoning).toBe("ranks vendors, including the anchor")
+    expect(node.relationSpan).toBe("We sell a scraping API to developers")
+
+    const entity = ctx.map.entities().find((e) => e.domain === "acme.com")!
+    expect(entity.reasoning).toBe("ranks vendors, including the anchor")
+    expect(entity.relationSpan).toBe("We sell a scraping API to developers")
+  })
+
+  it("a verdict that answers neither field leaves the node and entities() without them", async () => {
+    // The fields are optional end to end — every existing classify fixture
+    // in this suite (okClassify included) answers without them, and must
+    // keep landing nodes exactly as before: no `reasoning: undefined` key
+    // appearing where none appeared previously.
+    const { ctx } = harvestCtx({ fetch: fakeFetcher({ "https://acme.com/": vendorHtml }) })
+    await harvestTool(ctx, { hosts: ["acme.com"], why: "judge the wave" })
+
+    const node = ctx.map.nodes.get("acme.com")!
+    expect("reasoning" in node).toBe(false)
+    expect("relationSpan" in node).toBe(false)
+
+    const entity = ctx.map.entities().find((e) => e.domain === "acme.com")!
+    expect("reasoning" in entity).toBe(false)
+    expect("relationSpan" in entity).toBe(false)
+  })
+
   it("normalizes model-handed urls to hosts, refuses the anchor and duplicates by name", async () => {
     const { ctx } = harvestCtx({ fetch: fakeFetcher({ "https://acme.com/": vendorHtml }) })
     const r = await harvestTool(ctx, {

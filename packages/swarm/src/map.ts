@@ -71,6 +71,22 @@ export interface MapNode {
    *  arithmetic ($0) or a model call. Metadata about the judging, not a
    *  claim about the market; same passthrough rule as above. */
   settledBy?: "predicate" | "model"
+  /** The single decisive fact that settled `kind`/`relation` — classify.md's
+   *  own field, same as sweep.ts's entities carry. Unlike `because` above,
+   *  this IS a model claim, just one the lead's own `remember` tool has no
+   *  slot for; reachable only through a harvest judgement. */
+  reasoning?: string
+  /** `relationSpan`'s own verbatim receipt for `relation`, `spans`' sibling
+   *  for the relation rather than the `what` — same source and same
+   *  reachability note as `reasoning` just above. No `relationGrounded`
+   *  counterpart here: computing it needs the exact page text the judge
+   *  kernel's own return type narrows away before this node is built (see
+   *  packages/sweep/src/sweep.ts's classifyHost comment on the same
+   *  narrowing), and nothing downstream of the swarm gates on it today —
+   *  the web UI's `relationGrounded` check already treats an absent value
+   *  as "not verified" rather than assuming it, so a swarm-sourced
+   *  `relationSpan` renders honestly undercredited rather than wrongly. */
+  relationSpan?: string
   /** How much of the standing `what`'s vocabulary its verified material — the
    *  claim's minted quotes plus the host's own stored page — actually says,
    *  2 decimals, measured when that what landed. The swarm's half of
@@ -125,6 +141,11 @@ export interface EntityRow {
   /** Harvested nodes only: HOW the judge settled the host — predicate
    *  arithmetic or a model call — exactly as judgeHosts stamped it. */
   settledBy?: "predicate" | "model"
+  /** `MapNode.reasoning`/`.relationSpan`, carried into the run JSON under the
+   *  same names the sweep's own entities use — `NoteView.tsx` renders both
+   *  with no new vocabulary for a swarm-built map. */
+  reasoning?: string
+  relationSpan?: string
   /** `MapNode.descGrounded`, carried into the run JSON under the same name the
    *  sweep's entities already use — the reader's view model picks it up with
    *  no new vocabulary. */
@@ -224,6 +245,8 @@ export class MapState {
         ...(n.because ? { because: n.because } : {}),
         ...(n.unreadableReason ? { unreadableReason: n.unreadableReason } : {}),
         ...(n.settledBy ? { settledBy: n.settledBy } : {}),
+        ...(n.reasoning ? { reasoning: n.reasoning } : {}),
+        ...(n.relationSpan ? { relationSpan: n.relationSpan } : {}),
         // `!== undefined ? ... : {}`: dead by construction, not an untested branch.
         // tools-free.ts:657 is the only place a MapNode is ever minted, and its
         // object literal always carries a `descGrounded` field (a rounded number,

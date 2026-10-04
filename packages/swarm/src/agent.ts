@@ -1270,17 +1270,44 @@ export interface HarvestClassifyDeps {
  * them on the mission's claim the moment the call lands.
  */
 export function makeHarvestClassify(deps: HarvestClassifyDeps): HarvestClassify {
+  // SAME SIX-TO-EIGHT-FIELD SET sweep.ts's own classify schema declares
+  // (packages/sweep/src/sweep.ts's classifyHost), in the SAME order — not
+  // just the same vocabulary. This closure renders classify.md's composed
+  // text unmodified (see HarvestClassifyDeps.template above), and that
+  // doctrine's "Answer with" line has asked for `reasoning` and
+  // `relationSpan` since 9a96f2f added them — this schema stopped at the
+  // five fields that predate that commit, which touched packages/core,
+  // packages/sweep and packages/web, but not this schema. A model
+  // handed this schema could never answer two of the eight fields its own
+  // prompt instructs it to fill, silently, because `generateObject` enforces
+  // the schema as the real contract — unlike sweep.ts's classify call, where
+  // the schema and the prompt were extended together. `reasoning` sits right
+  // after `relation`, not after `spans`, for the reason sweep.ts's own
+  // schema comment measures: structured-output decoding fills fields in
+  // schema-declaration order, and a trailing optional field a model has
+  // already spent its output on two required fields ahead of gets answered
+  // at a far lower rate (26% there against 85% for the field that sits next
+  // to its own required counterpart).
   const schema = z.object({
     name: z.string(),
     kind: z.enum(JUDGED_KINDS),
     what: z.string().describe("what it is, one line, from the page itself"),
     relation: z.enum(JUDGED_RELATIONS),
+    reasoning: z
+      .string()
+      .optional()
+      .describe("one sentence: the single decisive fact that settled kind and relation"),
     why: z.string().describe("why it belongs on this map, stated against the anchor"),
     spans: z
       .array(z.string())
       .min(1)
       .max(3)
       .describe("1-3 short quotes copied character-for-character from the page, together backing the what"),
+    relationSpan: z
+      .string()
+      .min(8)
+      .optional()
+      .describe("one quote copied character-for-character from the page, backing the RELATION specifically, not the what"),
   })
   return async (h, pageText, opts) => {
     const started = Date.now()

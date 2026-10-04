@@ -52,8 +52,9 @@ const usage = {
   outputTokens: { total: 50, text: 50, reasoning: 0 },
 }
 
-/** A mock that records the exact text each call carried, answering ANSWER. */
-function scripted(): { model: MockLanguageModelV4; seen: string[] } {
+/** A mock that records the exact text each call carried, answering `answer`
+ *  (ANSWER by default). */
+function scripted(answer: unknown = ANSWER): { model: MockLanguageModelV4; seen: string[] } {
   const seen: string[] = []
   const model = new MockLanguageModelV4({
     doGenerate: async ({ prompt }) => {
@@ -64,7 +65,7 @@ function scripted(): { model: MockLanguageModelV4; seen: string[] } {
         .join("\n")
       seen.push(text)
       return {
-        content: [{ type: "text" as const, text: JSON.stringify(ANSWER) }],
+        content: [{ type: "text" as const, text: JSON.stringify(answer) }],
         finishReason: { unified: "stop" as const, raw: undefined },
         usage,
         warnings: [],
@@ -107,6 +108,26 @@ describe("makeHarvestClassify over the real composed classify.md", () => {
     expect(out).toEqual(ANSWER)
     // (1000 in + 50 out) × $10/M each — the closure's own billing arithmetic.
     expect(usd).toBeCloseTo(0.0105, 6)
+  })
+
+  it("keeps reasoning and relationSpan when the model answers them — the doctrine's own 'Answer with' line names both, and the schema used to strip them silently", async () => {
+    // Before this schema carried `reasoning`/`relationSpan`, zod's default
+    // object parsing would have STRIPPED both from `out` rather than
+    // throwing — classify.md's own instruction to answer with them was
+    // never enforceable AND never visibly broken, which is exactly how the
+    // gap outlived 9a96f2f. This pins the fix: both fields now survive.
+    const rich = scripted({
+      ...ANSWER,
+      reasoning: "ranks vendors, including the anchor",
+      relationSpan: "Rival sells a fraud scoring API",
+    })
+    const h: HostCandidate = { host: "rival.example", seenIn: 2, intents: [], titles: [], desc: "" }
+    const { out } = await classifyOver(rich.model)(h, PAGE)
+    expect(out.reasoning).toBe("ranks vendors, including the anchor")
+    expect(out.relationSpan).toBe("Rival sells a fraud scoring API")
+    // Every ANSWER field still parses too — the addition did not narrow
+    // or reorder anything already required.
+    expect(out).toMatchObject(ANSWER)
   })
 
   it("passes a recorded road verbatim, and frames bare intents without inventing query text", async () => {
