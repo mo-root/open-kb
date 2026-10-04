@@ -6408,4 +6408,71 @@ same `esbuild` build-script warning SELF-623 already explains). `pnpm check
 && pnpm test` both exit 0: 3382 tests passing, 13 skipped — identical to
 SELF-633's own count, as expected for a read-only fire.
 
+**SELF-635 (2026-10-04 overnight fire) — a genuinely new angle: `Dockerfile`
+and `.dockerignore` had never been touched by a commit on this branch and
+are never named anywhere in this document — confirmed by diffing every file
+in the repo against `git log a7bbc57..HEAD --name-only` and grepping this
+file for both basenames, both came back empty before this entry.** Read
+both end to end rather than just grepping, same as every other first-read
+file this backlog tracks.
+
+Found nothing broken, but found real gaps in what had ever been checked
+rather than just asserted in a comment:
+
+- The two build commands the image actually runs were never run standalone
+  before. Ran both by hand: `rm -rf packages/{core,providers,sweep}/dist &&
+  pnpm --filter @open-kb/core --filter @open-kb/providers --filter
+  @open-kb/sweep exec tsc -b` rebuilt all three from nothing (exit 0, `dist/
+  src/*.{js,d.ts}` present in each); `pnpm --filter @open-kb/web build`
+  (33s) exits 0 with no deprecation warnings and prints `ƒ Proxy
+  (Middleware)`, confirming SELF-632's `proxy.ts` rename still satisfies
+  Next 16 two fires later, under the literal command the image's build
+  stage runs, not an approximation of it.
+- `next.config.ts:65`'s `OPENKB_RUNS_DIR ??= path.join(repoRoot, "runs")`
+  (`repoRoot = path.resolve(import.meta.dirname, "../..")`, and
+  `next.config.ts` lives at `packages/web/` in the image) resolves to
+  `/app/runs` — the exact literal the Dockerfile's own `ENV
+  OPENKB_RUNS_DIR=/app/runs` hardcodes. The `ENV` is redundant with the
+  `??=` fallback, not wrong; traced rather than assumed, since a mismatch
+  here is exactly the class of bug ("ephemeral on most hosts" silently
+  pointing somewhere unwritable) `lib/runs.ts`/`api-error.ts`'s large
+  `OPENKB_RUNS_DIR` test suites exist to catch at a layer below this one.
+- `next.config.ts`'s `outputFileTracingIncludes` comment makes two
+  measured-sounding claims about a built image's file-tracing manifest
+  (`/api/map` gets `prompts/`, every function gets `demo/maps/*.json`) that
+  this branch's own history never re-checked against an actual
+  `.next/**/*.nft.json` — grepped this document for `.nft.json` first and
+  found no prior fire had opened one. Built the web app and read the
+  manifests directly: `api/map/route.js.nft.json` lists 156 files, 21 of
+  them under `prompts/` (the full `prompts/agents/*.md` set, confirmed by
+  name); all 18 page/route `.nft.json` files list exactly the same 6 files
+  under `demo/maps/` (`demo/maps/*.json` on disk is also 6 files, counted),
+  and `middleware.js.nft.json`/the two `next-server*.js.nft.json` list 0 —
+  the proxy and the server runtime correctly don't carry either glob. Both
+  claims hold, now against real tracer output instead of the comment's own
+  say-so.
+- `.dockerignore`'s root-anchored `assets`/`docs`/`.claude` excludes could
+  in principle catch something the web app reads at runtime; checked
+  `packages/web/public/` (what Next actually serves, per `ScrollFilm.tsx`/
+  `GraphCanvas.tsx`/`bake-layouts.ts`) is a different, non-root-anchored
+  path untouched by any of those rules.
+
+Could not verify the one thing that would have made this complete: an
+actual `docker build .` of the two-stage image. `docker info` fails here —
+`dial unix /var/run/docker.sock: connect: no such file or directory` — this
+sandbox has the `docker` CLI but no daemon behind it, a structural gap like
+the missing `runs/` directory other BLOCKED items have hit, not a live/paid
+call and not fixable by writing a fixture (there is no fixture for "does a
+multi-stage image build"). Re-scoped to what a daemon-less sandbox can
+actually check — the literal commands, the literal env resolution, the
+literal tracer output — and that narrowed scope came back fully verified
+clean, so this is not marked BLOCKED: nothing named above is left undone,
+only the one thing (the image build itself) that was never in reach.
+
+No code or doc change beyond this entry. `pnpm check && pnpm test` both
+exit 0: 3382 tests passing, 13 skipped — unchanged, as expected for a
+read/build-only fire.
+
+Backlog item: SELF-635
+
 Backlog item: SELF-634 - BLOCKED
