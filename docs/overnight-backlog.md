@@ -6219,3 +6219,49 @@ skipped — identical to SELF-627's own count, as expected for a
 comment-only change.
 
 Backlog item: SELF-628
+
+**SELF-629 (2026-10-04 overnight fire) — two genuinely new checks, neither
+tried by any prior fire, found nothing to fix.**
+
+First: re-ran `pnpm audit` (clean, read-only, no network write) three days
+after SELF-590 closed the last finding — 0 vulnerabilities, same as then, so
+no newly-disclosed advisory has landed against this dependency tree since.
+
+Second: verified the one arithmetic claim in README.md's "## The agents"
+section (the `OPENKB_TRIAGE`/`OPENKB_SECOND_LOOK` paragraph) that no prior
+SELF-<n> had checked — "4.6% of hosts skipped, pooled over the 28 runs that
+record it, 1,283 of 28,182." `1283 / 28182 = 4.5519…%`, which rounds to 4.6%
+correctly. Could not go further than the arithmetic itself: the pooled counts
+(1,283/28,182 and the adjacent "716 asked and 324 rescued") are derived from
+real run files under `/runs/`, which `.gitignore:44` keeps out of every
+checkout on purpose (confirmed: no `runs/` directory exists in this
+sandbox) — the same boundary that already gates seven live-fixture test
+suites dark (see `pnpm check`'s skip census). Recomputing those two counts
+from scratch would need a live sweep, which this branch's rules forbid, so
+the claim is accepted on the rounding check alone and recorded here so a
+future fire does not re-derive it expecting a different answer.
+
+While reading that paragraph, also re-checked `packages/web/lib/viewTypes.ts`
+and `packages/web/lib/notes-view.ts` end to end for the one bug class B3 and
+SELF-545's `FAMILY_TONE` finding both turned out to be — a closed union whose
+gloss/lookup map falls one member short. Every `Record` keyed on a relation,
+tier or family in either file, plus the two siblings they document
+themselves against (`kb-from-run.ts`'s `RELATION_WEIGHT`, `components/
+ui.tsx`'s `TIER_TONES`): `RELATION_BLURB` (14 keys — `RELATION_WEIGHT`'s 13
+real relations plus `anchor`, a deliberate superset, not a gap);
+`FAMILY_TONE` (4/4 `QueryFamily` members, already fixed by SELF-545);
+`TIER_BLURB`/`TIER_TONES` (`ui.tsx:63-67`)/`TIER_RANK` (`notes-view.ts:23-27`)
+(3/3 `own-page`/`page`/`snippet`, each with an explicit, correctly-ordered
+fallback for an unrecognised value). None short a member. `notes-view.ts`'s
+`orderNotes`/`relationFacets`/`noteHaystack`/`filterNotes` were also read in
+full — the sort keys, the single-source-of-truth note on `relationFacets` not
+duplicating `RELATION_WEIGHT`, and the absorbed-name haystack all do what
+their own comments claim.
+
+No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`; same `esbuild` build-script warning SELF-623 already
+explains). `pnpm check && pnpm test` both exit 0: 3379 tests passing, 13
+skipped — identical to SELF-628's own count, as expected for a read-only
+fire.
+
+Backlog item: SELF-629 - BLOCKED
