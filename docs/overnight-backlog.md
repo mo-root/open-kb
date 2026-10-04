@@ -6567,3 +6567,61 @@ being silently stripped. `pnpm check && pnpm test` both exit 0: 3385 tests
 passing (up from 3382, three new), 13 skipped — same gated census.
 
 Backlog item: SELF-636
+
+**SELF-637 (2026-10-04 overnight fire) — re-ran `jscpd` clone detection over
+the whole four-package `src` tree, a check SELF-617 explicitly declined to
+redo narrowed to two files; the one new clone it surfaced traced to a
+by-design pair, not a drift risk.** SELF-615 installed `jscpd@5.4.0` once,
+fixed the one real duplicate it found, and confirmed the tool was clean
+afterward; SELF-617 later re-checked only the two files SELF-615/616 had
+just touched (by coverage, not `jscpd`) and said explicitly that re-walking
+`jscpd`'s own ground was out of scope for that fire. No fire since has run
+`jscpd` again over the full tree, and five commits have touched
+`packages/{core,sweep,swarm,providers}/src` since SELF-615's run — most
+citation-drift or ReDoS-guard sized, but one (`f2089eb`, SELF-636 above)
+added two new optional fields to a node shape threaded through four files,
+exactly the kind of change that grows a new copy-pasted shape.
+
+Ran `pnpm dlx jscpd@5.4.0 --min-lines 10 --min-tokens 50` over
+`packages/{core,sweep,swarm,providers}/src`, excluding tests. Two clones,
+same count as SELF-615 left behind: the `sweep.ts:2274-2285` vs.
+`:2374-2384` token-accounting pair SELF-615 already traced to the
+call/retry split of one `call()` closure and ruled intentional (unchanged
+since, confirmed by re-reading both spans), and one neither SELF-615 nor
+any later fire had seen before — `packages/swarm/src/map.ts:246-256`
+(`MapState.entities()`'s optional-field spread) vs.
+`packages/swarm/src/tools-free.ts:680-684` (`rememberTool`'s new-node
+object literal). Read both in full against `MapNode`'s current field list
+(`map.ts:53-115`, now 17 fields after SELF-636 added `reasoning`/
+`relationSpan`) rather than trusting the line match: `entities()` spreads
+every optional `MapNode` field (`because`, `unreadableReason`, `settledBy`,
+`reasoning`, `relationSpan`, `descGrounded`) into `EntityRow`, and the
+new-node literal sets the same six when constructing one — but the two
+sides exist for opposite reasons (one serializes a node that already
+exists, the other mints one that does not) and `EntityRow`'s own doc
+comments (`map.ts:137-152`) independently name every field as "carried
+into the run JSON under the same name," so there is no third place either
+side could silently fall out of sync with — unlike SELF-615's rival-mapping
+clone, which was two independently-typed-out literals for the same input.
+Confirmed no field is missing on either side: `key`, `evidence`,
+`contributions` and `retracted` are the only `MapNode` members `entities()`
+omits, and all three are deliberately unserialized (same file's own
+comments at `map.ts:107`, `:154` name why). Also confirmed the harvest path
+that creates these nodes (`tools-paid.ts:761-819`'s `landOne`) and the
+model-facing `remember` tool's own zod schema (`agent.ts:406-442`) stay
+correctly separate — the schema never exposes `reasoning`/`relationSpan`/
+`unreadableReason`/`settledBy` to a model, exactly as `map.ts`'s own doc
+comments claim, and the merge branch (`tools-free.ts:737-740`) carries
+both new fields on an `incomingStronger` merge the same way the new-node
+branch does, matching SELF-636's own description of that fix. Not a clone
+to merge: forcing one shared function here would couple "build a node" to
+"read a node back," two call sites with no third reader to protect from
+drift.
+
+No code or doc change. `pnpm install --frozen-lockfile` first (fresh
+clone, no `node_modules`; same `esbuild` build-script warning SELF-623
+already explains). `pnpm check && pnpm test` both exit 0: 3385 tests
+passing, 13 skipped — identical to SELF-636's own count, as expected for a
+read-only fire.
+
+Backlog item: SELF-637 - BLOCKED
