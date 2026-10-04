@@ -68,22 +68,29 @@ const RESERVE_USD = 3
  * started, which is the number that matters and is true whatever the key is
  * configured to allow.
  */
-async function keyUsage(): Promise<number> {
-  const res = await fetch("https://openrouter.ai/api/v1/key", {
-    headers: { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}` },
-  })
-  if (!res.ok) throw new Error(`could not read key usage: ${res.status}`)
-  const { data } = (await res.json()) as { data: { usage: number } }
-  return data.usage
+interface KeyInfo {
+  usage: number
+  limit: number | null
 }
 
-async function headroom(): Promise<number> {
+/** One call to OpenRouter's key endpoint. `usage` and `limit` arrive together
+ *  in its response — this used to be two functions, each fetching the same
+ *  URL to read the one field it needed, which cost this loop two requests
+ *  per target where one line of arithmetic over one response would do. */
+async function keyInfo(): Promise<KeyInfo> {
   const res = await fetch("https://openrouter.ai/api/v1/key", {
     headers: { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}` },
   })
-  if (!res.ok) throw new Error(`could not read key limit: ${res.status}`)
-  const { data } = (await res.json()) as { data: { limit: number | null; usage: number } }
-  return data.limit === null ? Number.POSITIVE_INFINITY : data.limit - data.usage
+  if (!res.ok) throw new Error(`could not read key info: ${res.status}`)
+  const { data } = (await res.json()) as { data: KeyInfo }
+  return data
+}
+
+/** Pure arithmetic over a `keyInfo()` reading, split out so it can be tested
+ *  without a network call: the key's own remaining room, or infinite when it
+ *  carries no limit at all. */
+export function headroomOf(info: KeyInfo): number {
+  return info.limit === null ? Number.POSITIVE_INFINITY : info.limit - info.usage
 }
 
 export interface SweepSummary {
@@ -125,8 +132,9 @@ async function main() {
   const queries = Number(process.argv[3] ?? 30)
   if (!existsSync(OUT)) mkdirSync(OUT, { recursive: true })
 
-  const startUsage = await keyUsage()
-  const left = await headroom()
+  const start = await keyInfo()
+  const startUsage = start.usage
+  const left = headroomOf(start)
   console.log(`hard ceiling $${budget} · ${queries} queries per map · ${TARGETS.length} targets`)
   if (Number.isFinite(left) && left < RESERVE_USD) {
     console.log(`the key has $${left.toFixed(2)} of its own headroom, below the $${RESERVE_USD} reserve. stopping.`)
@@ -137,12 +145,16 @@ async function main() {
   let spent = 0
   for (const t of TARGETS) {
     // The key's own count, so an under-reporting run still hits the ceiling.
-    const real = (await keyUsage()) - startUsage
+    // One reading, not two: `real` and `room` used to come from separate
+    // fetches of the same endpoint, which cost this loop a request each that
+    // the response already answered together.
+    const info = await keyInfo()
+    const real = info.usage - startUsage
     if (real >= budget) {
       console.log(`\nstopping: the key has spent $${real.toFixed(2)} of the $${budget} ceiling`)
       break
     }
-    const room = await headroom()
+    const room = headroomOf(info)
     if (Number.isFinite(room) && room < RESERVE_USD) {
       console.log(`\nstopping: below the $${RESERVE_USD} reserve on the key itself`)
       break
@@ -169,7 +181,7 @@ async function main() {
     appendFileSync(LOG, `${JSON.stringify({ ...row, at: new Date().toISOString() })}\n`)
   }
 
-  console.log(`\nspent $${((await keyUsage()) - startUsage).toFixed(2)} by the key's own count. rows in ${LOG}`)
+  console.log(`\nspent $${((await keyInfo()).usage - startUsage).toFixed(2)} by the key's own count. rows in ${LOG}`)
 }
 
 /** Only when run as a command. Same guard shape as `scripts/query-yield.ts`. */

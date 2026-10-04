@@ -6265,3 +6265,39 @@ skipped — identical to SELF-628's own count, as expected for a read-only
 fire.
 
 Backlog item: SELF-629 - BLOCKED
+
+**SELF-630 (2026-10-04 overnight fire) — `scripts/overnight.ts` fetched its own
+OpenRouter key info twice per target, where one call already carries both
+fields it needed.** Found reading `scripts/*.ts` beyond `sweep.ts`
+(D-scope: "areas nobody has swept"), the same class SELF-55/56/509 already
+worked in `query-yield.ts`/`corroboration-arrival.ts`/the CLI entrypoints —
+this file was the one script in that directory never read end to end.
+
+`keyUsage()` and `headroom()` each called `fetch("https://openrouter.ai/
+api/v1/key", …)` independently to read one field (`data.usage`, then
+`data.limit`) off the SAME response — `main()`'s setup called both back to
+back, and the per-target loop called both again on every iteration of up to
+14 targets, for up to 30 requests a batch to an endpoint whose one response
+already answers both questions. Not a correctness bug (each fetch returns a
+consistent `{limit, usage}` pair on its own, so `real` and `room` were never
+computed from mismatched snapshots) — a plain inefficiency, the kind this
+D-scope exists to find once nobody is reporting it as a user complaint.
+
+Merged into one `keyInfo(): Promise<{usage, limit}>` and pulled the
+`limit === null ? Infinity : limit - usage` arithmetic into a standalone
+`headroomOf()`, exported and unit-tested directly (three cases: a real
+limit, the `null`-limit account this repo's own key actually has, and usage
+already past the limit) — the half of the merge a live key is not needed to
+exercise. `main()`'s setup and per-loop-iteration reads now each cost one
+request instead of two. No behavior change: the same two numbers are
+compared against the same two thresholds, just read from one response
+instead of two independent ones.
+
+Could not exercise `keyInfo()` itself or a live `main()` run — both need a
+real `OPENROUTER_API_KEY` and a real outbound call, exactly what this loop
+is forbidden from making. `pnpm install --frozen-lockfile` first (fresh
+clone, no `node_modules`; same `esbuild` build-script warning SELF-623
+already explains). `pnpm check && pnpm test` both exit 0: 3382 tests
+passing (up from 3379, three new `headroomOf` cases), 13 skipped.
+
+Backlog item: SELF-630

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { parseSweepStdout } from "../scripts/overnight.js"
+import { headroomOf, parseSweepStdout } from "../scripts/overnight.js"
 
 /**
  * `scripts/overnight.ts` spawns `pnpm sweep <domain> <queries>` as a
@@ -90,5 +90,32 @@ describe("parseSweepStdout", () => {
     expect(row.hosts).toBe(0)
     expect(row.products).toBe(8)
     expect(row.markets).toBe(3)
+  })
+})
+
+/**
+ * `headroomOf` is the arithmetic `keyUsage()`/`headroom()` used to split
+ * across two separate fetches of the same OpenRouter endpoint — one call per
+ * field it needed from a response that carries both. Pulled into its own
+ * function (and the two callers merged into one `keyInfo()`) so the loop in
+ * `main()` costs one request per target instead of two; this is the pure half
+ * of that merge, the half a live key is not needed to exercise.
+ */
+describe("headroomOf", () => {
+  it("is the limit minus the usage, when the key has a limit", () => {
+    expect(headroomOf({ usage: 12, limit: 20 })).toBe(8)
+  })
+
+  it("is infinite when the key carries no limit at all", () => {
+    // The key this repo runs under draws on an account balance with no
+    // per-key limit set — `data.limit` reads `null` from OpenRouter, not 0 or
+    // undefined, and `null - usage` is `NaN`, which fails every `< RESERVE_USD`
+    // comparison silently rather than stopping the batch. Infinity is the
+    // value that keeps "is there room" true without special-casing the caller.
+    expect(headroomOf({ usage: 12, limit: null })).toBe(Number.POSITIVE_INFINITY)
+  })
+
+  it("can read negative, when usage has already passed the limit", () => {
+    expect(headroomOf({ usage: 25, limit: 20 })).toBe(-5)
   })
 })
