@@ -6876,3 +6876,65 @@ skipped — identical to SELF-641's own count, as expected for a docs-only
 change.
 
 Backlog item: SELF-642
+
+**SELF-643 (2026-10-04 overnight fire) — the four backend packages' `tsconfig.json`
+had never been read by full path in this document; found a real strictness
+asymmetry against `packages/web/tsconfig.json`, tested it, and found the fix
+too large for one sitting.** `tsconfig.base.json` (read and cited 17 times in
+this document already, by `tsconfig.root.json` and `packages/web/tsconfig.json`
+each quoting its own flag list) sets nine hardening flags, `noUncheckedIndexedAccess`
+among them. `packages/{core,swarm,sweep,providers}/tsconfig.json` each just
+`"extends": "../../tsconfig.base.json"` — all nine apply there untouched. Never
+checked until now: the full path of each of these four files is a zero-hit grep
+against this document's own history (confirmed before starting), so the "areas
+nobody has swept" framing this D section opens with still applied to them
+specifically, even though `tsconfig.base.json`/`tsconfig.root.json`/the web
+config have each individually been read several times over.
+
+`packages/web/tsconfig.json` cannot `extends` the base file at all — `tsconfig.
+root.json`'s own comment already explains why ("compiled by Next... bundler
+resolution... DOM lib... checked by its own `tsc --noEmit`") — so it hand-copies
+eight of the base file's nine flags one at a time: `strict`, `noUnusedLocals`,
+`noUnusedParameters`, `noImplicitReturns`, `noFallthroughCasesInSwitch`,
+`noImplicitOverride`, `allowUnusedLabels: false`, `noUncheckedSideEffectImports`
+are all there, verbatim. `noUncheckedIndexedAccess` is the one of the nine
+missing (`declaration` is the other, correctly absent — web is not a library
+with an `outDir`). Every backend package gets array/index access typed as
+`T | undefined`; the web app, which does the same kind of array/record indexing
+in its own graph and UI code, does not.
+
+Tested whether this is a real gap rather than a deliberate omission: added
+`"noUncheckedIndexedAccess": true` to `packages/web/tsconfig.json` locally and
+ran `tsc --noEmit` (`pnpm install --frozen-lockfile` first, fresh clone). 60
+errors across 15 files (`GraphCanvas.tsx`, `KbOverview.tsx`, `NotesTab.tsx`,
+`TabBar.tsx`, `Donut.tsx`, `Sparkline.tsx`, `AgentPanel.tsx`, `lib/graph/
+cluster.ts`, `lib/kb-from-run.ts`, `lib/nodeTypes.ts`, plus five `.test.ts(x)`
+files hitting the same sites from their own fixtures). Read a representative
+sample end to end rather than trusting the count: `kb-from-run.ts:487`'s
+`RELATION_WEIGHT[e.relation] ?? RELATION_WEIGHT.none` flags on the `.none`
+side too, because `RELATION_WEIGHT: Record<string, number>`'s string index
+signature makes even a literal dotted property read possibly-undefined under
+this flag — not a bug, a type-widening artifact of the `Record<string,...>`
+declaration. `GraphCanvas.tsx`'s `parseHex`'s `let h = m[1]` flags because a
+regex match array is indexed, even though the pattern's own single capture
+group always matches when `m` is non-null. `TabBar.tsx:97`'s `tabs[to].id`
+flags even though `to` is clamped to `[0, tabs.length-1]` and the function
+already returns early when `i < 0` (which is only possible if `tabs` is
+non-empty in the first place). Every site checked this way was sound by a
+local invariant the type checker cannot see, not a live bug the missing flag
+was hiding.
+
+Reverted the tsconfig edit — `git diff --stat` confirms the tree is back to
+`HEAD` before this entry's own commit. Did not enable the flag: the asymmetry
+is real and worth recording, but a fix is a ~15-file, ~60-site sweep (adding
+`!`/`??`/narrower types site by site, each one needing its own sanity check
+the way the three samples above got), which is exactly the "too large for a
+single sitting" shape this document already has a standing pattern for (see
+SELF-586, the jscpd-fix-scope note, the vitest-major-bump note) — recorded
+here rather than attempted piecemeal, so a future fire picks one file at a
+time with this entry's three sampled cases as the template for "safe, not a
+bug" versus a real one, instead of re-deriving the same 60-error list from
+scratch. No source change. `pnpm check && pnpm test` both exit 0: 3389 tests
+passing, 13 skipped — identical to SELF-642's own count.
+
+Backlog item: SELF-643
