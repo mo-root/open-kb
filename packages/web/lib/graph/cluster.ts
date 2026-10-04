@@ -216,8 +216,11 @@ export function separationShoves(
 
   for (let i = 0; i < discs.length; i++) {
     for (let j = i + 1; j < discs.length; j++) {
-      const a = discs[i]
-      const b = discs[j]
+      // `!`: both loops are bounded by `discs.length`, so `a`/`b` are always
+      // real members — the same loop-bound guarantee `sweep.ts`'s own
+      // `for (i...) items[i]!` sites already rely on.
+      const a = discs[i]!
+      const b = discs[j]!
       const want = a.r + b.r + pad
       let dx = b.x - a.x
       let dy = b.y - a.y

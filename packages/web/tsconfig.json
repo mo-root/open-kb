@@ -16,6 +16,7 @@
     "noImplicitOverride": true,
     "allowUnusedLabels": false,
     "noUncheckedSideEffectImports": true,
+    "noUncheckedIndexedAccess": true,
     "erasableSyntaxOnly": true,
     "noEmit": true,
     "esModuleInterop": true,

@@ -29,8 +29,10 @@ describe("Sparkline drops non-finite values before computing geometry", () => {
 describe("Sparkline handles the degenerate one-point and flat-series cases without dividing by zero", () => {
   it("places a single surviving point at the horizontal midpoint", () => {
     const html = renderToStaticMarkup(<Sparkline values={[5]} width={100} />);
-    const [d] = [...html.matchAll(/<path[^>]*d="([^"]+)"/g)].map((m) => m[1]);
-    expect(d.startsWith("M50.00,")).toBe(true);
+    // `!`/`!`: a single-point series always renders exactly one <path>, and the
+    // pattern's one capture group is not optional once that path matches.
+    const [d] = [...html.matchAll(/<path[^>]*d="([^"]+)"/g)].map((m) => m[1]!);
+    expect(d!.startsWith("M50.00,")).toBe(true);
   });
 
   it("falls back to a span of 1 rather than NaN when every value is equal", () => {

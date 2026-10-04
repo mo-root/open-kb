@@ -33,7 +33,9 @@ function renderedHref(): string {
   const html = renderToStaticMarkup(<SkipLink />)
   const m = /<a[^>]*\shref="([^"]+)"/.exec(html)
   if (!m) throw new Error("SkipLink did not render an <a href> at all")
-  return m[1]
+  // `!`: the pattern's one capture group is not optional, so it is always
+  // present whenever the overall match (`m`) is non-null.
+  return m[1]!
 }
 
 describe("SkipLink: renders the escape hatch its own comment promises", () => {

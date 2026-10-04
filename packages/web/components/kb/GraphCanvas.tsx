@@ -289,8 +289,11 @@ export function mixHex(hex: string, toward: string, t: number): string {
 export function parseHex(hex: string): [number, number, number] | null {
   const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim());
   if (!m) return null;
-  let h = m[1];
-  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+  // `!`: the pattern's one capture group is not optional, so it is always
+  // present whenever the overall match (`m`) is non-null.
+  let h = m[1]!;
+  // `!`: the `h.length === 3` guard means all three indices exist.
+  if (h.length === 3) h = h[0]! + h[0]! + h[1]! + h[1]! + h[2]! + h[2]!;
   return [
     parseInt(h.slice(0, 2), 16),
     parseInt(h.slice(2, 4), 16),
@@ -301,7 +304,9 @@ export function parseHex(hex: string): [number, number, number] | null {
 export function hexToRgba(hex: string, alpha: number): string {
   const m = /^#([0-9a-f]{6})$/i.exec(hex.trim());
   if (!m) return hex;
-  const v = parseInt(m[1], 16);
+  // `!`: same reasoning as `parseHex` above — the one capture group is not
+  // optional, so it is always present whenever `m` is non-null.
+  const v = parseInt(m[1]!, 16);
   return `rgba(${(v >> 16) & 255},${(v >> 8) & 255},${v & 255},${alpha})`;
 }
 
@@ -1218,8 +1223,9 @@ export function GraphCanvas({
       if (e.key !== "Tab") return;
       const els = focusables();
       if (els.length === 0) return;
-      const first = els[0];
-      const last = els[els.length - 1];
+      // `!`: the length guard above means both indices exist.
+      const first = els[0]!;
+      const last = els[els.length - 1]!;
       const active = document.activeElement as HTMLElement | null;
       if (e.shiftKey) {
         if (active === first || !wrap.contains(active)) {

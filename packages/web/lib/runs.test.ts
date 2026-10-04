@@ -452,7 +452,9 @@ describe("the filename each CLI writes, against the reader that parses it back",
         if (!m) {
           throw new Error(`${file} writes a stamped name in a shape this test cannot read: ${line.trim()}`)
         }
-        found.set(file, { name: `${m[1]}${m[2]}${SLUG}-${STAMP}${m[3]}`, dir: m[1], ext: m[3] })
+        // `!`: all three groups in WRITES are non-optional, always present on
+        // a match.
+        found.set(file, { name: `${m[1]}${m[2]}${SLUG}-${STAMP}${m[3]}`, dir: m[1]!, ext: m[3]! })
       }
     }
     return found

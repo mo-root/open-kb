@@ -98,7 +98,9 @@ export function NotesTab({
     if (flat.length === 0) return;
     const i = flat.findIndex((n) => n.path === selected);
     const next = i < 0 ? (dir === 1 ? 0 : flat.length - 1) : (i + dir + flat.length) % flat.length;
-    onSelect(flat[next].path);
+    // `!`: the `flat.length === 0` guard above and the `% flat.length` both
+    // keep `next` in `[0, flat.length - 1]`.
+    onSelect(flat[next]!.path);
   };
 
   const onNavKey = (e: React.KeyboardEvent) => {

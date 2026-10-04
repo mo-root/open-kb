@@ -231,7 +231,9 @@ export function AgentPanel({ chunks }: { chunks: readonly AgentChunk[] }) {
               /* The name is printed only when the speaker CHANGES. Stamping it
                  on every line turns a paragraph into a chat log; printing it at
                  the hand-off is what makes an interleaved stream readable. */
-              const turn = i === 0 || shown[i - 1].agent !== e.agent;
+              // `!`: reached only when `i > 0` (the `i === 0 ||` short-circuits
+              // first), so `i - 1` is a valid index into this same `shown`.
+              const turn = i === 0 || shown[i - 1]!.agent !== e.agent;
               return (
                 <li key={e.id} className="text-sm leading-relaxed">
                   {turn && agents.length > 1 && (

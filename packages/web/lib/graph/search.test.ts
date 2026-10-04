@@ -26,7 +26,7 @@ describe("rankMatches", () => {
     // "apify" prefixes Apify; it appears nowhere in the roundup title, but
     // "api" does — and a prefix must always win.
     const hits = rankMatches(MAP, "api")
-    expect(hits[0].id).toBe("a")
+    expect(hits[0]!.id).toBe("a")
   })
 
   it("finds a node by its domain, not just its title", () => {
@@ -35,8 +35,8 @@ describe("rankMatches", () => {
   })
 
   it("is case-insensitive", () => {
-    expect(rankMatches(MAP, "APIFY")[0].id).toBe("a")
-    expect(rankMatches(MAP, "bright")[0].id).toBe("c")
+    expect(rankMatches(MAP, "APIFY")[0]!.id).toBe("a")
+    expect(rankMatches(MAP, "bright")[0]!.id).toBe("c")
   })
 
   it("breaks a tie toward the better-connected node", () => {
@@ -44,7 +44,7 @@ describe("rankMatches", () => {
       item({ id: "low", title: "Same Name", deg: 1 }),
       item({ id: "high", title: "Same Name", deg: 30 }),
     ]
-    expect(rankMatches(tie, "same")[0].id).toBe("high")
+    expect(rankMatches(tie, "same")[0]!.id).toBe("high")
   })
 
   it("never lets degree overturn a prefix hit", () => {
@@ -54,7 +54,7 @@ describe("rankMatches", () => {
       item({ id: "hub", title: "a big scrapfly comparison", deg: 90 }),
       item({ id: "exact", title: "Scrapfly", deg: 1 }),
     ]
-    expect(rankMatches(items, "scrapfly")[0].id).toBe("exact")
+    expect(rankMatches(items, "scrapfly")[0]!.id).toBe("exact")
   })
 
   it("caps the list so the dropdown cannot cover the graph", () => {

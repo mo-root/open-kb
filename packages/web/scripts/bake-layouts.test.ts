@@ -48,7 +48,9 @@ const CANVAS = readFileSync(
 function constant(src: string, name: string): string {
   const m = src.match(new RegExp(`\\b${name}\\s*=\\s*([\\d.]+)`))
   if (!m) throw new Error(`no ${name} assignment found`)
-  return m[1]
+  // `!`: the pattern's one capture group is not optional, so it is always
+  // present whenever the overall match (`m`) is non-null.
+  return m[1]!
 }
 
 describe("bake-layouts.ts's lobe force: pinned to GraphCanvas's makeClusterForce", () => {

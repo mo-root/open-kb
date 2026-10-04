@@ -132,7 +132,7 @@ describe("graphOf, entity-to-entity edges", () => {
   it("still returns a one-node graph — the anchor alone — when a run kept nothing", () => {
     const g = graphOf(run([]))
     expect(g.nodes).toHaveLength(1)
-    expect(g.nodes[0].kind).toBe("anchor")
+    expect(g.nodes[0]!.kind).toBe("anchor")
   })
 })
 

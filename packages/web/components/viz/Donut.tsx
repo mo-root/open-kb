@@ -97,7 +97,8 @@ export function Donut({
           cy={c}
           r={r}
           fill="none"
-          stroke={ring[0].color}
+          // `!`: this branch only renders when `single` (`ring.length === 1`).
+          stroke={ring[0]!.color}
           strokeWidth={thickness}
         />
       ) : (

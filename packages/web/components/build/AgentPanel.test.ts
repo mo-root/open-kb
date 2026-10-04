@@ -121,7 +121,7 @@ describe("buildEntries: text deltas merge only into the same agent's own last en
 
   it("falls back to the UNKNOWN agent when a chunk carries no agent field", () => {
     const out = buildEntries([{ type: "text", text: "hi" }])
-    expect(out[0].agent).toBe("run")
+    expect(out[0]!.agent).toBe("run")
   })
 })
 
@@ -148,7 +148,7 @@ describe("buildEntries: tool-call chunks become a tool entry", () => {
 
   it("names the tool 'tool' when toolName is absent", () => {
     const out = buildEntries([{ type: "tool-call", input: "x", agent: "discover" }])
-    expect(out[0].tool).toBe("tool")
+    expect(out[0]!.tool).toBe("tool")
   })
 })
 

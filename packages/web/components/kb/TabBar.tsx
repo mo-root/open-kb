@@ -94,7 +94,9 @@ export function TabBar<T extends string>({
       : -1;
     if (to < 0) return;
     e.preventDefault();
-    const next = tabs[to].id;
+    // `!`: `to` is always in `[0, tabs.length - 1]` — `i >= 0` means `tabs` is
+    // non-empty, and every branch above clamps or wraps `to` into that range.
+    const next = tabs[to]!.id;
     onChange(next);
     // Focus follows selection: this is an automatic-activation tablist, so the
     // panel and the focus ring must not drift apart.

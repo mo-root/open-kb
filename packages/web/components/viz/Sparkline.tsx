@@ -72,7 +72,8 @@ export function Sparkline({
     2,
   )} L${x(0).toFixed(2)},${(height - pad).toFixed(2)} Z`;
 
-  const last = clean[n - 1];
+  // `!`: the `clean.length === 0` guard above means `n >= 1`.
+  const last = clean[n - 1]!;
   const label =
     ariaLabel ?? `sparkline, ${n} points, ${min} to ${max}, ending ${last}`;
 

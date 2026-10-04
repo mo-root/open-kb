@@ -328,7 +328,8 @@ describe("tetherAspect", () => {
   it("survives a pane that has not been measured yet", () => {
     // The ResizeObserver has not fired on the first render; 0 must not become
     // a division by zero that NaNs every node position.
-    for (const [w, h] of [[0, 0], [800, 0], [0, 600], [-1, 5]]) {
+    const cases: [number, number][] = [[0, 0], [800, 0], [0, 600], [-1, 5]]
+    for (const [w, h] of cases) {
       const a = tetherAspect(w, h)
       expect(Number.isFinite(a.x)).toBe(true)
       expect(Number.isFinite(a.y)).toBe(true)

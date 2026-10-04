@@ -67,8 +67,8 @@ describe("decluttering", () => {
     // Order of the render list must not decide who gets named.
     const leaf = cand({ id: "leaf", priority: 50 })
     const market = cand({ id: "market", priority: -1000, x: 3 })
-    expect(planLabels([leaf, market], opts())[0].id).toBe("market")
-    expect(planLabels([market, leaf], opts())[0].id).toBe("market")
+    expect(planLabels([leaf, market], opts())[0]!.id).toBe("market")
+    expect(planLabels([market, leaf], opts())[0]!.id).toBe("market")
   })
 
   it("does not reorder the caller's array", () => {

@@ -46,7 +46,9 @@ const RIG = readFileSync(
 function constant(src: string, name: string): string {
   const m = src.match(new RegExp(`\\b${name}\\s*=\\s*([\\d.]+)`))
   if (!m) throw new Error(`no ${name} assignment found`)
-  return m[1]
+  // `!`: the pattern's one capture group is not optional, so it is always
+  // present whenever the overall match (`m`) is non-null.
+  return m[1]!
 }
 
 describe("ScrollFilm's TOTAL: pinned to launch-rig.html's own TOTAL", () => {

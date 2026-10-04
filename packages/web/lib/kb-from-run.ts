@@ -484,7 +484,9 @@ function place(result: SweepResult): { kept: Placed[]; noise: Entity[]; edges: E
       path,
       group,
       type: nodeTypeOf(group),
-      relevance: RELATION_WEIGHT[e.relation] ?? RELATION_WEIGHT.none,
+      // `.none!`: a literal key of the object above, always present — only
+      // `e.relation` on the left is the genuinely unchecked lookup.
+      relevance: RELATION_WEIGHT[e.relation] ?? RELATION_WEIGHT.none!,
     })
   }
   return { kept, noise, edges: map.edges }

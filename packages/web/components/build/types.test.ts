@@ -338,7 +338,7 @@ describe("groupPlan: group by intent, largest group first", () => {
     const q = (source: string, q2: string) => ({ q: q2, source: source as never, rationale: "" })
     const groups = groupPlan([q("pain", "p1"), q("switching", "s1"), q("pain", "p2"), q("pain", "p3")])
     expect(groups.map((g) => g.source)).toEqual(["pain", "switching"])
-    expect(groups[0].queries.map((x) => x.q)).toEqual(["p1", "p2", "p3"])
+    expect(groups[0]!.queries.map((x) => x.q)).toEqual(["p1", "p2", "p3"])
   })
 })
 

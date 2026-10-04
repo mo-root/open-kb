@@ -76,7 +76,8 @@ function typeHex(name: string, fromIndex = 0): string {
   re.lastIndex = fromIndex
   let m: RegExpExecArray | null
   while ((m = re.exec(GLOBALS_CSS))) {
-    if (m[1] === name) return m[2].toLowerCase()
+    // `!`: both capture groups are non-optional, always present on a match.
+    if (m[1] === name) return m[2]!.toLowerCase()
   }
   throw new Error(`no --type-${name} found in globals.css from index ${fromIndex}`)
 }

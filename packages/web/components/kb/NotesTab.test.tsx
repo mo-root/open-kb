@@ -111,8 +111,8 @@ describe("NotesTab: groups are built from notes and sorted overview-first", () =
     ])
     const order = ["core", "communities", "players"].map((label) => html.indexOf(`>${label}<`))
     expect(order[0]).toBeGreaterThan(-1)
-    expect(order[0]).toBeLessThan(order[1])
-    expect(order[1]).toBeLessThan(order[2])
+    expect(order[0]).toBeLessThan(order[1]!)
+    expect(order[1]).toBeLessThan(order[2]!)
   })
 
   it("shows every group's item count next to its label", () => {

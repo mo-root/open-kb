@@ -337,8 +337,8 @@ function EcosystemPanel({
 }) {
   const seen = Object.keys(relations);
   const ordered = [
-    ...RELATION_ORDER.filter((k) => relations[k] > 0),
-    ...seen.filter((k) => !RELATION_ORDER.includes(k) && relations[k] > 0),
+    ...RELATION_ORDER.filter((k) => (relations[k] ?? 0) > 0),
+    ...seen.filter((k) => !RELATION_ORDER.includes(k) && (relations[k] ?? 0) > 0),
   ];
   const rows: BarMeterRow[] = ordered.map((k) => ({
     key: k,

@@ -6938,3 +6938,51 @@ scratch. No source change. `pnpm check && pnpm test` both exit 0: 3389 tests
 passing, 13 skipped — identical to SELF-642's own count.
 
 Backlog item: SELF-643
+
+**SELF-644 (2026-10-04 overnight fire) — closed the gap SELF-643 named: enabled
+`noUncheckedIndexedAccess` in `packages/web/tsconfig.json` and fixed every
+resulting error.** SELF-643 judged the fix "too large for a single sitting"
+at 60 errors across 15 files, after sampling three sites and confirming each
+was a type-widening artifact, not a bug. Re-measured from a fresh install
+(this container's `node_modules` was absent; SELF-643's own count was taken
+with it present) — 61 errors across 22 files once test fixtures mirroring
+the same sites are counted individually, one more than SELF-643's 60, from
+a line added since. Fixed all 61, all by the same two moves SELF-643's own
+sample already demonstrated were safe:
+
+- A loop- or length-guard-bounded index (`separationShoves`'s `discs[i]`/
+  `discs[j]`, `TabBar.tsx`'s `tabs[to]`, `NotesTab.tsx`'s `flat[next]`,
+  `GraphCanvas.tsx`'s fullscreen focus-trap `els[0]`/`els[els.length-1]`,
+  `AgentPanel.tsx`'s `shown[i-1]`, `Sparkline.tsx`'s `clean[n-1]`,
+  `Donut.tsx`'s `ring[0]` under `single`) — asserted `!` with a one-line
+  comment naming the guard, the same shape `sweep.ts`'s own pre-existing
+  `items[i]!` sites already use (checked — this flag has applied to the four
+  backend packages all along, and `!` at a bounded index is their standing
+  pattern, not a new one for this fix).
+- A non-optional regex capture group read through an index signature
+  (`GraphCanvas.tsx`'s `parseHex`/`hexToRgba`, plus five `.test.ts(x)` files'
+  own `m[1]`/`m[2]`/`m[3]` reads of their own fixture regexes) — same `!`,
+  same reasoning SELF-643's own `parseHex` sample already gave.
+
+Two sites were a real type fix rather than an assertion: `KbOverview.tsx`'s
+`EcosystemPanel` compared `relations[k] > 0` directly on a `Record<string,
+number>` read; changed to `(relations[k] ?? 0) > 0`, identical result for
+every input (`undefined > 0` and `0 > 0` are both `false`) but now typed.
+`lib/kb-from-run.ts:487`'s `RELATION_WEIGHT[e.relation] ?? RELATION_WEIGHT.
+none` was SELF-643's own named sample — asserted only the `.none` side,
+since the literal key is always present and `e.relation` is the genuinely
+unchecked lookup the `??` exists to cover. `layout.test.ts`'s `for (const
+[w, h] of [[0,0], ...])` destructured from an untyped `number[][]`, where
+every element actually is a fixed pair; gave the array literal a `[number,
+number][]` annotation instead of asserting, since that is what it actually
+is.
+
+Verified non-vacuous the way SELF-643's own samples were: before applying
+the `!`/`??`/annotation fixes, confirmed each flagged line really did
+disappear from `tsc`'s error list once fixed and that no other line moved —
+no bulk sed, each of the 22 files read and edited individually against its
+own surrounding guard. `pnpm check && pnpm test` both exit 0: 3389 tests
+passing, 13 skipped, matching SELF-643's own count (the flag adds
+type-checking, not test cases) — same gated census as SELF-643.
+
+Backlog item: SELF-644
