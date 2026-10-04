@@ -6798,3 +6798,33 @@ pnpm test` both exit 0: 3389 tests passing (up from 3388, one new), 13
 skipped — same gated census as SELF-639.
 
 Backlog item: SELF-640
+
+**SELF-641 (2026-10-04 overnight fire) — CHANGELOG.md's last sync (ca93b73,
+SELF-631) predates two more user-facing fixes.** Same gap this file has now
+been caught in three separate fires (949cfab, then ca93b73, now this one) —
+checked `git log ca93b73..HEAD --oneline` by hand rather than trusting any
+summary, and two of the eight commits in that range are real, user-facing
+fixes with no changelog entry: `f2089eb` (the swarm's harvest-tier classify
+call silently dropped `reasoning`/`relationSpan` on every judgement since
+the placement-ladder commit outgrew its schema — SELF-636) and `4cccabf`
+(`next build` has been printing a Next-16 deprecation warning on every build
+since this repo's Next version, silenced by the `middleware.ts` → `proxy.ts`
+rename — SELF-632). The other six commits in the range (SELF-633/634/635/
+637/638/639, this file's own entries) are read-only sweeps or a jscpd/env
+audit with no shipped behaviour change, matching this file's own "Also in
+this range" exclusion the same way SELF-631 applied it.
+
+Added one bullet each, in the sections their closest siblings already live
+in: the harvest-classify fix beside "Map quality"'s existing `reasoning`/
+`relationSpan` bullet (same feature, the swarm's own copy of the gap sweep's
+classify path already had), the middleware rename under "Bug fixes" beside
+the other build/infra correctness entries (the `packageManager` field, the
+deadline-watchdog fault naming).
+
+No source change. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`; same esbuild build-script warning SELF-623 already
+explains). `pnpm check && pnpm test` both exit 0: 3389 tests passing, 13
+skipped — identical to SELF-640's own count, as expected for a docs-only
+change.
+
+Backlog item: SELF-641

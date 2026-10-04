@@ -227,6 +227,21 @@ hosted web app, or the repo itself would actually notice.
   Now bounded in a `node:vm` context with a 200ms timeout, falling back to
   literal-escaped matching on timeout — the same degrade already used for a
   pattern that fails to parse.
+- The swarm's harvest-tier classify call (judging a residue host via the
+  `harvest` tool) silently dropped every `reasoning` and `relationSpan` a
+  model answered: its schema stopped at the five fields that predated the
+  classify-v2 placement ladder, never grew to the eight fields `classify.md`
+  and the sweep's own classify schema gained alongside it, and
+  `generateObject`'s schema is the real API boundary, so the two fields were
+  stripped on every harvest call since. Both now flow through to the node
+  and the exported entity, same as the sweep's own classify path.
+- `next build` has been silently printing a "middleware file convention is
+  deprecated" warning on every build since this repo's installed Next
+  version (16.3.8); renamed `packages/web/middleware.ts` to `proxy.ts` and
+  its exported function to `proxy`, per Next's own migration path.
+  Behaviourally identical — confirmed against Next's own runtime check that
+  a renamed proxy file errors if it declares an Edge runtime, which this
+  file never did.
 
 ### Repo and docs
 
