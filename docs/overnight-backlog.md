@@ -6688,3 +6688,79 @@ happen.
 three new), 13 skipped — same gated census as SELF-637.
 
 Backlog item: SELF-638
+
+**SELF-639 (2026-10-04 overnight fire) — four angles no prior SELF-<n> had
+named by keyword (credential-leak-through-error-logging, CLI/web env-flag
+drift, an asymmetric `|| 0` fallback, and IDN/Unicode domain handling); all
+four trace to an existing, deliberate design rather than a gap.**
+
+1. **Does a caught fetch error ever print a credential?** The two secrets
+   this codebase sends over the wire (`creds.token` for Bright Data,
+   `OPENROUTER_API_KEY` via the `ai` SDK) are both built into an
+   `Authorization: Bearer …` header. Read every `catch` downstream of a
+   `fetch`/`f()` call that could see that header: both of
+   `packages/providers/src/brightdata.ts`'s call sites (:363, :756) convert
+   a thrown `e` into a hand-built `reason`/`abandoned` string keyed off
+   `e instanceof BlockedHostError`, `callOpts?.signal?.aborted` and
+   `timeout.aborted` — never `String(e)` or `console.error(…, e)` on the raw
+   error, so a `TypeError: fetch failed` (which itself never contains
+   request headers — confirmed against Node/undici's own `fetch` error
+   shape, which carries only a message and an optional `cause`, not the
+   `RequestInit` that produced it) has no path to the log even in principle.
+   The five `console.error` sites that DO print a caught error wholesale
+   (`route.ts:811`, `api-error.ts:136`, `runs.ts:261,314,1105`,
+   `supabase.ts:80,317`) are all downstream of run bookkeeping (persistence,
+   span pumps, the fault logger) — none of them sit between a credentialed
+   fetch and its catch, confirmed by reading each call site's caller chain
+   back to its nearest `fetch`/`f()`. No credential-bearing object is ever
+   within reach of a bare `console.error(err)` in this tree.
+
+2. **CLI/web default-on-flag drift**, the exact class P0-1 fixed once
+   already (`scripts/sweep.ts`'s and `route.ts`'s own copies of the
+   `OPENKB_TRIAGE`/`_SECOND_LOOK`/`_LISTICLE_HARVEST` disable check). Both
+   call sites import the same `disablesFlag` from `packages/core/src/
+   flags.ts` (confirmed by grep — zero hand-copied duplicates remain), whose
+   own doc comment already names this exact drift risk as the reason it was
+   extracted. Nothing to do; recording so a future fire does not re-open a
+   question `flags.ts`'s own header already answers.
+
+3. **`Math.max(0, Math.floor(Number(process.env.OPENKB_RANK_UNLOCK ?? 3) ||
+   0))`** (`sweep.ts:5622-5625`) looked, on first read, like the same `||
+   default` family as `OPENKB_CALL_TIMEOUT_MS`/`OPENKB_RANK_CONCURRENCY`
+   nearby — except its fallback is `0`, not its own `??` default (`3`),
+   which those others all match. Read the three lines of comment directly
+   above it: "a blocked front page… earns one unlocked retry… OPENKB_RANK_
+   UNLOCK=0 turns it off" — `0` is the feature's own documented "off" value,
+   so unset (`3`, a real retry budget), explicitly `"0"` and a malformed
+   string (`NaN`) all correctly collapse to the same safe answer, and the
+   outer `Math.max(0, …)` additionally clamps a negative override to the
+   same off state. Not an asymmetry bug: the fallback value IS the feature's
+   off-switch, chosen per-site on purpose, not a copy-paste of a sibling
+   constant's default.
+
+4. **IDN/Unicode anchor domains** — never checked by name in this document.
+   `packages/web/lib/anchor.ts`'s `normalizeDomain` gates every anchor
+   through `/^[a-z0-9-]+(\.[a-z0-9-]+)+$/` before anything else runs, which
+   admits only ASCII letters/digits/hyphens — a real Unicode domain
+   (`münchen.de`) fails this shape check outright and is refused with the
+   same 400 a malformed string gets, never reaching `registrableHost`.
+   Checked whether this creates a two-spellings-of-one-host identity split
+   the way a stray IDN could: it cannot, because the only form that ever
+   passes the gate is plain ASCII, which already includes punycode
+   (`xn--mnchen-3ya.de` matches `[a-z0-9-]+` — `x`,`n`,`-` are all in the
+   class), and `new URL(someLink).hostname` — every OTHER place a hostname
+   reaches `registrableHost` in this codebase (`verdict.ts:38`,
+   `coverage.ts:96`, `alias.ts:90,169`) — is WHATWG `ToASCII`, which renders
+   the same real-world domain as the identical punycode string. So the one
+   path that accepts a raw string (the anchor) and the many paths that
+   accept a `URL`-parsed one converge on the same ASCII spelling for any
+   domain that is reachable at all; a genuine Unicode anchor is simply
+   turned away at the door, by design, not silently mis-keyed.
+
+No code change — all four were existing, correct behaviour. `pnpm install
+--frozen-lockfile` first (fresh clone, no `node_modules`; same `esbuild`
+build-script warning SELF-623 already explains). `pnpm check && pnpm test`
+both exit 0: 3388 tests passing, 13 skipped — identical to SELF-638's own
+count, as expected for a read-only fire.
+
+Backlog item: SELF-639 - BLOCKED
