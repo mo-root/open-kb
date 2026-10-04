@@ -6764,3 +6764,37 @@ both exit 0: 3388 tests passing, 13 skipped — identical to SELF-638's own
 count, as expected for a read-only fire.
 
 Backlog item: SELF-639 - BLOCKED
+
+**SELF-640 (2026-10-04 overnight fire) — re-ran `@vitest/coverage-v8` over
+`packages/{core,sweep,swarm,providers}/src` (SELF-509's own tool, not rerun
+over the full tree since; SELF-638 only scoped it to `packages/web/app`) and
+found one real branch gap in `tools-free.ts`'s anchor guard.** Every uncovered
+line the fresh run surfaced matches a line SELF-509 already proved dead by
+construction, just shifted — confirmed by re-reading each one against
+`core/src` (`alias.ts:68,212`, `catalog.ts:363-364`, `judge.ts:967-968`,
+`url.ts:162`), `providers/src` (`brightdata.ts:504-533,545,609`,
+`safe-fetch.ts:113-115`), and `sweep/src` (`sweep.ts`'s whole uncovered list)
+— except one line in `swarm/src/tools-free.ts` that was never on SELF-509's
+list because the guard it sits in did not exist yet.
+
+`rememberTool`'s anchor guard (`tools-free.ts:592`) reads
+`key === ctx.map.anchor && (n.kind === "company" || n.kind === "product")` —
+a node whose key collapses onto the anchor's own host is refused with "that
+is the anchor", so a model cannot re-describe the company the map is already
+about as one of its own competitors. The suite already had a test driving
+the left arm of the `||` true (`kind: "company"`, added when the guard was
+written) but never the right: grepping every `kind: "product"` fixture in
+`tools-free.test.ts` found three, none with a domain matching the anchor.
+Branch coverage on that line sat at less than 100% for exactly this reason —
+the line executes either way, so a plain line-coverage reading would have
+missed it; only the per-branch column caught it.
+
+Added one test beside the existing company one, same shape: a product node
+whose domain is the anchor's own host, asserting the same rejection. Verified
+non-vacuous by narrowing the guard to `n.kind === "company"` alone and
+confirming the new test is the one that fails (`r.added.nodes` comes back 1,
+not 0, with no rejection) — then restored the real guard. `pnpm check &&
+pnpm test` both exit 0: 3389 tests passing (up from 3388, one new), 13
+skipped — same gated census as SELF-639.
+
+Backlog item: SELF-640

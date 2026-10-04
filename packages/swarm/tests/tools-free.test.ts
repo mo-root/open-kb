@@ -1133,6 +1133,25 @@ describe("rememberTool", () => {
     expect(r.rejected[0]!.reason).toContain("that is the anchor")
   })
 
+  it("refuses to re-record the anchor as a product, not just a company", () => {
+    // tools-free.ts:592 guards `kind === "company" || kind === "product"` — a
+    // coverage sweep (`vitest --coverage` over packages/swarm/src) found the
+    // line only ever driven true through the left arm (the test above); the
+    // right arm had never run, true or false, in this whole suite.
+    const s = seeded()
+    s.evidence.record({ url: "https://anchor.com/", text: "anchor.com sells the thing this whole map is about, at scale", status: "found", tier: "page" })
+    const r = rememberTool(ctxOf(s), {
+      nodes: [{
+        name: "Anchor Platform", domain: "anchor.com", kind: "product", what: "itself", relation: "competitor",
+        why: "found itself in its own results",
+        evidence: [{ url: "https://anchor.com/", quote: "sells the thing this whole map is about" }],
+      }],
+      why: "t",
+    })
+    expect(r.added.nodes).toBe(0)
+    expect(r.rejected[0]!.reason).toContain("that is the anchor")
+  })
+
   it("an edge may name the anchor as an endpoint", () => {
     const s = populated()
     const r = rememberTool(s.ctx, {
