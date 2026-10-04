@@ -6301,3 +6301,51 @@ already explains). `pnpm check && pnpm test` both exit 0: 3382 tests
 passing (up from 3379, three new `headroomOf` cases), 13 skipped.
 
 Backlog item: SELF-630
+
+**SELF-633 (2026-10-04 overnight fire) — started down the "every file this
+branch never individually touched" sweep (`grounding.ts`, the seven thin
+`api/kb`/`api/run` routes, `zip.ts`, `graph/layout.ts`, etc.), read about a
+dozen of them end to end, then found this file's own history (SELF-513,
+527/528, 534, 538/539/542, 546, 627 among others) had already run that
+exact sweep — repeatedly, down to the same file list and the same two
+near-findings (`FamilyLedger.opened()`'s unconditional reset, `search.ts`'s
+crossing substring bands) SELF-627 had already traced and ruled out eleven
+hours earlier. Discarded that write-up rather than commit a duplicate; the
+only thing worth keeping from it is confirming, again, that this angle is
+now fully saturated and the "neither done nor BLOCKED" check this loop's
+own SETUP step 4 does against git log is not enough on its own to rule out
+a re-tread — a prior fire's find-nothing read never touches the file it
+read, so it never appears in `git log --name-only`, exactly SELF-627's own
+point, independently re-arrived-at and not news.
+
+Did a genuinely new, narrow, mechanical check instead: every relative link
+and image `src` in the repo's top-level prose
+(`README.md`, `CONTRIBUTING.md`, `ARCHITECTURE.md`, `DEPLOY.md`,
+`SECURITY.md`, `CHANGELOG.md`, `demo/README.md`, `prompts/README.md`,
+`.github/pull_request_template.md`) resolves to a real path — grepped for
+"broken link"/"dead link" across this file's history first and found no
+prior fire had run this specific check. Extracted every `](path)` and
+`src="path"` target across all nine files (31 distinct non-URL targets
+after dropping `https://` links and GitHub badge URLs) and confirmed each
+exists on disk: `LICENSE`, `package.json`, `assets/launch.mp4`,
+`assets/launch.gif`, `assets/mark.svg`, `examples/kb-clerk-com/README.md`,
+`prompts/` and `prompts/README.md`, `skills/mapping-markets`,
+`ARCHITECTURE.md`/`DEPLOY.md`/`README.md` (the three docs that link to each
+other), and the four `core/src/{evidence,judge,verdict,spend-cap}.ts`
+citations README's own "## How it decides" section points at. None of the
+nine files uses a `#fragment` anchor, so there was no heading-anchor half
+of this check to run. Also re-grepped the whole source tree for
+`middleware.ts` by name, since SELF-632 (two fires ago) renamed that file
+to `proxy.ts` and a stale doc reference would be exactly this kind of
+broken-link defect — none found outside `vitest.config.ts`'s own comment
+and `proxy.ts`/`proxy.test.ts` themselves, which already name the rename.
+
+Nothing broken. No code or doc change. `pnpm install --frozen-lockfile`
+first (fresh clone, no `node_modules`; same `esbuild` build-script warning
+SELF-623 already explains). `pnpm check && pnpm test` both exit 0: 3382
+tests passing, 13 skipped — identical to SELF-632's own count, as expected
+for a read-only fire. Also re-ran `pnpm --filter @open-kb/web build` once
+more (SELF-632's own verification method): still compiles clean with no
+deprecation warnings, confirming that fix still holds two fires later.
+
+Backlog item: SELF-633 - BLOCKED
