@@ -7,14 +7,14 @@ import { describe, expect, it } from "vitest"
  * the suite even if a test existed: `vitest.config.ts`'s `include` lists
  * `packages/web/{app,lib,components}/**` plus a non-recursive
  * `packages/web/*.test.{ts,tsx}` for direct children (added for
- * `middleware.test.ts`), but this file sits one level deeper, under
- * `packages/web/scripts/`, which none of those globs reach. A test placed
- * here would have joined the exact class `scripts/check-test-collection.mjs`
- * exists to catch — collected by nothing, run by nothing, green by omission.
- * Confirmed by running it before adding the include line below: it named
- * this exact gap. Fixed the same way `middleware.test.ts`'s own gap was: one
- * new line in `vitest.config.ts`'s allowlist, non-recursive so it cannot
- * widen into a directory with no tests in it.
+ * `proxy.test.ts`, then named `middleware.test.ts`), but this file sits one
+ * level deeper, under `packages/web/scripts/`, which none of those globs
+ * reach. A test placed here would have joined the exact class
+ * `scripts/check-test-collection.mjs` exists to catch — collected by nothing,
+ * run by nothing, green by omission. Confirmed by running it before adding
+ * the include line below: it named this exact gap. Fixed the same way that
+ * file's own gap was: one new line in `vitest.config.ts`'s allowlist,
+ * non-recursive so it cannot widen into a directory with no tests in it.
  *
  * The file's own doc comment (lines 12-20) says its lobe force is "mirrored
  * from GraphCanvas's `makeClusterForce`" — a duplicated recipe, not an

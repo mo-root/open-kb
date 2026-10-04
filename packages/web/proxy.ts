@@ -16,6 +16,15 @@ import { NextResponse, type NextRequest } from "next/server"
  * WHAT THIS DOES NOT DO. It stops a stranger, not an invited person running two
  * hundred maps. The spend ceiling in the map route is what stops that, and the
  * two are independent on purpose: one is about who, the other about how much.
+ *
+ * Named and exported `proxy`, not `middleware`: Next 16.3.8 (this repo's
+ * installed version) deprecates the `middleware.ts`/`export function middleware`
+ * convention in favour of `proxy.ts`/`export function proxy` — building under
+ * the old name now prints "The middleware file convention is deprecated.
+ * Please use proxy instead" on every build. Behaviourally identical; a proxy
+ * file always runs on the Node.js runtime rather than Edge, which this file
+ * never opted out of anyway (no `runtime` in `config` below, and nothing here
+ * uses an Edge-only API).
  */
 
 const REALM = 'Basic realm="open-kb", charset="UTF-8"'
@@ -29,7 +38,7 @@ function same(a: string, b: string): boolean {
   return diff === 0
 }
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const user = process.env.KB_USER
   const password = process.env.KB_PASSWORD
 
