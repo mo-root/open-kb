@@ -6349,3 +6349,63 @@ more (SELF-632's own verification method): still compiles clean with no
 deprecation warnings, confirming that fix still holds two fires later.
 
 Backlog item: SELF-633 - BLOCKED
+
+**SELF-634 (2026-10-04 overnight fire) — a genuinely new angle, cross-package
+dependency VERSION-RANGE consistency (distinct from SELF-544's import-usage
+audit of the same six manifests); found one real-looking split that traces to
+harmless.** SELF-544 read all six `package.json` manifests end to end but
+only cross-checked each declared dependency against what the code imports
+(dead-declaration hunting); nobody had compared the declared SemVer ranges
+for a dependency shared across manifests against each other. Diffed all
+three: `ai` (`^7.0.48` everywhere) and `@types/node` (`^22.10.0` everywhere)
+are identical across every manifest that declares them. `zod` is not:
+root and `packages/web/package.json` declare `^4.4.3`, while
+`packages/core`, `packages/swarm` and `packages/sweep` each declare
+`^4.0.0` — a real, measured split, not a typo I'm inferring.
+
+Traced whether the looser floor can bite: `packages/core`, `swarm` and
+`sweep` each also depend on `ai@^7.0.48` directly, and `node_modules/.pnpm/
+ai@7.0.48*/node_modules/ai/package.json`'s own `peerDependencies` (already
+read once for this, by SELF-544) requires `zod: "^3.25.76 || ^4.1.8"` — so
+those three packages' own `^4.0.0` floor is already looser than a peer
+requirement they carry themselves; a `zod@4.0.0`-exact install would satisfy
+their own declared range while failing their own peer dependency. Checked
+`pnpm-lock.yaml`: every one of the six manifests resolves to the identical
+single `zod@4.4.3` entry (`grep -n "^  zod@" pnpm-lock.yaml` returns exactly
+one block), so nothing in this repo, today, on this lockfile, is actually
+exposed — `pnpm install --frozen-lockfile` can never pick the lower floor
+while this lockfile exists. The split is real but dormant: it would only
+surface on a from-scratch `pnpm install` with the lockfile deleted, which
+this repo's own CI (`.github/workflows/check.yml`, re-read for this) never
+does — it restores the committed lockfile, same as every fire since C2.
+
+Not fixed. Tightening three manifests' floor from `^4.0.0` to `^4.4.3` would
+be a one-line-times-three change with no observable behaviour difference
+under the lockfile this repo actually ships — exactly the "arithmetic
+dressed as evidence" shape P1-8's own BLOCKED note already warns this
+branch against taking on faith. Recorded so a future dependency-hygiene
+fire does not re-read these six files from scratch looking for this same
+class of gap: the import-usage angle (SELF-544) and the version-range angle
+(this fire) are now both covered, and a third angle (peer-dependency
+satisfaction under a regenerated lockfile) is the one edge this fire
+checked by hand rather than by tooling — worth automating only if a real
+`pnpm install` without `--frozen-lockfile` is ever on this branch's critical
+path, which today it is not.
+
+Also re-ran SELF-630's own verification once more, since fresh eyes on new
+code is the other angle this fire tried before settling on the one above:
+read `scripts/overnight.ts` end to end adversarially (the `keyInfo`/
+`headroomOf` merge, the per-target loop's two stopping checks, every
+`parseSweepStdout` regex against the exact template literals `scripts/
+sweep.ts:442-444,478,495` and `packages/sweep/src/sweep.ts:3080,3839`
+actually print — confirmed `/\$([\d.]+) ·/` has exactly one possible match
+site in a full transcript, `scripts/sweep.ts:495`, not the per-event
+`onLog` lines which print `$<total>  <line>` with two spaces and no `·`).
+Nothing wrong; SELF-630's own work holds.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`;
+same `esbuild` build-script warning SELF-623 already explains). `pnpm check
+&& pnpm test` both exit 0: 3382 tests passing, 13 skipped — identical to
+SELF-633's own count, as expected for a read-only fire.
+
+Backlog item: SELF-634 - BLOCKED
