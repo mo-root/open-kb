@@ -6625,3 +6625,66 @@ passing, 13 skipped — identical to SELF-636's own count, as expected for a
 read-only fire.
 
 Backlog item: SELF-637 - BLOCKED
+
+**SELF-638 (2026-10-04 overnight fire) — a coverage sweep of `packages/web/app`
+(SELF-509/620's tool, never run over this tree before — SELF-620 covered
+`packages/web/lib` only), found two real validation branches in
+`app/api/map/route.ts` with zero test hits anywhere in this repo.** Installed
+a temporary `@vitest/coverage-v8@4.1.11` devDependency (matched this repo's
+vitest, reverted before finishing, same move as SELF-509/593/596-598/603/620)
+and ran `vitest run --coverage --coverage.include='packages/web/app/**'`.
+Every page component came back as the already-documented no-jsdom/RTL-harness
+gap (B1-B4, SELF-528/619 et al.) except `app/layout.tsx`, which is 0% because
+nothing imports it directly — Next's own root layout, exercised only through
+a real render. The one API route folder with real server logic,
+`app/api/map/route.ts`, came back 94.62% with two gaps worth reading rather
+than waving off: lines 402-406 (`queries must be between 1 and ${MAX_QUERIES}`)
+and 415-419 (`not configured: ${missing.join(", ")}`).
+
+Grepped every test file in `packages/web/app/api/map/` (`route.test.ts`,
+`budget.test.ts`, `limits.test.ts`, `demo.test.ts`) for both error strings
+first, to rule out the coverage tool simply missing an existing assertion:
+zero hits. `demo.test.ts` exercises "body must be JSON" and "does not name a
+company" — the two refusals right above these in the same function — but
+nothing anywhere posts a `queries` count outside `[1, 120]`, and
+`limits.test.ts`/`budget.test.ts` both set every one of
+`BRIGHTDATA_API_TOKEN`/`BRIGHTDATA_SERP_ZONE`/`BRIGHTDATA_UNLOCKER_ZONE`/
+`OPENROUTER_API_KEY` in their own `beforeAll` specifically so the route gets
+PAST this point — neither suite's job is to test this gate, so neither ever
+unset a credential to check it. Both branches are real, user-facing 400/503
+refusals (a client that sends `queries: 500` or a deployment missing one
+`.env` var) with no regression test anywhere guarding either sentence or
+status code.
+
+Added three tests to `route.test.ts`'s own harness (it already has every
+env var this needs set in `beforeAll`, and the `post()`/`hoisted.afterTasks`
+helpers this gate needs to prove a refused request starts nothing): a
+`queries` under 1, a `queries` over 120, and two of the four credentials
+unset at once — the last deliberately two, not one, because the handler
+`.join()`s every missing key and a test that unset only one could not tell
+`.join()` from `missing[0]`. Verified non-vacuous by mutation: replaced each
+guard's `if (...)` with `if (false)` in turn, confirmed the matching new
+test(s) failed with a 200 where a 400/503 was expected, then restored the
+original file from a saved copy before staging anything.
+
+Also chased a related lead to ground rather than just the coverage numbers:
+`spendCapFor`'s `onRecordFailure` callback (route.ts:810-811) is *also*
+uncovered, and looked at first like the same class of gap. It is not one —
+SELF-607 already proved, for a different call site in this same file, that
+`failRun` cannot reject today (`settle`'s three slots are each individually
+non-rejecting: `persist().catch()`, `db.upsertRun` via `quiet()`, and
+`r.pumped`/`pump()`'s own internal catch). Read `SpanStream.emit`/`close`
+(`core/src/spans.ts`) and `failRun`'s own body (`lib/runs.ts:418-488`) end to
+end to confirm nothing between `record(trip)` and that conclusion can throw
+synchronously either — `namedFaults.runCostCeiling` only formats numbers
+that are always finite at this call site, and `emit`/`close` have no throw
+path for any input. So `onRecordFailure` is dead by the same construction
+SELF-607 already named, just reached from `spendCapFor` instead of the
+deadline-timer `void`; not a fresh gap, and not pursued into a test for the
+same reason SELF-607 took no action — there is nothing a fixture could make
+happen.
+
+`pnpm check && pnpm test` both exit 0: 3388 tests passing (up from 3385,
+three new), 13 skipped — same gated census as SELF-637.
+
+Backlog item: SELF-638

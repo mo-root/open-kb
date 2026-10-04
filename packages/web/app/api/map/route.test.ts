@@ -377,3 +377,52 @@ describe("POST /api/map — the run is not over until it is durable", () => {
     }
   })
 })
+
+/**
+ * THE TWO REFUSALS NO TEST IN THIS FILE OR ITS SIBLINGS HAD EVER DRIVEN.
+ *
+ * `demo.test.ts` exercises "body must be JSON" and "does not name a company";
+ * `limits.test.ts` and `budget.test.ts` always set every BRIGHTDATA credential
+ * and OPENROUTER_API_KEY so the route gets PAST this point. Nothing anywhere
+ * posted a queries count outside [1, MAX_QUERIES] or ran this route with one
+ * of its four required credentials unset — a `pnpm dlx vitest run --coverage`
+ * pass over `packages/web/app/**` turned up route.ts:402-406 and :415-419 as
+ * the only two branches in this file with zero hits, which is how this was
+ * found rather than by reading the diff that introduced them.
+ */
+describe("POST /api/map — refuses bad input before it reaches the engine", () => {
+  it("refuses a queries count under 1, and starts nothing", async () => {
+    const res = await POST(post({ domain: "resend.com", queries: 0 }))
+    expect(res.status).toBe(400)
+    expect(((await res.json()) as { error: string }).error).toBe("queries must be between 1 and 120")
+    expect(hoisted.afterTasks).toHaveLength(0)
+  })
+
+  it("refuses a queries count over the ceiling, and starts nothing", async () => {
+    const res = await POST(post({ domain: "resend.com", queries: 121 }))
+    expect(res.status).toBe(400)
+    expect(((await res.json()) as { error: string }).error).toBe("queries must be between 1 and 120")
+    expect(hoisted.afterTasks).toHaveLength(0)
+  })
+
+  it("fails closed with 503 when a required credential is missing, naming every one that is", async () => {
+    // Two of the four, not one — the handler joins ALL of `missing`, and a test
+    // that unset only one credential could not tell a `.join()` from a
+    // `[0]` that happened to be right.
+    const savedToken = process.env.BRIGHTDATA_API_TOKEN
+    const savedKey = process.env.OPENROUTER_API_KEY
+    delete process.env.BRIGHTDATA_API_TOKEN
+    delete process.env.OPENROUTER_API_KEY
+    try {
+      const res = await POST(post({ domain: "resend.com" }))
+      expect(res.status).toBe(503)
+      expect(((await res.json()) as { error: string }).error).toBe(
+        "not configured: BRIGHTDATA_API_TOKEN, OPENROUTER_API_KEY — set them in the repo-root .env",
+      )
+      expect(hoisted.afterTasks).toHaveLength(0)
+    } finally {
+      process.env.BRIGHTDATA_API_TOKEN = savedToken
+      process.env.OPENROUTER_API_KEY = savedKey
+    }
+  })
+})
