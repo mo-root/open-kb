@@ -57,7 +57,7 @@ Real environment variables win over the file, which is what you want for anythin
 | Variable | Default | What it does |
 |---|---|---|
 | `OPENKB_MODEL` | `deepseek/deepseek-v4-flash-0731` | any OpenRouter model id |
-| `OPENKB_PAGES` | `4` (CLI) / `2` (library) | result pages read per query |
+| `OPENKB_PAGES` | unset — `2`, promoted to `4` per product on real page-2 yield | result pages read per query |
 | `OPENKB_TRIAGE` | on (`0` disables) | skip hosts from search metadata, before a fetch is spent |
 | `OPENKB_SECOND_LOOK` | on (`0` disables) | re-ask classify against a deeper page for `unknown` hosts |
 | `OPENKB_DROP_CONFIRM` | off (`1` enables) | one more batched opinion on every settled `none` |
@@ -70,10 +70,12 @@ big model is not the upgrade it looks like here, and the run cap is sized for th
 `OPENKB_PAGES` is the quiet lever on breadth. One query read to five pages returned 37 distinct
 hosts against 7 from the first page alone, and a page costs exactly what a query costs — so depth on
 a good query beats breadth onto a worse one. Lower it to 1 or 2 when you want a cheap look — and
-note that `2` is what unlocks variable depth: the library opens every query at two pages and lets
-the widening judge promote a product to four on real page-2 yield, but the deep depth is floored at
-the shallow one, so the CLI's `4` reads four pages everywhere and leaves that promotion nothing to
-buy.
+leave it unset for the normal case: that is what unlocks variable depth, the engine opening every
+query at two pages and letting the widening judge promote a product to four on real page-2 yield.
+The deep depth is floored at the shallow one, so *setting* `OPENKB_PAGES` (to `4`, say) collapses the
+pair and reads four pages everywhere, leaving that promotion nothing to buy — exactly what the CLI's
+own default did until `d740379` (2026-08-22) unset it. Both the CLI and the web route now leave
+`pages` unset by default, so both get the real 2→4 behaviour.
 
 Three of the four stage flags are on by default and each is turned off with `0`; `drop-confirm` is
 the odd one out, off by default and turned on with `1` (it rarely changes anything — see the table

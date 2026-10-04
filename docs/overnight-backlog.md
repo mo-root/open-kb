@@ -6828,3 +6828,51 @@ skipped — identical to SELF-640's own count, as expected for a docs-only
 change.
 
 Backlog item: SELF-641
+
+**SELF-642 (2026-10-04 overnight fire) — `skills/mapping-markets/references/
+onboarding.md`, a basename never once named in this document's history, still
+described `OPENKB_PAGES`'s pre-`d740379` behaviour as current.** Checked every
+low-mention-count file against this document's own citation index (the SELF-
+566/599/604/613/627/628 method) and found two reference docs under `skills/`
+that had never been individually read: `onboarding.md` and `reading-a-map.md`.
+Read both end to end against the code and the rest of the repo's docs.
+
+`reading-a-map.md` checked out clean on every verifiable claim: the 13-member
+`RELATIONS` enum (`sweep.ts:700-713`) matches its two tables exactly (8
+commercial + 3 channel + `none`/`unknown`); `--edges`'s `measured`/`inferred`
+confidence values match `EntityEdge`'s zod enum (`sweep.ts:785-787`) word for
+word; the "two or more different searches" pairing rule matches the `n >= 2`
+filter at `sweep.ts:6342`. Its one unverifiable number ("302 of 776 kept
+entities" for `adjacent`) is a real-run statistic this sandbox cannot
+re-derive, the same class of claim P1-5/P1-6 already left alone for the same
+reason.
+
+`onboarding.md`'s `OPENKB_PAGES` row was wrong. The table read `4` (CLI) / `2`
+(library)`, and the prose below it concluded "...so the CLI's `4` reads four
+pages everywhere and leaves that promotion nothing to buy" — describing the
+exact bug `d740379` (2026-08-22, "variable page depth was inert on every CLI
+run") fixed seven weeks ago. That commit's own message says it audited and
+corrected README.md and ARCHITECTURE.md for this same claim; this skill
+reference, in a different directory, was never in its scope and has read
+backwards ever since. Confirmed current behaviour directly: `scripts/
+sweep.ts`'s `pages:` option is `Number(process.env.OPENKB_PAGES ?? 0) ||
+undefined` (unset by default, per that commit's own comment at the same
+line), and `ARCHITECTURE.md:113-119` states plainly "Both the CLI and the web
+route leave `pages` unset by default, so both get the real 2→4 behaviour."
+A reader following this skill's onboarding doc today would set `OPENKB_PAGES`
+to chase a "CLI default" that stopped being the default seven weeks ago,
+re-introducing the exact regression the commit that fixed it was about.
+
+Rewrote the table row (unset — `2`, promoted to `4` per product on real
+page-2 yield) and the prose's closing sentence to state the current, unset-
+by-default behaviour and name `d740379` as where the old behaviour ended,
+matching `ARCHITECTURE.md`'s own corrected wording rather than inventing new
+phrasing for the same fact.
+
+No source change. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`; same `esbuild` build-script warning SELF-623 already
+explains). `pnpm check && pnpm test` both exit 0: 3389 tests passing, 13
+skipped — identical to SELF-641's own count, as expected for a docs-only
+change.
+
+Backlog item: SELF-642
