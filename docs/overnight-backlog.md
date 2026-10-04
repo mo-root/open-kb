@@ -6476,3 +6476,94 @@ read/build-only fire.
 Backlog item: SELF-635
 
 Backlog item: SELF-634 - BLOCKED
+
+**SELF-636 (2026-10-04 overnight fire) — a prompt/schema cross-check across
+every agent, the angle SELF-539 opened and never finished, found one real
+drift: the swarm's own harvest-classify call has been silently answering
+two fewer fields than its own prompt asks for since 9a96f2f.** SELF-539
+read every then-untouched prompt file end to end and cross-checked its
+claims against the code; it did not check, for any agent, whether the
+zod schema actually offered every field the prompt's own "Answer with"
+line names. Checked that for all twelve `prompts/agents/*.md` files against
+every `z.object` schema that renders them (`classify`, `triage`,
+`drop-confirm`, `listicle`, `link`, `orphan`, `assess`, `catalog`,
+`understand`/`group` — the schemas sweep.ts builds its calls from). Eleven
+matched field-for-field. One did not.
+
+`prompts/agents/classify.md`'s "Answer with" line names eight fields:
+`name`, `kind`, `what`, `relation`, `reasoning`, `why`, `spans`,
+`relationSpan`. `packages/sweep/src/sweep.ts`'s own classify schema
+declares all eight, in that order — already guarded by
+`classify-answers-in-the-order-its-prompt-teaches.test.ts` (P1-6's own
+fix). `packages/swarm/src/agent.ts`'s `makeHarvestClassify` renders the
+SAME classify.md text — composePrompt over the file on disk, per its own
+doc comment, "the SAME doctrine file the sweep renders" — but its zod
+schema declared only six: `name`, `kind`, `what`, `relation`, `why`,
+`spans`. No `reasoning`, no `relationSpan`.
+
+Traced to the commit that added them: 9a96f2f (2026-08-21, on this
+branch, the branch's own base commit's immediate successor), "a placement
+ladder that keeps what it finds, not a gate that drops what it can't
+name." Its own message says "every classify verdict now also carries a
+one-sentence `reasoning` and a `relationSpan` receipt" — stated as a
+property of every classify verdict, not of the sweep's alone. Read its
+full diff: it touched `packages/core`, `packages/sweep` and
+`packages/web`; `packages/swarm/src/agent.ts` does not appear in it at
+all. The doctrine file and the sweep's schema grew together; the swarm's
+own copy of the same call did not, and nothing since has caught it —
+`core/src/judge.ts`'s own `JudgeDeps.classify` return type is deliberately
+narrow (by design, so the sweep's own richer closure needs an `as Entity`
+cast to carry these same two fields past it — see
+`packages/sweep/src/sweep.ts:5600-5607`'s own comment on exactly this
+narrowing), which means a type-checker reading `Judged` would never flag
+the swarm's schema as incomplete; only reading the prompt text against the
+schema that renders it catches this.
+
+This is not a crash and not a test failure — `generateObject`'s schema IS
+the API contract (unlike sweep.ts's own classify call, where the schema
+and the prompt were extended in the same commit and the schema is still
+the real contract, just a matching one): a model handed the narrower
+schema could never answer `reasoning`/`relationSpan` even though its own
+prompt asked for them, and zod's default object parsing strips unknown
+keys rather than erroring, so every harvest judgement since 2026-08-21 has
+been silently narrower than its own doctrine, with no error, no test
+failure, and no measurement anywhere saying so — the exact "arithmetic
+dressed as evidence" shape this document's own BLOCKED notes warn against
+shipping, just inverted: evidence the engine could have collected and
+never asked for.
+
+Fixed by adding both fields to the harvest schema, same order and same
+descriptions as sweep.ts's own (`reasoning` right after `relation`, not
+after `spans` — sweep.ts's own schema comment measures why: trailing
+optional fields fill at 26% against 85% for one sitting next to its
+required counterpart), then threading them through the one path that can
+set them: `HarvestClassify`'s return type (`tools-paid.ts`), `landOne`'s
+node construction, `RememberNodeInput` and both the new-node and
+`incomingStronger`-merge branches of `rememberTool` (`tools-free.ts`), and
+`MapNode`/`EntityRow` plus `MapState.entities()`'s passthrough (`map.ts`)
+— the same optional-field-survives-a-merge shape `because`/`unreadableReason`
+already had, extended by two more fields rather than re-patterned.
+`relationGrounded` (the companion check sweep.ts computes while it still
+holds page text, per its own comment on why that check cannot move inside
+`judgeHosts`) is deliberately NOT added: computing it for the swarm would
+need the same page text past the same narrowing, a materially bigger
+change, and the web UI's `NoteView.tsx` already renders an absent
+`relationGrounded` as "relation quoted, not verified on the page" rather
+than assuming it verified — so a swarm-sourced `relationSpan` without it
+renders honestly undercredited, never wrongly credited. Recorded here
+rather than silently deferred, so a future fire does not treat its absence
+as an oversight this one missed.
+
+Verified non-vacuous: reverted the `landOne` passthrough lines alone,
+confirmed the new "rides a harvested verdict onto the node" test
+(`packages/swarm/tests/tools-paid.test.ts`) fails exactly there with the
+expected value turning up `undefined`, restored them. Added a second test
+pinning that a verdict answering neither field leaves the node and
+`entities()` without the keys at all (no `reasoning: undefined` appearing
+where it never did before), and a schema-level test in
+`packages/swarm/tests/harvest-classify-prompt.test.ts` confirming a mock
+model's answer carrying both fields now survives zod's parse instead of
+being silently stripped. `pnpm check && pnpm test` both exit 0: 3385 tests
+passing (up from 3382, three new), 13 skipped — same gated census.
+
+Backlog item: SELF-636
