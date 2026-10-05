@@ -192,10 +192,18 @@ export function SearchesPanel({ searches }: { searches: SearchView[] }) {
                     <ul className="flex flex-col gap-2.5">
                       {s.hits.map((h, j) => (
                         <li key={`${h.url}-${j}`} className="flex flex-col gap-0.5">
+                          {/* `noreferrer`, not just `noopener`: every other outbound link in
+                              this package (ProductsTab.tsx x4, KbBrowser.tsx, NoteView.tsx,
+                              HeaderNav.tsx, DemoHome.tsx, layout.tsx) already uses `noreferrer`
+                              for this exact reason — `h.url` is a raw SERP hit, so clicking it
+                              would otherwise hand the target site this run's own page URL (run
+                              id and anchor domain included) in its Referer header, telling a
+                              site being investigated that it is being investigated. `noreferrer`
+                              implies the same opener-severing `noopener` already gave. */}
                           <a
                             href={h.url}
                             target="_blank"
-                            rel="noopener"
+                            rel="noreferrer"
                             className="font-mono text-[11px] text-cyan-500/80 hover:text-cyan-400"
                           >
                             {hostOf(h.url)}

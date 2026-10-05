@@ -7310,3 +7310,44 @@ identical to SELF-648's own count, as expected for a behavior-preserving
 refactor.
 
 Backlog item: SELF-649
+
+**SELF-650 (2026-10-05 overnight fire) — a one-line `rel` inconsistency found
+by widening SELF-648's header sweep to every outbound anchor in `packages/web`,
+rather than re-running that sweep's own headers.** Grepped every
+`target="_blank"` anchor in the package (13 sites across 8 files) and read
+each one's `rel` by hand instead of trusting a single spot-check: `ProductsTab.tsx`
+(x4), `KbBrowser.tsx`, `NoteView.tsx`, `HeaderNav.tsx`, `DemoHome.tsx` and
+`layout.tsx` (x2) all carry `rel="noreferrer"` — except `SearchesPanel.tsx:198`,
+the raw-SERP-hit link inside the "searches" build panel, which carried
+`rel="noopener"` alone.
+
+That is not a cosmetic gap. `noopener` only severs the new tab's
+`window.opener` handle; it does nothing about the `Referer` header the
+browser still sends on the navigation itself, which for this specific link is
+the current KB-map page's own URL (run id and anchor domain both in the
+path). Every other outbound link in the package already uses `noreferrer`
+for exactly this reason — confirmed by reading each one, not just counting
+`rel=` occurrences — so this one link was the sole path by which clicking
+through a raw search result could tell the site a run is investigating that
+the investigation happened. `noreferrer` is a strict superset of `noopener`
+in every browser this app targets (MDN, living standard), so switching loses
+no protection the single `noopener` was providing.
+
+Fixed by changing that one `rel` to `"noreferrer"` with a comment naming the
+other six files already doing this and why. The hit anchor sits inside the
+per-row `isOpen` branch, which `SearchesPanel.test.tsx`'s own header comment
+already establishes nothing in this file's `renderToStaticMarkup`-based
+suite can reach (no click ever runs in a static render) — so rather than add
+a jsdom/RTL harness this repo doesn't have (B1-B4's documented limit), tested
+it the way `SkipLink.test.tsx` already tests its own click-gated
+`tabIndex={-1}` claim: read the component's own source as text and assert
+the anchor's `rel` by regex. Verified non-vacuous by mutation: flipped the
+source back to `rel="noopener"` with the test unchanged, reran — the new
+test failed showing the diff; restored the fix and reran clean before
+staging.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check && pnpm test` both exit 0: 3391 tests passing (up from 3390, one
+new), 13 skipped — same gated census as SELF-649.
+
+Backlog item: SELF-650

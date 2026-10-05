@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs"
+import { fileURLToPath } from "node:url"
 import { renderToStaticMarkup } from "react-dom/server"
 import { describe, expect, it } from "vitest"
 import { readSearched, SearchesPanel, withRowIds, type SearchView } from "./SearchesPanel"
@@ -47,6 +49,13 @@ import { readSearched, SearchesPanel, withRowIds, type SearchView } from "./Sear
  * both start at their declared initial values (`false` and `null`) on every
  * render this file performs, since nothing here can flip them.
  */
+
+// The hit-link anchor lives inside the per-row `isOpen` branch, which this file's
+// own top comment already establishes nothing here can reach (no click ever runs
+// in a static render). Its `rel` attribute is checked by reading the component's
+// own source as text instead — the same workaround SkipLink.test.tsx uses for its
+// tabIndex={-1} claim.
+const SOURCE = readFileSync(fileURLToPath(new URL("./SearchesPanel.tsx", import.meta.url)), "utf8")
 
 /** Asserts a frame is accepted and returns the view, narrowing away the `null`
  *  every other case in this file returns — kept separate from the reject tests
@@ -271,6 +280,15 @@ describe("SearchesPanel: each row's pre-click render reads its own search, not n
     expect(html).not.toContain("why it asked")
     expect(html).not.toContain("timed out")
     expect(html).not.toContain("a.example")
+  })
+})
+
+describe("SearchesPanel: the hit link suppresses the referrer, not just the opener", () => {
+  it("the hit anchor carries rel=\"noreferrer\", not merely \"noopener\"", () => {
+    const anchorMatch = /<a\s[^>]*href=\{h\.url\}[^>]*>/.exec(SOURCE)
+    if (!anchorMatch) throw new Error("no <a href={h.url}> anchor found in SearchesPanel.tsx")
+    expect(anchorMatch[0]).toContain('rel="noreferrer"')
+    expect(anchorMatch[0]).not.toContain('rel="noopener"')
   })
 })
 
