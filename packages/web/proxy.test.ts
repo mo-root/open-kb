@@ -69,6 +69,12 @@ describe("unset credentials mean open, on purpose", () => {
     delete process.env.KB_PASSWORD
     expect(proxy(req()).headers.get("X-Frame-Options")).toBe("SAMEORIGIN")
   })
+
+  it("still sets Strict-Transport-Security on the open path", () => {
+    delete process.env.KB_USER
+    delete process.env.KB_PASSWORD
+    expect(proxy(req()).headers.get("Strict-Transport-Security")).toBe("max-age=31536000")
+  })
 })
 
 describe("both set: the door is locked", () => {
@@ -84,6 +90,7 @@ describe("both set: the door is locked", () => {
     expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff")
     expect(res.headers.get("Referrer-Policy")).toBe("no-referrer")
     expect(res.headers.get("X-Frame-Options")).toBe("SAMEORIGIN")
+    expect(res.headers.get("Strict-Transport-Security")).toBe("max-age=31536000")
   })
 
   it("refuses the right user with the wrong password", () => {
@@ -120,6 +127,7 @@ describe("both set: the door is locked", () => {
     expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff")
     expect(res.headers.get("Referrer-Policy")).toBe("no-referrer")
     expect(res.headers.get("X-Frame-Options")).toBe("SAMEORIGIN")
+    expect(res.headers.get("Strict-Transport-Security")).toBe("max-age=31536000")
   })
 
   it("allows an empty-string password segment only if that is what was set", () => {

@@ -72,6 +72,32 @@ import { NextResponse, type NextRequest } from "next/server"
  * origin, never another one. Grepped the rest of `packages/web` for
  * `<iframe` first (one hit, `ScrollFilm.tsx`) so this is not a guess about
  * what the app embeds.
+ *
+ * `Strict-Transport-Security: max-age=31536000` is the one header here that
+ * guards SECURITY.md's own named scope item directly — "auth bypass on the
+ * hosted app's basic-auth gate" — rather than the fetched-third-party-content
+ * class the four headers above all answer to. Basic auth sends the password
+ * on every single request, base64-encoded, which is as good as plaintext to
+ * anyone on the wire; without HSTS, a visitor's very first request (or any
+ * request after a cleared cache) can be silently downgraded to `http://` by
+ * an on-path attacker — a captive portal, a hostile AP — and that request
+ * carries the real credential. The header itself has no failure mode a
+ * fixture could miss, unlike the stricter options `docs/overnight-backlog.md`
+ * records this file's history already rejecting for exactly that reason
+ * (`DENY` over `SAMEORIGIN`, a `Permissions-Policy` breaking
+ * `navigator.clipboard`, a CSP broad enough to need a real browser to
+ * check): a spec-compliant browser ignores `Strict-Transport-Security`
+ * entirely on a plain `http://` response, so it cannot break local dev
+ * (`next dev` over `http://localhost`) or a host that for some reason never
+ * terminates TLS. One year, no `includeSubDomains`: a
+ * clone of this repo can land on any custom domain, and this app has no way
+ * of knowing whether every subdomain under that domain is itself served over
+ * HTTPS — `includeSubDomains` would force that even where this deployment
+ * cannot confirm it is true, the same narrower-than-the-obvious-choice
+ * reasoning `SAMEORIGIN` over `DENY` used two paragraphs up. No `preload`
+ * either: that list is permanent-ish (removal takes months) and this file
+ * has no way to know a given clone's domain is meant to be HTTPS-only
+ * forever.
  */
 
 const REALM = 'Basic realm="open-kb", charset="UTF-8"'
@@ -93,6 +119,7 @@ function allow(): NextResponse {
   res.headers.set("X-Content-Type-Options", "nosniff")
   res.headers.set("Referrer-Policy", "no-referrer")
   res.headers.set("X-Frame-Options", "SAMEORIGIN")
+  res.headers.set("Strict-Transport-Security", "max-age=31536000")
   return res
 }
 
@@ -126,6 +153,7 @@ export function proxy(req: NextRequest) {
       "X-Content-Type-Options": "nosniff",
       "Referrer-Policy": "no-referrer",
       "X-Frame-Options": "SAMEORIGIN",
+      "Strict-Transport-Security": "max-age=31536000",
     },
   })
 }

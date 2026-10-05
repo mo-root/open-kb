@@ -7548,3 +7548,48 @@ failed reading `null`; restored and reran clean before staging.
 new), 13 skipped — same gated census as SELF-652.
 
 Backlog item: SELF-653
+
+**SELF-654 (2026-10-05 overnight fire) — `proxy.ts` set four response
+headers and had never set `Strict-Transport-Security`, the one header in
+that file's own allowlist that answers SECURITY.md's "auth bypass on the
+hosted app's basic-auth gate" scope item directly rather than the
+fetched-third-party-content class SELF-648/650/652/653 all addressed.**
+Basic auth (this file's whole reason to exist) sends the password on every
+request, base64-encoded — as good as plaintext on the wire. Without HSTS, a
+visitor's first request, or any request after a cleared cache, can be
+silently downgraded to `http://` by an on-path attacker (a captive portal, a
+hostile access point) and that downgraded request carries the real
+credential. Confirmed the gap first: grepped `packages/web` for
+`Strict-Transport-Security` and `next.config.ts` for a `headers()` block
+(zero hits either way), and `docs/overnight-backlog.md` itself for the
+header name (also zero) — nobody had named this one yet.
+
+Checked the two failure modes the file's own history already rejected
+headers over (`DENY` breaking `ScrollFilm.tsx`'s same-origin iframe, a
+`Permissions-Policy` breaking `BuildWorkflow.tsx`'s `navigator.clipboard`
+button, both recorded a few paragraphs up in this same file): HSTS has
+neither shape. Per spec, a browser ignores `Strict-Transport-Security`
+entirely on a plain `http://` response, so it cannot touch `next dev` over
+`http://localhost` or any host that never terminates TLS — there is no
+feature this header can silently disable. Chose `max-age=31536000` (one
+year) with neither `includeSubDomains` nor `preload`: a clone of this repo
+can land on any custom domain, and this file has no way to confirm every
+subdomain under that domain is itself served over HTTPS, so forcing it with
+`includeSubDomains` would be the same over-broad move `SAMEORIGIN`
+deliberately avoided two paragraphs up; `preload` is a browser-vendor list
+that takes months to leave once joined, which this file cannot promise on
+behalf of a domain it has never seen.
+
+Set it in `allow()` and the 401 response's own header literal, alongside
+the three headers already there and built the same way by SELF-648/652/653.
+Extended `proxy.test.ts`'s three header-bearing assertions (open path, 401
+refusal, successful auth) with a `Strict-Transport-Security` check each.
+Verified non-vacuous by mutation: stashed just `proxy.ts`, reran — all three
+new assertions failed reading `null`; restored and reran clean before
+staging.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check && pnpm test` both exit 0: 3395 tests passing (up from 3394, one
+new), 13 skipped — same gated census as SELF-653.
+
+Backlog item: SELF-654
