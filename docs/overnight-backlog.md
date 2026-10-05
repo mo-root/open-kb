@@ -7404,3 +7404,52 @@ No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
 skipped — identical to SELF-650's own count, as expected for a read-only fire.
 
 Backlog item: SELF-651 - BLOCKED
+
+**SELF-652 (2026-10-05 overnight fire) — the page URL itself (a run id in
+every `/kb/[id]`/`/runs/[id]` path, an anchor domain in every `/kb/[domain]`
+one) never carried a `Referrer-Policy`, the one header class SELF-648's own
+security-header sweep grepped for by name (`X-Content-Type-Options`,
+`X-Frame-Options`, `Content-Security`) and never checked — confirmed by
+`grep -n "Referrer-Policy" docs/overnight-backlog.md` returning nothing
+before this entry.** `graphIcons.ts:80` and `SiteIcon.tsx:113` already set
+`referrerPolicy="no-referrer"` per `<img>`, by hand, for the one concrete
+case anyone had measured: a favicon fetch naming a third-party host. That
+covers image loads; it says nothing about what this app's own pages send as
+`Referer` on a navigation or a `fetch()` call, which is the same class of
+leak SELF-650 just fixed for one outbound anchor (`SearchesPanel.tsx`) by
+switching its `rel` to `noreferrer`.
+
+Checked how much of the gap the browser default already closes before
+assuming a header was needed: every browser this app targets has defaulted
+to `Referrer-Policy: strict-origin-when-cross-origin` since 2020/2021
+(Chrome 85, Firefox 87, Safari) — the same "living standard" default
+SELF-650's own `noopener`⊂`noreferrer` argument rests on. That default
+already strips the path (and with it the run id or anchor domain) on any
+cross-origin request; what it does NOT strip is this origin's own bare
+hostname on a cross-origin request, or the full URL — including the run id
+in the path — on a same-origin one (a `fetch()` to this app's own `/api/*`
+routes, or any future same-origin anchor). `no-referrer` closes both, and
+costs nothing: grepped every route in `packages/web` for
+`req.headers.get("referer")` (zero hits — nothing here reads `Referer`), and
+checked every external resource this app's pages load for one that needs a
+referrer back — `next/font/google` self-hosts at build time (no runtime
+request to Google's own servers at all, confirmed by reading `app/layout.tsx`'s
+`next/font/google` import and how Next handles it), and the one iframe
+(`ScrollFilm.tsx`'s `/launch-rig.html`) is a same-origin navigation a missing
+`Referer` cannot break.
+
+Fixed in `packages/web/proxy.ts`'s `allow()` — the same single exit point
+SELF-648 built for `X-Content-Type-Options`, extended here rather than
+duplicated — plus the 401 response's own header literal, matching that
+response's existing `X-Content-Type-Options` line. Extended `proxy.test.ts`'s
+three header assertions (open path, 401 refusal, successful auth) with a
+`Referrer-Policy` check each, plus one new dedicated test for the open path.
+Verified non-vacuous by mutation: stashed just `proxy.ts`, reran — all three
+`Referrer-Policy` assertions failed with `null`, confirming none of them
+passed by coincidence; restored and reran clean.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check && pnpm test` both exit 0: 3392 tests passing (up from 3391, one
+new), 13 skipped — same gated census as SELF-651.
+
+Backlog item: SELF-652

@@ -38,6 +38,27 @@ import { NextResponse, type NextRequest } from "next/server"
  * adding: no route in this app sets this header itself (grepped the whole of
  * `packages/web` for "X-Content-Type-Options" and "nosniff" — zero hits), so
  * nothing here is overridden or duplicated.
+ *
+ * `Referrer-Policy: no-referrer` rides alongside it for the same SECURITY.md
+ * reason, one level up: the page URL itself — `/kb/[id]` and `/runs/[id]` both
+ * carry a run id, and the anchor domain a run is investigating sits in the KB
+ * route's own path — is the sensitive thing here, not just a fetched body.
+ * Every modern browser already defaults to `strict-origin-when-cross-origin`
+ * (Chrome 85+/Firefox 87+/Safari, the same "living standard" default
+ * `SearchesPanel.tsx`'s own `noreferrer` fix cites), which already strips the
+ * path on a cross-origin click-through — but that default still sends this
+ * origin's bare hostname, and a same-origin request still carries the full
+ * URL, including the run id, as `Referer`. `no-referrer` closes both: it
+ * matches the per-image `referrerPolicy="no-referrer"` `graphIcons.ts` and
+ * `SiteIcon.tsx` already set by hand for the exact same reason (favicon
+ * fetches hitting a third-party host), extended here to every navigation and
+ * fetch this app's own pages make, not just image loads. Checked that nothing
+ * depends on `Referer` before adding: no route in this app reads
+ * `req.headers.get("referer")` (grepped, zero hits), and no external resource
+ * this app loads needs one back — `next/font/google` self-hosts at build
+ * time (no runtime request to Google's servers at all), and the one iframe
+ * (`ScrollFilm.tsx`'s `/launch-rig.html`) is a same-origin navigation a
+ * missing `Referer` cannot break.
  */
 
 const REALM = 'Basic realm="open-kb", charset="UTF-8"'
@@ -57,6 +78,7 @@ function same(a: string, b: string): boolean {
 function allow(): NextResponse {
   const res = NextResponse.next()
   res.headers.set("X-Content-Type-Options", "nosniff")
+  res.headers.set("Referrer-Policy", "no-referrer")
   return res
 }
 
@@ -85,7 +107,11 @@ export function proxy(req: NextRequest) {
 
   return new NextResponse("Not authorised", {
     status: 401,
-    headers: { "WWW-Authenticate": REALM, "X-Content-Type-Options": "nosniff" },
+    headers: {
+      "WWW-Authenticate": REALM,
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "no-referrer",
+    },
   })
 }
 
