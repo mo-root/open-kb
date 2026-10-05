@@ -1,5 +1,4 @@
-import { execFileSync } from "node:child_process"
-import { relative, resolve } from "node:path"
+import { TEST_FILE, rel, run } from "./check-shared.mjs"
 
 // Fails when a test file exists on disk and the suite would not run it.
 //
@@ -53,25 +52,14 @@ import { relative, resolve } from "node:path"
 // nothing AND flagged by nothing: silence twice over, in the one place built to
 // end it. This repo's convention is `.test.`, and the point is not to run both
 // spellings but to make deviating from ours loud instead of silent.
-const TEST_FILE = /\.(test|spec)\.[cm]?[jt]sx?$/
-
-const ROOT = resolve(import.meta.dirname, "..")
-
-/** Repo-relative POSIX paths, the spelling both authorities are normalized to. */
-function rel(p) {
-  return relative(ROOT, resolve(ROOT, p)).split("\\").join("/")
-}
-
-function run(cmd, args) {
-  // stdio inherit for stderr would spray vitest's banner into `pnpm check` output on every
-  // clean run; capture both and only surface them when the child actually fails.
-  try {
-    return execFileSync(cmd, args, { cwd: ROOT, encoding: "utf8", stdio: "pipe" })
-  } catch (err) {
-    const e = /** @type {{ stdout?: string; stderr?: string }} */ (err)
-    throw new Error(`\`${cmd} ${args.join(" ")}\` failed:\n${e.stdout ?? ""}${e.stderr ?? ""}`)
-  }
-}
+//
+// `TEST_FILE`, `rel` and `run` live in check-shared.mjs now, not here — this
+// file and check-skips.mjs typed out byte-identical copies of all three until
+// `jscpd` (run over scripts/ for the first time) found it. That is not the same
+// independence this comment is arguing for above: the SETS this guard compares
+// still come from nowhere but `vitest list` and `git ls-files`, exactly as
+// before. See check-shared.mjs's own doc comment for why sharing the glue does
+// not weaken that.
 
 /** What vitest would run, straight from vitest. */
 function collected() {

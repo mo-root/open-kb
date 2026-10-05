@@ -7243,3 +7243,70 @@ assertions failed reading `null`; restored the fix and reran clean.
 new), 13 skipped — same gated census as SELF-647.
 
 Backlog item: SELF-648
+
+**SELF-649 (2026-10-05 overnight fire) — ran `jscpd` (SELF-615/637's tool)
+over `scripts/`, `packages/web/app`, `packages/web/lib` and
+`packages/web/components` for the first time; every prior run had stopped at
+the four library packages' `src/`.** Ten clones came back. Most were the
+by-design shape prior fires have already learned to leave alone: the three
+`api/kb/[id]/*` and `api/run/[id]/route.ts` hits are the same
+`guarded(async (_req, { params }) => { const { id } = await params; … })`
+Next.js route-handler boilerplate every dynamic route carries, already
+thinned once by `findKb` (its own doc comment says so); `demo-investigate.ts`
+vs. `discover.ts` and `experiment.ts` vs. `overnight.ts` are parallel CLI
+arg-parsing blocks for siblings that don't share a caller; `swarm.ts` vs.
+`sweep.ts` is two CLIs printing a cost summary in their own shape;
+`kb/page.tsx` vs. `page.tsx` and the two `runs/[id]/page.tsx` ranges are
+JSX fragments, not logic. None of those is a second, independently-typed-out
+description of one fact the way `sweptFromRival` (SELF-615) was — forcing a
+shared function onto any of them would be coupling unrelated call sites for
+a graph-hygiene number only, the exact move SELF-595/637 already declined
+elsewhere in this document.
+
+One clone was the real thing: `scripts/check-skips.mjs` and
+`scripts/check-test-collection.mjs` had byte-identical `rel()`, `run()` and
+`TEST_FILE` — confirmed by reading both in full, not just trusting jscpd's
+line range. Both files' own doc comments already argue at length for why the
+two guards must stay independent (one reads `vitest list` against a
+hand-written `GATES` manifest, the other reads `vitest list` against
+`git ls-files`; neither set may be derived from the other, or the guard
+proves only that something agrees with itself) — but that argument is about
+the two SETS each script computes, not about the generic path/subprocess
+glue or the "what is a test file" regex both already leaned on identically.
+Confirmed by reading each file end to end before touching either: `rel`,
+`run` and `TEST_FILE` never appear in the independence argument itself, only
+in service of it. Two copies of `TEST_FILE` is the live risk — the repo's own
+`sweptFromRival` precedent ("a closed set with two mappings is a closed set
+that will disagree with itself") applies to this pair exactly: a future
+`.test.` convention change applied to one copy and not the other would make
+the two guards quietly disagree about what counts as a test file, with
+nothing to catch it.
+
+Fixed by extracting all three into a new `scripts/check-shared.mjs`, with a
+doc comment naming jscpd, the two files, and why sharing this specific glue
+does not weaken either guard's independence. Both scripts now import from
+it and no longer define their own copies; `check-test-collection.mjs` kept
+its detailed `.spec.`-inclusion reasoning in place (that argument is about
+the regex's CONTENT, which did not change) with a short pointer added to
+where the pattern itself now lives. No behavior change — confirmed by
+running both scripts directly before and after and diffing stdout
+byte-for-byte (identical), then by mutation: broke `TEST_FILE` in the new
+shared file alone and reran both — `check-test-collection.mjs` reported all
+231 tracked test files as "foreign" (collected by vitest, no longer
+matched by the broken pattern as being on disk) and `check-skips.mjs`
+reported all seven `GATES` entries as "declared gate not found in the
+source" (no test file matched the broken pattern, so `sourceSites()` found
+nothing to scan); restored the file and both guards returned to their
+exact prior output. `tests/check-skips.test.ts` and `tests/collection.test.ts`
+already exercise both scripts as real subprocesses rather than importing
+their internals, so they needed no changes to keep covering the refactored
+code; no new test added for the same reason B1-B4 and several SELF-<n>'s
+before this one gave for a pure-glue extraction — `tsc`/the two existing
+subprocess tests are what prove it.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check && pnpm test` both exit 0: 3390 tests passing, 13 skipped —
+identical to SELF-648's own count, as expected for a behavior-preserving
+refactor.
+
+Backlog item: SELF-649

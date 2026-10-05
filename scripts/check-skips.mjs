@@ -1,6 +1,6 @@
-import { execFileSync } from "node:child_process"
 import { readFileSync } from "node:fs"
-import { relative, resolve } from "node:path"
+import { resolve } from "node:path"
+import { ROOT, TEST_FILE, rel, run } from "./check-shared.mjs"
 
 // Says out loud which suites are dark in THIS environment, and fails when a
 // suite went dark without anyone declaring it.
@@ -72,8 +72,6 @@ import { relative, resolve } from "node:path"
 // reserved for the case that is genuinely a mistake: a suite that stopped
 // running and was not written down.
 
-const ROOT = resolve(import.meta.dirname, "..")
-
 /**
  * Every conditionally-skipped suite in the repo.
  *
@@ -138,22 +136,6 @@ const GATES = [
  * absent — that test runs, and asserting a throw is not a silence.
  */
 const SKIP_CONSTRUCT = /\b(?:describe|suite|it|test)\s*(?:\.\s*[a-zA-Z]+\s*)*?\.\s*(skip|skipIf|todo|runIf|only)\b/g
-
-/** Repo-relative POSIX paths, the spelling every authority is normalized to. */
-function rel(p) {
-  return relative(ROOT, resolve(ROOT, p)).split("\\").join("/")
-}
-
-function run(cmd, args) {
-  try {
-    return execFileSync(cmd, args, { cwd: ROOT, encoding: "utf8", stdio: "pipe" })
-  } catch (err) {
-    const e = /** @type {{ stdout?: string; stderr?: string }} */ (err)
-    throw new Error(`\`${cmd} ${args.join(" ")}\` failed:\n${e.stdout ?? ""}${e.stderr ?? ""}`)
-  }
-}
-
-const TEST_FILE = /\.(test|spec)\.[cm]?[jt]sx?$/
 
 /** Every skip construct in a first-party test file, per git and a read of the text. */
 function sourceSites() {
