@@ -63,6 +63,12 @@ describe("unset credentials mean open, on purpose", () => {
     delete process.env.KB_PASSWORD
     expect(proxy(req()).headers.get("Referrer-Policy")).toBe("no-referrer")
   })
+
+  it("still sets X-Frame-Options on the open path", () => {
+    delete process.env.KB_USER
+    delete process.env.KB_PASSWORD
+    expect(proxy(req()).headers.get("X-Frame-Options")).toBe("SAMEORIGIN")
+  })
 })
 
 describe("both set: the door is locked", () => {
@@ -77,6 +83,7 @@ describe("both set: the door is locked", () => {
     expect(res.headers.get("WWW-Authenticate")).toContain('realm="open-kb"')
     expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff")
     expect(res.headers.get("Referrer-Policy")).toBe("no-referrer")
+    expect(res.headers.get("X-Frame-Options")).toBe("SAMEORIGIN")
   })
 
   it("refuses the right user with the wrong password", () => {
@@ -112,6 +119,7 @@ describe("both set: the door is locked", () => {
     expect(res.status).toBe(200)
     expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff")
     expect(res.headers.get("Referrer-Policy")).toBe("no-referrer")
+    expect(res.headers.get("X-Frame-Options")).toBe("SAMEORIGIN")
   })
 
   it("allows an empty-string password segment only if that is what was set", () => {

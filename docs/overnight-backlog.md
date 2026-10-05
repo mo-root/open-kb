@@ -7453,3 +7453,44 @@ passed by coincidence; restored and reran clean.
 new), 13 skipped — same gated census as SELF-651.
 
 Backlog item: SELF-652
+
+**SELF-653 (2026-10-05 overnight fire) — closed the one gap SELF-648's own
+header sweep named and deliberately left open: `X-Frame-Options`.** SELF-648
+considered `X-Frame-Options: DENY` as its "obvious next addition" and
+rejected it because `ScrollFilm.tsx` frames `/launch-rig.html` in its own
+`<iframe>` and `DENY` blocks framing from every origin, same-origin included
+— but its own writeup named the fix in the same sentence ("`SAMEORIGIN` would
+dodge that") and scoped it out anyway, on purpose, to keep that fire to one
+header. Re-read `ScrollFilm.tsx` to confirm the premise still holds rather
+than trusting a four-commits-old description: `src="/launch-rig.html?t=0"` is
+still a bare relative path, so the framed document is always served from
+this app's own origin. Grepped the rest of `packages/web` for `<iframe` to
+confirm it is still the only one (one hit) and for
+`X-Frame-Options`/`frame-ancestors`/`sandbox="`/`allow-same-origin` to
+confirm nothing already sets or depends on frame policy (zero hits on all
+four).
+
+`SAMEORIGIN` blocks exactly the clickjacking case the header exists for (a
+different origin framing this app's pages, e.g. to overlay invisible UI on
+top of the "Try the beta" start button or a KB map) while leaving the one
+same-origin embed this app actually has untouched — unlike `DENY`, which
+would have silently broken `ScrollFilm.tsx` with no fixture able to catch it
+(the exact risk SELF-648 flagged and this routine's own rules repeat: no
+jsdom/RTL harness exists here, and the routine can't visually verify the web
+app).
+
+Fixed in `packages/web/proxy.ts`'s `allow()` — the same single exit point
+SELF-648/SELF-652 built and extended for `X-Content-Type-Options` and
+`Referrer-Policy` — plus the 401 response's own header literal, matching
+that response's two existing lines. Extended `proxy.test.ts`'s three header
+assertions (open path, 401 refusal, successful auth) with an
+`X-Frame-Options` check each, plus one new dedicated test for the open path,
+mirroring SELF-652's own shape exactly. Verified non-vacuous by mutation:
+stashed just `proxy.ts`, reran — all three new `X-Frame-Options` assertions
+failed reading `null`; restored and reran clean before staging.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check && pnpm test` both exit 0: 3393 tests passing (up from 3392, one
+new), 13 skipped — same gated census as SELF-652.
+
+Backlog item: SELF-653

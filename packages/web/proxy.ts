@@ -59,6 +59,19 @@ import { NextResponse, type NextRequest } from "next/server"
  * time (no runtime request to Google's servers at all), and the one iframe
  * (`ScrollFilm.tsx`'s `/launch-rig.html`) is a same-origin navigation a
  * missing `Referer` cannot break.
+ *
+ * `X-Frame-Options: SAMEORIGIN` closes the gap the comment that first added
+ * this file's header allowlist named and deliberately left open: `DENY` was
+ * rejected there because `ScrollFilm.tsx` frames `/launch-rig.html` (a
+ * same-origin static file) in its own `<iframe>`, and `DENY` blocks framing
+ * from every origin, same-origin included. `SAMEORIGIN` blocks only a
+ * cross-origin page from framing this app (the clickjacking case the header
+ * exists for) while leaving that one same-origin embed untouched — confirmed
+ * by re-reading `ScrollFilm.tsx`: its `src="/launch-rig.html?t=0"` is a bare
+ * relative path, so the framed document is always served from this app's own
+ * origin, never another one. Grepped the rest of `packages/web` for
+ * `<iframe` first (one hit, `ScrollFilm.tsx`) so this is not a guess about
+ * what the app embeds.
  */
 
 const REALM = 'Basic realm="open-kb", charset="UTF-8"'
@@ -79,6 +92,7 @@ function allow(): NextResponse {
   const res = NextResponse.next()
   res.headers.set("X-Content-Type-Options", "nosniff")
   res.headers.set("Referrer-Policy", "no-referrer")
+  res.headers.set("X-Frame-Options", "SAMEORIGIN")
   return res
 }
 
@@ -111,6 +125,7 @@ export function proxy(req: NextRequest) {
       "WWW-Authenticate": REALM,
       "X-Content-Type-Options": "nosniff",
       "Referrer-Policy": "no-referrer",
+      "X-Frame-Options": "SAMEORIGIN",
     },
   })
 }
