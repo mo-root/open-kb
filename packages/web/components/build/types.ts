@@ -50,6 +50,40 @@ export const STAGE_BLURB: Record<Stage, string> = {
   write: "assemble the map and settle the bill",
 };
 
+/**
+ * The status strip's own headline and blurb once a run has stopped streaming.
+ *
+ * THE BUG THIS CLOSES: the strip used to light its "Stopped" wording off
+ * `errorText` alone — "the run ended in error" — rather than `stopped`, this
+ * surface's OWN boolean for "a person pressed the Stop button" (set
+ * synchronously in `onClick`, read by `ResultPanel` a few lines below for the
+ * exact same question). `errorText` is set by every ending that is not a
+ * clean `complete` frame: a cancellation, yes, but also a spend-cap trip or a
+ * genuine crash the sweep threw on its way out (`lib/runs.ts`'s `failRun`
+ * writes a real fault message in that case, not the `stopped` flag). A run
+ * that crashed therefore lit this strip's headline "Stopped" and its blurb
+ * "Everything the run found before it stopped is kept" — directly above a
+ * `ResultPanel` reading `errorText` the same tick and correctly rendering its
+ * rose "failed / the run did not finish" card for the identical ending. One
+ * page, one run, two panels disagreeing about whether anything went wrong —
+ * the exact contradiction `ResultPanel`'s own header comment already names
+ * and fixes for its OWN two endings ("the badge said the work was lost, the
+ * text said it was kept"), left unfixed one component over.
+ *
+ * `stopped` decides the wording here for the same reason it already decides
+ * `ResultPanel`'s chrome: it is the one signal that means "the person did
+ * this on purpose" and nothing else can set it.
+ */
+export function endedStripText(stopped: boolean, errorText: string | null): { label: string; blurb: string } {
+  if (stopped) {
+    return { label: "Stopped", blurb: "Everything the run found before it stopped is kept." };
+  }
+  if (errorText) {
+    return { label: "Failed", blurb: "The run did not finish." };
+  }
+  return { label: "Finished — opening the map", blurb: "The map is written. Taking you to it." };
+}
+
 /** agent name (as the run emits it) -> the stage a reader sees. */
 const AGENT_STAGE: Record<string, Stage> = {
   understand: "understand",

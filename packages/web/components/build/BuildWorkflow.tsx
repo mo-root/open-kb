@@ -14,6 +14,7 @@ import { StageTracker } from "./StageTracker";
 import {
   advance,
   allDone,
+  endedStripText,
   formatDuration,
   formatUsd,
   initialStates,
@@ -753,11 +754,7 @@ export function BuildWorkflow({
         <div className="mb-5 rounded-lg border border-slate-800 bg-slate-900/30 px-4 py-3.5">
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
             <span className="text-sm font-medium text-slate-200">
-              {running
-                ? STAGE_LABELS[activeStage]
-                : errorText
-                  ? "Stopped"
-                  : "Finished — opening the map"}
+              {running ? STAGE_LABELS[activeStage] : endedStripText(stopped, errorText).label}
             </span>
             <span className="tnum shrink-0 font-mono text-[11px] text-slate-500">
               {formatDuration(elapsed)}
@@ -766,11 +763,7 @@ export function BuildWorkflow({
           </div>
 
           <p className="mt-1 text-xs leading-relaxed text-slate-500">
-            {running
-              ? STAGE_BLURB[activeStage]
-              : errorText
-                ? "Everything the run found before it stopped is kept."
-                : "The map is written. Taking you to it."}
+            {running ? STAGE_BLURB[activeStage] : endedStripText(stopped, errorText).blurb}
           </p>
 
           {/* No estimate, no bar. A progress bar with an invented denominator

@@ -9,6 +9,7 @@ import {
   STAGES,
   advance,
   allDone,
+  endedStripText,
   formatDuration,
   formatUsd,
   groupPlan,
@@ -174,6 +175,46 @@ describe("STAGE_LABELS and STAGE_BLURB: one distinct line per stage", () => {
     for (const s of STAGES) expect(STAGE_BLURB[s]).toBeTruthy()
     const blurbs = STAGES.map((s) => STAGE_BLURB[s])
     expect(new Set(blurbs).size).toBe(blurbs.length)
+  })
+})
+
+/**
+ * BuildWorkflow.tsx's status strip used `errorText` alone to pick this
+ * wording, so a crash (a spend-cap trip, a fault the sweep threw) lit
+ * "Stopped — everything the run found before it stopped is kept" right above
+ * a `ResultPanel` reading the same two values and correctly rendering its
+ * "failed" card for the identical ending — the stopped-vs-failed contradiction
+ * `ResultPanel`'s own header comment already names and fixes for its own two
+ * endings, left open one component over. `stopped` is the fix: it is this
+ * surface's own "a person pressed Stop" boolean, and nothing else sets it.
+ */
+describe("endedStripText: stopped-by-a-person reads differently from stopped-by-a-crash", () => {
+  it("reads 'Stopped' when the person pressed Stop, regardless of the error text that lands", () => {
+    expect(endedStripText(true, "Stopped. Everything found before you stopped it is kept.")).toEqual({
+      label: "Stopped",
+      blurb: "Everything the run found before it stopped is kept.",
+    })
+  })
+
+  it("still reads 'Stopped' if the error text has not arrived yet", () => {
+    expect(endedStripText(true, null)).toEqual({
+      label: "Stopped",
+      blurb: "Everything the run found before it stopped is kept.",
+    })
+  })
+
+  it("reads 'Failed', not 'Stopped', for an error nobody asked for", () => {
+    expect(endedStripText(false, "spend cap reached")).toEqual({
+      label: "Failed",
+      blurb: "The run did not finish.",
+    })
+  })
+
+  it("reads the finished line once a run has ended cleanly", () => {
+    expect(endedStripText(false, null)).toEqual({
+      label: "Finished — opening the map",
+      blurb: "The map is written. Taking you to it.",
+    })
   })
 })
 

@@ -7746,3 +7746,73 @@ only `proxy.ts`/`proxy.test.ts` touched. `pnpm check && pnpm test` both exit
 census as SELF-655.
 
 Backlog item: SELF-656
+
+**SELF-657 (2026-10-05 overnight fire) — a basename cross-reference (the
+SELF-566/599/604/613 method) over `packages/web/components/build` turned up
+`ResultPanel.tsx` and `FindingsPanel.tsx` with two or fewer hits apiece, both
+mentions passing rather than a dedicated read. Reading `ResultPanel.tsx` end
+to end found the SAME stopped-vs-failed contradiction its own header comment
+already describes fixing, still live one component over, in `BuildWorkflow.tsx`.**
+
+`ResultPanel.tsx`'s own comment at its `stopped` prop names a real,
+already-fixed bug: pressing Stop used to land in the same rose "failed" card
+a crash does, so "the badge said the work was lost, the text said it was
+kept." The fix there reads `stopped` (BuildWorkflow's own "a person pressed
+the Stop button" boolean, set synchronously in the button's `onClick`) ahead
+of `errorText`, so a deliberate stop gets its own neutral card and a crash
+keeps the rose one.
+
+`BuildWorkflow.tsx`'s status strip, rendered directly above `ResultPanel` in
+the same tree off the same two values, never got that fix. Its headline and
+blurb (then at lines 756-760 and 769-772) branched on `errorText` alone:
+
+    : errorText ? "Stopped" : "Finished — opening the map"
+    : errorText ? "Everything the run found before it stopped is kept." : …
+
+`errorText` is set by `onResult`'s `case "error"` for ANY stream error frame
+— not only a cancellation. `lib/runs.ts`'s `failRun` writes a real fault
+sentence for a genuine crash or a spend-cap trip, and only substitutes the
+literal `STOPPED` constant when `r.abort.signal.aborted && !isNamedFault(error)`
+— deliberately NOT the same thing as the client's own `stopped` state, per
+that function's own comment ("reading the signal alone would answer that
+reader 'you stopped this' about a run they were watching and did not
+touch"). So a run that crashed set `errorText` to that fault sentence,
+`stopped` stayed `false`, and the strip read `errorText` truthy and printed
+"Stopped — everything the run found before it stopped is kept" regardless —
+while `ResultPanel`, a few lines below, read the same two values correctly
+and rendered its rose "failed / the run did not finish" card for the
+identical ending. One page, one run, two panels disagreeing about whether
+anything went wrong — not a theoretical shape: `errorText` becoming truthy
+without `stopped` is the ordinary path for a spend-cap trip or any model/
+fetch failure the sweep throws, exercised by this repo's own
+`spend-cap.test.ts`/`runs.test.ts` fixtures, not an edge case requiring a
+live run to reach.
+
+Fixed by extracting the branch into `endedStripText(stopped, errorText)` in
+`components/build/types.ts` (the file `STAGE_LABELS`/`STAGE_BLURB` — the
+strip's other half — already live in), reading `stopped` first the same way
+`ResultPanel` does, with a new "Failed" / "The run did not finish." pair for
+an error that was not a stop. `BuildWorkflow.tsx`'s two call sites now read
+`endedStripText(stopped, errorText).label` / `.blurb`. No behaviour change
+for the two cases that were already right (a clean finish, a real stop);
+the only case that changed is the one that was wrong.
+
+No jsdom/RTL harness exists in this repo to render `BuildWorkflow.tsx`
+itself (the same limitation B1-B4 and SELF-613 already note for this
+directory), so the fix is proven the way `isSpendDecision`/`mergeEntities`
+already are in `BuildWorkflow.test.ts` — as a plain, directly tested
+function. Added `endedStripText` tests to `types.test.ts` covering all four
+inputs, including "stopped wins even when the error text has not arrived
+yet" (the client sets `stopped` synchronously on click, before the server's
+error frame or fallback fetch resolves). Verified non-vacuous by mutation:
+temporarily reverted `endedStripText` to the original `errorText`-only
+branch (dropping the `stopped` check entirely) and reran — the new "reads
+'Failed', not 'Stopped', for an error nobody asked for" case failed exactly
+as expected (`Stopped` where `Failed` was wanted); restored the fix and
+reran clean before staging.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check && pnpm test` both exit 0: 3403 tests passing (up from 3399,
+four new), 13 skipped — same gated census as SELF-656.
+
+Backlog item: SELF-657
