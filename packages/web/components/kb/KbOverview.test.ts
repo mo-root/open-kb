@@ -11,11 +11,12 @@ import type { NoteRef } from "@/lib/viewTypes"
  * used, so this is SELF-99.
  *
  * `meanRelevance` (packages/web/components/kb/KbOverview.tsx) feeds the
- * dashboard's headline "mean place" stat and the placement gauge (lines
- * 827-971) — the one number that tells a reader how confidently the classifier
- * placed what it found, and it had never run under test.
+ * dashboard's headline "mean place" stat (line 943) and the placement gauge
+ * (`PlacementPanel`, lines 247-303, rendered at 1005) — the one number that
+ * tells a reader how confidently the classifier placed what it found, and it
+ * had never run under test.
  *
- * `RELATION_WEIGHT` (packages/web/lib/kb-from-run.ts:92-107), the only writer
+ * `RELATION_WEIGHT` (packages/web/lib/kb-from-run.ts:92-118), the only writer
  * of `.relevance` today, keeps every weight in 0-100 (checked: 95 down to
  * `none`'s 15), so the `Math.max(0, Math.min(100, ...))` clamp here is
  * currently dead on real data — same defensive-branch situation SELF-98 found

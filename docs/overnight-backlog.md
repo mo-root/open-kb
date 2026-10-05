@@ -7031,3 +7031,80 @@ then `pnpm check && pnpm test` both exit 0: 3389 tests passing, 13 skipped —
 identical to SELF-644's own count.
 
 Backlog item: SELF-645
+
+**SELF-646 (2026-10-05 overnight fire) — a citation-drift sweep (SELF-509's
+own method, "grepped every `file.ts:NNN` comment citation... and diffed
+each citation's own last-edited commit against its target file's last-edited
+commit") found 13 stale citations across 8 `packages/web` files, most of
+them caused by SELF-644's own edits shifting line numbers below each
+inserted comment.** SELF-509's original sweep checked citations against
+`git blame` timing and found none stale; it did not re-verify each
+citation's text against its target line, which is the gap this fire closes
+for the one package with the most comment-citation density
+(`kb-from-run.ts` alone is cited by line number from six other files).
+
+Checked every `file.ts:NNN`/`file.tsx:NNN` citation in `packages/web` whose
+target was a file SELF-644 touched (`GraphCanvas.tsx`, `KbOverview.tsx`,
+`NotesTab.tsx`, `TabBar.tsx`, `Donut.tsx`, `Sparkline.tsx`, `AgentPanel.tsx`,
+`cluster.ts`, `kb-from-run.ts`) by reading the cited line's actual content
+against what the citing comment claims it says — not by timestamp, since a
+file can be edited and still keep a citation accurate (or, as five of the 13
+found here show, be wrong for reasons that predate SELF-644 entirely).
+`TabBar.tsx`, `Donut.tsx`, `Sparkline.tsx` and `AgentPanel.tsx` had no
+external citations into them (checked by grep) and were not the line SELF-644
+moved in `NotesTab.test.tsx` (a same-line `!`-assertion, no net shift) — all
+four clean. The rest were not:
+
+- `KbOverview.test.ts:18` cited `kb-from-run.ts:92-107` for the full
+  `RELATION_WEIGHT` object; its real closing brace is line 118 — the object
+  grew an 8-line comment (the `unknown: 20` rationale) after this citation
+  was written, predating SELF-644. Corrected to `92-118`.
+- The same file's own `lines 827-971` for "the dashboard's headline... and
+  the placement gauge" pointed at an unrelated `useEffect` cleanup; the real
+  anchors are the headline stat at line 943 and `PlacementPanel` itself
+  (defined 247-303, rendered at 1005) — also predates SELF-644. Corrected to
+  name both directly instead of guessing a single range.
+- `NoteView.test.ts:14` and `NoteView.tsx:67` both cited the same pair of
+  `sources[].url` builders in `kb-from-run.ts` as `754,772`; SELF-644 added a
+  net +2 lines above them (the `RELATION_WEIGHT[e.relation] ?? ...none!`
+  comment at line 486-487). Real lines are `756,774` — fixed in both files.
+  `NoteView.test.ts:12`'s own `lines 325-326` for its icon+label render was
+  separately wrong (real lines 346-347, predating SELF-644) — fixed too.
+- `ProductsTab.test.tsx:126` cited `kb-from-run.ts:685` for `report.readPages`
+  (real line 731, 46 lines off — a drift far larger than SELF-644's own
+  shift, so mostly pre-existing) and `:169` cited `:287` for the
+  integrations `foundAt` trim check (real line 279, also pre-existing).
+  Fixed both.
+- `NotesTab.test.tsx` cited `pathFor` at `kb-from-run.ts:147` (real: 167),
+  the noise-routing guard at `430-433` (real: `471-474`), and the path
+  sanitizer at `149` (real: 169) — all three pre-existing drift, not
+  SELF-644's. Its fourth citation (`KIND_GROUP`, `73-80`) was already
+  correct and left alone.
+- `cluster.ts:135` cited `GraphCanvas.tsx:906` for the `assignClusters` call
+  site that builds `clusterOf`; SELF-644's `parseHex`/`hexToRgba`/focus-trap
+  comments shifted everything after line ~307 in `GraphCanvas.tsx` by +5,
+  moving the real call from (pre-SELF-644) 906 to 911 — the one citation
+  here that SELF-644 itself caused outright. Its sibling citation,
+  `bake-layouts.ts:146`, was untouched by that commit and still correct.
+- `layout.test.ts:285` cited `GraphCanvas.tsx:862/873` and
+  `bake-layouts.ts:100/117` for the two `maxDeg`-deriving call sites; real
+  lines are `862/874` (GraphCanvas's own `nodeCount` declaration at 862 was
+  already right, only the `seedPosition` call one line later had drifted)
+  and `118/135` (`bake-layouts.ts`'s `maxDeg` declaration and its own
+  `seedPosition` call — a larger, pre-existing drift). Fixed both halves.
+- `kb-from-run.ts:988` cited `map.ts:246` (a basename-only cross-package
+  citation into `packages/swarm/src/map.ts`, this document's own established
+  shorthand per the citation at line 3128) for `entityEdges()`'s `domainOf`;
+  real lines are `267,269`. Fixed.
+
+Every fix was read against the target file directly, not inferred from a
+line-count delta — `kb-from-run.ts`'s citations in particular mix drift from
+SELF-644 (a few lines) with drift that long predates it (tens of lines),
+and treating all 13 as "SELF-644 shifted everything by N" would have
+corrected some and silently re-broken others. No source logic changed —
+every edit is a comment-text correction. `pnpm install --frozen-lockfile`
+first (fresh clone, no `node_modules`). `pnpm check && pnpm test` both exit
+0: 3389 tests passing, 13 skipped — identical to SELF-645's own count, as
+expected for a comment-only change.
+
+Backlog item: SELF-646

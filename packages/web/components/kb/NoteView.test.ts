@@ -10,8 +10,8 @@ import { hostOf } from "./NoteView"
  *
  * `hostOf` is the only piece of NoteView.tsx with a branch nothing exercises:
  * it renders every source's icon and label (`sources.map(...)`, lines
- * 325-326), and its `catch` fallback — return the raw string, untouched — had
- * never run under test. Checked `packages/web/lib/kb-from-run.ts:710,728`:
+ * 346-347), and its `catch` fallback — return the raw string, untouched — had
+ * never run under test. Checked `packages/web/lib/kb-from-run.ts:756,774`:
  * today every `sources[].url` this app ever builds is `https://${domain}`, so
  * the fallback is currently unreachable in production, but the function stays
  * defensive (a bare `string`, not a branded/validated URL type) and is the

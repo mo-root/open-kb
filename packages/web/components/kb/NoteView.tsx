@@ -64,7 +64,7 @@ export function hostOf(url: string): string {
     // strip either, so a ported URL would both mislabel the source and 404
     // its favicon. `SearchesPanel.tsx`'s sibling `hostOf` already reads
     // `.hostname`; this one drifted from it. Unreachable today — checked
-    // `kb-from-run.ts:754,772`, the only two `sources[].url` builders, and
+    // `kb-from-run.ts:756,774`, the only two `sources[].url` builders, and
     // both are `https://${domain}` with no port — but free to fix and keeps
     // the two copies in agreement.
     return new URL(url).hostname.replace(/^www\./, "");

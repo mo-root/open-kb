@@ -17,12 +17,12 @@ import type { NoteRef } from "@/lib/viewTypes"
  * builds every real `NoteRef.path` one of two ways —
  *   - `ANCHOR_PATH` (kb-from-run.ts:138) is the bare literal `"company.md"`,
  *     no slash, which is why "overview" exists as a group at all.
- *   - `pathFor` (kb-from-run.ts:147) emits `"<group>/<safe>.md"`, where
+ *   - `pathFor` (kb-from-run.ts:167) emits `"<group>/<safe>.md"`, where
  *     `group` is always one of `KIND_GROUP`'s four values (kb-from-run.ts:73-80:
  *     players/products/communities/unplaced) — never empty, since a falsy
  *     `KIND_GROUP[e.kind]` is routed to `noise` before `pathFor` is ever
- *     called (kb-from-run.ts:430-433) — and `safe` has already had every
- *     `/`, `\`, `?`, `#` stripped (kb-from-run.ts:149), so a real path never
+ *     called (kb-from-run.ts:471-474) — and `safe` has already had every
+ *     `/`, `\`, `?`, `#` stripped (kb-from-run.ts:169), so a real path never
  *     carries a second slash for `groupOf` to stop at.
  */
 describe("groupOf reads the segment before the first slash", () => {

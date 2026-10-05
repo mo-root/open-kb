@@ -282,7 +282,7 @@ describe("seeding", () => {
   })
 
   it("gives every node the same outer radius when the graph has no edges yet", () => {
-    // Both call sites (GraphCanvas.tsx:862/873, bake-layouts.ts:100/117) derive
+    // Both call sites (GraphCanvas.tsx:862/874, bake-layouts.ts:118/135) derive
     // maxDeg from the same edge set `deg` comes from, so a run with entities but
     // no discovered relations yet passes maxDeg: 0 — the `maxDeg > 0 ? ... : 0`
     // branch. Every existing test above passes maxDeg: 82, so it had never run.

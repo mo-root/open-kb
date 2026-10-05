@@ -985,7 +985,7 @@ export function graphOf(run: CompletedRun): GraphView {
   // lost: self-edges and genuinely off-map ends both measured 0.
   // A kept entity with no domain — swarm's "community without a home" (map.ts's
   // `nodeKey`) — is not indexable by `entity.domain` at all: that field is `""`
-  // for it. Its own `entityEdges()` (map.ts:246, `domainOf`) knows this and
+  // for it. Its own `entityEdges()` (map.ts:267,269, `domainOf`) knows this and
   // falls back its measured edges' `from`/`to` to the node's internal key,
   // `${kind}:${slug(name)}`, never to `""` and never to the bare name. Without
   // the second key below, such an edge named its endpoint by that key, `byDomain`

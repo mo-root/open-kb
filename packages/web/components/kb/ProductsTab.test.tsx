@@ -123,7 +123,7 @@ describe("the catalog — what the company says it sells", () => {
    * The catalog and strip cases above leave the OTHER two `try { new
    * URL(x).pathname } catch { return x }` copies in this same 181-292 block
    * unexercised: the "read from:" link (line 205) walks `readPages`, a plain
-   * `string[]` kept verbatim from `report.readPages` in kb-from-run.ts:685 —
+   * `string[]` kept verbatim from `report.readPages` in kb-from-run.ts:731 —
    * no URL validation, same unchecked-model-output shape as `foundAt`.
    * Confirmed by dropping this catch (`new URL(u).pathname || "/"`, no try)
    * and re-running: "Invalid URL" escaped uncaught, taking the tab down.
@@ -166,7 +166,7 @@ describe("what the company published about itself", () => {
    * The fourth of the four sibling `try { new URL(x).pathname } catch {
    * return x }` copies SELF-249 named but did not itself drive: the
    * integration card's link (line 334). `integrations[].foundAt` is kept
-   * verbatim by kb-from-run.ts:287 (a trim check, no URL validation), the
+   * verbatim by kb-from-run.ts:279 (a trim check, no URL validation), the
    * same unchecked-model-output shape as the catalog/strip `foundAt`s SELF-249
    * covered. Confirmed by dropping this catch and re-running: "Invalid URL"
    * escaped uncaught from inside the render. Restored before committing.

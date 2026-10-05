@@ -132,7 +132,7 @@ export function measureClusters(
   for (const n of nodes) {
     if (n.x == null || n.y == null || !Number.isFinite(n.x) || !Number.isFinite(n.y)) continue
     // `?? n.id`: defensive against a `clusterOf` that does not cover this node,
-    // but both call sites (GraphCanvas.tsx:906, bake-layouts.ts:146) build
+    // but both call sites (GraphCanvas.tsx:911, bake-layouts.ts:146) build
     // `clusterOf` with `assignClusters(nodes, adj)` over this exact `nodes`
     // array, and `assignClusters` (line 88 above) sets an entry for every node
     // it iterates — so `clusterOf.get(n.id)` is defined for every `n` here.
