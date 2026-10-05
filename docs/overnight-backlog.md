@@ -7351,3 +7351,56 @@ staging.
 new), 13 skipped — same gated census as SELF-649.
 
 Backlog item: SELF-650
+
+**SELF-651 (2026-10-05 overnight fire) — read `prompts/agents/listicle.md`
+against its one call site end to end, a prompt/code pairing no prior fire had
+named by this file (`grep -c listicle.md docs/overnight-backlog.md` was 0
+before this entry); found the contract intact and one already-flagged,
+already-unresolved risk that still needs a live run to close.** The prompt
+(`listicle.md`) asks for one field, `vendors: string[]`, "each written once";
+the call site's schema (`sweep.ts:4989-4993`) asks for exactly that, and the
+anchor-exclusion the prompt's second line promises ("Do not list it") is
+backed by the same `anchorBanName`/`banned()` pair every other name-extraction
+call in this file uses (`sweep.ts:3502`, `:5055`) — not a second, drifted copy
+of the rule.
+
+Read the dedup block right below the call (`sweep.ts:5021-5055`) expecting to
+find the bug its own comment describes ("Left case-sensitive, two spellings of
+one vendor both survive into `fresh`...the fix belongs at the one caller that
+can hand it a case-variant duplicate") — and confirmed instead that the fix is
+already there: `seenLabel` dedupes on `v.toLowerCase()`, so "Wix" and "WIX"
+from two different roundup rows collapse to one entry before `rivalHand` ever
+sees them. Checked by git blame (`git log -L 5021,5056:packages/sweep/src/
+sweep.ts`): the comment and the fix landed together in one commit (6b776e0),
+the comment narrating the bug the code beneath it closes — not a stale
+description of a regression, as its past tense first read like.
+
+The one open question this read could not close: `LISTICLE_MAX_ROWS = 60`
+(`sweep.ts:681`) carries its own comment admitting it "sat comfortably inside
+one call's input floor back when `TRIAGE_BATCH` was itself 60... the
+timeout-driven halving to 30 has never been re-checked against this
+constant." That halving (`e2e7ba3`, 2026-08-23) was measured: a 60-row triage
+call took 28.6-34.7s against a since-also-halved 60s `CALL_TIMEOUT_MS`
+(`sweep.ts:609-611`) on a slow provider, and `TRIAGE_BATCH` was cut to 30 the
+same commit for safety margin. `listicle` takes the same unmodified
+`CALL_TIMEOUT_MS` (no per-agent override exists for it in the `agent ===
+"link" ? ... : CALL_TIMEOUT_MS` chain at `sweep.ts:2185-2194`), so the same
+arithmetic that justified halving `TRIAGE_BATCH` could apply to
+`LISTICLE_MAX_ROWS` too — or might not, since the listicle prompt asks a
+narrower question (names only, `maxOutputTokens: 1_500`) than triage's
+per-host classification and the provider is now throughput-sorted rather than
+pinned to the slow host that caused the original overrun. Deciding between
+those needs a real call's wall-clock time, and this environment is forbidden
+from making one ("no live or paid runs, ever"). Halving `LISTICLE_MAX_ROWS` to
+match `TRIAGE_BATCH` on the strength of the analogy alone, without a
+measurement, would be exactly the "arithmetic dressed as evidence" P1-8 named
+and refused to ship — so `LISTICLE_MAX_ROWS` stays at 60, unchanged, and this
+entry hands the open question to whoever next runs a real sweep with roundup
+rows in it: time the listicle-harvest call and compare it against
+`CALL_TIMEOUT_MS`.
+
+No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`). `pnpm check && pnpm test` both exit 0: 3391 tests passing, 13
+skipped — identical to SELF-650's own count, as expected for a read-only fire.
+
+Backlog item: SELF-651 - BLOCKED
