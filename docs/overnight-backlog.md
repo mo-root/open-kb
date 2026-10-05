@@ -7816,3 +7816,42 @@ reran clean before staging.
 four new), 13 skipped — same gated census as SELF-656.
 
 Backlog item: SELF-657
+
+**SELF-658 (2026-10-05 overnight fire) — a basename cross-reference over the
+remaining single/double-digit-hit files in `packages/web` and `packages/swarm`
+(error.tsx, global-error.tsx, SkipLink.tsx, CostBreakdown.tsx, PlanCard.tsx,
+StageTracker.tsx, GraphSettings.tsx, lib/graph/labels.ts, scrollProgress.ts,
+typingGuard.ts, FindingsPanel.tsx, ResultPanel.tsx, nodeTypes.ts,
+icons/NodeGlyph.tsx, viz/BarMeter.tsx, viz/StatTile.tsx,
+core/src/testing/fake-provider.ts, swarm/src/seed-families.ts,
+swarm/src/serialize.ts) read every one end to end and found nothing — each
+already carries the defensive guard, test, or doc comment its own shape
+calls for (GraphSettings.test.ts already pins PRESETS against RANGES;
+Sparkline/BarMeter/StatTile's `compact`/`Math.max(...xs, 1)` already guard
+the empty/negative cases a bug would hide in; SkipLink's `tabIndex={-1}`
+contract is already cross-checked by its own test).** Also re-ran
+`madge --circular` against `packages/web` with its `tsconfig.json` alias
+resolved (SELF-595's own invocation) — same single cycle, same place
+(`lib/runs.ts > lib/public-runs.ts > lib/store/supabase.ts`), already traced
+by SELF-595 to one `import type` edge erased before anything runs and left
+as is (BLOCKED, not a bug) for the same reason: no second home exists for
+`RunStatus`/`StoredRun` that is not itself a drive-by abstraction. And
+`madge --circular` over `packages/core/src`, `packages/providers/src`,
+`packages/sweep/src`, `packages/swarm/src` together: zero cycles, matching
+every prior run of this tool on this branch.
+
+This document's own "exhausted toolbox" entries (SELF-509/645/656) already
+cover coverage, knip, jscpd and citation-drift; this fire's contribution is
+confirming the one manual angle those don't reach — a fresh, dedicated read
+of the specific files this branch's own low-touch-count method (SELF-566/
+599/604/613/657) had not yet individually read — also comes back clean at
+this point in the branch's life. Recorded so a future fire spends its first
+cycle picking a different angle (a fresh file-by-file read of a package this
+list has not named recently, or a re-run of a tool whose last result is now
+many commits stale) rather than re-walking this same low-touch-count list.
+
+No source change. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`). `pnpm check && pnpm test` both exit 0: 3403 tests passing,
+13 skipped — identical to SELF-657's own count (read-only fire).
+
+Backlog item: SELF-658
