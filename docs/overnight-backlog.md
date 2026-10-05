@@ -7108,3 +7108,83 @@ first (fresh clone, no `node_modules`). `pnpm check && pnpm test` both exit
 expected for a comment-only change.
 
 Backlog item: SELF-646
+
+**SELF-647 (2026-10-05 overnight fire) — a genuinely new angle never tried by
+any prior fire: audited every `addEventListener`/`setTimeout`/`setInterval`/
+`MutationObserver`/`ResizeObserver` subscription in `packages/web` for a
+missing cleanup or a stale-response race, the classic bug class none of this
+document's many coverage/citation/lint sweeps would ever surface (the code
+runs identically on every fixture regardless of whether an old subscription
+also keeps firing after remount) — found nothing to fix.** Grepped every
+`addEventListener(` call in non-test `packages/web` source (11 sites across 6
+files) and read each one's enclosing `useEffect` end to end against its
+`return` cleanup, rather than trusting that a `removeEventListener` nearby
+was the matching one:
+
+- `GraphCanvas.tsx:336,346` (`subscribeCoarsePointer`/`subscribeReducedMotion`,
+  `matchMedia` `"change"` listeners used as `useSyncExternalStore` sources) —
+  each returns `() => mq.removeEventListener(...)` on the same `mq` instance.
+- `GraphCanvas.tsx:716-724` (a `MutationObserver` watching `data-theme` for
+  the palette-resolve effect) — `mo.disconnect()` in the cleanup.
+- `GraphCanvas.tsx:1240-1244,1253-1254` (two `document` `"keydown"` listeners,
+  the fullscreen focus-trap and the non-fullscreen Escape handler) — both
+  removed in their own cleanup; the focus-trap's also restores
+  `document.body.style.overflow`, confirmed it is the same `prevOverflow`
+  captured before the listener was attached, not a value that could drift.
+- `GraphCanvas.tsx:1070-1164`'s retry-until-`d3Force`-exists `setTimeout` loop
+  and its `peekTimer` (`:591-597,2010-2011`, the hover-peek delay) — the
+  first clears via `window.clearTimeout(timer)` in the effect's own cleanup
+  (the closure captures the mutable `timer` variable directly, so the final
+  scheduled id is always the one cleared, not a stale earlier one); the
+  second is cleared both on every re-arm (`:2010`, before scheduling a new
+  one) and on unmount (`:592-597`, a dedicated mount-only effect whose only
+  job is that one `clearTimeout`).
+- `GraphSearch.tsx:61-62`, `CommandPalette.tsx:143-145` (two `window`
+  `"keydown"` shortcuts) and `useUrlView.ts:82-84` (`"popstate"`) — all three
+  are the same one-line `addEventListener`/`return () =>
+  removeEventListener` shape, each confirmed removing the identical `onKey`/
+  `onPop` reference it added.
+- `TabBar.tsx:66-76` (a `ResizeObserver` plus `window` `"resize"` and a list's
+  own `"scroll"` listener, three subscriptions in one effect) — cleanup
+  disconnects the observer and removes both listeners; confirmed the `list`
+  reference removed at cleanup time is `listRef.current` captured at effect
+  setup, not re-read at cleanup (which would be `null` after an unmount).
+- `ScrollFilm.tsx:51-58` (`window` `"scroll"`/`"resize"`, driving a rAF-batched
+  callback) — cleanup removes both and also `cancelAnimationFrame`s any
+  in-flight frame, so a scroll that fires right before unmount cannot call
+  back into a torn-down component.
+- `CommandPalette.tsx:154-171`'s `requestIdleCallback`-or-`setTimeout`
+  fallback (warming the gallery fetch) — guarded by both a `dead` boolean
+  checked inside the callback AND a real `cancelIdleCallback`/`clearTimeout`
+  in cleanup, the belt-and-suspenders version of the pattern below.
+- `BuildWorkflow.tsx:314` (the stream's `AbortController`, aborted on
+  unmount) and `:320-322` (the elapsed-time `setInterval`, `clearInterval`
+  in cleanup).
+
+Three short, user-triggered `setTimeout`s with no unmount guard
+(`GraphSearch.tsx:85`'s 120ms input-blur delay, `BuildWorkflow.tsx:264`'s
+1200ms post-finish redirect, `:948`'s 2000ms "copied" reset) are not the same
+bug class: each fires once off a direct user action (not a prop/effect that
+could re-arm this subscription repeatedly across remounts), and a `setState`
+landing after unmount here is the ordinary React 18 no-op — no warning, no
+accumulating listener, nothing left running — not the leak-shaped shape this
+sweep was looking for.
+
+Separately checked the inverse bug — a slow response landing after a newer
+one, or after unmount, clobbering fresher state — on every `fetch` call
+inside a `useEffect` in `packages/web/components`: `GraphCanvas.tsx:735-760`
+(the KB graph fetch) and `:970-990` (the baked-layout fetch) both guard every
+`setState` behind a local `cancelled`/`dead` boolean set at the top of a
+later run or at cleanup; `KbOverview.tsx:808-830` and `NoteView.tsx:121-140`
+use the identical `cancelled` pattern, both captioned as deliberate because
+the parent keys the component by slug/path so a slug change is a fresh mount
+rather than a prop update the existing effect would need to re-guard.
+`CommandPalette.tsx`'s idle-fetch (above) uses the same `dead` flag. Every
+fetch-in-effect in the package already closes this race; none found open.
+
+No code change — every site checked was already correct. `pnpm install
+--frozen-lockfile` first (fresh clone, no `node_modules`). `pnpm check &&
+pnpm test` both exit 0: 3389 tests passing, 13 skipped — identical to
+SELF-646's own count, as expected for a read-only fire.
+
+Backlog item: SELF-647 - BLOCKED
