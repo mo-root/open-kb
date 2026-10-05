@@ -234,6 +234,20 @@ export const MEASURED_PHASE_COSTS: PhaseCosts = {
    * the conservative middle of the spread above rather than the tail this
    * paragraph was worried about.
    *
+   * CORRECTION (overnight fire, SELF-653): that 2.3x was itself wrong.
+   * `report.clock.predictedSeconds` was calling `runSeconds(firedCount)`
+   * with no `poolWidth` argument — the one mistake this file's every other
+   * caller (`rankSeconds` at four sites in `sweep.ts`) takes care to avoid —
+   * so it priced this run's 43 queries at the DEFAULT width of 8, not the
+   * 24 `OPENKB_RANK_CONCURRENCY` this run (and this repo's own `.env`)
+   * actually ran rank at. Recomputed at width 24: 268s, not 502s — 1.25x
+   * over actual (214s), squarely in the conservative middle, not a 2.3x
+   * outlier. Fixed at the one call site in `sweep.ts`; not re-derived here
+   * for the other 40 runs on disk, since their own `OPENKB_RANK_CONCURRENCY`
+   * at run time is not recorded anywhere this fire could read it back from —
+   * so the "min 0.42 … median 1.44 … max 2.36" spread two paragraphs up may
+   * carry the same width-8 bias and is not re-verified by this fix.
+   *
    * That is also the likeliest source of the under-predicting tail above: the
    * runs where actual beat predicted are the runs whose fixed phase ran long.
    * Fixing the term would make the model honest and the WEB BUDGET SMALLER,

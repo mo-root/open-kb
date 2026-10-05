@@ -7452,6 +7452,60 @@ passed by coincidence; restored and reran clean.
 `pnpm check && pnpm test` both exit 0: 3392 tests passing (up from 3391, one
 new), 13 skipped — same gated census as SELF-651.
 
+**SELF-653 (2026-10-05 overnight fire) — `report.clock.predictedSeconds`
+(SELF item never named: `grep -c "report.clock\|predictedSeconds"
+docs/overnight-backlog.md` was 0 before this entry) silently priced every
+run at the clock model's default rank width, never the width the run
+actually ranked at.** Read `core/clock.ts` end to end — a file no SELF-<n>
+entry had swept by name — against its one consumer, the `clock` field
+`sweep.ts` adds to every report (added 4913a23, 2026-08-24, right after
+51df06e measured the phase-cost model conservative). `rankSeconds` takes an
+explicit `poolWidth` because `clock.ts`'s own doc states the hazard by name:
+"a deployment ranking at 24 was reserving 3x the rank it needed." Grepped
+every call site (`grep -n "runSeconds(\|rankSeconds("  packages/sweep/src/
+sweep.ts`): the four mid-run clock checks (`sweep.ts:4315,4322,4471,5487`)
+all thread the run's own `RANK_CONC` through as the third argument — except
+`report.clock`'s own `predictedSeconds: Math.round(runSeconds(firedCount))`
+(`sweep.ts:7671` before this fix), the one call site that dropped it and
+fell back to `MEASURED_PHASE_COSTS.rankPoolWidth` (8).
+
+Confirmed this is not cosmetic by recomputing the one real number
+`clock.ts`'s own doc cites: "the first deadline-bound run predicted 502
+seconds and took 214." `runSeconds(43)` at the default width 8 is exactly
+502.37 → 502 — the comment's own figure is the buggy computation, not a
+hand-check of a different one. That run's `.env` sets
+`OPENKB_RANK_CONCURRENCY=24` (the figure `clock.ts` itself says the run
+"actually used," two paragraphs down); `runSeconds(43, undefined, 24)` is
+267.59 → 268, against the actual 214 — a 1.25x over-prediction, not the
+2.3x `clock.ts` recorded as a surprising outlier. The bug produced the
+outlier the comment then spent a paragraph explaining.
+
+Fixed the one call site: `runSeconds(firedCount, undefined, RANK_CONC)`,
+matching the other four. Left a CORRECTION paragraph in `clock.ts` right
+after the "over-predicted by 2.3x" line naming the bug, the corrected 268s/
+1.25x figure, and an explicit note that the "41 runs on disk" spread three
+paragraphs up (`min 0.42 … median 1.44 … max 2.36`) was not re-derived by
+this fix — those runs' own `OPENKB_RANK_CONCURRENCY` at run time is not
+recorded anywhere this fire could read it back from, so that spread may
+carry the same width-8 bias and is left as an open question for whoever can
+check it against the raw `runs/` artifacts.
+
+Added `packages/sweep/tests/sweep-buys-the-hand-it-was-dealt.test.ts`'s
+`predictedSeconds prices at this run's own rank width` case: sets
+`OPENKB_RANK_CONCURRENCY=24`, asserts `predictedSeconds` equals
+`runSeconds(queries, undefined, 24)` exactly AND differs from the
+width-8 default's own number (so a regression that silently drops the
+third argument cannot pass by the two widths coinciding). Verified
+non-vacuous by mutation: reverted just the `sweep.ts` call site, reran —
+the new test failed (`expected 224 to be 148`); restored the fix and
+reran clean before staging.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check && pnpm test` both exit 0: 3393 tests passing (up from 3392,
+one new), 13 skipped — same gated census as SELF-652.
+
+Backlog item: SELF-653
+
 Backlog item: SELF-652
 
 **SELF-653 (2026-10-05 overnight fire) — closed the one gap SELF-648's own

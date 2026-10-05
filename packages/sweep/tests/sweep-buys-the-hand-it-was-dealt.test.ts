@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeAll } from "vitest"
-import { openingHand, companyHand } from "@open-kb/core"
+import { afterEach, describe, it, expect, beforeAll } from "vitest"
+import { openingHand, companyHand, runSeconds } from "@open-kb/core"
 import { ANCHOR, ANCHOR_NAME, COINAGE, runFixture, type Harness } from "./fixture.js"
 
 /**
@@ -478,6 +478,36 @@ describe("report.clock — what the model predicted against what it cost", () =>
     expect(c.predictedSeconds).toBeGreaterThan(c.actualSeconds)
     expect(c.actualSeconds).toBeGreaterThanOrEqual(0)
   }, 30_000)
+
+  describe("predictedSeconds prices at this run's own rank width, not the model's default", () => {
+    // SELF-653: `predictedSeconds` called `runSeconds(firedCount)` with no
+    // `poolWidth` argument, so every run was priced at the coefficient's
+    // default width of 8 regardless of what `OPENKB_RANK_CONCURRENCY`
+    // actually set — the one thing every one of `rankSeconds`'s other four
+    // call sites in sweep.ts takes care to thread through, and the exact
+    // failure mode `core/clock.ts`'s own doc names: "a deployment ranking at
+    // 24 was reserving 3x the rank it needed." A real deadline-bound run on
+    // this repo's own `.env` (RANK_CONCURRENCY=24) had its `predictedSeconds`
+    // priced at width 8 as a result — see the CORRECTION note in clock.ts.
+    const ENV_VAR = "OPENKB_RANK_CONCURRENCY"
+    const original = process.env[ENV_VAR]
+
+    afterEach(() => {
+      if (original === undefined) delete process.env[ENV_VAR]
+      else process.env[ENV_VAR] = original
+    })
+
+    it("matches runSeconds(queries, undefined, RANK_CONC) exactly, not the width-8 default", async () => {
+      process.env[ENV_VAR] = "24"
+      const h = await runFixture()
+      const c = h.result.report.clock as { predictedSeconds: number; queries: number }
+      expect(c.predictedSeconds).toBe(Math.round(runSeconds(c.queries, undefined, 24)))
+      // Distinct from the default-width number too, so a regression that
+      // silently drops the third argument back to the coefficient's own
+      // default (8) cannot pass this test by the two widths coinciding.
+      expect(c.predictedSeconds).not.toBe(Math.round(runSeconds(c.queries)))
+    }, 30_000)
+  })
 })
 
 describe("report.phases — where the minutes went", () => {

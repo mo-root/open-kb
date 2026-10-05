@@ -7642,11 +7642,22 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
      * (see MEASURED_PHASE_COSTS in core/clock.ts for the table).
      *
      * It has since been checked by the field itself: the first deadline-bound
-     * run predicted 502 seconds and took 214.
+     * run predicted 502 seconds and took 214 — but that 502 was computed
+     * without threading this run's own `RANK_CONC` through, the same mistake
+     * `rankSeconds`'s four other call sites in this file (search for
+     * `rankSeconds(` above) all take care to avoid, and `clock.ts`'s own
+     * doc names by name: "a deployment ranking at 24 was reserving 3x the
+     * rank it needed." That run's `.env` sets `OPENKB_RANK_CONCURRENCY=24`;
+     * pricing at the default width of 8 instead of the 24 it actually ran at
+     * is exactly that 3x-ish error landing on this field — recomputed at
+     * width 24 the same run prices at 268s, not 502, which is what made the
+     * "over-predicted by 2.3x" line in `clock.ts` read as a surprising
+     * outlier rather than the ordinary ~1.25x this model is tuned to.
      *
      * That check should not need a person. `predictedSeconds` is
-     * `runSeconds(queries)` under the shipped costs; `actualSeconds` is what
-     * the run took. A handful of runs where predicted exceeds actual is the
+     * `runSeconds(queries, undefined, RANK_CONC)` under the shipped costs,
+     * at the width this run actually ranked at; `actualSeconds` is what the
+     * run took. A handful of runs where predicted exceeds actual is the
      * evidence for raising a budget, and one where actual exceeds predicted is
      * the warning against it — which matters because the failure modes are not
      * symmetric: an undersized budget yields a smaller map, an oversized one on
@@ -7657,7 +7668,7 @@ export async function sweep(opts: SweepOptions): Promise<SweepResult> {
      * what it actually bought.
      */
     clock: {
-      predictedSeconds: Math.round(runSeconds(firedCount)),
+      predictedSeconds: Math.round(runSeconds(firedCount, undefined, RANK_CONC)),
       actualSeconds: Math.round(seconds),
       queries: firedCount,
     },
