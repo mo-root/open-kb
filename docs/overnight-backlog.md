@@ -7593,3 +7593,72 @@ staging.
 new), 13 skipped — same gated census as SELF-653.
 
 Backlog item: SELF-654
+
+**SELF-655 (2026-10-05 overnight fire) — `scripts/spend-caps.ts`, named by
+hand in this section's own scope list ("`core/src/ledger.ts` and
+`spend-cap.ts`") but never once itself (confirmed: `grep -c "spend-caps.ts"
+docs/overnight-backlog.md` was 1 before this entry, a passing mention inside
+SELF-509, not a dedicated read) — a fresh end-to-end read against its three
+call sites found a real gap in `scripts/batch.ts`, the file that multiplies
+and the one this file's own header calls "the largest single exposure in
+the repo... the only entrypoint a person deliberately walks away from."**
+
+Read `spend-caps.ts` in full first — `readCapUsd`/`capUsdOrExit`'s
+malformed-value refusal, `listRoom`'s in-flight reservation arithmetic,
+`stoppedRun`/`cappedReason`'s shape — against `packages/core/src/
+spend-cap.ts`'s `SpendTrip`/`withSpendCap` and found the two line up exactly
+as documented; no bug in the file itself. Then read every caller
+(`scripts/sweep.ts`, `scripts/swarm.ts`, `scripts/batch.ts`) rather than
+trusting that a file with this much doctrine in its own comments must be
+used correctly everywhere it is called.
+
+`batch.ts`'s own `listRoom` comment states the defence by name: "A run in
+flight is held against the budget at the most it can still become, and
+settles to its real cost when it ends." Traced what "settles" actually does
+in `computeOutcome` (`batch.ts:173`): a capped run with no readable
+`stopped-*.json` is charged the full run cap rather than left null —
+`readCapUsd`'s own "the money is gone either way" reasoning, already
+written there. A run killed by the outer wall clock (`TIMEOUT_S`, the
+SIGKILL fired when a sweep hangs) was NOT given the same treatment — it fell
+through to `usd: null`, and the caller's `spent += out.usd ?? 0` silently
+priced it at $0.
+
+Confirmed this is reachable, not theoretical, by reading `scripts/sweep.ts`
+end to end for every place it writes `runs/sweep-*.json`: exactly one
+`writeFileSync`, the last line of the file, after the whole `sweep()`
+promise has resolved. A SIGKILL mid-run (the only reason `killed` is ever
+true) therefore always leaves nothing on disk, however much it had already
+spent — and `TIMEOUT_S`'s own comment names a worked example of exactly that
+spend: "figma.com... killed at 91% done... having spent every dollar of
+it," cited there to justify raising the timeout, never connected to what the
+list budget does with that dollar afterward. The moment such a run's
+`inFlight--` fires, its reservation is released and its real bill is gone
+from `spent` for good — eroding the $50 list cap specifically in the
+unattended, walk-away case the whole file exists to bound, which is a worse
+place for a budget to quietly loosen than any of the four header fixes
+SELF-648/650/652/653/654 made in a file nobody walks away from.
+
+Fixed with one line mirroring the existing capped-run pattern exactly:
+`if (i.killed && usd === null) usd = i.runCapUsd`. Scoped to `killed`
+specifically, not every unexplained failure — an ordinary crash (bad exit
+code, no file) can fail in its first second for $0, and charging every such
+case at a full run cap would stop a list early over typos in a domain list,
+which is speculative in the other direction. `killed` carries no such
+ambiguity: it only fires after the complete `TIMEOUT_S` has elapsed, so
+there is no fast-failure case it could be confused with.
+
+Extended `tests/batch.test.ts`'s existing "killed by the outer wall clock"
+case, which asserted `ok`/`detail` but never checked `usd` at all — the
+exact blind spot that let this ship. Added three cases: killed with no map
+is charged the run cap; killed on the rare race where the map landed anyway
+keeps its real (lower) cost, unCharged by the new branch; an ordinary
+non-killed failure with no map is still left null, proving the fix did not
+widen past its scope. Verified non-vacuous by mutation: reverted just the
+new line in `batch.ts`, reran — the new "charged the run cap" case failed
+(`expected null to be 8`); restored the fix and reran clean before staging.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check && pnpm test` both exit 0: 3398 tests passing (up from 3395,
+three new), 13 skipped — same gated census as SELF-654.
+
+Backlog item: SELF-655

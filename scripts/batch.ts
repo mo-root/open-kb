@@ -188,6 +188,22 @@ export function computeOutcome(i: OutcomeInputs): Outcome {
   let usd: number | null = i.mine ? i.mineUsd : null
   if (capped && usd === null) usd = (i.stopFile ? i.stopFileUsd : null) ?? i.runCapUsd
 
+  // THE SAME PESSIMISM, FOR THE OUTER KILL. `scripts/sweep.ts` writes its run
+  // file exactly once, after the whole sweep resolves (confirmed by reading
+  // it end to end — the only `writeFileSync` of a `sweep-*.json` is the very
+  // last line) — so a run SIGKILLed by TIMEOUT_S above leaves nothing on disk
+  // no matter how much it had already spent. `killed` only fires after the
+  // FULL timeout elapsed (TIMEOUT_S's own comment: sized to clear "the
+  // slowest real finish by 82%", and its worked example, figma.com, spent
+  // "every dollar of it" before a kill at 91% done) — so unlike an ordinary
+  // crash, which can fail in the first second for $0, this case is never
+  // instant. Leaving `usd` null here was invisible to `spent` below, which
+  // let a killed run's real bill vanish from the list's own budget the
+  // moment `inFlight--` released its reservation — silently loosening the
+  // one cap `listRoom`'s doc calls "the one that matters: no single run cap
+  // bounds fifty runs."
+  if (i.killed && usd === null) usd = i.runCapUsd
+
   // WROTE A READABLE MAP, not "exited zero". A sweep that throws after
   // writing is still a map, and one that exits zero having written nothing
   // is not — the second is what a killed process looks like from here.

@@ -198,6 +198,29 @@ describe("computeOutcome", () => {
     expect(out.detail).toBe("killed at the 3600s cap")
   })
 
+  it("killed with no map on disk is charged the run cap, not left null — the money is gone either way", () => {
+    const out = computeOutcome({ ...base, code: null, killed: true, mine: undefined, mineUsd: null, stopFile: undefined, stopFileUsd: null })
+    expect(out.usd).toBe(8)
+  })
+
+  it("killed is left null (not charged) on the rare race where the map landed anyway", () => {
+    const out = computeOutcome({
+      ...base,
+      code: null,
+      killed: true,
+      mine: "sweep-example-com-20260825000000.json",
+      mineUsd: 1.5,
+      stopFile: undefined,
+      stopFileUsd: null,
+    })
+    expect(out.usd).toBe(1.5)
+  })
+
+  it("an ordinary (non-killed, non-capped) failure with no map is still left null", () => {
+    const out = computeOutcome({ ...base, code: 1, killed: false, mine: undefined, mineUsd: null, stopFile: undefined, stopFileUsd: null })
+    expect(out.usd).toBeNull()
+  })
+
   it("a non-zero exit with output tail includes the tail's last lines", () => {
     const out = computeOutcome({
       ...base,
