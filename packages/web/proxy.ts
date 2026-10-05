@@ -98,6 +98,44 @@ import { NextResponse, type NextRequest } from "next/server"
  * either: that list is permanent-ish (removal takes months) and this file
  * has no way to know a given clone's domain is meant to be HTTPS-only
  * forever.
+ *
+ * `Cross-Origin-Resource-Policy: same-origin` closes a different gap than the
+ * four headers above: none of them stop another origin's PAGE from loading
+ * this origin's response as a subresource (an `<img>`, a `<script>`, a
+ * `fetch(..., {mode:"no-cors"})`) and reading something about it back —
+ * timing, size, whether it loaded at all — the side-channel class `nosniff`
+ * does not touch, since that header only governs how THIS origin's own bytes
+ * get interpreted, never who else may load them. `nosniff`'s own paragraph
+ * names the reason this app has anything worth that protection: every
+ * `/api/kb/*` response is JSON built from text a swept SITE chose, not this
+ * app, so a page that got a stranger to open a map and then issued exactly
+ * this kind of cross-origin probe against `/api/kb/<id>` would be reading
+ * that site's own classified data back through a side channel instead of
+ * asking this app for it directly. `same-origin` is CORP's strictest value
+ * and the right one here: this app is not a widget or an API meant to be
+ * embedded by another origin's page (it sends no CORS headers anywhere, by
+ * design), so there is no legitimate cross-origin load of its own output to
+ * preserve.
+ *
+ * Checked the one direction this could break before adding it: CORP governs
+ * responses FROM this server, never requests this server or its pages make
+ * OUTWARD, so `graphIcons.ts`/`SiteIcon.tsx` fetching third-party favicons
+ * FROM swept sites is the opposite direction and unaffected (those sites' own
+ * CORP, if any, is their business, not this file's). Also grepped the whole
+ * of `packages/web` for `window.open`, `postMessage` and `crossOrigin` — zero
+ * hits on all three — so no popup or iframe flow of this app's own depends on
+ * being readable as a subresource from elsewhere.
+ *
+ * Deliberately NOT `Permissions-Policy` alongside it, though it was
+ * considered again: a version worth shipping would need to carry
+ * `autoplay=(self)` for the landing page's muted hero `<video autoPlay>`
+ * (`app/film/page.tsx`, `DemoHome.tsx`) on top of the `clipboard-write=(self)`
+ * SELF-648 already flagged for `BuildWorkflow.tsx`'s copy button — two
+ * browser features to get exactly right, not one, in a repo with no
+ * jsdom/RTL harness and no way for this routine to load the page in a real
+ * browser and see whether either one silently broke. `Cross-Origin-Resource-
+ * Policy` carries no such risk: it has exactly one value that matters
+ * (`same-origin`) and no per-feature allowlist to get wrong.
  */
 
 const REALM = 'Basic realm="open-kb", charset="UTF-8"'
@@ -120,6 +158,7 @@ function allow(): NextResponse {
   res.headers.set("Referrer-Policy", "no-referrer")
   res.headers.set("X-Frame-Options", "SAMEORIGIN")
   res.headers.set("Strict-Transport-Security", "max-age=31536000")
+  res.headers.set("Cross-Origin-Resource-Policy", "same-origin")
   return res
 }
 
@@ -154,6 +193,7 @@ export function proxy(req: NextRequest) {
       "Referrer-Policy": "no-referrer",
       "X-Frame-Options": "SAMEORIGIN",
       "Strict-Transport-Security": "max-age=31536000",
+      "Cross-Origin-Resource-Policy": "same-origin",
     },
   })
 }

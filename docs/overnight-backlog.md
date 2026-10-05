@@ -7662,3 +7662,87 @@ new line in `batch.ts`, reran — the new "charged the run cap" case failed
 three new), 13 skipped — same gated census as SELF-654.
 
 Backlog item: SELF-655
+
+**SELF-656 (2026-10-05 overnight fire) — before adding anything, spent this
+fire checking whether there was anything left to add: read eight
+never-individually-named files end to end (every `app/api/kb/**/route.ts`
+handler, `next.config.ts`, `lib/graph/layoutCache.ts`, `lib/graph/search.ts`,
+`lib/graph/settings.ts`), ran a fresh `@vitest/coverage-v8` pass scoped to
+`packages/web/lib` and `packages/web/components` (the two trees SELF-509/620/
+638/640 last measured), and read every uncovered line that turned up
+(`runs.ts:834,842,913,992,1072,1102-1103,1111,1137`, `spend-limits.ts:519`,
+`cluster.ts:169`, `supabase.ts:280`) against the comment already sitting at
+each one — all nine were already named dead-by-construction or
+intentionally-untested by a prior fire, and all eight files read clean.
+Confirmed by `grep -c` against `docs/overnight-backlog.md` that every one of
+these eight was genuinely unnamed before this entry (zero hits each, the same
+check SELF-653 used for `spend-caps.ts`).** Recorded here so the next fire
+does not re-spend an hour re-confirming the same floor: this branch's
+automated-sweep toolbox (coverage, jscpd, knip, citation-drift, every TS
+strictness flag, now also "read the never-touched-by-git-log file list") is
+genuinely exhausted at the `packages/web/lib`/`components` layer, not merely
+unchecked recently.
+
+That left `proxy.ts`'s own header campaign (SELF-648/650/652/653/654) as the
+one still-open, still-safe thread — `@vitest/coverage-v8` can't reach it
+either, since `proxy.ts` sits outside every tree `vitest.config.ts` collects
+and is tested by calling `proxy()` directly. Re-read that file's own doc
+comment for what it had explicitly left unresolved: SELF-648 named
+`Permissions-Policy` as "the next thing considered" and dropped it for
+`BuildWorkflow.tsx`'s `navigator.clipboard` button. Re-checking that reason
+before reusing it found it had quietly grown a second edge since: `app/film/
+page.tsx` and `DemoHome.tsx` both carry a `<video autoPlay muted
+playsInline>` hero — a `Permissions-Policy` strict enough to be worth
+shipping would need `autoplay=(self)` on top of `clipboard-write=(self)`, two
+browser features to get exactly right rather than one, with no jsdom/RTL
+harness and no way for this routine to load the page and see either one
+silently break. Grepped first rather than assuming: `window.open`,
+`postMessage`, `requestFullscreen`/`exitFullscreen`/`fullscreenElement`,
+`getUserMedia`, `geolocation`, `PaymentRequest` and the rest of the
+Permissions-Policy feature list all came back with zero hits outside that one
+`clipboard`/`video` pair — confirming the risk is real but narrow, not that
+it is safe to just add the two exceptions and ship it; getting a browser-
+breaking header wrong in a repo this routine cannot visually verify is a
+worse outcome than leaving a known gap named. Left `Permissions-Policy`
+exactly where SELF-648 left it.
+
+What is NOT the same shape is `Cross-Origin-Resource-Policy`: a single value
+(`same-origin`) with no per-feature allowlist to get wrong, so there is
+nothing for a silent breakage to hide behind the way there is with
+`Permissions-Policy`'s multi-feature surface. It also answers a gap none of
+the four existing headers do: `nosniff`'s own paragraph already establishes
+why this app's responses are worth protecting — "every `/api/kb/*` response
+is JSON built from text a swept SITE chose, not this app" — but `nosniff`
+only governs how THIS origin's own browser interprets those bytes, never
+which OTHER origin's page may load them as a subresource and read something
+back through a side channel (timing, size, load/error). `same-origin` is
+CORP's strictest value and the correct one for an app that is not a widget
+and sends no CORS headers anywhere. Checked the one direction this could
+break before adding it: CORP governs responses FROM this server, never
+requests this server or its pages make outward, so `graphIcons.ts`/
+`SiteIcon.tsx` fetching third-party favicons FROM swept sites is the opposite
+direction and unaffected; grepped the whole of `packages/web` for
+`window.open`, `postMessage` and `crossOrigin` (zero hits on all three, same
+grep run for the `Permissions-Policy` check above) to confirm no popup or
+iframe flow of this app's own depends on being loadable as a subresource
+elsewhere.
+
+Fixed in `packages/web/proxy.ts`'s `allow()` — the same single exit point
+SELF-648/650/652/653/654 built and extended for the other four headers —
+plus the 401 response's own header literal. Extended `proxy.test.ts`'s three
+header-bearing assertions (open path, 401 refusal, successful auth) with a
+`Cross-Origin-Resource-Policy` check each, mirroring SELF-654's own shape
+exactly. Verified non-vacuous by mutation: stashed just `proxy.ts`, reran —
+all three new assertions failed reading `null`; restored and reran clean
+before staging.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+Installed `@vitest/coverage-v8@4.1.11` (matched to this repo's
+`vitest@4.1.11`, the same version-matching rule SELF-509 used) for the
+coverage pass above; reverted `package.json`/`pnpm-lock.yaml` to their
+committed state before finishing — confirmed with `git diff --stat` showing
+only `proxy.ts`/`proxy.test.ts` touched. `pnpm check && pnpm test` both exit
+0: 3399 tests passing (up from 3398, one new), 13 skipped — same gated
+census as SELF-655.
+
+Backlog item: SELF-656
