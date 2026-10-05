@@ -25,6 +25,19 @@ import { NextResponse, type NextRequest } from "next/server"
  * file always runs on the Node.js runtime rather than Edge, which this file
  * never opted out of anyway (no `runtime` in `config` below, and nothing here
  * uses an Edge-only API).
+ *
+ * Also the one place to put a response header that every matched route should
+ * carry: `X-Content-Type-Options: nosniff`. SECURITY.md's own scope section
+ * names the reason by hand — "the engine fetches arbitrary third-party web
+ * pages" and "injection into a fetched page... that escapes into something it
+ * shouldn't" is explicitly in scope. Every entity name and description an
+ * `/api/kb/*` route answers with is text a swept SITE chose, not this app, and
+ * ships as `application/json`; `nosniff` is the one-line guarantee that a
+ * browser hitting that URL directly never re-sniffs the body as HTML on the
+ * strength of its content rather than its declared type. Checked before
+ * adding: no route in this app sets this header itself (grepped the whole of
+ * `packages/web` for "X-Content-Type-Options" and "nosniff" — zero hits), so
+ * nothing here is overridden or duplicated.
  */
 
 const REALM = 'Basic realm="open-kb", charset="UTF-8"'
@@ -38,6 +51,15 @@ function same(a: string, b: string): boolean {
   return diff === 0
 }
 
+/** `NextResponse.next()` plus the one header every matched route should carry
+ *  (see this file's own doc comment for why). A single exit point so the
+ *  three return sites below cannot drift out of step with each other. */
+function allow(): NextResponse {
+  const res = NextResponse.next()
+  res.headers.set("X-Content-Type-Options", "nosniff")
+  return res
+}
+
 export function proxy(req: NextRequest) {
   const user = process.env.KB_USER
   const password = process.env.KB_PASSWORD
@@ -45,7 +67,7 @@ export function proxy(req: NextRequest) {
   // Unset means open, which is what local development wants. A deployment that
   // forgets to set them is open too, so the deploy checklist says so out loud
   // rather than this file pretending to a safety it does not have.
-  if (!user || !password) return NextResponse.next()
+  if (!user || !password) return allow()
 
   const header = req.headers.get("authorization") ?? ""
   if (header.startsWith("Basic ")) {
@@ -57,13 +79,13 @@ export function proxy(req: NextRequest) {
     }
     const i = decoded.indexOf(":")
     if (i > 0 && same(decoded.slice(0, i), user) && same(decoded.slice(i + 1), password)) {
-      return NextResponse.next()
+      return allow()
     }
   }
 
   return new NextResponse("Not authorised", {
     status: 401,
-    headers: { "WWW-Authenticate": REALM },
+    headers: { "WWW-Authenticate": REALM, "X-Content-Type-Options": "nosniff" },
   })
 }
 

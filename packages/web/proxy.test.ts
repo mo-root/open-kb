@@ -51,6 +51,12 @@ describe("unset credentials mean open, on purpose", () => {
     process.env.KB_PASSWORD = "secret"
     expect(proxy(req()).status).toBe(200)
   })
+
+  it("still sets X-Content-Type-Options on the open path", () => {
+    delete process.env.KB_USER
+    delete process.env.KB_PASSWORD
+    expect(proxy(req()).headers.get("X-Content-Type-Options")).toBe("nosniff")
+  })
 })
 
 describe("both set: the door is locked", () => {
@@ -63,6 +69,7 @@ describe("both set: the door is locked", () => {
     const res = proxy(req())
     expect(res.status).toBe(401)
     expect(res.headers.get("WWW-Authenticate")).toContain('realm="open-kb"')
+    expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff")
   })
 
   it("refuses the right user with the wrong password", () => {
@@ -96,6 +103,7 @@ describe("both set: the door is locked", () => {
   it("passes the exact right credentials through", () => {
     const res = proxy(req({ authorization: basic("owner", "secret") }))
     expect(res.status).toBe(200)
+    expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff")
   })
 
   it("allows an empty-string password segment only if that is what was set", () => {

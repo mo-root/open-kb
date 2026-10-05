@@ -7188,3 +7188,58 @@ pnpm test` both exit 0: 3389 tests passing, 13 skipped — identical to
 SELF-646's own count, as expected for a read-only fire.
 
 Backlog item: SELF-647 - BLOCKED
+
+**SELF-648 (2026-10-05 overnight fire) — a genuinely new angle: this app has
+never set a single security response header, and SELF-647's own exhaustive
+list of methodologies (coverage, citation-drift, knip, madge, jscpd, pnpm
+audit, every TS strictness flag, manual end-to-end reads of essentially every
+source file) had no entry for this.** Grepped the whole of `packages/web` for
+"X-Content-Type-Options", "nosniff", "X-Frame-Options" and "Content-Security"
+— zero hits anywhere, confirming this was never set, not merely undocumented.
+
+Scoped down from a full header sweep on purpose. `X-Frame-Options: DENY`
+looked like the obvious next addition until reading `ScrollFilm.tsx`: it
+embeds `/launch-rig.html` (a same-origin static file under `public/`) in its
+own `<iframe>` to drive the launch film off scroll position. `DENY` blocks
+framing from ANY origin, same-origin included, so adding it anywhere that
+also covers `/launch-rig.html` would have silently broken that embed — the
+exact "can't visually verify it still looks right" risk this routine's own
+rules warn about. `SAMEORIGIN` would dodge that, but the task's hard scope is
+narrower than "ship a CSP": a `Permissions-Policy` was the next thing
+considered and dropped the same way, once `BuildWorkflow.tsx`'s
+`navigator.clipboard` copy-button turned up — a restrictive policy disabling
+`clipboard-write` would break it, and there is no way to confirm that from a
+fixture test alone. `X-Content-Type-Options: nosniff` has neither failure
+mode: it only constrains how a browser interprets a response's OWN declared
+content-type, never which origins may frame a page or which browser APIs a
+page may call, so there is no feature in this app it can silently break.
+
+Added it in `packages/web/proxy.ts` (the one place already proven, by
+`proxy.test.ts`'s own doc comment, to run in front of every matched
+route — everything except `_next/static`, `_next/image` and `favicon.ico`,
+per its `config.matcher`) rather than `next.config.ts`: `headers()` there
+would need its own route-pattern reasoning against the same `_next` paths
+this file's matcher already excludes correctly, and `proxy.ts` is the
+narrower, already-tested surface. The reason this specific app wants it,
+per `SECURITY.md`'s own stated scope ("the engine fetches arbitrary
+third-party web pages... injection into a fetched page... that escapes into
+something it shouldn't"): every `/api/kb/*` route answers with entity names
+and descriptions a SWEPT SITE chose, as `application/json`, and `nosniff` is
+the one-line guarantee a browser hitting such a URL directly never re-sniffs
+that body as HTML on the strength of its content over its declared type.
+
+Pulled the three `NextResponse.next()` call sites (the two credential-unset/
+credential-correct successes) through one new `allow()` helper so they
+cannot drift apart, and added the same header directly to the existing 401
+`NextResponse` literal. Added one new test (the open-credentials path,
+previously only checked for `status`) and extended two existing ones (the
+no-header 401 case, the exact-right-credentials case) to also assert
+`X-Content-Type-Options: nosniff`. Verified non-vacuous by mutation:
+reverted just `proxy.ts` (kept the test changes) and reran — all three
+assertions failed reading `null`; restored the fix and reran clean.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check && pnpm test` both exit 0: 3390 tests passing (up from 3389, one
+new), 13 skipped — same gated census as SELF-647.
+
+Backlog item: SELF-648
