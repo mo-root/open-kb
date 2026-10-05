@@ -6986,3 +6986,48 @@ passing, 13 skipped, matching SELF-643's own count (the flag adds
 type-checking, not test cases) — same gated census as SELF-643.
 
 Backlog item: SELF-644
+
+**SELF-645 (2026-10-05 overnight fire) — re-ran `knip` 73 commits past
+SELF-575's own run; the unused-code surface is byte-for-byte unchanged, and
+a false "unlisted binaries" hit along the way turned out to be this fire's
+own incomplete install, not the repo.** SELF-575 installed `knip@6.37.0` at
+the workspace root and found zero unused files/dependencies, 4 unused
+exports, 24 unused exported types. Every manual-read angle this document
+already tracks (file-by-file sweeps, coverage, jscpd, madge, exactOptionalPropertyTypes
+and friends — see SELF-509/575's own cross-references) had already been
+tried at least once; re-running a tool whose last result is now 73 commits
+stale is a legitimate different question ("did anything change"), the same
+reasoning that justifies this document's periodic `pnpm audit`/jscpd
+re-checks.
+
+First attempt (`pnpm add -D -w knip@6.37.0`, no prior `pnpm install` this
+session) reported a fifth category SELF-575 never saw: `Unlisted binaries
+(1): next packages/web/package.json` — alarming, since `next` plainly IS a
+dependency there (`packages/web/package.json:18`). Checked by hand before
+trusting it: `ls node_modules/.bin/next packages/web/node_modules/.bin/next`
+found neither — this container's `node_modules` held only this fire's own
+new `knip` install, never a real `pnpm install` of the workspace. Knip's
+binary check resolves against installed `.bin` symlinks, not package.json
+text, so an uninstalled workspace makes every real dependency look
+unlisted. Ran `pnpm install --frozen-lockfile` (the fresh-clone step every
+other entry in this document already takes first) and re-ran knip
+unchanged — the "unlisted binaries" category vanished, confirming it was
+this fire's own setup gap, not a finding. Recorded so a future fire does
+not spend a cycle chasing a monorepo "unlisted binary" that is really a
+skipped install step.
+
+With the workspace actually installed, the result matches SELF-575 exactly:
+zero unused files, zero unused dependencies, zero unlisted dependencies, the
+same 4 unused exports (`pairsOf`/`blockTheNetwork` in `packages/sweep/tests/
+fixture.ts`, `GLYPH_KINDS`, `noteRunStarted`) and the same 24 unused
+exported types, both lists identical name-for-name and line-for-line to
+SELF-575's own. Nothing added in the 73 commits between — knip's own
+registry confirms that axis is still clean rather than assuming SELF-575's
+"nothing new" still holds by default.
+
+No source change. `git checkout -- package.json pnpm-lock.yaml` before
+finishing (`git diff --stat` confirms clean). `pnpm install --frozen-lockfile`
+then `pnpm check && pnpm test` both exit 0: 3389 tests passing, 13 skipped —
+identical to SELF-644's own count.
+
+Backlog item: SELF-645
