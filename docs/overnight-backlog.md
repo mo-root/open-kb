@@ -7452,7 +7452,9 @@ passed by coincidence; restored and reran clean.
 `pnpm check && pnpm test` both exit 0: 3392 tests passing (up from 3391, one
 new), 13 skipped — same gated census as SELF-651.
 
-**SELF-653 (2026-10-05 overnight fire) — `report.clock.predictedSeconds`
+Backlog item: SELF-652
+
+**SELF-653 [id collision, see SELF-661] (2026-10-05 overnight fire) — `report.clock.predictedSeconds`
 (SELF item never named: `grep -c "report.clock\|predictedSeconds"
 docs/overnight-backlog.md` was 0 before this entry) silently priced every
 run at the clock model's default rank width, never the width the run
@@ -7506,9 +7508,7 @@ one new), 13 skipped — same gated census as SELF-652.
 
 Backlog item: SELF-653
 
-Backlog item: SELF-652
-
-**SELF-653 (2026-10-05 overnight fire) — closed the one gap SELF-648's own
+**SELF-653 [id collision, see SELF-661] (2026-10-05 overnight fire) — closed the one gap SELF-648's own
 header sweep named and deliberately left open: `X-Frame-Options`.** SELF-648
 considered `X-Frame-Options: DENY` as its "obvious next addition" and
 rejected it because `ScrollFilm.tsx` frames `/launch-rig.html` in its own
@@ -7939,3 +7939,71 @@ the fix and reran clean before staging.
 new), 13 skipped — same gated census as SELF-659.
 
 Backlog item: SELF-660
+
+**SELF-661 (2026-10-06 overnight fire) — audited this file's own `SELF-<n>`
+sequence for the one thing nobody had checked: whether two concurrent fires
+ever picked the same number.** The routine prompt names git log as "the only
+shared state" between the three fires sharing this branch and warns to
+"trust git, assume nothing" — but the number a fire stamps on its own entry
+is chosen by reading this file, not by reading git, and two fires reading it
+within the same ten-minute window can each see the same "highest number so
+far" before either has pushed. Checked by diffing every `Backlog item:
+SELF-<n>` commit trailer against every `**SELF-<n>` header currently in this
+file (`git log a7bbc57..HEAD --format='%B' | grep -oE 'Backlog item:
+SELF-[0-9]+'` vs. `grep -oE '^\*\*SELF-[0-9]+' docs/overnight-backlog.md`,
+both deduplicated and counted): exactly one number, **653**, is claimed by
+two commits and carries two headers in the live document — `fe63f82`
+(`fix(web): X-Frame-Options...`, committed 2026-10-05 04:47:35 UTC) and
+`461d6a6` (`fix(sweep,core): report.clock priced every run...`, committed
+2026-10-05 04:57:51 UTC). `git merge-base --is-ancestor fe63f82 461d6a6`
+confirms `461d6a6` was built directly on top of `fe63f82` — not a stale
+branch that never saw the other's push — so this was not a rebase race that
+git's own machinery could have caught: the fire behind `461d6a6` read a
+tree that already contained `fe63f82`'s brand-new `**SELF-653` entry and
+still wrote its own as `SELF-653` rather than `654`.
+
+(Nine other commit-trailer numbers — 636, 593, 587, 584, 541, 519, 434, 386,
+324 — also belong to two commits each, but every one of those is the
+documented, intentional shape this branch already uses on purpose: a fix
+commit followed by a `docs(overnight): record SELF-<n>'s own writeup` or
+"...landed without updating this file" companion commit that adds the one
+entry the fix forgot, reusing the SAME id for the SAME item rather than
+colliding two different ones. `grep` confirms none of those nine numbers
+has more than one `**SELF-<n>` header in the CURRENT file — three of the
+nine (434, 386, 324) have none at all, predating this file's own history
+and reachable only through git log. 653 is the only case where two
+headers, for two unrelated fixes, both exist in the live document today.)
+
+The collision had also corrupted the file's own ordering, not just its
+numbering: `461d6a6`'s insertion anchored on text that ended one line short
+of `fe63f82`'s predecessor entry's own trailer, so its new block landed
+BETWEEN `SELF-652`'s body and `SELF-652`'s own `Backlog item: SELF-652`
+line — confirmed against `61e8ed9`'s own diff (`git show 61e8ed9 -- docs/
+overnight-backlog.md`), which proves that trailer was written immediately
+after its body originally. The result, before this entry: `SELF-652`'s
+body ran straight into `SELF-653`'s (report.clock) full text with no
+trailer between them, and the orphaned `Backlog item: SELF-652` line
+surfaced instead sandwiched between the TWO `SELF-653` entries, where
+`grep -c "Backlog item: SELF-652"` found it as the file's only hit.
+Restored `Backlog item: SELF-652` to directly follow its own body and
+removed the stray duplicate from between the two `SELF-653` blocks — a
+reordering, not a rewrite; no entry's prose changed.
+
+Did NOT renumber either `SELF-653` entry. Both commits' own immutable
+trailers say `SELF-653`, and `fe63f82`'s own entry already says "the same
+single exit point SELF-648/652/653 built" (naming itself), so changing the
+document's header out from under either commit's own words would make the
+file disagree with its own git history instead of only with itself.
+Tagged each header `[id collision, see SELF-661]` instead — a two-word
+pointer a reader can follow without this file pretending the clash never
+happened. Checked whether the collision cost the sequence a number: it did
+not — `654` through `660` each still name exactly one entry (the same
+`uniq -c` count above), so nothing after 653 needs to shift, and this
+entry continues at the true next number, `661`.
+
+No source change. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`). `pnpm check && pnpm test` both exit 0: 3404 tests passing,
+13 skipped — identical to SELF-660's own count, as expected for a
+docs-only fire.
+
+Backlog item: SELF-661
