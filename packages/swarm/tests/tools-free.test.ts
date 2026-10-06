@@ -869,6 +869,94 @@ describe("rememberTool", () => {
     }
   })
 
+  // settledBy is "metadata about the judging, not a claim about the market"
+  // (this file's own RememberNodeInput doc comment) — it has to follow
+  // whichever account owns kind/relation, the same receipt rule the comment
+  // beside reasoning/relationSpan already states. A plain lead claim never
+  // sets settledBy (the model-facing schema has no slot for it), so a
+  // stronger plain claim overtaking a harvested one must clear the stamp,
+  // not leave it describing a decision the surviving account never made.
+  it("a stronger merge with no settledBy clears the harvested stamp it displaces", () => {
+    const evidence = new RunEvidence()
+    const map = new MapState("anchor.com")
+    // h.com's own page makes admit() support a commercial claim either way —
+    // isolating the settledBy seam from the downgrade seam Pair 1/2 above
+    // already cover.
+    evidence.record({
+      url: "https://h.com/",
+      text: "h.com sells a scraping api to developers, on its own terms",
+      status: "found",
+      tier: "page",
+    })
+    evidence.record({
+      url: "https://finder.com/list",
+      text: "h.com gathers the scraping crowd weekly for tips and war stories",
+      status: "found",
+      tier: "snippet",
+    })
+    const harvested = {
+      name: "H", domain: "h.com", kind: "company", what: "scraping shop", relation: "competitor",
+      why: "named in a roundup", settledBy: "model" as const,
+      evidence: [{ url: "https://finder.com/list", quote: "gathers the scraping crowd weekly" }],
+    }
+    const plainStronger = {
+      name: "H Corp", domain: "h.com", kind: "company", what: "scraping api", relation: "competitor",
+      why: "its own page says so",
+      evidence: [{ url: "https://h.com/", quote: "sells a scraping api to developers" }],
+    }
+    const r1 = rememberTool({ map, evidence, ledger: ledger(), writer: "harvest" }, { nodes: [harvested], why: "t" })
+    expect(r1.rejected).toEqual([])
+    expect(map.nodes.get("h.com")!.settledBy).toBe("model")
+    const r2 = rememberTool({ map, evidence, ledger: ledger(), writer: "lead" }, { nodes: [plainStronger], why: "t" })
+    expect(r2.rejected).toEqual([])
+    const node = map.nodes.get("h.com")!
+    expect(node.tier).toBe("own-page")
+    expect(node.settledBy).toBeUndefined()
+  })
+
+  // The mirror case: a stronger account arrives but LOSES the scalar fields
+  // to downgradeIntoSupported (its own claim reads as unknown, the standing
+  // claim is supported and holds). settledBy must stay with the account that
+  // actually kept kind/relation — never jump onto the retained claim just
+  // because the losing account happened to carry a judge stamp.
+  it("a stronger-but-downgraded merge does not stamp settledBy onto the claim it failed to displace", () => {
+    const evidence = new RunEvidence()
+    const map = new MapState("anchor.com")
+    // No own page recorded for h.com anywhere — any commercial claim on it downgrades.
+    evidence.record({
+      url: "https://finder.com/list",
+      text: "h.com gathers the scraping crowd weekly for tips and war stories",
+      status: "found",
+      tier: "snippet",
+    })
+    evidence.record({
+      url: "https://press.com/story",
+      text: "the story says h.com sells a scraping api to developers at scale",
+      status: "found",
+      tier: "page",
+    })
+    const supportedWeaker = {
+      name: "H", domain: "h.com", kind: "community", what: "weekly roundup", relation: "covers",
+      why: "a venue this market gathers in, seen in search",
+      evidence: [{ url: "https://finder.com/list", quote: "gathers the scraping crowd weekly" }],
+    }
+    const downgradedStronger = {
+      name: "H", domain: "h.com", kind: "company", what: "scraping api vendor", relation: "competitor",
+      why: "a press story calls it a rival", settledBy: "model" as const,
+      evidence: [{ url: "https://press.com/story", quote: "sells a scraping api to developers" }],
+    }
+    const r1 = rememberTool({ map, evidence, ledger: ledger(), writer: "venue-scan" }, { nodes: [supportedWeaker], why: "t" })
+    expect(r1.rejected).toEqual([])
+    const r2 = rememberTool({ map, evidence, ledger: ledger(), writer: "press-angle" }, { nodes: [downgradedStronger], why: "t" })
+    expect(r2.rejected).toEqual([])
+    const node = map.nodes.get("h.com")!
+    // The downgrade never outranks the supported claim (Pair 1 above already
+    // covers kind/relation/because/tier); this test's own claim is settledBy.
+    expect(node.relation).toBe("covers")
+    expect(node.tier).toBe("page")
+    expect(node.settledBy).toBeUndefined()
+  })
+
   it("a stronger merge keeps the displaced name in also[], so a product folded into its host stays recoverable", () => {
     const build = (order: "company-first" | "product-first") => {
       const evidence = new RunEvidence()

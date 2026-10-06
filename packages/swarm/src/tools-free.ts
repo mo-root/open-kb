@@ -714,8 +714,6 @@ export function rememberTool(ctx: RememberCtx, input: RememberInput): RememberRe
       // The measurement follows the what it measured.
       existing.descGrounded = descGrounded
       existing.why = n.why
-      // The judging stamp follows the account that owns the scalar fields.
-      if (n.settledBy) existing.settledBy = n.settledBy
       // An unknown never outranks a supported claim, even arriving stronger:
       // a downgraded account contributes its evidence and its tier, but the
       // standing supported kind/relation hold and the refusal is dropped —
@@ -730,6 +728,16 @@ export function rememberTool(ctx: RememberCtx, input: RememberInput): RememberRe
         // The reason code rides with the because it explains, never without it.
         if (unreadableReason) existing.unreadableReason = unreadableReason
         else delete existing.unreadableReason
+        // The judging stamp follows the account that owns the scalar fields —
+        // same rule as kind/relation just above, which it explains alongside
+        // reasoning/relationSpan below. This has to sit inside this guard, not
+        // beside the `why`/`descGrounded` assignments above it: a downgraded-
+        // but-stronger account that loses the scalars to `downgradeIntoSupported`
+        // must also lose its settledBy stamp, or the retained kind/relation
+        // (the OTHER account's, never judged) ends up wearing a "settled by
+        // predicate/model" receipt for a decision that account never made.
+        if (n.settledBy) existing.settledBy = n.settledBy
+        else delete existing.settledBy
         // Same rule as kind/relation just above, which these explain: the
         // account that now owns the scalar fields owns the receipts for them
         // too, so a stronger claim with no reasoning does not leave a stale

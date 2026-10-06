@@ -8007,3 +8007,78 @@ No source change. `pnpm install --frozen-lockfile` first (fresh clone, no
 docs-only fire.
 
 Backlog item: SELF-661
+
+**SELF-662 (2026-10-06 overnight fire) — re-ran SELF-509's coverage-gap
+sweep itself, 153 commits later, and this time the branch's own growth
+had opened a real gap: `tools-free.ts`'s `rememberTool` can misattribute
+`settledBy` on a merge.** SELF-658 flagged that the next fire should pick
+"a re-run of a tool whose last result is now many commits stale" rather
+than re-walk the same file lists; `knip` and the `process.env`/`.env.example`
+cross-check had both been re-run since (SELF-645, SELF-659), but
+`@vitest/coverage-v8`, the one tool SELF-509 itself introduced, had not —
+same install/revert procedure as SELF-509 (`pnpm add -D -w
+@vitest/coverage-v8@4.1.11`, matched to this repo's now-current
+`vitest@4.1.11`; `pnpm add` dropped the workspace's `@open-kb/*` symlinks
+as a side effect — `Cannot find package '@open-kb/core'` on 145 of 231
+files — fixed by a plain `pnpm install` before trusting any result;
+reverted `package.json`/`pnpm-lock.yaml` and reinstalled before
+finishing, same as SELF-509 promised).
+
+`packages/core/src` 99.86% lines, `packages/swarm/src` 99.41%,
+`packages/sweep/src` 97.73%, `packages/providers/src` 100% — all within a
+point of SELF-509's own numbers, so this was never going to be a story of
+wholesale new dead code. Dumped the full statement-level miss list from
+the JSON reporter (the text reporter's own column truncates long lists
+with `…`, which is almost certainly why SELF-509's write-up could only
+name a handful per file) and cross-checked every miss's `git blame`
+against `79685be`, this branch's own root commit: every single line in
+`core`, `providers`, and all but a handful in `swarm`/`sweep` predates
+every fire this branch has ever run — the same structurally-dead
+branches SELF-509 already traced, just enumerated more completely this
+time, not new.
+
+Read the handful that did NOT predate the root commit end to end anyway,
+since "old" is not the same claim as "already read for THIS reason".
+`tools-free.ts`'s `rememberTool` merge path (`tools-paid.ts`'s harvest
+writes `settledBy` on nodes the way the lead's own `remember` schema never
+can, per this same file's `RememberNodeInput` doc comment) stamped
+`existing.settledBy = n.settledBy` unconditionally on every stronger-tier
+merge, OUTSIDE the `!downgradeIntoSupported` guard that gates every one of
+its sibling receipt fields (`because`, `unreadableReason`, `reasoning`,
+`relationSpan`) — and with no `else delete`, unlike all four of them. The
+line's own comment ("The judging stamp follows the account that owns the
+scalar fields") states the exact rule `reasoning`/`relationSpan` already
+enforce three lines later; the code just did not apply it to this field.
+Two concrete failures from that gap, both reachable from ordinary mixed
+harvest/lead traffic on one host: (1) a stronger PLAIN lead claim (no
+`settledBy` — the model-facing schema never offers it) overtaking a
+harvested node left the old `settledBy` stamp in place, so a node whose
+winning kind/relation a lead wrote outright still claimed to have been
+"settled by predicate/model"; (2) a stronger harvested claim that LOST the
+scalar fields to `downgradeIntoSupported` (its own verdict reads
+`unknown`, the standing claim is supported and holds) still overwrote
+`settledBy` from the losing account onto the claim it failed to displace —
+attributing a judging decision to an account that never made it.
+`settledBy` round-trips into the run's exported `entities()` (`map.ts:247`)
+and the web UI's `NoteView.tsx`, so this was a real, user-visible
+provenance error, not an in-memory-only one.
+
+Fixed by moving the `settledBy` assignment inside the `!downgradeIntoSupported`
+block, alongside `reasoning`/`relationSpan` (same receipt-follows-owner
+rule, same comment), and adding the missing `else delete existing.settledBy`
+so a stronger claim with no stamp clears the stale one exactly the way its
+three siblings already do. Added two tests to
+`packages/swarm/tests/tools-free.test.ts`, one per failure: a stronger
+plain claim clearing a harvested `settledBy`, and a stronger-but-downgraded
+harvested claim failing to stamp `settledBy` onto the supported claim it
+could not displace. Verified non-vacuous by mutation: stashed just the
+`tools-free.ts` change (kept the test file) and reran — both new tests
+failed with `"model"` where `undefined` was expected, exactly the two
+failure modes above; restored the fix and reran clean before staging.
+
+`pnpm install` first (the symlink casualty above, not a frozen-lockfile
+concern — `package.json`/`pnpm-lock.yaml` carry no diff). `pnpm check &&
+pnpm test` both exit 0: 3406 tests passing (up from 3404, two new), 13
+skipped — same gated census as SELF-661.
+
+Backlog item: SELF-662
