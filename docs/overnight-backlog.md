@@ -7899,3 +7899,43 @@ re-run against the full current surface, not just re-cited from memory.
 gated census as SELF-658 (unchanged — a read-only fire).
 
 Backlog item: SELF-659
+
+**SELF-660 (2026-10-06 overnight fire) — `proxy.ts` carried five response
+headers (SELF-648/650/652/653/654) and had never set `Cross-Origin-Opener-Policy`,
+the one header in that same family that closes a gap none of the other five
+touch: a cross-origin page holding a live `window.opener` handle back into
+this app.** `nosniff` governs how this origin's own bytes are interpreted;
+`Cross-Origin-Resource-Policy` governs who may load this origin's response as
+a subresource; neither says anything about a page that opened this app with
+`window.open` keeping a synchronous handle on the resulting `window` object —
+which lets that opener poke at `location` and time this app's navigations even
+though CORP already stops it from reading the response bytes directly.
+`Cross-Origin-Opener-Policy: same-origin` severs that handle by putting this
+origin in its own browsing context group.
+
+Checked it carries none of the failure modes this same file's history has
+already rejected other headers over (`DENY` breaking `ScrollFilm.tsx`'s
+same-origin iframe, `Permissions-Policy` breaking `BuildWorkflow.tsx`'s
+`navigator.clipboard` button): re-grepped the whole of `packages/web` for
+`window.open`, `window.opener` and `postMessage` — the exact same three
+`Cross-Origin-Resource-Policy`'s own paragraph already checked before it was
+added — and got zero hits on all three again. Nothing in this app opens a
+popup, is designed to be opened as one, or depends on a live `opener` link
+back to a parent window, which is the one legitimate use `same-origin-allow-
+popups` (COOP's weaker option) exists for. `same-origin` is COOP's strictest
+value, the same choice this file already made for CORP two headers earlier,
+for the same reason: nothing here needs a popup relationship to survive.
+
+Added it to `allow()` and the 401 response's own header literal, alongside
+the five headers already there, same shape SELF-648/650/652/653/654 all used.
+Extended `proxy.test.ts`'s three header-bearing assertions (open path, 401
+refusal, successful auth) with a `Cross-Origin-Opener-Policy` check each.
+Verified non-vacuous by mutation: stashed just `proxy.ts` (kept the test
+changes) and reran — all three new assertions failed reading `null`; restored
+the fix and reran clean before staging.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check && pnpm test` both exit 0: 3404 tests passing (up from 3403, one
+new), 13 skipped — same gated census as SELF-659.
+
+Backlog item: SELF-660

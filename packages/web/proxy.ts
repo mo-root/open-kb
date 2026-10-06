@@ -136,6 +136,22 @@ import { NextResponse, type NextRequest } from "next/server"
  * browser and see whether either one silently broke. `Cross-Origin-Resource-
  * Policy` carries no such risk: it has exactly one value that matters
  * (`same-origin`) and no per-feature allowlist to get wrong.
+ *
+ * `Cross-Origin-Opener-Policy: same-origin` closes a third gap CORP and
+ * `nosniff` both leave open: neither stops a cross-origin page that opened
+ * this app with `window.open` from holding a live `window.opener` handle back
+ * into it, which lets the opener synchronously poke at `location` and time
+ * how it navigates even though it can never read this origin's response
+ * bytes. COOP severs that handle by putting this origin in its own browsing
+ * context group. Checked it carries none of the failure modes this file's
+ * own history has rejected other headers over: re-grepped the whole of
+ * `packages/web` for `window.open`, `window.opener` and `postMessage` (the
+ * same three `Cross-Origin-Resource-Policy`'s paragraph already checked) —
+ * still zero hits on all three, so this app neither opens nor is designed to
+ * be opened as a cross-origin popup with a live `opener` link anything here
+ * depends on, same-origin-allow-popups' whole reason to exist. `same-origin`
+ * is COOP's strictest value, same reasoning as CORP's `same-origin` two
+ * paragraphs up — nothing here needs a popup relationship to survive.
  */
 
 const REALM = 'Basic realm="open-kb", charset="UTF-8"'
@@ -159,6 +175,7 @@ function allow(): NextResponse {
   res.headers.set("X-Frame-Options", "SAMEORIGIN")
   res.headers.set("Strict-Transport-Security", "max-age=31536000")
   res.headers.set("Cross-Origin-Resource-Policy", "same-origin")
+  res.headers.set("Cross-Origin-Opener-Policy", "same-origin")
   return res
 }
 
@@ -194,6 +211,7 @@ export function proxy(req: NextRequest) {
       "X-Frame-Options": "SAMEORIGIN",
       "Strict-Transport-Security": "max-age=31536000",
       "Cross-Origin-Resource-Policy": "same-origin",
+      "Cross-Origin-Opener-Policy": "same-origin",
     },
   })
 }

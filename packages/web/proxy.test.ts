@@ -81,6 +81,12 @@ describe("unset credentials mean open, on purpose", () => {
     delete process.env.KB_PASSWORD
     expect(proxy(req()).headers.get("Cross-Origin-Resource-Policy")).toBe("same-origin")
   })
+
+  it("still sets Cross-Origin-Opener-Policy on the open path", () => {
+    delete process.env.KB_USER
+    delete process.env.KB_PASSWORD
+    expect(proxy(req()).headers.get("Cross-Origin-Opener-Policy")).toBe("same-origin")
+  })
 })
 
 describe("both set: the door is locked", () => {
@@ -98,6 +104,7 @@ describe("both set: the door is locked", () => {
     expect(res.headers.get("X-Frame-Options")).toBe("SAMEORIGIN")
     expect(res.headers.get("Strict-Transport-Security")).toBe("max-age=31536000")
     expect(res.headers.get("Cross-Origin-Resource-Policy")).toBe("same-origin")
+    expect(res.headers.get("Cross-Origin-Opener-Policy")).toBe("same-origin")
   })
 
   it("refuses the right user with the wrong password", () => {
@@ -136,6 +143,7 @@ describe("both set: the door is locked", () => {
     expect(res.headers.get("X-Frame-Options")).toBe("SAMEORIGIN")
     expect(res.headers.get("Strict-Transport-Security")).toBe("max-age=31536000")
     expect(res.headers.get("Cross-Origin-Resource-Policy")).toBe("same-origin")
+    expect(res.headers.get("Cross-Origin-Opener-Policy")).toBe("same-origin")
   })
 
   it("allows an empty-string password segment only if that is what was set", () => {
