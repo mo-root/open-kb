@@ -8297,4 +8297,49 @@ pnpm test` both exit 0: 3409 tests passing (unchanged — a dependency-pin
 change touches no test), 13 skipped — same gated census as SELF-665.
 `pnpm audit`: 0 findings (down from 1).
 
+**SELF-667 (2026-10-06 overnight fire) — ran `jscpd` in one combined pass
+over every source directory at once, a scope no prior fire had tried, and
+traced all 12 clones it reported back to findings this document already
+closed.** SELF-615/637 ran `jscpd@5.4.0 --min-lines 10 --min-tokens 50`
+only over the four library packages' `src/` (`core`, `sweep`, `swarm`,
+`providers`); SELF-649 ran it only over `scripts/`, `packages/web/app`,
+`packages/web/lib` and `packages/web/components`. Neither run ever saw the
+other's files in the same invocation, so a clone spanning the two scopes —
+say, a script copying a shape also duplicated in `packages/web` — could
+not have been detected by either. Ran it once over both scopes together
+(`packages/{core,sweep,swarm,providers}/src scripts packages/web/{app,lib,
+components,scripts}`, same flags, tests excluded) to close that gap.
+
+12 clones came back — the same count SELF-649 left standing (10) plus the
+two SELF-615/637 already traced in the library packages, with no new
+cross-scope pair joining them. Checked each one against this document
+rather than assuming the count alone proved nothing new:
+`map.ts:246-256`/`tools-free.ts:680-684` and `sweep.ts:2274-2285`/
+`:2374-2384` are SELF-637's own two (the `entities()` optional-field spread
+mirroring the node-literal it serializes, and the call/retry token-
+accounting split); the three `api/kb/[id]/**`/`api/run/[id]` route-handler
+pairs, `kb/page.tsx`/`page.tsx`, the two `runs/[id]/page.tsx` ranges,
+`demo-investigate.ts`/`discover.ts`, `experiment.ts`/`overnight.ts` and
+`swarm.ts`/`sweep.ts` are SELF-649's ten, named there as route boilerplate,
+JSX fragments or parallel CLI arg-parsing with no shared caller. The one
+pairing genuinely new to this exact list, `KbOverview.tsx:796-810` vs.
+`NoteView.tsx:117-125`, is the same fetch-in-`useEffect` shape (`useState`
+trio, a `cancelled` flag, the non-JSON-body `.catch(() => ({}))` guard) this
+document has already read by hand across both files more than once (SELF-
+647's effect-cleanup audit, the "three richest views" pass at SELF's own
+`KbOverview.tsx`/`NoteView.tsx` read) and never merged, for the same reason
+SELF-649 gave the route handlers: no jsdom/RTL harness exists to let a
+shared hook be tested the way `sweptFromRival` could be, and forcing one
+would couple two components whose only common fact is React's own data-
+fetching idiom, not a value this repo computes once and risks drifting.
+
+No new angle survived contact with this document's own history — the wider
+scope changed which clones `jscpd` could see together, not which of them
+were still unexamined. No code change. `pnpm install --frozen-lockfile`
+first (fresh clone, no `node_modules`). `pnpm check && pnpm test` both exit
+0: 3409 tests passing, 13 skipped — identical to SELF-666's own count, as
+expected for a read-only fire.
+
+Backlog item: SELF-667 - BLOCKED
+
 Backlog item: SELF-666
