@@ -8374,3 +8374,50 @@ minus the phases this engine has no equivalent for)". Comment-only change —
 gated census as SELF-666/667, as expected for a comment-only change.
 
 Backlog item: SELF-668
+
+**SELF-669 (2026-10-06 overnight fire) — re-ran `pnpm audit` and `knip`
+(SELF-666/645's own two periodic-recheck tools) 24 commits past each one's
+last run; both axes still come back clean, and the one apparent delta in
+knip's output traced to a tool-version mismatch in my own first attempt, not
+a repo finding.** `pnpm audit`: 0 findings, unchanged since SELF-666's
+`source-map-js` pin three fires ago.
+
+`knip`: my first run used `npx --yes knip@5` (no version pinned, so npx
+resolved whatever its own dist-tag pointed at) and came back with a FIFTH
+category, `Unlisted dependencies (1): postcss packages/web/postcss.config.mjs`,
+and 55 unused exported types — both shapes neither SELF-575 nor SELF-645
+ever reported (zero unlisted dependencies, 24 types, both times). Before
+treating either as a real finding, re-ran with `pnpm add -D -w knip@6.37.0`,
+the exact version and install method SELF-575/645 used: the "unlisted
+dependencies" category vanished entirely and the type count came back at
+23, one below SELF-645's 24 — `knip@5` is a major version behind what this
+document's own prior runs are calibrated against, and the newer major's
+stricter unlisted-dependency check (and a wider unused-type heuristic) was
+the whole difference, not anything about this repo. Recorded here as its
+own knip-version pitfall, the same shape SELF-645 already recorded for an
+incomplete `pnpm install` producing a false "unlisted binaries" hit.
+
+With the matched version: `Unused exports (4)` is byte-for-byte identical
+to SELF-575/645's own list (`pairsOf`/`blockTheNetwork` in
+`packages/sweep/tests/fixture.ts`, `GLYPH_KINDS`, `noteRunStarted`), still
+each a live-elsewhere false positive for the same reasons SELF-575 gave.
+`Unused exported types` dropped from 24 to 23 and changed composition —
+expected after 24 intervening commits reshaping the same barrel-re-export
+surface SELF-575 already characterized as normal API shape, not a bug, but
+checked by hand rather than assumed: the five names in the new list absent
+from SELF-575's original description (`Commissioner` in
+`packages/swarm/src/tools-control.ts`, `DiscoveryTurn`/`ModelCall` in
+`packages/sweep/tests/fixture.ts`, `ProductReadView` in
+`packages/web/components/build/types.ts`, `DanglingLink` in
+`packages/web/lib/viewTypes.ts`) are each grepped and confirmed used
+multiple times within their own file — exported for the same
+reason-nothing-outside-needs-it-yet shape SELF-575's own `DonutSegment`/
+`StatTileProps` sample already covered, not a new gap.
+
+No source change. `git checkout -- package.json pnpm-lock.yaml` after each
+knip experiment (`git diff --stat` empty before finishing). `pnpm install
+--frozen-lockfile` from a removed `node_modules` first. `pnpm check &&
+pnpm test` both exit 0: 3409 tests passing, 13 skipped — identical to
+SELF-668's own count (read-only fire).
+
+Backlog item: SELF-669 - BLOCKED
