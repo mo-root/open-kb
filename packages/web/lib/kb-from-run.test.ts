@@ -551,6 +551,27 @@ describe("scorecard passthrough (swarm runs)", () => {
   })
 
   /**
+   * `fractionOf`'s `value` fallback (kb-from-run.ts:234, `typeof f.value ===
+   * "number" ? f.value : null`) had zero hits on its `null` side — confirmed
+   * with `pnpm exec vitest run --coverage` before writing this. Unlike the
+   * non-numeric num/den above, this is not a malformed-file case:
+   * `scorecard.ts:62`'s own comment says a fraction's `value` IS null
+   * whenever `den` is 0 ("`num / den`, or null when `den` is 0 — never
+   * NaN"), so core itself serializes this on an ordinary live run whose
+   * pool was never spent because nothing was ever planned against it — num
+   * and den both still numbers, only value isn't. No fixture above ever set
+   * a fraction's own `value` to anything but a number, so the branch this
+   * function exists to take for that real shape had never run.
+   */
+  it("reads a fraction's value as null when the run's own den is 0, not as a malformed scorecard", () => {
+    const v = viewOf(
+      fixtureRun({ report: { scorecard: { ...liveScorecard, poolUnspent: { num: 0, den: 0, value: null } } } }),
+    )
+    expect(v.scorecard).toBeDefined()
+    expect(v.scorecard!.poolUnspent).toEqual({ num: 0, den: 0, value: null })
+  })
+
+  /**
    * Every scorecard fixture above hands `families` a well-formed array and
    * `gate` a well-formed object, so scorecardOf's own defensive fallbacks for
    * a malformed ENTRY within a well-formed families array, and for `gate`

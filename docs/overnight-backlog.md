@@ -8421,3 +8421,85 @@ pnpm test` both exit 0: 3409 tests passing, 13 skipped — identical to
 SELF-668's own count (read-only fire).
 
 Backlog item: SELF-669 - BLOCKED
+
+**SELF-670 (2026-10-06 overnight fire) — re-ran the coverage-sweep tool over
+`packages/web/lib` (SELF-620's own scope, last measured 2026-10-03, the
+stalest of the four coverage sweeps this document tracks by scope — `scripts/`
+at SELF-603, `packages/providers/src` at SELF-613, `packages/web/app` at
+SELF-638, and the four engine packages re-run at SELF-662) and traced one
+genuinely new lead to a real gap in `fractionOf`'s OWN sibling branch, not the
+one SELF-620 already fixed.** Installed a temporary
+`@vitest/coverage-v8@4.1.11` devDependency (matched this repo's vitest,
+reverted before finishing, same move as SELF-509/593/596/597/598/603/613/620/
+638/662) and ran `vitest run --coverage --coverage.include='packages/web/lib/**'`.
+Every file's numbers sat within a point of SELF-620's own (97.62%/93.34%/
+98.01%/98.25% stmts/branch/funcs/lines overall), so this was never going to be
+a story of wholesale new dead code — checked the branch-level JSON report
+directly rather than trusting the text reporter's own truncated column
+(SELF-662's own lesson) and cross-referenced every miss against this
+document's history before treating anything as new.
+
+Two leads looked new. The first, `kb-from-run.ts:1001` and `:1004-1005` (inside
+`graphOf`'s `byDomain` anchor-registration block, `if (anchorHost) byDomain.
+set(anchorHost, ANCHOR_PATH)`), looked like a live reopening of the exact
+944-dropped-anchor-edge-pairs bug SELF-388 fixed: if a stored run's own
+`result.anchor` ever arrives blank, `anchorHost` is `""`, the registration
+is skipped, and any measured edge naming the anchor by its real host would
+silently fail the `byDomain` lookup the same way a domain-less kept entity
+once did. Traced whether `result.anchor` can actually arrive blank before
+writing a single line of fix: it can — confirmed directly in
+`packages/web/app/api/kb/[id]/export/route.test.ts:72-89`'s own fixture and
+comment, a PRIOR fire's dedicated test for exactly this case
+(`result.anchor` typed as a required `string`, "but nothing stops it from
+arriving empty", `route.ts`'s own `(result.anchor || "map")` fallback naming
+the download file instead of crashing). Drafted a fix at the validation
+layer first — rejecting a blank `result.anchor` in both `runs.ts`
+`adoptCliRun` and `isStoredRun`, so a run in this shape could never reach
+`graphOf` at all — and ran the full suite before committing anything, the
+same discipline SELF-619/604 used before concluding "not a gap": it failed
+the export route's own `"names the zip kb-map.zip when the run's own anchor
+is empty"` test outright. That test is this exact scenario, already decided
+the other way: an empty anchor is a legitimate, supported shape with its own
+graceful fallback at the one place it is user-visible (the download
+filename), not a shape to refuse. `graphOf`'s own degradation — the anchor
+node still renders (titled `""`), only edges naming the anchor by a host
+string get silently unlinked — has no live reproduction path, because by the
+same logic nothing in `measured` could name "the anchor" by a host neither
+the stored file nor (per the export route's own reasoning) the run itself
+ever determined; reverted the validator change in full
+(`git checkout -- packages/web/lib/runs.ts packages/web/lib/runs.test.ts`)
+rather than leave a change the suite itself says is wrong.
+
+The second lead held up. `fractionOf` (`kb-from-run.ts:230-235`) has two
+guards: `!v || typeof v !== "object"` and `typeof f.num !== "number" ||
+typeof f.den !== "number"`, both already given dedicated tests by SELF-620
+for the "hand-edited or older-format file" class. The THIRD branch, the
+function's own `value` fallback (`typeof f.value === "number" ? f.value :
+null`), had zero hits on its `null` side — and unlike its two siblings, this
+one is not a malformed-file case at all: `packages/core/src/scorecard.ts:62`'s
+own doc comment states `Fraction.value` "is null when `den` is 0 — never
+NaN", so core itself serializes this on an ordinary live run whose pool (or
+any other fraction) was never spent because nothing was ever planned against
+it — num and den both legitimately numbers, only value isn't. Every
+`liveScorecard` fixture in `kb-from-run.test.ts`, including the one SELF-620
+itself added, sets every fraction's `value` to a real number, so the one
+branch this function exists to take for an entirely ordinary 0-denominator
+run had never been exercised.
+
+Added one test to `kb-from-run.test.ts`, right after SELF-620's own
+non-numeric-num/den case: a `poolUnspent` fraction of `{ num: 0, den: 0,
+value: null }`, asserting the scorecard still parses (not refused, since num
+and den ARE numbers) and that `value` round-trips as `null` rather than
+being coerced. Verified non-vacuous by mutation: changed line 234's
+fallback from `null` to `0`, reran — the new test failed (`value: 0` where
+`null` was expected) and, incidentally, so did SELF-620's own first
+passthrough test on the SAME line, confirming both share the one branch;
+restored the ternary and reran clean before committing. Test-only — the
+code already does the right thing for this input, it was only ever
+unproven.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check && pnpm test` both exit 0: 3410 tests passing (up from 3409, one
+new), 13 skipped — same gated census as SELF-669.
+
+Backlog item: SELF-670
