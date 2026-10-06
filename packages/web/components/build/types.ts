@@ -11,10 +11,10 @@
  *   ?ns=cost      { round, usd, tokens, serpCalls, unlockerCalls }
  *   ?ns=trace     one TraceRow per tool call
  *
- * Changed from v1: nine stages became five, since v1's rail carried stages this
- * engine has no phase for and a stage that never lights reads as a stall. And
- * the plan groups by intent rather than by anchor, because every query here is
- * de-branded so that axis carries no information.
+ * Changed from v1: nine stages became six (`STAGES` below), since v1's rail
+ * carried stages this engine has no phase for and a stage that never lights
+ * reads as a stall. And the plan groups by intent rather than by anchor,
+ * because every query here is de-branded so that axis carries no information.
  */
 
 // ------------------------------------------------------------------ stages --

@@ -8343,3 +8343,34 @@ expected for a read-only fire.
 Backlog item: SELF-667 - BLOCKED
 
 Backlog item: SELF-666
+
+**SELF-668 (2026-10-06 overnight fire) — `STAGES`'s own two ported comments
+disagreed with each other and with the array they describe.** Reading
+`packages/web/components/build/types.ts` end to end (an area no prior
+SELF-<n> had read past B1/B4's narrower UI passes), its header comment reads
+"Changed from v1: nine stages became five" directly above
+`export const STAGES = [...]` — which has six entries (`understand`, `plan`,
+`sweep`, `rank`, `link`, `write`), not five. `StageTracker.tsx`'s own header
+comment, describing the same array, claims the opposite shape: "widened to
+this engine's nine stages" — nine, not five, and "widened" rather than
+narrowed. Confirmed via `git log -p` that both numbers are wrong from the
+file's own origin, not a later drift: both comments were written verbatim in
+the commit that first added each file (`10c799c`/`6b6ab72`, 2026-08-03/10),
+and the one intervening edit to either (`58bf807`, a prose-only "strip AI
+writing patterns" pass) reworded the sentence around each number without
+touching the number itself. Grepped the rest of `packages/web` for the same
+phrase (`nine stages|five stages|six stages|stages became|widened to`) —
+only these two hits, no third copy to reconcile.
+
+Fixed both to state the real count and agree with each other: `types.ts` now
+reads "nine stages became six (`STAGES` below)"; `StageTracker.tsx` now reads
+"narrowed to this engine's six stages (STAGES, in types.ts: v1's own nine
+minus the phases this engine has no equivalent for)". Comment-only change —
+`STAGES` itself, every reader in `types.ts`, and every consumer in
+`StageTracker.tsx` are untouched, so no existing test's expectations moved.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check && pnpm test` both exit 0: 3409 tests passing, 13 skipped — same
+gated census as SELF-666/667, as expected for a comment-only change.
+
+Backlog item: SELF-668

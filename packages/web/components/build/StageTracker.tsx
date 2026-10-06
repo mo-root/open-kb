@@ -7,10 +7,11 @@ import {
 } from "./types";
 
 /* The run's spine. Ported from public-kb's StageTracker, same numbered
-   markers, same connecting rule, same chip row — widened to this engine's nine
-   stages and given the one thing the old rail lacked: a sentence under the
-   ACTIVE stage saying what it is doing. "Sweep" on its own tells a reader
-   nothing about where their money is going. */
+   markers, same connecting rule, same chip row — narrowed to this engine's six
+   stages (STAGES, in types.ts: v1's own nine minus the phases this engine has
+   no equivalent for) and given the one thing the old rail lacked: a sentence
+   under the ACTIVE stage saying what it is doing. "Sweep" on its own tells a
+   reader nothing about where their money is going. */
 
 function Marker({ state, index }: { state: StageState; index: number }) {
   const num = String(index + 1).padStart(2, "0");
