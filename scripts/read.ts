@@ -62,11 +62,20 @@ export function resolve(arg: string, files: readonly string[]): string {
   if (!matches.length) {
     throw new Error(`no run matching "${arg}". runs/ holds:\n  ${jsonFiles.slice(-8).join("\n  ")}`)
   }
-  // Newest wins: a domain mapped twice should read back as the latest attempt.
-  // Run filenames end in a zero-padded timestamp (scripts/sweep.ts, scripts/swarm.ts),
-  // so the lexical max of the filename IS the newest run — no file needs opening to
-  // find it.
-  const newest = [...matches].sort().at(-1)!
+  // Newest wins: a domain mapped twice should read back as the latest attempt
+  // — and `swarm.ts`'s own usage comment documents resuming a domain with
+  // `--from-sweep runs/sweep-….json`, so a domain carrying both a `sweep-`
+  // and a later `swarm-` run is the ordinary continuation path, not an edge
+  // case (`stopped-` and `demo-investigate.ts`'s `demo-` prefix can equally
+  // coexist with either). Every writer stamps the same zero-padded
+  // `YYYYMMDDHHMMSS` suffix, but sorting the FULL filename does not track
+  // that suffix once two different prefixes are in play: "stopped-" <
+  // "swarm-" < "sweep-" alphabetically, so the lexically newest file is
+  // whichever one happens to carry the latest-sorting PREFIX, not the latest
+  // timestamp — any `sweep-` run, however old, beats every `swarm-` or
+  // `stopped-` run for the same domain. Compare the timestamp suffix alone.
+  const stampOf = (f: string) => f.match(/(\d{14})\.json$/)?.[1] ?? f
+  const newest = [...matches].sort((a, b) => stampOf(a).localeCompare(stampOf(b))).at(-1)!
   return path.join(dir, newest)
 }
 

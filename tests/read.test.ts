@@ -44,6 +44,14 @@ describe("resolve", () => {
     expect(resolve("brightdata.com", files)).toBe("runs/sweep-brightdata-com-20260821105321.json")
   })
 
+  it("picks the newer swarm run over an older sweep run for the same domain, despite 'sweep-' sorting lexically after 'swarm-'", () => {
+    const files = [
+      "sweep-brightdata-com-20260101000000.json",
+      "swarm-brightdata-com-20260601000000.json",
+    ]
+    expect(resolve("brightdata.com", files)).toBe("runs/swarm-brightdata-com-20260601000000.json")
+  })
+
   it("ignores non-.json files when matching", () => {
     const files = ["sweep-brightdata-com-20260821105321.json.bak", "notes-brightdata-com.txt"]
     expect(() => resolve("brightdata.com", files)).toThrow(/no run matching "brightdata\.com"/)

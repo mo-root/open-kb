@@ -8209,3 +8209,42 @@ above; restored the fix and reran clean before staging.
 new), 13 skipped — same gated census as SELF-662/663.
 
 Backlog item: SELF-664
+
+**SELF-665 (2026-10-06 overnight fire) — read `scripts/read.ts` end to end
+(one of the low-touch-count scripts, four prior mentions, never a dedicated
+read) and found `resolve`'s own "newest wins" contract breaks the moment a
+domain's runs span more than one tool.** The comment at its sort said "Run
+filenames end in a zero-padded timestamp… so the lexical max of the
+filename IS the newest run" — true only while every match shares one
+prefix. Four tools stamp into the same `runs/` directory for the same
+domain slug: `sweep.ts` (`sweep-`), `swarm.ts` (`swarm-`, plus its own
+`stopped-` path), `demo-investigate.ts` (`demo-`) — and `swarm.ts`'s own
+usage comment documents `--from-sweep runs/sweep-….json`, i.e. running
+swarm AFTER sweep on the same domain is the ordinary continuation path,
+not an edge case. All four stamp the identical `YYYYMMDDHHMMSS` suffix
+(`new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "")`, confirmed
+by grepping every `const stamp` site), but sorting the FULL filename
+compares the prefix first: `"stopped-" < "swarm-" < "sweep-"`
+alphabetically, so any `sweep-` run, however old, lexically outranks every
+`swarm-` or `stopped-` run for the same domain regardless of which one is
+actually newer. Confirmed with a throwaway `node -e` sort before touching
+anything: `["swarm-brightdata-com-20260601000000.json",
+"sweep-brightdata-com-20260101000000.json"].sort().at(-1)` returns the
+January `sweep-` file over the June `swarm-` file. `tests/read.test.ts`
+only ever exercised same-prefix file lists, so nothing caught this.
+
+Fixed by sorting on the extracted 14-digit timestamp suffix
+(`f.match(/(\d{14})\.json$/)?.[1] ?? f`) instead of the whole filename —
+same "no file needs opening" property, just comparing the part of the
+name that actually encodes recency. Added a test with a `sweep-` file
+timestamped months before a `swarm-` file for the same domain, asserting
+the swarm file wins. Verified non-vacuous by mutation: stashed just the
+`read.ts` change (kept the test), reran — the new test failed, returning
+the January sweep file where the June swarm file was expected; restored
+the fix and reran clean before staging.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check && pnpm test` both exit 0: 3409 tests passing (up from 3408,
+one new), 13 skipped — same gated census as SELF-664.
+
+Backlog item: SELF-665
