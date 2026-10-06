@@ -8082,3 +8082,72 @@ pnpm test` both exit 0: 3406 tests passing (up from 3404, two new), 13
 skipped — same gated census as SELF-661.
 
 Backlog item: SELF-662
+
+**SELF-663 (2026-10-06 overnight fire) — two genuinely new angles: the five
+`packages/web/app/api/kb/**` and `.../api/run/[id]/cancel` route handlers
+this document had never once named, plus extending SELF-647's timer/
+listener-cleanup audit (scoped to `packages/web` by its own title) to every
+`setTimeout` in the engine packages and `scripts/`. Both came back clean.**
+
+A basename check against this file (SELF-658's own method) turned up five
+route handlers with zero prior mentions anywhere in this document, unlike
+every one of their siblings: `api/kb/[id]/route.ts`, `.../graph/route.ts`,
+`.../note/route.ts`, `api/kb/route.ts`, `api/run/[id]/cancel/route.ts`. Read
+each end to end. All five are already narrow, already guarded by `guarded()`
+(`lib/api-error.ts`), and already carry the defensive comment their own
+shape calls for — `note/route.ts`'s doc comment states outright that `?path=`
+never touches the filesystem, confirmed by reading `noteOf` (`lib/kb-from-
+run.ts`) rather than taking the comment on faith: it is a plain lookup into
+the run's own in-memory entity list, no `fs` call anywhere in the chain.
+`api/kb/route.ts`'s one-line `isCompleted` filter matches the identical
+filter `/kb`'s own page route uses, confirmed by reading both. Also read
+`lib/zip.ts` (the hand-rolled store-only zip writer behind `api/kb/[id]/
+export/route.ts`, itself already covered) and `lib/graphIcons.ts` — both
+basenames absent from this document too. `zip.ts`'s local/central-directory/
+EOCD field layouts check out field-by-field against the ZIP spec, and
+`zip.test.ts` already round-trips every entry through a from-scratch reader
+(central directory → offset → local header → data), not just asserting
+fixed-offset signatures, so there is no gap here for a fresh read to close.
+`graphIcons.ts`'s `IconCache` already documents, in its own header comment,
+the exact tradeoff (`drawImage`-ing a cross-origin favicon taints the canvas,
+so a PNG export is impossible — "do not add an export button") that this
+fire went looking for as a candidate bug before finding it already written
+down at the one call site (`GraphCanvas.tsx:1624-1626`).
+
+Also read `lib/graph/search.ts`, `components/kb/layerMeta.tsx`, `app/
+layout.tsx`, `app/page.tsx` and `app/kb/page.tsx` end to end — each already
+carries a prior fire's full branch-by-branch trace in this document (SELF-
+560 for the three route shells and `layerMeta.tsx`'s accessors; the `app/
+layout.tsx` `viewport.colorScheme` comment documents its own production
+measurement) even though the basename search that shortlists candidates
+missed them, the same false-negative SELF-561 already named for this
+method. Confirmed each still reads as those entries describe; no drift.
+
+Second angle: SELF-647 audited every `addEventListener`/timer subscription
+in `packages/web` for a missing cleanup or stale-response race and said so
+in its own title — it never claimed the engine packages. Grepped
+`setTimeout`/`setInterval` across `packages/{core,providers,sweep,swarm}/
+src` and `scripts/` (14 non-test call sites). Eleven are plain `await new
+Promise(r => setTimeout(r, ms))` backoff/idle sleeps with nothing to cancel
+(`brightdata.ts:170,511`, `sweep.ts:2748,4260`). The other three are real
+deadline timers racing a real operation and all three already clear
+correctly: `agent.ts:1069`'s abort timer is cleared in `runInvestigator`'s
+own `finally` (:1187) alongside the `AbortSignal` listener it chains to
+(:1188); `orchestrator.ts:1314-1319`'s per-iteration wake timer is cleared
+the line after its `Promise.race` resolves (:1324); `tools-paid.ts:446-450`'s
+per-fetch deadline timer is cleared the line after its own race (:453) —
+this exact chain (`attempt`/`landing`) already has its own SELF-607 entry
+tracing why `landing`'s `.then` can never reject, so only the timer's own
+cleanup was this fire's open question, and it is closed. `scripts/batch.ts`'s
+two timers (:439, :514) are a CLI subprocess watchdog, cleared via a
+`settled`-guarded `finish()` that both can reach; the second is an
+unguarded one-shot but 500ms in a CLI process that exits when idle, not the
+leak shape either sweep was looking for. No open timer anywhere in the
+engine side of this codebase.
+
+No code change — every file and call site checked was already correct.
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check && pnpm test` both exit 0: 3406 tests passing, 13 skipped —
+identical to SELF-662's own count, as expected for a read-only fire.
+
+Backlog item: SELF-663 - BLOCKED
