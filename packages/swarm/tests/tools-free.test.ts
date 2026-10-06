@@ -957,6 +957,95 @@ describe("rememberTool", () => {
     expect(node.settledBy).toBeUndefined()
   })
 
+  // The same receipt-follows-owner rule, in the OTHER seam that rewrites
+  // kind/relation: recovery (an unknown node overtaken by a non-stronger
+  // supported claim, line ~760). Pair 1 above already proves kind/relation/
+  // because/tier commute across this seam; neither of its two accounts sets
+  // settledBy, so it never exercised this field. A harvest claim can arrive
+  // downgraded-to-unknown at ANY provenance tier (settledBy is independent of
+  // tier), so a later, non-stronger recovery is exactly as reachable here as
+  // the stronger-merge seam above.
+  it("a non-stronger recovery clears the settledBy stamp the unknown claim it overtakes had carried", () => {
+    const evidence = new RunEvidence()
+    const map = new MapState("anchor.com")
+    evidence.record({
+      url: "https://press.com/story",
+      text: "the story says h.com sells a scraping api to developers at scale",
+      status: "found",
+      tier: "page",
+    })
+    evidence.record({
+      url: "https://finder.com/list",
+      text: "h.com gathers the scraping crowd weekly for tips and war stories",
+      status: "found",
+      tier: "snippet",
+    })
+    // No own page for h.com anywhere, so admit() downgrades this commercial
+    // claim to unknown — the judge-kernel's own gate, wearing settledBy as
+    // harvest metadata about ITS classify call, same shape as the two tests
+    // above.
+    const downgradedFirst = {
+      name: "H", domain: "h.com", kind: "company", what: "scraping api vendor", relation: "competitor",
+      why: "a press story calls it a rival", settledBy: "model" as const,
+      evidence: [{ url: "https://press.com/story", quote: "sells a scraping api to developers" }],
+    }
+    // Weaker tier (snippet < page), so NOT incomingStronger — this lands in
+    // the recovery branch, not the stronger-merge branch Pair 1 exercises.
+    const supportedWeaker = {
+      name: "H", domain: "h.com", kind: "community", what: "weekly roundup", relation: "covers",
+      why: "a venue this market gathers in, seen in search",
+      evidence: [{ url: "https://finder.com/list", quote: "gathers the scraping crowd weekly" }],
+    }
+    const r1 = rememberTool({ map, evidence, ledger: ledger(), writer: "press-angle" }, { nodes: [downgradedFirst], why: "t" })
+    expect(r1.rejected).toEqual([])
+    expect(map.nodes.get("h.com")!.relation).toBe("unknown")
+    expect(map.nodes.get("h.com")!.settledBy).toBe("model")
+    const r2 = rememberTool({ map, evidence, ledger: ledger(), writer: "venue-scan" }, { nodes: [supportedWeaker], why: "t" })
+    expect(r2.rejected).toEqual([])
+    const node = map.nodes.get("h.com")!
+    // The recovery itself (kind/relation/because) is Pair 1's own assertion;
+    // this test's claim is settledBy — a plain lead claim has no slot for it,
+    // so the stale "model" stamp from the account the recovery overtook must
+    // not survive describing a relation ("covers") that account never judged.
+    expect(node.relation).toBe("covers")
+    expect(node.settledBy).toBeUndefined()
+  })
+
+  it("a non-stronger recovery that itself carries settledBy overwrites the stamp, not just clears it", () => {
+    const evidence = new RunEvidence()
+    const map = new MapState("anchor.com")
+    evidence.record({
+      url: "https://press.com/story",
+      text: "the story says h.com sells a scraping api to developers at scale",
+      status: "found",
+      tier: "page",
+    })
+    evidence.record({
+      url: "https://finder.com/list",
+      text: "h.com gathers the scraping crowd weekly for tips and war stories",
+      status: "found",
+      tier: "snippet",
+    })
+    const downgradedFirst = {
+      name: "H", domain: "h.com", kind: "company", what: "scraping api vendor", relation: "competitor",
+      why: "a press story calls it a rival", settledBy: "model" as const,
+      evidence: [{ url: "https://press.com/story", quote: "sells a scraping api to developers" }],
+    }
+    // Also a harvest claim (carries its own settledBy), still weaker tier.
+    const recoveringHarvest = {
+      name: "H", domain: "h.com", kind: "community", what: "weekly roundup", relation: "covers",
+      why: "a venue this market gathers in, seen in search", settledBy: "predicate" as const,
+      evidence: [{ url: "https://finder.com/list", quote: "gathers the scraping crowd weekly" }],
+    }
+    const r1 = rememberTool({ map, evidence, ledger: ledger(), writer: "press-angle" }, { nodes: [downgradedFirst], why: "t" })
+    expect(r1.rejected).toEqual([])
+    const r2 = rememberTool({ map, evidence, ledger: ledger(), writer: "venue-scan" }, { nodes: [recoveringHarvest], why: "t" })
+    expect(r2.rejected).toEqual([])
+    const node = map.nodes.get("h.com")!
+    expect(node.relation).toBe("covers")
+    expect(node.settledBy).toBe("predicate")
+  })
+
   it("a stronger merge keeps the displaced name in also[], so a product folded into its host stays recoverable", () => {
     const build = (order: "company-first" | "product-first") => {
       const evidence = new RunEvidence()

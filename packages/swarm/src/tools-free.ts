@@ -763,6 +763,19 @@ export function rememberTool(ctx: RememberCtx, input: RememberInput): RememberRe
         delete existing.because
         // The refusal lifts whole: a recovered node no longer wears its code.
         delete existing.unreadableReason
+        // Same receipt-follows-owner rule as the stronger-merge branch above
+        // (SELF-662): recovery changes who owns kind/relation exactly as that
+        // branch does, so the account that was downgraded must not leave its
+        // settledBy/reasoning/relationSpan behind describing a verdict on a
+        // relation the recovering account overwrote and, for settledBy, very
+        // likely never reached itself — the model-facing remember schema has
+        // no slot for it, so most recoveries are a plain lead claim with none.
+        if (n.settledBy) existing.settledBy = n.settledBy
+        else delete existing.settledBy
+        if (n.reasoning) existing.reasoning = n.reasoning
+        else delete existing.reasoning
+        if (n.relationSpan) existing.relationSpan = n.relationSpan
+        else delete existing.relationSpan
       }
       existing.tier = strongerTier(existing.tier, tier)
     }

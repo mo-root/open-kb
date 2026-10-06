@@ -8151,3 +8151,61 @@ No code change — every file and call site checked was already correct.
 identical to SELF-662's own count, as expected for a read-only fire.
 
 Backlog item: SELF-663 - BLOCKED
+
+**SELF-664 (2026-10-06 overnight fire) — the settledBy/reasoning/relationSpan
+receipt-follows-owner rule SELF-662 just enforced on the stronger-merge
+branch had a sibling gap in `tools-free.ts`'s OTHER kind/relation-rewriting
+seam: recovery.** `rememberTool`'s merge has two places that change which
+account owns a node's `kind`/`relation`: the `incomingStronger` branch
+(line ~704, SELF-662's own target) and, in its `else`, the recovery branch
+(line ~760) — "an unknown never outranks a supported claim: if the standing
+relation was the downgrade and this account was admitted, the node
+recovers." Read the recovery branch end to end on the same question SELF-662
+asked of its sibling: recovery reassigns `existing.relation`/`existing.kind`
+and deletes `existing.because`/`existing.unreadableReason`, but never
+touched `settledBy`, `reasoning` or `relationSpan` at all — the exact three
+fields the stronger-merge branch now guards, left untouched one branch over.
+
+Confirmed this is reachable, not merely structurally symmetric: `tier` is
+computed from evidence provenance alone (`tierOf`, own-page/page/snippet),
+independent of which tool wrote the claim, and `settledBy` is independent of
+tier too — "the judge-kernel passthrough… a claim may ARRIVE already
+standing down… the harvest path lands unreadable hosts this way" (this
+file's own `selfDowngraded` comment). So a harvest call can perfectly well
+downgrade a host to unknown at `page` tier carrying `settledBy: "model"`,
+and a LATER, non-stronger claim (snippet tier, or an equal-tier harvest call
+with its own settledBy) can recover it through the `else` branch, not the
+`incomingStronger` one SELF-662 fixed. Two concrete failures, mirroring
+SELF-662's own two: (1) a plain lead claim (no settledBy slot in its
+model-facing schema) recovering an unknown node left the prior harvest
+call's stale `"model"`/`"predicate"` stamp in place, now describing a
+relation the lead account set directly, never judged by predicate or model
+arithmetic; (2) a weaker-or-equal-tier harvest claim recovering the SAME
+node brought its own fresh settledBy/reasoning/relationSpan that were
+silently discarded, leaving the FIRST call's receipts attributed to a
+kind/relation the second call actually determined. Same `settledBy`
+round-trip into `entities()`/`NoteView.tsx` SELF-662 already traced, so this
+is the same class of user-visible provenance error, just the other door into
+it.
+
+Fixed by adding the identical three-field block (`settledBy`/`reasoning`/
+`relationSpan`, same `if (n.X) existing.X = n.X; else delete existing.X`
+shape) inside the recovery branch's existing `if`, right after the
+`because`/`unreadableReason` handling already there. Added two tests to
+`packages/swarm/tests/tools-free.test.ts`: a plain-lead recovery clearing a
+harvested `settledBy`, and a harvest recovery overwriting one stamp with
+another rather than leaving the first. Both use the existing "Pair 1" fixture
+shape (`downgradedStronger`/`supportedWeaker` from the commutativity test
+above) with `settledBy` added, since that pair already proves it lands in
+the recovery branch specifically (weaker tier, non-stronger incoming) rather
+than the `incomingStronger`/`downgradeIntoSupported` branch SELF-662 covers.
+Verified non-vacuous by mutation: stashed just the `tools-free.ts` change
+(kept the test file) and reran — both new tests failed, `"model"` surviving
+where `undefined`/`"predicate"` was expected, exactly the two failure modes
+above; restored the fix and reran clean before staging.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check && pnpm test` both exit 0: 3408 tests passing (up from 3406, two
+new), 13 skipped — same gated census as SELF-662/663.
+
+Backlog item: SELF-664
