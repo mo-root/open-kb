@@ -7855,3 +7855,47 @@ No source change. `pnpm install --frozen-lockfile` first (fresh clone, no
 13 skipped — identical to SELF-657's own count (read-only fire).
 
 Backlog item: SELF-658
+
+**SELF-659 (2026-10-06 overnight fire) — re-ran the `process.env` vs.
+`.env.example` cross-check SELF-509 ran once, 156 commits ago, and confirmed
+it still holds after everything this branch has added an env var for since.**
+SELF-509's own pass (D section, 2026-09-17) only grepped for `process.env.`
+literals; it predates `OPENKB_LINK_CONCURRENCY` (P0-3), the basic-auth pair
+`KB_USER`/`KB_PASSWORD`, the demo-mode pair `OPENKB_DEMO`/`OPENKB_DEMO_MAPS_DIR`,
+`OPENKB_CLI_RUN_CAP_USD`/`OPENKB_BATCH_CAP_USD`, every `OPENKB_SWARM_*` dial,
+and `OPENKB_TRACE` — none of which it could have checked. Re-ran both
+directions rather than trusting the old result still covers the new surface.
+
+Forward: grepped every `process.env.NAME` literal across `packages` and
+`scripts`, then separately traced every dynamic `process.env[name]` site
+(`spend-limits.ts`'s `LIMIT_VARS`, `spend-caps.ts`'s `CLI_LIMIT_VARS`,
+`public-runs.ts`'s `RUNS_PER_DAY_VAR`, `fatal.ts`'s inline `"OPENKB_TRACE"`)
+back to the literal string each constant actually holds — a bracket lookup
+is invisible to a plain `process.env.` grep, and the four run-cap/visitor-limit
+variables all live behind exactly this indirection. 53 distinct names fell
+out (54 with `NODE_ENV`/`VERCEL`, both platform-level and out of scope for an
+app `.env`). Every one of the 53 is declared in `.env.example`, live or
+commented with a `# ` explanation (the four `?? "deepseek/..."` model dials
+SELF-509 already named the reason for).
+
+Reverse: extracted every `VAR=` and `# VAR=` line from `.env.example` (53,
+matching) and grepped the source tree for each name — zero came back with no
+reader, so nothing documented there is dead.
+
+Re-checked the one apparent gap SELF-509 recorded and set aside —
+`OPENKB_MAX_DURATION`, named only in a doc comment (`app/api/map/route.ts:58`)
+— and it is still prose describing an approach that does NOT work
+(`Number(process.env.OPENKB_MAX_DURATION ?? 300)` failing Next's "must be
+statically analysable" route-segment-config check), not a variable anything
+reads. Same conclusion, now confirmed against the current file rather than
+inherited from a three-week-old read.
+
+No gap in either direction. No code or doc change — recorded so the next
+fire that reaches for this exact check (the two-directional env-var
+cross-reference, as opposed to SELF-509's forward-only pass) knows it was
+re-run against the full current surface, not just re-cited from memory.
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check && pnpm test` both exit 0: 3403 tests passing, 13 skipped — same
+gated census as SELF-658 (unchanged — a read-only fire).
+
+Backlog item: SELF-659
