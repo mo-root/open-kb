@@ -8503,3 +8503,55 @@ unproven.
 new), 13 skipped — same gated census as SELF-669.
 
 Backlog item: SELF-670
+
+**SELF-671 (2026-10-06 overnight fire) — `CHANGELOG.md` itself had been
+carrying a stale timeout figure for 24 commits, through at least fifteen of
+its own "the date range drifted" maintenance passes.** Read broadly across
+the less-visited files this D-section's scope names before finding this —
+`core/src/breaker.ts`, `web/lib/typingGuard.ts`, `web/lib/scrollProgress.ts`,
+`web/lib/kb-lookup.ts`, `web/lib/nodeTypes.ts`, `web/components/viz/polar.ts`,
+`web/lib/graph/labels.ts`, `web/lib/store/supabase.ts` cross-checked line for
+line against its own doc comment's claim that `claim_run` in
+`scripts/supabase-schema.sql` "mirrors `count()` in spend-limits.ts line for
+line" (it does: same three limits, same order, same window arithmetic),
+`scripts/bench.ts`, `scripts/diff-runs.ts`, `scripts/overnight.ts`,
+`packages/core/src/url.ts`'s SSRF guards — all read clean, no gap, most
+already defended against the exact edge case a fresh read would otherwise
+flag (checked each before concluding so, not assumed).
+
+The real find was in this very document's own ledger. `CHANGELOG.md`'s
+"Pipeline defaults and performance" section (written by C4, commit `c7677cd`,
+2026-08-23 02:41) said: "Link and orphan model calls carry a shorter timeout
+(`OPENKB_LINK_CALL_TIMEOUT_MS`, default 60s vs. the global 120s) ... every
+other agent call keeps the original 120s ceiling." True when written. Seven
+hours later the same day, `e2e7ba3` (10:04) halved the GLOBAL ceiling
+(`CALL_TIMEOUT_MS`) from 120s to 60s as well — confirmed directly in
+`packages/sweep/src/sweep.ts`'s own current comments on `CALL_TIMEOUT_MS`
+(line 596) and `LINK_CALL_TIMEOUT_MS` (line 640): "the two now meet at 60s and
+this one is kept as its own knob." So the two dials have been equal for
+over a month, and `CHANGELOG.md` never caught up — despite `git log --oneline
+-- CHANGELOG.md` showing fifteen-plus later commits explicitly about keeping
+this file current (`"the date range drifted past 09-18, same class of gap
+again"` and its siblings), none of which re-read this bullet's own numbers
+against the code.
+
+Did NOT copy `e2e7ba3`'s own stated reason for the halving into the fix: its
+commit message blamed a 6.3-minute judge-phase tail on "two chained 120s
+timeouts," and a LATER commit, `100ae58` (2026-08-23 11:14, confirmed by
+reading both commits directly), found that diagnosis wrong — "The log has no
+'no answer in 120s' line anywhere in the judge phase" — and `sweep.ts`'s own
+`CALL_TIMEOUT_MS` comment already carries that correction in parentheses.
+Repeating the debunked story in `CHANGELOG.md` while fixing the stale number
+would have traded one stale claim for another; the fix instead states only
+what is independently confirmed (the halving happened, same day, and why —
+the provider pin `openrouterOpts` depended on going stale — without the
+disputed causal link to the judge-phase minutes).
+
+Rewrote the bullet (`CHANGELOG.md`, "Pipeline defaults and performance") to
+say both ceilings now sit at 60s and link keeps its own knob rather than
+folding into the global one, instead of describing a 120s global default
+that stopped being true the same day it was written. Docs-only.
+`pnpm check && pnpm test` both exit 0: 3410 tests passing, 13 skipped — same
+gated census as SELF-670, unchanged by a changelog correction.
+
+Backlog item: SELF-671

@@ -31,10 +31,14 @@ hosted web app, or the repo itself would actually notice.
 - **Link concurrency is now configurable** via `OPENKB_LINK_CONCURRENCY`
   (default raised from a hardcoded 8 to 16), matching the pattern already
   used by `OPENKB_RANK_CONCURRENCY`.
-- **Link and orphan model calls carry a shorter timeout** (`OPENKB_LINK_CALL_TIMEOUT_MS`,
-  default 60s vs. the global 120s) — two timed-out batches cost about four
-  of the link phase's 12.3 minutes on a measured run; every other agent call
-  keeps the original 120s ceiling.
+- **Link and orphan model calls carry their own timeout** (`OPENKB_LINK_CALL_TIMEOUT_MS`,
+  60s) — two timed-out batches cost about four of the link phase's 12.3
+  minutes on a measured run. Originally tighter than the pipeline's global
+  ceiling (`OPENKB_CALL_TIMEOUT_MS`, 120s at the time); the global ceiling
+  was itself halved to 60s a few hours later the same day, once the model
+  provider pin it had been sized against (`openrouterOpts`) was replaced
+  with a live throughput sort. The two now sit at the same 60s, and link
+  keeps its own knob rather than folding into the global one.
 - **`--quick`**, a new CLI flag on `scripts/sweep.ts`, trades a bounded first
   run (capped host count, no paid link pass) for a fast first look — a real
   first run was measured at ~28 minutes before a user sees anything. Prints
