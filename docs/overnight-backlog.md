@@ -8555,3 +8555,58 @@ that stopped being true the same day it was written. Docs-only.
 gated census as SELF-670, unchanged by a changelog correction.
 
 Backlog item: SELF-671
+
+**SELF-672 (2026-10-06 overnight fire) — `GraphSearch.tsx`'s own cursor can
+point past the result list it is meant to index, and nothing in the file
+catches it.** Read `packages/web/components/kb/GraphSearch.tsx` end to end
+(one of the under-visited leaf files — `grep -c` against this document put
+it at 5 mentions before today, all incidental) alongside `lib/graph/search.ts`
+and the `searchItems` memo in `GraphCanvas.tsx` that feeds it.
+
+Two related gaps in the same piece of state. First, the arrow-key handlers
+computed the next index inline — `Math.min(c + 1, results.length - 1)` —
+which is `-1`, not `0`, the moment `results.length` is `0` (an open box
+with a query that matches nothing). Second, and the one with a real reader-
+facing consequence: the component's only cursor-reset effect is
+`useEffect(() => setCursor(0), [q])`, keyed on the query text alone. But
+`results` can shrink for a query that never changes — `searchItems`
+(`GraphCanvas.tsx`) is `data.nodes.filter((n) => visibleTypes[n.type])`,
+and `visibleTypes` flips when the reader toggles a node type off in the
+legend (`toggleType`), which touches neither `q` nor anything `GraphSearch`
+watches. Confirmed the path is real, not hypothetical, by reading
+`toggleType` itself: it calls `clearFocus()` and flips `visibleTypes` and
+nothing else — it does not reach into the search box's state at all. A
+cursor left pointing at an index the shrunk `results` no longer has
+highlights no row (`i === cursor` is never true for any rendered `i`) and
+makes Enter silently pick nothing, since `pick(cursor)` reads
+`results[cursor]`, `undefined`, and returns early — the shortcut looks like
+it stopped working, with no error and no visible cause.
+
+Pulled the fix into `lib/graph/search.ts` rather than inline in the
+component, the same move this file already made for `rankMatches`: a pure
+`clampCursor(cursor, length)` (0 when `length` is 0, otherwise clamped into
+`[0, length - 1]`), testable without a DOM — this repo still has no
+jsdom/RTL harness (noted on every DOM-adjacent SELF item; `typingGuard.ts`
+states the same constraint for the same reason). `GraphSearch.tsx` now
+routes both arrow-key handlers through it and gained a second effect,
+`useEffect(() => setCursor((c) => clampCursor(c, results.length)),
+[results.length])`, alongside the existing `[q]` reset rather than
+replacing it: a genuinely new query still opens on row 0 (unchanged
+behaviour), and a `results` list that moves for any OTHER reason now
+re-clamps the existing cursor instead of leaving it stale.
+
+Added four cases to `search.test.ts` for `clampCursor` directly (empty-list
+floor, in-range pass-through, shrinking past the old last index, and a
+negative input) and verified non-vacuous by mutation: changed the
+empty-list branch to `return cursor` instead of `return 0`, reran — the
+first case failed (`expected 1 to be +0`); restored the fix and reran clean
+before committing. `GraphSearch.tsx` itself stays outside this repo's test
+surface for the reason given above — the component change is covered by
+`pnpm check`'s type-check only, not by a render test; said so here rather
+than claiming it was seen to work in a browser.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check && pnpm test` both exit 0: 3414 tests passing (up from 3410,
+four new), 13 skipped — same gated census as SELF-671.
+
+Backlog item: SELF-672

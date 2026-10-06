@@ -20,7 +20,7 @@ import { isTypingTarget } from "@/lib/typingGuard";
    Matching is prefix-first, then substring, over title AND domain, because
    people search for "apify" and for "apify.com" and both must land. */
 
-import { rankMatches, type SearchItem } from "@/lib/graph/search";
+import { clampCursor, rankMatches, type SearchItem } from "@/lib/graph/search";
 export type { SearchItem };
 
 export function GraphSearch({
@@ -43,6 +43,13 @@ export function GraphSearch({
 
   useEffect(() => onQueryChange(q), [q, onQueryChange]);
   useEffect(() => setCursor(0), [q]);
+  // `results` can shrink for a query that never changed — the legend's
+  // `toggleType` (GraphCanvas.tsx) re-filters `searchItems` by `visibleTypes`
+  // without touching `q`. Re-clamping on every `results.length` move (not
+  // just on `q`) is what keeps `cursor` always a valid index into the list
+  // actually on screen, so the highlighted row and what Enter picks never
+  // disagree with what is rendered. See clampCursor's own comment.
+  useEffect(() => setCursor((c) => clampCursor(c, results.length)), [results.length]);
 
   /* `/` focuses the box from anywhere on the graph, the convention every map
      and every code host uses. Not captured while the reader is already typing
@@ -86,10 +93,10 @@ export function GraphSearch({
         onKeyDown={(e) => {
           if (e.key === "ArrowDown") {
             e.preventDefault();
-            setCursor((c) => Math.min(c + 1, results.length - 1));
+            setCursor((c) => clampCursor(c + 1, results.length));
           } else if (e.key === "ArrowUp") {
             e.preventDefault();
-            setCursor((c) => Math.max(c - 1, 0));
+            setCursor((c) => clampCursor(c - 1, results.length));
           } else if (e.key === "Enter") {
             e.preventDefault();
             pick(cursor);

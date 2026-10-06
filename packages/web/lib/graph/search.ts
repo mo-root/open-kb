@@ -40,3 +40,24 @@ export function rankMatches(
   return scored.slice(0, limit).map((s) => s.item);
 }
 
+/**
+ * Keep a navigable index inside `[0, length - 1]`, or 0 when there is nothing
+ * to navigate — never the negative index `Math.min(c + 1, length - 1)` leaves
+ * behind on an empty result set (`length - 1` is `-1` there).
+ *
+ * GraphSearch.tsx needs this in two spots, not just the arrow-key handlers.
+ * `results` there is `rankMatches(searchItems, q)`, and `searchItems`
+ * (GraphCanvas.tsx) is filtered by `visibleTypes` — toggling a node type off
+ * in the legend shrinks `results` for a query that never changed. The
+ * component's own cursor-reset effect only watches `q`, so a cursor left
+ * pointing past the new, shorter list highlights no row and makes Enter
+ * silently pick nothing (`results[cursor]` is `undefined`) instead of the
+ * item on screen — confirmed by reading GraphCanvas.tsx's `searchItems`
+ * memo and GraphSearch.tsx's own effects side by side; nothing there
+ * clamps or resets the cursor when `results.length` moves without `q`.
+ */
+export function clampCursor(cursor: number, length: number): number {
+  if (length === 0) return 0
+  return Math.min(Math.max(cursor, 0), length - 1)
+}
+

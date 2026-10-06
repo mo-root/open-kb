@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { rankMatches, type SearchItem } from "./search"
+import { clampCursor, rankMatches, type SearchItem } from "./search"
 
 const item = (over: Partial<SearchItem> & { id: string }): SearchItem => ({
   title: over.id,
@@ -72,5 +72,30 @@ describe("rankMatches", () => {
     // every domain's start; it only turns up inside "example.com" — the one
     // branch (score = 20 + domain.indexOf(q)) every other test leaves cold.
     expect(rankMatches(MAP, "ample").map((h) => h.id)).toEqual(["c"])
+  })
+})
+
+describe("clampCursor", () => {
+  it("is 0 on an empty result set, not -1", () => {
+    // GraphSearch.tsx's old inline `Math.min(c + 1, results.length - 1)`
+    // landed on -1 here (length - 1 is -1 with nothing to navigate).
+    expect(clampCursor(0, 0)).toBe(0)
+    expect(clampCursor(1, 0)).toBe(0)
+  })
+
+  it("leaves an in-range cursor untouched", () => {
+    expect(clampCursor(2, 5)).toBe(2)
+  })
+
+  it("pulls a cursor left over the end of the list that was there", () => {
+    // The shape that was reachable without GraphSearch.tsx's results.length
+    // effect: toggling a node type off shrinks `results` for an unchanged
+    // query, and a cursor the reader had moved past the new last index must
+    // land ON the new last row, not past it.
+    expect(clampCursor(4, 2)).toBe(1)
+  })
+
+  it("never returns a negative index for a negative input", () => {
+    expect(clampCursor(-1, 5)).toBe(0)
   })
 })
