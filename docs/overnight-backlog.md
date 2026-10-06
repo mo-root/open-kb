@@ -8248,3 +8248,53 @@ the fix and reran clean before staging.
 one new), 13 skipped — same gated census as SELF-664.
 
 Backlog item: SELF-665
+
+**SELF-666 (2026-10-06 overnight fire) — re-ran `pnpm audit` (SELF-589/590/
+629's own check, last clean on 2026-10-04) and found a newly-disclosed
+advisory: `source-map-js@1.2.1` allows an event-loop denial of service
+through indexed source-map section offsets, patched at `>=1.2.2`
+(GHSA-68fv-2mgg-jv7q).** Traced every path with `pnpm why source-map-js`
+before touching anything, from both the root manifest and
+`packages/web`: the root's only path is `vitest>@vitest/mocker>vite>
+postcss>source-map-js` and `vitest>vite>postcss>source-map-js` (dev-only,
+SELF-590's own vitest/vite chain); `packages/web` adds a THIRD, more
+serious path through a real production dependency —
+`next@16.3.8>postcss@8.5.23>source-map-js@1.2.1` — plus
+`@tailwindcss/postcss@4.3.3`'s own two internal references. `pnpm audit`
+only prints one example path per advisory, so the single row it showed
+undersold the exposure; checking why-output from each workspace is what
+surfaced the `next` path. Every one of these resolves `source-map-js` at
+exactly `1.2.1`, one patch version behind.
+
+Not a package this repo declares directly — `postcss` is `next`'s and
+`@tailwindcss/postcss`'s own dependency, and `postcss@8.5.23/8.5.25/8.5.28`
+(checked via `npm view postcss@<ver> dependencies`) all declare
+`"source-map-js": "^1.2.1"`, a caret range that already ALLOWS `1.2.2` —
+only the lockfile's existing resolution was stale, the same shape SELF-589
+found for `undici`/`nanoid` (a sibling deliberately left to a `pnpm.
+overrides` entry rather than a package bump, since nothing in this tree
+declares the vulnerable package directly). Added
+`"source-map-js@<1.2.2": "1.2.2"` to the existing `pnpm.overrides` block in
+the root `package.json`, alongside the `undici`/`nanoid` entries SELF-589
+already put there — same shape, an exact pin to the advisory's own fix
+version rather than an open range (SELF-589's own reasoning for why: an
+open range resolved two of its targets several majors past the fix).
+
+Verified the override actually lands: `pnpm install` then
+`grep '^  source-map-js@' pnpm-lock.yaml` shows exactly one resolved
+version, `source-map-js@1.2.2`, replacing every `1.2.1` entry across all
+three paths (confirmed via `pnpm why source-map-js` in both the root and
+`packages/web` afterward — every line now reads `1.2.2`). `pnpm audit`
+afterward: **0 findings** (down from 1). `source-map-js`'s own code is a
+build-time source-map generator inside `postcss`/`vite`'s pipeline, never
+imported by anything this repo's own source calls directly, so a
+patch-version bump carries no behavioural surface for a test to pin —
+`tsc -b` (already part of `pnpm check`) is what would catch an actual type
+change, and found none.
+
+`pnpm install` first (fresh clone, no `node_modules`). `pnpm check &&
+pnpm test` both exit 0: 3409 tests passing (unchanged — a dependency-pin
+change touches no test), 13 skipped — same gated census as SELF-665.
+`pnpm audit`: 0 findings (down from 1).
+
+Backlog item: SELF-666
