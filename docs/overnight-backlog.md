@@ -8610,3 +8610,65 @@ than claiming it was seen to work in a browser.
 four new), 13 skipped — same gated census as SELF-671.
 
 Backlog item: SELF-672
+
+**SELF-673 (2026-10-06 overnight fire) — a genuinely new angle never tried by
+this document: an escape-hatch audit over every `@ts-ignore`, `@ts-expect-error`,
+`as any` and `as unknown as` in the source tree. Found almost nothing, and the
+one real hit is out of scope.** Grepped this document first for all four terms
+— zero prior hits, confirmed this is a fresh method, not a re-run.
+
+`@ts-ignore` / `@ts-expect-error`: zero matches anywhere under `packages/`
+or `scripts/` (excluding `node_modules`). This codebase's own strict-flag
+history (SELF-561, SELF-570, SELF-571, SELF-606) already established that
+every new TS strictness flag tried gets either adopted or deliberately
+reverted with its reasoning recorded — an escape-hatch comment that silences
+the checker rather than fixing or justifying the site would be the one
+move that bypasses that whole discipline, and this repo has never made it.
+
+`as any`: grepping `\bas any\b` across every non-test `.ts`/`.tsx` file
+turned up seven hits, six of which are prose false positives from the
+literal phrase "as any other" inside a doc comment or test name
+(`sweep.ts:3242`, `rank.test.ts:914`,
+`adjacent-is-a-relation-the-map-keeps.test.ts:60`, `coverage.test.ts:170`,
+`KbOverview.test.ts:74`, `page.test.tsx:27`) — not a type-level cast at all.
+The one real cast is `scripts/demo-investigate.ts:79`
+(`edges: [] as any[]`), inside the demo-map tooling this branch's own rules
+name as explicitly out of scope ("the demo gallery (the owner
+deprioritised it)"), so it was read (confirmed it is a throwaway CLI
+preview object, not reachable from the sweep/web/swarm surfaces this branch
+hardens) but left untouched rather than widening this fire past its scope.
+
+`as unknown as`: eleven real sites, all in files this document has already
+read end to end at least once (cross-checked each against this document's
+own prior entries before re-reading): `GraphCanvas.tsx:71` (the
+`dynamic()`-wrapped `ForceGraph2D` boundary, documented inline as "the
+catalog-app pattern" for a library whose generics `dynamic()` cannot
+carry), `api/kb/[id]/export/route.ts:39` (covered by SELF-663's route
+sweep), `spend-limits.ts:510` and `runs.ts:151` (the two
+`globalThis`-held singletons `spend-limits.ts`'s own header comment
+explains — a fresh Next module instance on every edit would reset the
+ledger/registry otherwise), `sweep.ts:365` (narrowing
+`ENTITY_KINDS.filter(...)` to the non-empty-tuple shape `CLASSIFY_KINDS`'s
+callers need, with a six-paragraph comment on why "product" is dropped),
+`sweep.ts:2731` (the `Symbol.for("open-kb.named-fault")` cross-package
+marker — read its consumer, `api-error.ts`'s `isNamedFault` plus
+`api-error.test.ts`'s own "a marker set from another copy of the symbol
+registry" case, and both sides agree), `fixture.ts:618` (test-only fetch
+stub, excluded from scope same as every other test file), `from-sweep.ts:241`
+(`validateSweepRun`'s final return, already shape-checked by every branch
+above it in the same function), `agent.ts:582,679` (`spawnTool`/`proposeTool`'s
+own comment: the wider zod type narrows at the tool boundary that teaches
+it), `scripts/sweep.ts:641` (`diagnose`'s input, a plain JSON report object).
+Read each site's immediate surrounding logic fresh rather than trusting the
+earlier entry's verdict alone; none disagreed with what is written down.
+
+Conclusion: this codebase does not reach for an unchecked escape hatch to
+get past the type checker — every unsafe cast on record justifies itself
+in a comment at the point of use, and the single purely-unjustified one
+sits in code this branch does not touch. No code change.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check && pnpm test` both exit 0: 3414 tests passing, 13 skipped —
+identical to SELF-672's own count, as expected for a read-only fire.
+
+Backlog item: SELF-673 - BLOCKED
