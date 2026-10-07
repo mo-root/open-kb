@@ -9251,3 +9251,69 @@ No source change. `pnpm install --frozen-lockfile` first (fresh clone, no
 13 skipped — identical census to SELF-682, unchanged by a docs-only change.
 
 Backlog item: SELF-683
+
+**SELF-684 (2026-10-07 overnight fire) — five end-to-end reads, one
+independent re-derivation of an already-recorded near-miss, no new gap.**
+Picked targets by basename-mention count against this document rather than
+memory of which files "feel" covered — `grounding.ts`/`investigator.ts`/
+`scorecard.ts` and the D-area's own named targets (`ledger.ts`, `spend-cap.ts`,
+`export-kb.ts`) all came back saturated (SELF-513/515/519/525/529/630 and
+SELF-633's own "fully saturated" verdict on the never-individually-touched
+sweep), so this fire picked the handful of small, lightly-mentioned files that
+sweep hadn't actually named: `core/src/pricing.ts` (21 lines),
+`providers/src/pricing.ts` (97), `core/src/verdict.ts` (120),
+`core/src/drift.ts` (279), `web/lib/scorecard-view.ts` (120) — each read in
+full, not grepped for a pattern.
+
+`providers/src/pricing.ts`'s `MODEL_PRICES` carries a 2026-08-12 re-check date
+against the live OpenRouter catalogue; re-checking it needs the exact live
+call this branch is forbidden from making, so it was read for internal
+consistency only (the floor/column-max arithmetic in `defaultPricingFor`,
+confirmed column-wise and floor-guarded as the header claims) and left alone.
+`core/src/pricing.ts` is a bare 6-line interface — nothing to misread.
+`core/src/verdict.ts`'s `admit()` and `outboundHosts()` (the aggregator-
+threshold gate and its href-scraping regex) traced clean: the regex's
+character class excludes `:`, so a `host:port` href correctly yields the bare
+host, and `admit`'s two checks (directory-by-outbound-count, then
+commercial-needs-own-page) apply in the stated precedence with no
+overlap gap. `core/src/drift.ts`'s `entityKey`/`edgeEndpointKey` degenerate-
+domain fallbacks (the SELF-395/396 fixes) still hold on direct reread — traced
+the `":"`-in-endpoint branch split by hand against `nodeKey`'s own key shape
+in `packages/swarm/src/map.ts` and found the opaque-passthrough reasoning
+still correct.
+
+`web/lib/scorecard-view.ts`'s `gateExchange()` looked, on first read, like it
+could double-count a duplicate objection sentence (`carried.has(text)` matches
+by string value, so two `GateLine`s built from the same text would both read
+`carried: true` even if only one index was). Traced whether `gate.objections`
+can ever hold a repeat before trusting the shape: `tools-control.ts:901`'s
+`finishTool` sets `objections: prior?.objections ?? objections` with its own
+comment "the first refusal's sentences are the record" — frozen at the FIRST
+refusal, never appended to by a later one — and `core/src/scorecard.ts:270-289`'s
+`scorecardObjections` pushes at most one of three fixed, differently-worded
+sentence templates (families/single-sourced/pool) per call, so a single
+reading can never contain two identical strings either. No path produces a
+repeat; not a gap.
+
+Independently re-derived, before checking whether this document already had
+it, the near-miss at line 1081-1109: `ipv4Value`'s octal branch (`url.ts:107`)
+falls back to decimal on an invalid octal digit (`"08"` reads as 8, not a
+parse failure) where the WHATWG grammar the header cites would fail the whole
+address. Grepped this document for `"08.0.0.1"` after writing the same
+`new URL("https://08.0.0.1/")` throws / `ipv4Value("08.0.0.1")` returns
+134217729 comparison by hand — already recorded, already traced both
+directions to "over-blocking only, never under-blocking, no verdict this repo
+reaches is actually wrong." Confirms the existing entry rather than adding a
+new one; recorded here only so this fire's own trail shows the check was run
+again independently rather than skipped.
+
+Also independently re-confirmed the `zod` version-range spread across
+manifests (`^4.0.0` in core/swarm/sweep vs `^4.4.3` at root/web) resolves to
+one installed `zod@4.4.3` (`grep -n "^  zod@" pnpm-lock.yaml`), matching
+SELF-544's own finding at line 6361-6374 exactly — not a new result.
+
+No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`). `pnpm check` exit 0. `pnpm test` exit 0: 3419 tests passing,
+13 skipped — identical census to SELF-683, unchanged by a read-only fire.
+
+Backlog item: SELF-684 - BLOCKED
