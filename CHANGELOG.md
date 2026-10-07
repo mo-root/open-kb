@@ -246,6 +246,33 @@ hosted web app, or the repo itself would actually notice.
   Behaviourally identical — confirmed against Next's own runtime check that
   a renamed proxy file errors if it declares an Edge runtime, which this
   file never did.
+- `batch.ts`'s usage banner listed four of its five real flags and omitted
+  `--retries`, the flag that turns off the default single retry on a
+  failed batch item.
+- `GraphSearch`'s result cursor could outlive the list it indexed: toggling
+  a node type off in the legend re-filters the result list without
+  touching the search box's own query, and the component's only
+  cursor-reset effect was keyed on that query alone. A cursor left past
+  the new, shorter list highlighted no row and made Enter silently pick
+  nothing. Also fixed `ArrowDown` landing on -1, not 0, on an empty
+  result set.
+- `GraphCanvas`'s own count copy never guarded the singular case; four
+  sites read "1 links" / "1 entities carry" instead of "1 link" / "1
+  entity carries". `KbOverview`'s intelligence-rail title had the
+  identical gap, read "1 of 1 entities carry a relation to the anchor" on
+  a KB with exactly one non-anchor entity.
+- `lib/graph/labels.ts`'s label budget could silently drop a FORCED label
+  (a search hit or the hovered node) once more than 60 matched in one
+  frame — the one case its own doc comment promises never happens
+  ("always drawn, never decluttered away"). A search matching more than
+  60 hosts on a map that size (this branch's own cursor.com run has 926)
+  truncated matches past the 60th into unlabeled dots.
+- Four sites (`ProductsTab`'s cards, `SearchesPanel`'s toggle,
+  `BuildWorkflow`'s Stop button hover, and the failed-run banner on
+  `/runs/[id]`) paired a correctly theme-remapped colour step with a
+  sibling step outside `globals.css`'s own re-key range, so light mode
+  showed a colour that stayed locked to Tailwind's dark default next to
+  one that correctly flipped.
 
 ### Repo and docs
 

@@ -9212,3 +9212,42 @@ before committing.
 three new), 13 skipped — same gated census as SELF-681.
 
 Backlog item: SELF-682
+
+**SELF-683 (2026-10-07 overnight fire) — CHANGELOG.md had drifted six real
+commits behind HEAD, the same gap SELF-641/671 already closed twice before.**
+Checked `git log <last-sync>..HEAD --oneline` by hand (the method SELF-641
+insists on, rather than trusting any summary): the last sync commit touching
+`CHANGELOG.md` is `df870c5`, and eleven commits sit between it and this
+fire's starting HEAD (`e1f1276`). Five of those eleven are `docs(overnight)`
+entries that touch only this file (`8b6b7f5`, `4e227d7`, `94e0baf`, `20276ff`,
+`99efbb4` — confirmed with `git show --stat` on each, one file changed, zero
+source lines), matching this file's own "Also in this range" exclusion for a
+read-only sweep. The other six are real, user-facing fixes with no
+changelog entry:
+
+- `9ba0e72` — `batch.ts`'s usage banner omitted `--retries` (SELF-676).
+- `9de76d1` — `GraphSearch`'s cursor outlived a shrunk result list,
+  stranding Enter on nothing (SELF-672).
+- `b416b77` — `GraphCanvas`'s count copy never guarded `n===1`, four sites
+  (SELF-678).
+- `9571db6` — `KbOverview`'s intelligence-rail title had the identical
+  unguarded-singular gap (SELF-679).
+- `524f0d7` — `labels.ts`'s `maxLabels` budget could drop a FORCED label
+  past 60 matches, breaking its own "always drawn" promise (SELF-681).
+- `e1f1276` — four sites paired a theme-remapped colour step with a
+  sibling step outside `globals.css`'s own re-key range (SELF-682).
+
+Added one bullet per fix to the "Bug fixes" section (the bucket this file's
+own CHANGELOG already uses for exactly this shape of small, verified
+display/behaviour bug — checked against its existing SearchesPanel-id and
+StatTile-formatter entries before picking a home for these six), each
+reduced to the one sentence a user would recognize, not the full commit
+body. Did not touch "Also in this range" — none of the five doc-only
+commits changed behaviour, so none belongs there either, same call SELF-641
+made for its own range.
+
+No source change. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`). `pnpm check` exit 0. `pnpm test` exit 0: 3419 tests passing,
+13 skipped — identical census to SELF-682, unchanged by a docs-only change.
+
+Backlog item: SELF-683
