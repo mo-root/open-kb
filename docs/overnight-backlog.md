@@ -8979,3 +8979,57 @@ identical census to SELF-677, unchanged (a text-only fix touching no
 function this suite exercises).
 
 Backlog item: SELF-678
+
+**SELF-679 (2026-10-07 overnight fire) — closed the one lead SELF-678 left
+open: `KbOverview.tsx:890`'s `title` on the dashboard's intelligence-rail
+section has the identical un-guarded "N of M entities carry" shape, and a
+KB with a single non-anchor entity reads "1 of 1 entities carry a relation
+to the anchor" on every pageview, read aloud by the same `title` tooltip.**
+
+Confirmed reachability before fixing. `entities` (line 860) is `notes.filter
+((n) => n.relation !== "anchor")` — nothing upstream in this component
+floors its length at 2 the way `GraphCanvas.tsx`'s `graph.nodes.length <= 1`
+early return does; a sweep whose anchor turned up exactly one other entity
+(or zero) renders this section same as any other KB. `unplaced` is
+`relations.none ?? 0` (line 864), so `entities.length - unplaced` is the
+count that actually carries a relation and can independently land on 1 or 0
+regardless of the total.
+
+Two independent agreement points, not one — checked each separately rather
+than assuming a single `=== 1` ternary covers both:
+- the noun after "of M" takes its number from M (`entities.length`):
+  "entity" at M=1, "entities" otherwise ("1 of 1 entity", never "1 of 1
+  entities").
+- the verb takes its number from N (`entities.length - unplaced`, the
+  subject that is actually doing the carrying), independent of M: "1 of 2
+  entities **carries**" is correct English despite the plural noun, the
+  same way "one of three apples is red" takes a singular verb.
+
+Used the same `n === 1 ? singular : plural` idiom SELF-678 just applied to
+`GraphCanvas.tsx`, with the noun keyed to M and the verb keyed to N:
+`` `${entities.length - unplaced} of ${entities.length} ${entities.length
+=== 1 ? "entity" : "entities"} ${entities.length - unplaced === 1 ?
+"carries" : "carry"} a relation to the anchor` ``.
+
+No render-test harness in this repo (SELF-509/672/678 already established
+why), so verified empirically rather than by inspection alone: ran the
+extracted template-literal logic standalone under plain Node for every
+boundary — (M=1,N=0), (M=1,N=1), (M=2,N=1), (M=3,N=3), (M=0,N=0) — and all
+five came back grammatically correct with exactly one space at each `${}`
+seam ("1 of 1 entity carries…", "0 of 1 entity carry…", "1 of 2 entities
+carries…", "0 of 3 entities carry…", "0 of 0 entities carry…"), confirming
+the multi-line template literal's `${}` breaks don't leak a stray newline
+into the rendered string.
+
+Spot-checked the rest of `KbOverview.tsx` for the same shape before closing
+this as a one-site fix: `profile.length` at line 296 is already guarded by
+its own `profile.length > 1 ?` branch (line 289) one line up, and no other
+`${count} entities` / `${count} entity` interpolation in the file lacks a
+floor or an existing ternary.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check` exit 0. `pnpm test` exit 0: 3414 tests passing, 13 skipped —
+identical census to SELF-678 (a text-only fix touching no function this
+suite exercises).
+
+Backlog item: SELF-679

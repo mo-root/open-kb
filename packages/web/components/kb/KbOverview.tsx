@@ -887,7 +887,9 @@ export function KbOverview({
             "--rel": pct(entities.length - unplaced, Math.max(1, entities.length)),
           } as React.CSSProperties
         }
-        title={`${entities.length - unplaced} of ${entities.length} entities carry a relation to the anchor`}
+        title={`${entities.length - unplaced} of ${entities.length} ${
+          entities.length === 1 ? "entity" : "entities"
+        } ${entities.length - unplaced === 1 ? "carries" : "carry"} a relation to the anchor`}
       >
         <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
           <div className="min-w-0">
