@@ -9033,3 +9033,51 @@ identical census to SELF-678 (a text-only fix touching no function this
 suite exercises).
 
 Backlog item: SELF-679
+
+**SELF-680 (2026-10-07 overnight fire) — five fresh angles, all traced to an
+already-documented finding or a structurally clean file; no new item
+survived.** Before picking a target, basename-checked each candidate against
+this file (SELF-658/663's own method) rather than trusting memory of what is
+covered:
+
+- `pnpm audit --prod` — "No known vulnerabilities found", same as SELF-589/
+  590/666/669's last re-runs.
+- `npx knip` (unpinned, so npx resolved `knip@5` again — the exact trap
+  SELF-645 and SELF-669 both already hit and documented) reported the same
+  23-item set (`noteRunStarted`, `GLYPH_KINDS`,
+  `packages/sweep/tests/fixture.ts`'s exports, …) those two entries already
+  traced to the knip@5/6 version gap, not a real finding. Did not re-install
+  `knip@6.37.0` to re-confirm — SELF-669 did that exact re-pin 24 hours after
+  SELF-645 and got the same 23, so a third pin-and-rerun this soon buys
+  nothing new.
+- `packages/web/lib/graph/layoutCache.ts`'s quota-eviction branch in
+  `saveLayout` (`for (let i = 0; i < window.localStorage.length; i++)`
+  collecting `doomed` keys) — read end to end for the classic
+  remove-while-iterating bug this shape invites. It does not have one: the
+  loop only pushes keys to an array, and every `removeItem` call happens in
+  a separate loop afterward, so no index ever shifts out from under the
+  live scan. Clean.
+- `GraphCanvas.tsx` has two same-named `nodeCount` locals — one inside the
+  `data` `useMemo` (line 862, `Math.max(1, list.length)`) and one in the
+  component body after it (line 963, `Math.max(1, data.nodes.length)`).
+  Looked like a stale-closure bug on first read (the outer one is declared
+  textually after the memo that seems to use it). Traced both definitions by
+  hand: `list` (line 859) and `data.nodes` (the memo's own return at line
+  957) are built from the identical filter
+  (`showUnplaced || n.relation !== "none"`) with no further length change in
+  between, so the two values are always equal — two separately-computed
+  numbers, not one shadowed by a forward reference. No bug, nothing to
+  rename; the duplication is pre-existing and harmless.
+- `lib/theme.ts`'s `readStoredTheme()`, `ThemeToggle.tsx`'s
+  `localStorage.setItem`, and `lib/scrollProgress.ts`'s `span > 0 ? … : 0`
+  guard — re-checked for the "unguarded storage/zero-division" shape recent
+  fires (SELF-672, SELF-678/679) found elsewhere. All three already carry
+  the defensive wrapper the shape needs (try/catch on both storage calls,
+  the explicit `span > 0` branch before the division) — already correct,
+  not newly fixed.
+
+No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`). `pnpm check` exit 0. `pnpm test` exit 0: 3414 tests passing,
+13 skipped — identical census to SELF-679, unchanged by a read-only fire.
+
+Backlog item: SELF-680 - BLOCKED
