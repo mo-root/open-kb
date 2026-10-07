@@ -9394,3 +9394,48 @@ No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
 13 skipped — identical census to SELF-684, unchanged by a read-only fire.
 
 Backlog item: SELF-685 - BLOCKED
+
+**SELF-686 (2026-10-07 overnight fire) — seven fresh-angle file reads by
+lowest basename-mention count, no new gap.** Continued SELF-684/685's method
+(rank every `.ts` source file by how many times its basename appears in this
+document, read the least-mentioned ones end to end) on the next tier up:
+`packages/sweep/src/deadline.ts` (5 mentions), `packages/web/lib/kb-lookup.ts`
+(5), `packages/web/lib/nodeTypes.ts` (5), `packages/web/lib/typingGuard.ts`
+(5), `packages/web/lib/scrollProgress.ts` (5), `packages/swarm/src/
+from-sweep.ts` (5), `packages/web/lib/api-error.ts` (6).
+
+All seven traced clean on a full read, not a grep:
+- `deadline.ts`'s `heldDeadline` (the GC-held-weakly `AbortSignal.any` fix) —
+  the `once`-listener pin and the signal composition are exactly what the
+  header's measured 355s-vs-120s-ceiling regression describes; no second gap.
+- `kb-lookup.ts`'s `findKb` ternary (`run.status === "running" ? … : …`) is
+  exhaustive against `RunStatus = "running" | "complete" | "failed"`
+  (`lib/runs.ts:31`) — checked the type directly rather than assuming a third
+  state exists, since the function only sees a non-completed run by that point.
+- `nodeTypes.ts`'s `TYPE_COLOR`/`TYPE_CSS` hexes were checked byte-for-byte
+  against `app/globals.css`'s `--type-*` tokens (both the light and the
+  comment-flagged dark `--type-community` step) — all four match.
+- `typingGuard.ts`'s `isTypingTarget` has both call sites
+  (`GraphSearch.tsx`, `CommandPalette.tsx`) already unified on it, with its
+  own direct test file; the comment's own "two copies, free to drift" risk is
+  the one this file exists to close, and it is closed.
+- `scrollProgress.ts` is a five-line pure clamp, already correctly guarded for
+  `span <= 0`.
+- `from-sweep.ts` (the sweep→swarm handoff, 393 lines) — re-checked the
+  `verifyCount` clamp, the sort-before-dedupe ordering the header's own
+  comment explains (`3bodymo.medium.com` vs `medium.com`), and the rarest-
+  first recall-gap sort against the header's own corroborating numbers; all
+  three hold, no second issue past what prior fires already documented there.
+- `api-error.ts` (the fault-ref/named-fault catalogue, 585 lines, among the
+  most heavily commented files in the repo) — read the closed-catalogue
+  mechanism (`NamedFault`, `Symbol.for` brand, `namedFaultMessage`) and the
+  `showsDetail`/`faultResponse`/`guarded` wrapper end to end; the catalogue's
+  own rule ("a hole may only be filled with a value this app computed, never
+  a caught message") holds at all five `namedFaults` entries, checked by
+  hand against each one's call site.
+
+No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`). `pnpm check` exit 0. `pnpm test` exit 0: 3419 tests passing,
+13 skipped — identical census to SELF-685, unchanged by a read-only fire.
+
+Backlog item: SELF-686 - BLOCKED
