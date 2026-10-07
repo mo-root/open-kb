@@ -119,7 +119,12 @@ function FailedReport({ run }: { run: StoredRun }) {
       <Panel title="what is known">
         <Row label="Started" value={startedAt} />
         <Row label="Ended" value={endedAt} />
-        {run.queries > 0 && <Row label="Requested" value={`${run.queries} queries`} />}
+        {run.queries > 0 && (
+          <Row
+            label="Requested"
+            value={`${run.queries} ${run.queries === 1 ? "query" : "queries"}`}
+          />
+        )}
         <Row
           label="Map"
           value="none"
@@ -224,7 +229,7 @@ export default async function RunReport({
         <StatTile
           label="took"
           value={formatDuration(s.seconds * 1000)}
-          hint={cost ? `${cost.calls} calls` : undefined}
+          hint={cost ? `${cost.calls} call${cost.calls === 1 ? "" : "s"}` : undefined}
         />
         <StatTile
           label="on the map"
@@ -323,7 +328,12 @@ export default async function RunReport({
               see `createRun`'s own convention), not that zero queries were
               asked. A "Requested: 0 queries" row read as a bug report about a
               run that in fact asked `totalAsked` above. */}
-          {run.queries > 0 && <Row label="Requested" value={`${run.queries} queries`} />}
+          {run.queries > 0 && (
+            <Row
+              label="Requested"
+              value={`${run.queries} ${run.queries === 1 ? "query" : "queries"}`}
+            />
+          )}
         </Panel>
       </div>
 

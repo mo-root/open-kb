@@ -135,4 +135,62 @@ describe("/runs/[id]", () => {
     expect(html).toContain("predates the itemised bill")
     expect(html).not.toContain("what it cost")
   })
+
+  // `cost.calls` and `run.queries` both read "N queries must be between 1 and
+  // MAX_QUERIES" at the API route, so 1 is a real, user-reachable value for
+  // each, not a contrived edge case — and both were a bare plural with no
+  // `=== 1` guard until this fire (the same shape SELF-678/679 already fixed
+  // in GraphCanvas.tsx and KbOverview.tsx; this route had never been checked
+  // against that class).
+  it("says '1 call' and '1 query', not '1 calls'/'1 queries', at the singular boundary", async () => {
+    const one = createRun("brightdata.com", 1)
+    await finishRun(
+      one.id,
+      sweepResult("brightdata.com", {
+        cost: {
+          usd: 0.1,
+          elapsedMs: 1_000,
+          calls: 1,
+          tokens: 100,
+          ceilingUsd: null,
+          byKind: [],
+          byAgent: [],
+        },
+      }) as never,
+    )
+
+    const html = renderToStaticMarkup(
+      await RunReport({ params: Promise.resolve({ id: one.id }) }),
+    )
+
+    expect(html).toContain("1 call<")
+    expect(html).not.toContain("1 calls")
+    expect(html).toContain("1 query<")
+    expect(html).not.toContain("1 queries")
+  })
+
+  it("keeps the plural at N > 1 for both", async () => {
+    const many = createRun("brightdata.com", 3)
+    await finishRun(
+      many.id,
+      sweepResult("brightdata.com", {
+        cost: {
+          usd: 0.1,
+          elapsedMs: 1_000,
+          calls: 2,
+          tokens: 100,
+          ceilingUsd: null,
+          byKind: [],
+          byAgent: [],
+        },
+      }) as never,
+    )
+
+    const html = renderToStaticMarkup(
+      await RunReport({ params: Promise.resolve({ id: many.id }) }),
+    )
+
+    expect(html).toContain("2 calls")
+    expect(html).toContain("3 queries")
+  })
 })
