@@ -9317,3 +9317,80 @@ No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
 13 skipped — identical census to SELF-683, unchanged by a read-only fire.
 
 Backlog item: SELF-684 - BLOCKED
+
+**SELF-685 (2026-10-07 overnight fire) — fourteen fresh-angle file reads by
+lowest basename-mention count, one lead chased to ground, no new gap.** Same
+method as SELF-684: ranked every `.ts`/`.tsx` source file in the repo by how
+many times its basename appears in this document and read the least-mentioned
+ones end to end, this time outside the D-area's own named targets —
+`SkipLink.tsx` (1 mention), `scripts/build-demo-maps.ts` (1, and out of scope
+per this doc's own "NOT IN SCOPE" line so not read past its header),
+`global-error.tsx`/`components/kb/GraphSettings.tsx`/`lib/demo.ts`/
+`scripts/run-doctor.ts` (3 each), `core/src/flags.ts`/`swarm/src/
+seed-families.ts`/`swarm/src/serialize.ts`/`components/HeaderNav.tsx`/
+`components/build/{CostBreakdown,FindingsPanel,PlanCard}.tsx`/
+`icons/NodeGlyph.tsx`/`kb/GraphLegend.tsx`/`components/ui.tsx`/`viz/
+{BarMeter,StatTile}.tsx`/`scripts/bench.ts` (4 each), plus `scripts/
+export-target.ts` and `scripts/show-prompt.ts` picked for being the two D-area
+"scripts/*.ts beyond sweep.ts" files not yet individually read this way.
+
+One real lead, chased to ground rather than assumed either way:
+`GraphSettings.tsx`'s two `Toggle` thumbs use `translate-x-4.5` for the "on"
+position (lines 85, 353) — not a value in Tailwind's classic fixed spacing
+scale (…, 4, 5, …, no 4.5), which would have meant a utility class that
+generates no rule and a switch thumb that visually never moves. Rather than
+trust memory of which Tailwind major this is, installed this repo's own
+pinned `@tailwindcss/postcss@4.3.3` (`pnpm install --frozen-lockfile` first;
+no prior install existed in this container) and compiled a probe stylesheet
+(`@import "tailwindcss"; .probe { @apply translate-x-4.5; }`) through it
+directly via the postcss API, `base` set to `packages/web` so it resolves
+against this repo's actual `globals.css` theme. Measured output:
+`.probe { --tw-translate-x: calc(var(--spacing) * 4.5); translate: ...; }` —
+a real, working declaration. Tailwind v4's utilities compute spacing
+multiples as `calc(var(--spacing) * N)` for any numeric `N`, fractional
+included (confirmed the same for `translate-x-4`/`translate-x-5` in the same
+probe, which resolve to `* 4`/`* 5` identically), unlike the fixed-scale
+lookup v3 used. Not a bug; no code change from this lead. Probe files
+(`packages/web/tw-build-probe.mjs`, `packages/web/probe.css`) were scratch
+and removed before finishing, `git status` confirmed clean.
+
+Every other file in the list traced clean on a full read: `SkipLink.tsx` is
+five lines, correct `sr-only`/`focus:not-sr-only` escape-hatch pattern;
+`global-error.tsx`'s own header comment already documents, at length and with
+measured evidence, why it duplicates `globals.css`'s palette and fonts rather
+than referencing them, and the duplication is current against both `:root`
+blocks checked value-by-value; `flags.ts` is the single 4-line shared
+`disablesFlag` both callers already import (its own header names the
+drift risk it was written to close); `seed-families.ts` and `serialize.ts`
+are both dense, already-scarred code (the former's docstring narrates the
+exact shape-search bug a prior fire fixed; the latter's `registrableHost(h)
+|| h.toLowerCase()` guard is the same degenerate-host fix SELF-395/396 made
+elsewhere) and neither showed a second issue on reread; `polar.ts` is the
+already-deduplicated five-line arc-point helper with test coverage through
+both callers; `BarMeter.tsx`/`StatTile.tsx` checked for the usual off-by-one
+and negative-value traps (zero-row ceilings, the `999_999 → "1000.0K"`
+rounding case `StatTile.tsx` already guards) and found nothing unguarded;
+`HeaderNav.tsx`/`NodeGlyph.tsx`/`GraphLegend.tsx` are presentational and
+internally consistent (glyph/colour tables keyed exhaustively over
+`NodeType`, no silent fallback reachable); `export-target.ts` is the
+already-heavily-scarred erase-target guard (SELF-?? history visible in its
+own comments) with 23 existing test cases, re-read for a fifth marker or a
+fourth foreign-contents case and found none; `show-prompt.ts` is already
+`invokedDirectly`-gated per the same pattern `run-doctor.ts` uses, with its
+pure half already extracted and tested.
+
+The `a7bbc57` base SHA this document's own C4 item and this fire's own
+scheduling prompt cite for "the real list since main" no longer resolves in
+this clone (`git cat-file -t a7bbc57` fails, and a full `git log --all`
+search finds no commit with that prefix) — history on this long-lived
+overnight branch has moved far enough that the night-4 reference commit is
+gone from reachable history. Not a code defect and not a new backlog item;
+noted here only so the next fire does not re-spend time on the same dead
+lookup. Tracking "done or BLOCKED" for this fire used `git log --format=%B |
+grep "Backlog item:"` instead, which does not depend on that SHA.
+
+No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`). `pnpm check` exit 0. `pnpm test` exit 0: 3419 tests passing,
+13 skipped — identical census to SELF-684, unchanged by a read-only fire.
+
+Backlog item: SELF-685 - BLOCKED
