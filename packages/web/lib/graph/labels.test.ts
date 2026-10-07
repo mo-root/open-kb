@@ -123,6 +123,30 @@ describe("budget", () => {
     )
     expect(planLabels(many, opts({ maxLabels: 40 })).length).toBe(40)
   })
+
+  it("does not apply the cap to forced candidates", () => {
+    // GraphCanvas.tsx's search path: once a query is active, every candidate
+    // that reaches planLabels is forced (a non-match fails the caller's own
+    // `bright` check first), and `rankMatches` there is capped at 500 — eight
+    // times this file's own MAX_LABELS (60). A query matching 70 hosts on a
+    // real map must still label all 70, not silently truncate to the budget.
+    const many = Array.from({ length: 70 }, (_, i) =>
+      cand({ id: `hit${i}`, x: i * 300, forced: true }),
+    )
+    expect(planLabels(many, opts({ maxLabels: 40 })).length).toBe(70)
+  })
+
+  it("still caps the ordinary candidates once the forced ones are seated", () => {
+    const forced = Array.from({ length: 50 }, (_, i) =>
+      cand({ id: `hit${i}`, x: i * 300, forced: true }),
+    )
+    const ordinary = Array.from({ length: 10 }, (_, i) =>
+      cand({ id: `ord${i}`, x: 50_000 + i * 300 }),
+    )
+    const placed = planLabels([...forced, ...ordinary], opts({ maxLabels: 40 }))
+    expect(placed.length).toBe(50)
+    expect(placed.every((l) => l.id.startsWith("hit"))).toBe(true)
+  })
 })
 
 describe("labelPriority", () => {

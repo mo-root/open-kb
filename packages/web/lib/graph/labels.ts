@@ -67,7 +67,11 @@ export interface PlanOptions {
    * further in they go, with no separate zoom threshold to keep in sync.
    */
   minScreenR: number
-  /** Hard cap, so a deep zoom on a dense lobe cannot cost an unbounded pass. */
+  /**
+   * Hard cap, so a deep zoom on a dense lobe cannot cost an unbounded pass.
+   * Forced candidates are exempt — see the loop below — so this only bounds
+   * the ordinary case the comment describes, not a broad search.
+   */
   maxLabels: number
   /** Screen-space width of a string at the label font. */
   measure: (text: string) => number
@@ -113,7 +117,16 @@ export function planLabels(
   const taken: Rect[] = []
 
   for (const c of ordered) {
-    if (placed.length >= maxLabels) break
+    // Forced candidates are sorted first (above) and never count against the
+    // budget: GraphCanvas.tsx's search path makes EVERY candidate forced once
+    // a query is active (a non-matching node fails its own `bright` check
+    // before it ever reaches this function), and `rankMatches` there is
+    // capped at 500 — eight times `maxLabels` (60). Without this exemption, a
+    // query matching more than 60 hosts on a real map (this file's own
+    // cursor.com header: 926) silently dropped the matches past the 60th,
+    // breaking the one promise this type's own doc comment makes for
+    // `forced`: "Always drawn, never decluttered away."
+    if (!c.forced && placed.length >= maxLabels) break
 
     const w = measure(c.text)
     // Screen-space box, sitting just under the node. Translation is uniform

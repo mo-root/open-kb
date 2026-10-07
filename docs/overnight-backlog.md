@@ -9081,3 +9081,57 @@ No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
 13 skipped — identical census to SELF-679, unchanged by a read-only fire.
 
 Backlog item: SELF-680 - BLOCKED
+
+**SELF-681 (2026-10-07 overnight fire) — `lib/graph/labels.ts`'s `maxLabels`
+cap could silently drop a FORCED label, the one case its own doc comment
+promises never happens.** Basename-checked the file first (SELF-658/663's
+own method): zero prior mentions of `labels.ts`, `planLabels` or
+`maxLabels` anywhere in this document, so a genuinely unread corner of the
+D-scope, not a re-sweep.
+
+Read `planLabels` end to end against its own caller, `GraphCanvas.tsx`'s
+`drawLabels`. The `LabelCandidate.forced` field's doc comment is explicit:
+"Hovered, focused, or a search hit. Always drawn, never decluttered away."
+The sort two lines into `planLabels` backs that up for the decluttering
+case — forced candidates sort before every ordinary one, so an overlap
+check (line 134) never fires against them. But the budget check one loop
+further down, `if (placed.length >= maxLabels) break`, applied to EVERY
+candidate, forced included, with no exemption — the one place the promise
+was not actually kept.
+
+Traced whether a real map can put more than `MAX_LABELS` (60,
+`GraphCanvas.tsx:214`) forced candidates in front of that check in one
+frame. `drawLabels`'s own candidate loop only lets a node through when
+`bright` (or it's the hovered node); with a search query active and no
+focus, `bright = matchSet.has(n.id)` — so every surviving candidate is
+either the hovered node or a search hit, and `forced` is true for both.
+`matchSet` comes from `rankMatches(searchItems, query, 500)` one file over
+(`lib/graph/search.ts`) — capped at 500, eight times `MAX_LABELS`. This
+file's own header already measured a 926-host cursor.com run; a query
+matching even a modest fraction of hosts on a map that size clears 60
+matches easily. The result on a real search: the matches past the 60th (by
+`labelPriority`, then id) rendered as dimmed-bright dots with no name,
+though the search box found them and the type's own contract said they
+would be named.
+
+Fixed by exempting forced candidates from the budget check
+(`if (!c.forced && placed.length >= maxLabels) break`), mirroring the
+existing `!c.forced &&` guard on the overlap check nine lines below it —
+the same idiom, extended to the other way a label could be dropped.
+Ordinary candidates are unaffected: in the only call site, a search-free
+frame has at most one forced candidate (the hover), so the cap still bounds
+the dense-zoom case the comment describes.
+
+Added two cases to `labels.test.ts`'s `budget` block: 70 forced candidates
+against `maxLabels: 40` must all place (the exact shape above, scaled
+down), and 50 forced + 10 ordinary against the same cap must place all 50
+forced and none of the ordinary — proving the exemption does not turn the
+cap off altogether. Verified non-vacuous by mutation: reverted just the
+loop's guard, reran — both new cases failed (`expected 40 to be 70`,
+`expected 40 to be 50`); restored the fix and reran clean before staging.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check` exit 0. `pnpm test` exit 0: 3416 tests passing (up from 3414,
+two new), 13 skipped — same gated census as SELF-680.
+
+Backlog item: SELF-681
