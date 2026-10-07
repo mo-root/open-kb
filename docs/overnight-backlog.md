@@ -8744,3 +8744,47 @@ passing, 13 skipped — identical to SELF-673's own count, as expected for
 a read-only fire.
 
 Backlog item: SELF-674 - BLOCKED
+
+**SELF-675 (2026-10-07 overnight fire) — three angles, none of them turned
+up anything to fix.** Confirmed SELF-674's own reachability-sweep class is
+now exhausted rather than assuming it: grepped every `packages/web/
+{app,components}` file for `useState(0)`/`useState(-1)`/`useState<number>`
+to find every stale-cursor CANDIDATE by construction rather than by memory
+of which components SELF-672/674 already named. Exactly two exist in the
+whole package — `GraphSearch.tsx`'s `cursor` (fixed, SELF-672) and
+`CommandPalette.tsx`'s `cursor` (checked unreachable, SELF-674) — so there
+is no third site left for this class to find.
+
+Re-ran `pnpm audit` for the first time since SELF-590 closed it six days
+ago (2026-10-01): **0 findings**, same as SELF-590 left it — nothing new
+disclosed against this tree in the interval, so that angle has nothing
+fresh to report either.
+
+A genuinely new angle, tried for the first time by this campaign: `pnpm
+licenses list --prod` over the whole dependency tree, checked against this
+repo's own MIT `LICENSE`. One hit worth naming — `@img/sharp-libvips-
+linux-x64` and `@img/sharp-libvips-linuxmusl-x64` (native bindings `sharp`
+pulls in for Next's image optimizer) are `LGPL-3.0-or-later` — but LGPL,
+unlike GPL/AGPL, explicitly permits exactly this shape of use (an unmodified
+library consumed as a dependency, not statically combined into one binary
+distributed under different terms) without requiring the consuming project
+to relicense; grepped the full `--prod` and un-filtered listings for `GPL`/
+`AGPL` and this pair is the only match either way. Not a finding this repo
+can act on — there is no license-incompatible dependency here, and noting
+the one LGPL package by name is the useful output of having actually
+checked, not a problem to fix. `pnpm outdated` was read too: `next@16.4.0`
+exists over the `16.3.8` SELF-586/589 landed, but `pnpm audit` is clean on
+the current pin and nothing in this fire's own reading named a concrete bug
+the bump would close, so taking it now would be a version bump looking for
+a justification rather than one that has one — left alone, the way this
+document's own rules ask ("narrow it to what fixtures can prove").
+
+No code change. Verified rather than assumed that the baseline is still
+healthy before writing this down: `pnpm install --frozen-lockfile` (fresh
+clone, no `node_modules`), `pnpm check` exit 0, `pnpm test` exit 0 (3414
+tests passing, 13 skipped — identical census to SELF-673/674), and
+`NEXT_TELEMETRY_DISABLED=1 pnpm --filter @open-kb/web build` exit 0, 16
+routes generated, zero webpack errors — the same three gates SELF-587 named,
+all still green.
+
+Backlog item: SELF-675 - BLOCKED
