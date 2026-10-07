@@ -8672,3 +8672,75 @@ sits in code this branch does not touch. No code change.
 identical to SELF-672's own count, as expected for a read-only fire.
 
 Backlog item: SELF-673 - BLOCKED
+
+**SELF-674 (2026-10-07 overnight fire) — a stale-cursor reachability sweep,
+the class SELF-672 just fixed in `GraphSearch.tsx`. Found the identical
+SHAPE in `CommandPalette.tsx` and traced it to unreachable; found the
+identical shape in `FamilyLedger.opened()` and traced it to unreachable by
+construction.** SELF-672's fix was "a cursor left pointing at an index the
+shrunk `results` no longer has" when the list shrinks for a reason other
+than the query changing. That is a shape, not a one-off, so it is worth
+checking everywhere a component keeps `cursor` state over a derived list.
+
+`CommandPalette.tsx`'s `results.flat` is built from `commands`, which is
+`[...routes, ...gallery, ...published]` where `published =
+Array.from(extra.values()).flat()` — `extra` is the registry
+`usePaletteCommands` writes to and can genuinely shrink while the palette
+is open, the same way `GraphCanvas`'s `visibleTypes` toggle shrinks
+`GraphSearch`'s `results` without touching `q`. `onKeyDown`'s ArrowDown
+handler (`Math.min(c + 1, results.flat.length - 1)`) has the exact same
+`-1` floor GraphSearch's inline version had before SELF-672 — with
+`results.flat.length === 0`, `Math.min(c + 1, -1)` is `-1` for any
+`c >= -1`, same arithmetic, same bug shape. Checked whether it is
+reachable rather than assuming it is not (and rather than assuming it is,
+same discipline SELF-552/563/619 already apply to a shape that merely
+looks right): the only producer of `extra` is `KbBrowser.tsx`'s
+`usePaletteCommands(commands)`, and `commands` there is built from `notes`,
+a plain prop — fixed for the component's whole mount, not re-filtered by
+any in-page toggle the way `GraphCanvas`'s `searchItems` is. `extra` can
+only shrink by a key leaving the registry entirely, which happens in
+`register`'s returned cleanup — i.e. on `KbBrowser` unmounting, which is a
+navigation. And every navigation this file offers from inside the open
+palette goes through `runAt` (`CommandPalette.tsx:227-235`), which calls
+`setOpen(false)` BEFORE `cmd.run()` — so the dialog is already scheduled
+to unmount on the next render regardless of what `extra` does a tick
+later, and the stale cursor is never rendered. No other path removes a
+key while the dialog stays open. Confirmed by reading every call site of
+the registry's unregister (one: the `usePaletteCommands` cleanup) and
+every call site of `router.push` reachable from inside the open dialog
+(one: `runAt`). Not fixed — the GraphSearch shape needs the list to
+shrink while the SAME surface stays mounted and visible, and nothing here
+does that.
+
+`FamilyLedger.opened()` (`packages/swarm/src/family-ledger.ts:46-56`)
+resets a row's `status` to `"queued"` and drops its `because` on every
+call, including — unguarded in that function alone — a dedupeKey that is
+already `"landed"`. Read `board.ts` to check whether `opened` can ever
+fire for a landed key: it cannot. `spawnTool` and `promoteTool`
+(`tools-control.ts:420-440,574-579`) only emit `{kind:"opened"}` after
+`ctx.board.push`/`ctx.board.promote` return `ok:true`, and `board.ts`'s
+own `release` doc comment states the invariant directly — "A landed
+mission is never released: it stays claimed so its key keeps rejecting
+duplicates for the rest of the run" — confirmed in `push` (refuses any
+key in `#claimed`, line 89-91) and `promote` (refuses any key in
+`#claimed`, line 155-157). A landed key is claimed and never unclaimed, so
+every path that could re-open it is refused at the board before
+`onFamilyEvent` ever fires. `FamilyLedger.opened()`'s missing guard is
+real but dead code, the same "gap in the function, no live path that
+reaches it" verdict SELF-552 already reached twice for `rivalHand` and
+`DecisionsStrip`'s `clock()` — recorded here for the same reason that
+entry gives: so the next fire reading `family-ledger.ts` does not re-walk
+this ground.
+
+Also re-read `layoutCache.ts`, `graph/settings.ts`, `ThemeToggle.tsx` for
+the same local-storage-exception class B1-B4/SELF-528 already swept —
+every write is already `try`/`catch`-guarded (`layoutCache.ts`'s
+`saveLayout` even has a second-chance eviction path inside its `catch`);
+no gap.
+
+No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`). `pnpm check && pnpm test` both exit 0: 3414 tests
+passing, 13 skipped — identical to SELF-673's own count, as expected for
+a read-only fire.
+
+Backlog item: SELF-674 - BLOCKED
