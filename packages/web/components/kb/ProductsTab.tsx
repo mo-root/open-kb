@@ -207,11 +207,18 @@ export function ProductsTab({
                 ))}
               </p>
             )}
+            {/* sky-* is only re-keyed per theme for steps 200-600 (globals.css's
+                @theme inline block) — the same 200-500 ceiling NoteView.tsx's
+                amber box already documents, one hue over. This card used to read
+                border-sky-500/40 bg-sky-500/10, both outside that range: a fixed
+                dark-navy literal in light mode instead of the paper-toned tint
+                every other sky box in this app gets. 500/40 and 500/10 match that
+                existing idiom (GraphCanvas's advisory banner, KbCard.tsx's badge). */}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {catalog.map((p) => (
                 <div
                   key={p.name}
-                  className="rounded-lg border border-sky-800/50 bg-sky-950/20 p-4"
+                  className="rounded-lg border border-sky-500/40 bg-sky-500/10 p-4"
                 >
                   <div className="min-w-0 text-sm font-medium text-slate-100">{p.name}</div>
                   <p className="mt-1 text-[13px] leading-snug text-slate-400">{p.does}</p>
@@ -319,7 +326,7 @@ export function ProductsTab({
               {integrations.map((i, idx) => (
                 <div
                   key={`${i.with}-${idx}`}
-                  className="rounded-lg border border-sky-800/50 bg-sky-950/20 p-4"
+                  className="rounded-lg border border-sky-500/40 bg-sky-500/10 p-4"
                 >
                   <div className="min-w-0 text-sm font-medium text-slate-100">{i.with}</div>
                   <p className="mt-1 text-[13px] leading-snug text-slate-400">{i.does}</p>

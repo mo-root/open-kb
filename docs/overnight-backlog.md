@@ -9135,3 +9135,80 @@ loop's guard, reran — both new cases failed (`expected 40 to be 70`,
 two new), 13 skipped — same gated census as SELF-680.
 
 Backlog item: SELF-681
+
+**SELF-682 (2026-10-07 overnight fire) — a genuinely new angle: `globals.css`
+itself, 666 lines, never named anywhere in this document before tonight. Found
+four real sites where a themed color step outside its own `@theme inline`
+remap range sat next to a correctly-remapped sibling on the same element, the
+exact trap `NoteView.tsx`'s own comment already warns against.** Basename-
+checked first (SELF-658/663's method): zero hits for `globals.css` across this
+whole document, and `comm`-diffing every `.ts`/`.tsx` basename this repo ships
+against every basename this document has ever quoted turned up exactly one
+other gap, `error.tsx` — which the backtick extraction missed only because its
+own mention line-wraps across two lines (`app/\nerror.tsx`); SELF-619's a11y
+sweep already read it. `globals.css` had no such false negative: a real,
+untouched file.
+
+Read it end to end. Its own header makes a literal promise: "every ramp step
+is re-keyed to a --c-* variable ... so a single data-theme swap inverts the
+whole UI by MEANING, not by hue." The `@theme inline` block backs that up only
+for the steps it actually lists — slate gets the full 50-950, but sky stops at
+200-600, amber and rose at 200-500, emerald and violet at 300-500/400. A class
+naming any step outside those ranges still compiles (Tailwind has its own
+stock literal for every step) but that literal has no `--c-*` behind it and
+never changes when `data-theme` does. `NoteView.tsx`'s own `because` box
+already names this exact trap by hand ("border-amber-900/bg-amber-950 would
+sit outside that range... Kept inside 200-500, matching... every other amber
+box in this app") — as a warning against a NEW instance, not a sweep for
+existing ones.
+
+Grepped every `(bg|text|border|ring|from|to|via|fill|stroke|outline|
+decoration|divide|shadow|caret|accent|placeholder)-{family}-{step}` across the
+five themed families over every `.ts`/`.tsx` this app ships (excluding test
+files), cross-checked each hit's step against the remap range read directly
+from `globals.css`. Two results were the `NoteView.tsx` comment itself
+(matched by the regex, confirmed by reading the surrounding lines — inside a
+`/* */` block comment, not live code) and the `GraphCanvas.tsx`/`KbCard.tsx`
+precedents already correctly inside range. Four were real:
+
+- `ProductsTab.tsx`'s product AND integration cards (two identical sites):
+  `border-sky-800/50 bg-sky-950/20` — sky stops being re-keyed at 600.
+- `SearchesPanel.tsx`'s "only the empty" toggle: `border-amber-600/60` right
+  beside a correctly-flipping `text-amber-400` on the same button.
+- `BuildWorkflow.tsx`'s Stop button: `hover:border-rose-600/60` beside a
+  correctly-flipping `hover:text-rose-400`.
+- `app/runs/[id]/page.tsx`'s failed-run banner: `border-rose-900/50
+  bg-rose-950/20`, one line below a correctly-flipping `bg-rose-500/15` status
+  pill (the clearest tell — the sibling line proves the intent was always a
+  themed red, not a fixed one).
+
+Every real offender has the identical shape: one property on an element
+tracks the theme correctly, a sibling property of the same hue does not — so
+in dark mode (where review happens) the two colors are close enough that the
+mismatch is easy to miss, and in light mode the un-remapped one stays locked
+to Tailwind's own dark default while everything around it goes pale. Fixed
+all four to the nearest in-range step, matching the `border-{hue}-500/40
+bg-{hue}-500/10` idiom `GraphCanvas.tsx`'s advisory banner and `NoteView.tsx`'s
+own `because` box already use for a tinted box, and `-500`/`-400` single-step
+corrections for the two border-only sites where the correct step was already
+one number away.
+
+No render harness exists to screenshot the before/after (the standing
+limitation B1-B4/SELF-509/672 already name), so this is pinned the other way:
+added `packages/web/theme-colors-only-flip-inside-the-remapped-range.test.ts`,
+a text scan in the exact style of `tests/testing-doubles-stay-out-of-src.test.ts`
+(`git ls-files` over the shipped tree, not just the index, so an uncommitted
+violation still fails). It parses the remap range directly out of
+`globals.css` rather than hand-copying it, so a future widened or narrowed
+range updates the test for free, and strips block comments first so it does
+not flag `NoteView.tsx`'s own warning sentence. Verified non-vacuous by
+mutation: reverted just the `ProductsTab.tsx` fix back to
+`border-sky-800/50 bg-sky-950/20` and reran this file alone — the new test
+failed, naming exactly that file and class; restored the fix and reran clean
+before committing.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check` exit 0. `pnpm test` exit 0: 3419 tests passing (up from 3416,
+three new), 13 skipped — same gated census as SELF-681.
+
+Backlog item: SELF-682

@@ -103,7 +103,11 @@ function FailedReport({ run }: { run: StoredRun }) {
         </span>
       </header>
 
-      <section className="mb-6 rounded-lg border border-rose-900/50 bg-rose-950/20 p-5">
+      {/* rose-* only re-keys per theme for steps 200-500 (globals.css, same
+          ceiling NoteView.tsx's amber box documents) — rose-900/bg-rose-950 sat
+          outside it, so this banner stayed a fixed dark literal in light mode
+          while the status pill one line up (bg-rose-500/15) correctly flipped. */}
+      <section className="mb-6 rounded-lg border border-rose-500/40 bg-rose-500/10 p-5">
         <h2 className="mb-2 font-mono text-[11px] uppercase tracking-wider text-rose-300/80">
           how it ended
         </h2>

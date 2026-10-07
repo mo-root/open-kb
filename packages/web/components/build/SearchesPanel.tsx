@@ -124,7 +124,11 @@ export function SearchesPanel({ searches }: { searches: SearchView[] }) {
             aria-pressed={onlyEmpty}
             className={`rounded border px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors ${
               onlyEmpty
-                ? "border-amber-600/60 text-amber-400"
+                // amber-* only re-keys per theme for steps 200-500 (globals.css,
+                // same ceiling NoteView.tsx's amber box documents) — amber-600
+                // sat outside it, so this border stayed a fixed dark literal in
+                // light mode while its own text-amber-400 correctly flipped.
+                ? "border-amber-500/60 text-amber-400"
                 : "border-slate-700 text-slate-500 hover:text-slate-300"
             }`}
           >
