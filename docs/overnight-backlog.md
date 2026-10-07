@@ -8907,3 +8907,75 @@ passing, 13 skipped — identical census to SELF-673/674/675/676, unchanged by
 a read-only fire.
 
 Backlog item: SELF-677 - BLOCKED
+
+**SELF-678 (2026-10-07 overnight fire) — a fresh angle: pluralization/verb
+agreement never audited anywhere in this document. Found four real,
+reachable "1 links"-shaped sentences in `GraphCanvas.tsx`, all read aloud by
+a screen reader on an ordinary small map.** Grepped this document first for
+"pluraliz"/"singular"/"=== 1 ?" — zero prior hits, a genuinely untried class.
+Then grepped `packages/web` for every `${count}` interpolation immediately
+followed by a plural noun, cross-checked each hit's own file for the house's
+existing idiom (`n === 1 ? "x" : "xs"`, used at least a dozen places already
+— `KbCard.tsx`, `KbGallery.tsx`, `KbOverview.tsx`, `ProductsTab.tsx`,
+`PlanCard.tsx`, `CostBreakdown.tsx`, `BuildWorkflow.tsx`, `spend-limits.ts`,
+`public-runs.ts`, `scorecard-view.ts` — so a bare plural is the outlier, not
+the norm) to tell a real gap from a site already guarded or structurally
+safe.
+
+`GraphCanvas.tsx` had the most hits and turned out to be the one file that
+never got this treatment: four sites used a bare plural noun (and in two
+cases a bare plural verb) tied to a count with no floor —
+
+- line ~1831 (the toolbar's always-visible node/link count): `{meta.
+  activeLinks.length} links`
+- line ~1904 (the pane's own `aria-label`): `${graph.edges.length} links`
+- the sr-only summary paragraph (read by assistive tech on every map, the
+  canvas being otherwise opaque to it): `{graph.edges.length} links`,
+  `{meta.orphanCount} entities carry`, `${meta.unlinked} are related`,
+  `{graph.dangling.length} hosts were discarded`
+- the show/hide-unplaced button's own `title`: `${meta.orphanCount} entities`
+
+Checked reachability before fixing, not assumed. `graph.nodes.length` itself
+is exempt — the file's own early return a few lines above the sr-only
+paragraph (`if (graph.nodes.length <= 1) return <p>nothing on the map…`,
+added for exactly this reason per its own comment, "`1 nodes · 0 links` as
+the only signal") already turns a 1-node graph into a different branch
+entirely, so no node count past that guard can ever read 1 — confirmed by
+re-reading the guard, not by memory of what it does. `graph.edges.length`,
+`meta.activeLinks.length`, `meta.orphanCount`, `meta.unlinked` and `graph.
+dangling.length` have no equivalent floor: a 2-node map (the smallest this
+component ever renders) can have exactly one edge, and `orphanCount`/
+`unlinked`/`dangling` are independent counts over the same small node set,
+so each lands on exactly 1 under perfectly ordinary inputs, not a contrived
+edge case.
+
+Fixed all four sites with the same `n === 1 ? singular : plural` idiom the
+rest of the package already uses, verb agreement included ("entity
+carries"/"entities carry", "is"/"are", "host was"/"hosts were"). Spot-checked
+two look-alike sites in other files for the same shape before closing the
+class as GraphCanvas-only: `KbOverview.tsx`'s `ariaLabel` at
+`{profile.length} entities` is already guarded by its own `profile.length >
+1 ?` branch one line up (confirmed clean); `KbOverview.tsx:890`'s `title=
+"${entities.length - unplaced} of ${entities.length} entities carry a
+relation"` has the identical un-guarded shape and `entities.length` was not
+traced for a floor the way `GraphCanvas`'s was — left for a future fire
+rather than widening this one past the file it set out to fix.
+
+This file carries no render-test harness (SELF-509/672 already established
+why — no jsdom/RTL harness in this repo), so `pnpm test` cannot exercise the
+new JSX text directly. Verified anyway, empirically rather than by
+type-check alone: wrote a throwaway standalone reproduction of each of the
+four edited JSX/template-literal shapes (outside the repo, in session
+scratch) and rendered it with `react-dom/server`'s `renderToStaticMarkup`
+at n=1, n>1 and n=0/null for every count — all seven cases came back with
+correct grammar and exactly one space at each boundary ("1 link", "4
+links", "1 entity carries", "3 entities carry", "0 links", etc.), confirming
+the JSX whitespace-collapsing rules around the new ternaries behave as
+intended rather than trusting that by inspection alone.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check` exit 0. `pnpm test` exit 0: 3414 tests passing, 13 skipped —
+identical census to SELF-677, unchanged (a text-only fix touching no
+function this suite exercises).
+
+Backlog item: SELF-678

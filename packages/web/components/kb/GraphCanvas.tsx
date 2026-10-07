@@ -1828,7 +1828,7 @@ export function GraphCanvas({
           {visibleNodeCount === graph.nodes.length
             ? graph.nodes.length
             : `${visibleNodeCount}/${graph.nodes.length}`}{" "}
-          nodes · {meta.activeLinks.length} links
+          nodes · {meta.activeLinks.length} {meta.activeLinks.length === 1 ? "link" : "links"}
           {/* Of which the run measured how many. The rest are the lanes this
               reader draws from provenance, and on most maps they are the large
               majority — a links count on its own reads as a map full of
@@ -1901,9 +1901,9 @@ export function GraphCanvas({
         aria-label={
           fullscreen
             ? `${slug} knowledge graph, fullscreen`
-            : `knowledge graph: ${graph.nodes.length} nodes, ${graph.edges.length} links${
-                meta.maxTitle ? `, anchor ${meta.maxTitle}` : ""
-              }`
+            : `knowledge graph: ${graph.nodes.length} nodes, ${graph.edges.length} ${
+                graph.edges.length === 1 ? "link" : "links"
+              }${meta.maxTitle ? `, anchor ${meta.maxTitle}` : ""}`
         }
       >
         {/* THE SETTLE, ANNOUNCED.
@@ -1948,17 +1948,28 @@ export function GraphCanvas({
           />
         )}
 
-        {/* visually-hidden summary for assistive tech (the canvas is opaque) */}
+        {/* visually-hidden summary for assistive tech (the canvas is opaque).
+            Every count below but the node count is guarded for n===1: "1
+            links", "1 entities carry", "1 are related" and "1 hosts were
+            discarded" are the one wrong word a screen reader would actually
+            read aloud on a small map, and this pane is reached by one on
+            every map — `graph.nodes.length` is the only count exempt,
+            because the `graph.nodes.length <= 1` early return a few lines up
+            already turns that case into "nothing on the map" and never lets
+            a bare 1 reach this paragraph. `edges`/`orphanCount`/`unlinked`/
+            `dangling` have no such floor: a two-node map can easily have
+            exactly one edge, one unplaced entity, one unlinked entity or one
+            discarded host, and each did read as plural-only before this. */}
         <p className="sr-only">
           Force-directed market map of {graph.nodes.length} entities and{" "}
-          {graph.edges.length} links, {meta.measuredLinks} of them measured
+          {graph.edges.length} {graph.edges.length === 1 ? "link" : "links"}, {meta.measuredLinks} of them measured
           between two hosts and the rest drawn from which market's queries found
           each host. Nodes are sized by placement and coloured by type (
           {meta.presentTypes.map((t) => TYPE_LABEL[t]).join(", ")}). The anchor
-          is {meta.maxTitle}. {meta.orphanCount} entities carry no relation to
+          is {meta.maxTitle}. {meta.orphanCount} {meta.orphanCount === 1 ? "entity carries" : "entities carry"} no relation to
           the anchor
-          {meta.unlinked !== null && `, ${meta.unlinked} are related to no other host`},
-          and {graph.dangling.length} hosts were discarded as noise. Use the type
+          {meta.unlinked !== null && `, ${meta.unlinked} ${meta.unlinked === 1 ? "is" : "are"} related to no other host`},
+          and {graph.dangling.length} {graph.dangling.length === 1 ? "host was" : "hosts were"} discarded as noise. Use the type
           filters to show or hide segments; select a node to open its detail
           card, then use its Open entity button to read it.
         </p>
@@ -2165,8 +2176,8 @@ export function GraphCanvas({
               aria-pressed={showUnplaced}
               title={
                 showUnplaced
-                  ? `hide the ${meta.orphanCount} entities the classifier would not place — leaves only the wired map`
-                  : `show the ${meta.orphanCount} entities the classifier would not place`
+                  ? `hide the ${meta.orphanCount} ${meta.orphanCount === 1 ? "entity" : "entities"} the classifier would not place — leaves only the wired map`
+                  : `show the ${meta.orphanCount} ${meta.orphanCount === 1 ? "entity" : "entities"} the classifier would not place`
               }
               className={`inline-flex h-7 items-center gap-1.5 rounded px-2 font-mono text-[10px] uppercase tracking-[0.08em] transition-colors ${
                 showUnplaced
