@@ -8824,3 +8824,86 @@ passing, 13 skipped — identical census to SELF-673/674/675, unchanged by a
 one-line string fix.
 
 Backlog item: SELF-676
+
+**SELF-677 (2026-10-07 overnight fire) — three angles: an `.env.example`
+completeness re-check, a doctrine cross-read, and a reachability trace on
+`scripts/fatal.ts`'s Bright Data branch. Only the third turned up anything,
+and it turned up dead code rather than a bug.**
+
+Re-ran the env-var cross-check this document already closed at SELF-619/
+SELF-663's era, from scratch rather than trusting the prior verdict: grepped
+every `process.env["OPENKB_...` and `process.env.OPENKB_...` literal across
+`packages/` and `scripts/` (test files excluded) and diffed the set against
+every `OPENKB_` name in `.env.example`. First pass over-reported 7 gaps —
+`OPENKB_MODEL`, `OPENKB_MIN_WAVES`, `OPENKB_RANK_UNLOCK`, and the four
+`OPENKB_SWARM_*_MODEL` dials — because the grep was anchored to
+uncommented lines only. All seven are in the file, each one deliberately
+`# `-commented per its own stated reason ("LEFT COMMENTED OUT ON PURPOSE…
+an empty assignment is not the same as unset"). `OPENKB_MAX_DURATION`
+reproduced too, and is the one SELF-509 already named: prose inside
+`api/map/route.ts`'s own comment describing an approach that does NOT work
+(a literal Next.js requires, not an env var), not a real variable. No gap.
+
+Read all seven `prompts/doctrine/*.md` files end to end — the one D-area
+corner this document had touched only once or twice each (`01-the-thesis.md`
+through `07-query-families.md`, 1-2 mentions apiece against classify.md's 9
+and sweep.ts's 133) — cross-checking every measured number and every
+relation/family name against its counterpart in `prompts/agents/*.md`,
+`prompts/swarm/skill.md`, and the code that encodes the same taxonomy
+(`packages/core/src/families.ts`'s `QueryFamily`, `packages/web/lib/
+kb-from-run.ts`'s `RELATION_WEIGHT`). Checked specifically for the shape
+this branch's own rules call out as a D-area target, "doctrine
+contradictions": two documents stating the same fact with different
+numbers, or enumerating a closed set (relations, query families) with a
+member added, dropped or reordered in a way that changes meaning. Found
+none — `02-relations.md`'s eight commercial plus three channel relations
+match `classify.md`'s check order and `RELATION_WEIGHT`'s eleven entries
+exactly; `07-query-families.md`'s four families (plain/debranded/branded/
+rival) match `families.ts`'s `QueryFamily` union and its own 42.8%-vs-0.85%
+pair holds up arithmetically (211/493, 7/826); `05-reading-the-web.md`'s
+llms.txt hit rate (10 of 14, 12 of 14) matches `prompts/swarm/skill.md`'s
+copy of the same figure verbatim. `group.md`'s `core`/`adjacent` label on a
+CAPABILITY and `02-relations.md`'s `adjacent` RELATION on an entity are the
+same word for two different axes — confirmed neither document conflates
+them with the other — which is an overload worth naming here so a future
+reader doesn't mistake it for drift, not a contradiction to fix.
+
+The one real finding: `scripts/fatal.ts`'s `classify()` carries a Bright
+Data branch (`m.includes("brightdata") || m.includes("zone") ||
+m.includes("x-brd-error")`, tested by `fatal.test.ts`'s "classifies a Bright
+Data zone failure" case) that assumes a provider refusal can reach `fatal()`
+as a thrown `Error`. Traced every Bright Data call site to check whether
+one still can. `brightDataSearch`'s `once()` and `brightDataFetch` (`packages/
+providers/src/brightdata.ts`) each wrap their own request in `try`/`catch`
+and return a structured `{ok:false, error}` or `{providerError}` result on
+every failure path (bad zone, timeout, DNS failure, non-2xx, empty body) —
+none of them re-throw. That result flows into `core/src/sniff.ts`'s `sniff()`
+as `detail` (confirmed: `const detail = r.providerError`, carried into every
+returned `SniffResult`, never read in a condition that throws) and from
+there into a span field the engine bills and records. `fatal()` is only
+reached from `scripts/sweep.ts:307` and `scripts/swarm.ts:334`'s top-level
+`.catch` on the whole run promise, so the Bright Data branch only fires if
+some call site throws a BrightData-shaped message — and grepping every
+`throw` in `packages/sweep/src/sweep.ts`, `packages/swarm/src/tools-paid.ts`
+and `packages/swarm/src/tools-free.ts` (non-test) turned up none that
+construct one. Under the current architecture this branch cannot fire: it
+is the same "real gap in the function, no live path that reaches it" shape
+SELF-552 and SELF-674 already recorded for `rivalHand` and
+`FamilyLedger.opened()`, not a bug — the fail-open design this whole engine
+follows for provider calls is exactly why no exception ever carries that
+text. Not removing it: unlike SELF-674's dead branches, this one is a
+public exit-code classification a future direct Bright Data integration (or
+a change that makes `brightDataFetch`/`brightDataSearch` throw instead of
+returning data) could make live again, the comment above `classify` already
+says the patterns are "a phrase a provider actually returns, not a guess at
+one," and deleting a cheap, tested, correctly-labelled branch on the
+strength of today's call graph would be the SELF-536 near-miss repeated in
+the other direction. Recorded here so the next fire reading `fatal.ts` does
+not re-walk this trace.
+
+No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`). `pnpm check` exit 0. `pnpm test` exit 0: 3414 tests
+passing, 13 skipped — identical census to SELF-673/674/675/676, unchanged by
+a read-only fire.
+
+Backlog item: SELF-677 - BLOCKED
