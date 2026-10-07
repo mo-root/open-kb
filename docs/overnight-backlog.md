@@ -9439,3 +9439,59 @@ No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
 13 skipped — identical census to SELF-685, unchanged by a read-only fire.
 
 Backlog item: SELF-686 - BLOCKED
+
+**SELF-688 (2026-10-07 overnight fire) — eleven fresh-angle reads across the
+build-progress UI and the CLI reporting scripts, no new gap.** Different
+selection from SELF-684/685/686 (lowest basename-mention count): this pass
+picked files that are either pure logic with count/ratio arithmetic — the
+exact shape `CostBreakdown.tsx`'s "1 calls" bug (SELF-687, landed earlier this
+same fire-window) turned out to hide in — or recent, lightly-reread additions.
+
+`packages/web/components/build/DecisionsStrip.tsx` — `clock()`'s own comment
+already documents why it floors before splitting into minutes/seconds; the
+newest-first reverse and the `tnum` count are both plain. `EventFeed.tsx` —
+the pinned-scroll threshold matches `AgentPanel.tsx`'s sibling fix exactly,
+nothing unguarded. `viz/Gauge.tsx` — `arcPath`'s `large`-arc flag and the
+`frac` clamp (`max === min ? 0 : …`) both hold at the boundary. `kb/
+NotesTab.tsx` — the `flat`/`step()` keyboard-nav wrap-around math
+(`(i + dir + flat.length) % flat.length`) is correct at both ends of the
+list, and the `!` after `flat[next]` is backed by the `flat.length === 0`
+guard two lines up.
+
+Two components SELF-685/686 already listed as "read" (grouped with eight
+others in one pass) got a second, slower read on the theory that grouped
+pass is exactly how SELF-687's bug survived an earlier "read end to end"
+claim about the same file: `build/FindingsPanel.tsx` (the `maxBreadth`
+floor-at-1 divide guard, the `CallsTab`/`MapTab` tab counts) and `build/
+PlanCard.tsx` — specifically re-derived the `offsets` reduce by hand
+(`offsets[i]` for group `i` is the sum of every PRIOR group's length,
+confirmed term-by-term for three groups) since a cumulative-sum-via-reduce
+is the shape most likely to be off by one in either direction; it is not.
+
+`kb/GraphSettings.tsx` plus `lib/graph/settings.ts` — cross-checked every
+numeric field in all three `PRESETS` patches (quiet/airy/detailed) against
+the slider bound it owns in `RANGES` by hand, term by term, the check the
+file's own comment says a test performs; all in range, nothing past SELF-685's
+already-confirmed `translate-x-4.5` Tailwind v4 lead.
+
+`lib/graph/cluster.ts` — read `assignClusters`/`measureClusters`/
+`separationShoves` in full, including the "cannot happen" comments
+(`a.n === 0`, `out.get(k)` always hits), and traced each by hand rather than
+trusting the comment: all three hold for the reason stated. `scripts/
+diff-runs.ts` — `driftRows`' `indexByKey`/first-wins fix is intact (the
+regression it documents, two rows folding to one key disagreeing between the
+sentence and the table, cannot recur: both now read through the same index).
+`scripts/spend-caps.ts` — `readCapUsd`'s `NaN`-guard-before-parse ordering,
+`listRoom`'s reservation arithmetic with the run cap off (`reserve = 0`,
+degrading to a between-domains check exactly as documented) and `cappedReason`
+all check out against their own stated reasoning. `scripts/bench.ts` —
+`deriveRun`'s self-row exclusion, era-fingerprint `markers`, and `medianRow`'s
+median-of-ratios (not ratio-of-medians) comment were verified against the
+code rather than taken on faith; `stampOf`'s 12-vs-14-digit stamp width
+parses both correctly.
+
+No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`). `pnpm check` exit 0. `pnpm test` exit 0: 3420 tests passing,
+13 skipped — identical census to SELF-687, unchanged by a read-only fire.
+
+Backlog item: SELF-688 - BLOCKED
