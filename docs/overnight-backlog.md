@@ -8788,3 +8788,39 @@ routes generated, zero webpack errors — the same three gates SELF-587 named,
 all still green.
 
 Backlog item: SELF-675 - BLOCKED
+
+**SELF-676 (2026-10-07 overnight fire) — a fresh angle: cross-checked every
+CLI script's runtime `usage()` error string against the flags it actually
+parses, rather than against its own header comment (the class every prior
+usage-drift entry in this file checked the other way).** Grepped each
+`scripts/*.ts` with a real argv usage banner (`audit.ts`, `bakeoff.ts`,
+`batch.ts`, `diff-runs.ts`, `discover.ts`, `export-kb.ts`) for every
+`flag(`/`stringFlag(`/`indexOf("--...")` call site, then diffed that list
+against the exact string the script prints on a bad invocation. Five of six
+matched exactly. `scripts/batch.ts:249`'s `usage()` listed `--concurrency`,
+`--queries`, `--timeout` and `--resume` but not `--retries` — a real,
+fully-wired flag (`RETRIES = flag("retries", 1, 0)`, line 297, with `min=0`
+specifically because "do not retry" is a valid ask) that the file's own
+header comment (lines 8, 13-15) already documents and gives a worked
+example for (`batch.ts list.txt --retries 0`). A user who fat-fingers
+`--retries` (or any flag) hits this exact banner and would see four of the
+five real options, silently missing the one that turns off the default
+single retry on every real failure in a fifty-domain overnight batch — the
+cost case the header itself calls out as "doubling the cost of every real
+failure".
+
+Added `[--retries N]` to the usage string, in the same position the header
+comment lists it (after `--timeout`, before `--resume`). No other script's
+banner had a gap — `audit.ts`'s two-form usage matches its `--n`/
+`--relations`/`--score` parsing exactly, `export-kb.ts`'s matches its
+`[outDir] [--force] | --all`, and the rest take no flags beyond what their
+one-line usage already shows.
+
+`tests/batch-refuses-before-it-spends-anything.test.ts` only asserts the
+string's prefix (`"usage: tsx scripts/batch.ts <domains.txt>"`), so it did
+not need updating. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`). `pnpm check` exit 0. `pnpm test` exit 0: 3414 tests
+passing, 13 skipped — identical census to SELF-673/674/675, unchanged by a
+one-line string fix.
+
+Backlog item: SELF-676

@@ -246,7 +246,7 @@ if (invokedDirectly) {
 
 const listPath = process.argv[2]
 if (!listPath || listPath.startsWith("--")) {
-  console.error("usage: tsx scripts/batch.ts <domains.txt> [--concurrency N] [--queries N] [--timeout SECONDS] [--resume manifest.jsonl]")
+  console.error("usage: tsx scripts/batch.ts <domains.txt> [--concurrency N] [--queries N] [--timeout SECONDS] [--retries N] [--resume manifest.jsonl]")
   process.exit(2)
 }
 if (!existsSync(listPath)) {
