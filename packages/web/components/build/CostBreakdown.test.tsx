@@ -149,6 +149,16 @@ describe("CostBreakdown's Lines rollup", () => {
     expect(html).toContain("1 call<");
     expect(html).not.toContain("1 calls");
   });
+
+  it("also singularises 'call' in the '+N more' rollup when the folded tail sums to one call", () => {
+    // max for "by tool" is 6; a 7th row folds alone into the tail, and its
+    // own calls become restCalls via a sum, not a direct read of one row's
+    // `calls` — the singularisation above does not exercise that path.
+    const rows = Array.from({ length: 7 }, (_, i) => line({ label: `k${i}`, calls: i === 6 ? 1 : 0 }));
+    const html = renderToStaticMarkup(<CostBreakdown cost={cost({ byKind: rows })} />);
+    expect(html).toContain("1 call<");
+    expect(html).not.toContain("1 calls");
+  });
 });
 
 describe("CostBreakdown's partial-spend caveat", () => {

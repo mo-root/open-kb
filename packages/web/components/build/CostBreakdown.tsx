@@ -81,10 +81,13 @@ function Lines({
         ))}
       </ul>
       {/* Never a silent cap: the tail is folded into a line that keeps the
-          column summing to the total rather than quietly dropped. */}
+          column summing to the total rather than quietly dropped. restCalls
+          is a sum over the folded rows, not a single row's own `calls`, so
+          the per-row singularisation two lines up does not already cover it
+          — a tail of one row with exactly one call read "1 calls". */}
       {rest.length > 0 && (
         <div className="tnum mt-2 text-[10px] text-slate-500">
-          + {rest.length} more · {formatUsd(restUsd)} · {restCalls} calls
+          + {rest.length} more · {formatUsd(restUsd)} · {restCalls} call{restCalls === 1 ? "" : "s"}
         </div>
       )}
     </div>
