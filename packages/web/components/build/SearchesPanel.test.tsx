@@ -199,7 +199,31 @@ describe("SearchesPanel: the header aggregates every search, not just the ones l
       />,
     )
     expect(html).toContain("2 asked")
-    expect(html).toContain("1 results")
+    expect(html).toContain("1 result")
+    expect(html).not.toContain("1 results")
+  })
+
+  it("keeps 'results' plural at both zero and two, singular only at exactly one", () => {
+    // The header's totalHits sums hits.length across every row — a bare
+    // plural noun with no `=== 1` guard read "1 results" on any run whose
+    // searches collectively turned up exactly one hit, same shape as the
+    // "asked" count beside it which has no noun to agree with.
+    const zero = renderToStaticMarkup(<SearchesPanel searches={[search({ hits: [] })]} />)
+    expect(zero).toContain("0 results")
+
+    const two = renderToStaticMarkup(
+      <SearchesPanel
+        searches={[
+          search({
+            hits: [
+              { url: "https://a.example", title: "", description: "" },
+              { url: "https://b.example", title: "", description: "" },
+            ],
+          }),
+        ]}
+      />,
+    )
+    expect(two).toContain("2 results")
   })
 
   it("says nothing about failed/empty when every search succeeded with hits", () => {

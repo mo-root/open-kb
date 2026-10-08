@@ -107,7 +107,7 @@ export function SearchesPanel({ searches }: { searches: SearchView[] }) {
             searches
           </h3>
           <span className="font-mono text-[11px] tabular-nums text-slate-500">
-            {searches.length} asked · {totalHits} results
+            {searches.length} asked · {totalHits} {totalHits === 1 ? "result" : "results"}
           </span>
         </div>
         <div className="flex items-center gap-3">

@@ -795,8 +795,8 @@ export function BuildWorkflow({
               this line is watching the run work rather than watching a spinner
               that would look identical if the process had died. */}
           <div className="tnum mt-2.5 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[10px] uppercase tracking-wider text-slate-500">
-            <span>{searches.length} questions asked</span>
-            <span>{hostsSeen} hosts seen</span>
+            <span>{searches.length} {searches.length === 1 ? "question" : "questions"} asked</span>
+            <span>{hostsSeen} {hostsSeen === 1 ? "host" : "hosts"} seen</span>
             <span className={entities.length > 0 ? "text-sky-300" : undefined}>
               {entities.length} on the map
             </span>

@@ -98,10 +98,30 @@ describe("the catalog — what the company says it sells", () => {
     expect(html).toContain("Transactional Email API")
     expect(html).toContain("/docs/send")
     expect(html).toContain("/pricing")
-    expect(html).toContain("grouped into 1 markets")
+    expect(html).toContain("grouped into 1 market,")
+    expect(html).not.toContain("1 markets")
     expect(html).toContain("Transactional email")
     expect(html).toContain("stripped to 1 search term")
     expect(html).toContain("email api")
+  })
+
+  it("keeps 'markets' plural at two, singular only at exactly one", () => {
+    // `markets.length` had no `=== 1` guard, unlike the sibling strip-terms
+    // line right below it in the same block (`strips.length === 1 ? "" :
+    // "s"`) — a single-market company read "grouped into 1 markets".
+    const html = renderToStaticMarkup(
+      <ProductsTab
+        notes={notes}
+        catalog={[{ name: "Transactional Email API", does: "Send emails from code." }]}
+        markets={[
+          { name: "Transactional email", does: "", centrality: "core", covers: [] },
+          { name: "Marketing email", does: "", centrality: "adjacent", covers: [] },
+        ]}
+        brand="Resend"
+        openNote={() => {}}
+      />,
+    )
+    expect(html).toContain("grouped into 2 markets,")
   })
 
   it("falls back to the raw string, not a thrown error, when a catalog or strip link is not a valid URL", () => {

@@ -240,7 +240,8 @@ export function ProductsTab({
             {markets.length > 0 && (
               <div className="mt-5">
                 <p className="mb-2 font-mono text-[11px] uppercase tracking-[0.14em] text-slate-500">
-                  grouped into {markets.length} markets, which is how the query budget was split
+                  grouped into {markets.length} {markets.length === 1 ? "market" : "markets"}, which is
+                  how the query budget was split
                 </p>
                 <ul className="flex flex-col gap-1.5">
                   {markets.map((m) => (

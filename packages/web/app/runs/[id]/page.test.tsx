@@ -35,10 +35,14 @@ import { createRun, finishRun } from "@/lib/runs"
  * first place — a run recorded with a real bill — had zero coverage.
  */
 
-function sweepResult(anchor: string, report: Record<string, unknown> = {}) {
+function sweepResult(
+  anchor: string,
+  report: Record<string, unknown> = {},
+  products: { name: string; does: string; foundAt: string }[] = [],
+) {
   return {
     anchor,
-    decomposition: { sells: "s", buyer: "b", products: [], capabilities: [], coinages: [] },
+    decomposition: { sells: "s", buyer: "b", products, capabilities: [], coinages: [] },
     queries: [],
     entities: [{ name: "a", domain: "a.com", kind: "company", what: "w", relation: "competitor", why: "y" }],
     edges: [],
@@ -192,5 +196,35 @@ describe("/runs/[id]", () => {
 
     expect(html).toContain("2 calls")
     expect(html).toContain("3 queries")
+  })
+
+  it("keeps 'products named' singular at exactly one, plural at zero and two", async () => {
+    // `decomposition.products.length` had no `=== 1` guard, same bare-plural
+    // shape SELF-687/689 fixed elsewhere on this page — the zod schema in
+    // sweep.ts puts no floor on how many products a decomposition can name,
+    // so a single-product company reads "1 products named" on every view.
+    const product = { name: "p", does: "d", foundAt: "" }
+
+    const zero = createRun("brightdata.com", 0)
+    await finishRun(zero.id, sweepResult("brightdata.com", {}, []) as never)
+    const zeroHtml = renderToStaticMarkup(
+      await RunReport({ params: Promise.resolve({ id: zero.id }) }),
+    )
+    expect(zeroHtml).toContain("0 products named")
+
+    const one = createRun("brightdata.com", 1)
+    await finishRun(one.id, sweepResult("brightdata.com", {}, [product]) as never)
+    const oneHtml = renderToStaticMarkup(
+      await RunReport({ params: Promise.resolve({ id: one.id }) }),
+    )
+    expect(oneHtml).toContain("1 product named")
+    expect(oneHtml).not.toContain("1 products named")
+
+    const two = createRun("brightdata.com", 2)
+    await finishRun(two.id, sweepResult("brightdata.com", {}, [product, product]) as never)
+    const twoHtml = renderToStaticMarkup(
+      await RunReport({ params: Promise.resolve({ id: two.id }) }),
+    )
+    expect(twoHtml).toContain("2 products named")
   })
 })

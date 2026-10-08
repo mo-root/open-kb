@@ -297,7 +297,7 @@ export default async function RunReport({
           <Row
             label="What it read"
             value={r.decomposition.products.length ? "the company's own pages" : "—"}
-            hint={`${r.decomposition.products.length} products named`}
+            hint={`${r.decomposition.products.length} ${r.decomposition.products.length === 1 ? "product" : "products"} named`}
           />
           <Row
             label="Coinages avoided"
