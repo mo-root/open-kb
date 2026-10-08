@@ -414,7 +414,12 @@ export function BuildWorkflow({
       if (asPlan) {
         setPlan(asPlan);
         setStates((s) => advance(s, "plan"));
-        addFeed("accent", `plan: ${asPlan.count} queries · est ${formatUsd(asPlan.estimatedUsd)} of search`);
+        // Same wire field PlanCard.tsx's `plan.count` needed this guard for
+        // (SELF-691): a run can be planned with exactly 1 query.
+        addFeed(
+          "accent",
+          `plan: ${asPlan.count} quer${asPlan.count === 1 ? "y" : "ies"} · est ${formatUsd(asPlan.estimatedUsd)} of search`,
+        );
         return;
       }
 
