@@ -9830,3 +9830,30 @@ KbOverview bullet groups four sites into one). No code change.
 identical census to SELF-697, unchanged by a docs-only change.
 
 Backlog item: SELF-698
+
+**SELF-699 (2026-10-08 overnight fire) — `ResultPanel`'s empty-map line had
+the same bare-plural "hosts" gap SELF-687/689/690/691/692 closed for six
+other sites, just not yet checked against this one.** The empty-map branch
+(`result.kept === 0`) printed `${result.hosts ?? 0} hosts came back and none
+survived classification` with no `=== 1` guard. `hosts` (`packages/sweep/src/
+sweep.ts:7226,7457` — `byHost.size`) is a distinct-host count off real SERP
+results, not a fixed-shape field, so a narrow enough anchor can legitimately
+return exactly one host that still fails classification — the empty-map
+branch exists precisely for a run that found little or nothing. Confirmed
+the existing tests never drove this count past 7 or down to 0, never 1
+(`ResultPanel.test.tsx`'s two empty-map cases use `hosts: 7` and `hosts: 0`).
+
+Fixed with the same `count === 1 ? singular : plural` ternary the five prior
+fixes used. Added a test pinning `hosts: 1`; reverted just the `.tsx` fix
+with the new test left in place, reran — it failed exactly as expected
+("1 hosts came back" printed, not "1 host"); restored the fix and reran
+clean before staging. (The sibling `Stat` row a few lines up, "hosts seen",
+is a bare label with no embedded count noun — `value={r.hosts ?? 0}` renders
+into its own cell, not into a sentence — so it was not a second instance of
+this gap; checked rather than assumed.)
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check` exit 0. `pnpm test` exit 0: 3442 tests passing (up from 3441,
+one new), 13 skipped — same gated census as SELF-698.
+
+Backlog item: SELF-699

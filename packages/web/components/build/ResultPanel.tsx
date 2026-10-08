@@ -202,7 +202,8 @@ export function ResultPanel({
             empty map
           </span>
           <span className="tnum text-sm text-slate-300">
-            {result.hosts ?? 0} hosts came back and none survived classification
+            {result.hosts ?? 0} {(result.hosts ?? 0) === 1 ? "host" : "hosts"} came back and none
+            survived classification
           </span>
         </div>
         <ResultStats r={result} />

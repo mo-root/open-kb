@@ -125,6 +125,19 @@ describe("ResultPanel: empty-map ending", () => {
     expect(html).toContain("0 hosts came back");
   });
 
+  it("reads 'host', not 'hosts', when exactly one came back", () => {
+    // `hosts` (sweep.ts) is `byHost.size` — a distinct-host count off real SERP
+    // results, so a narrow enough anchor can legitimately return exactly one
+    // that then fails classification. The string was hardcoded plural with no
+    // `=== 1` guard, the same gap SELF-687/689/690/691/692 each closed for a
+    // different bare count elsewhere in this app.
+    const html = renderToStaticMarkup(
+      <ResultPanel result={result({ kept: 0, hosts: 1 })} errorText={null} />,
+    );
+    expect(html).toContain("1 host came back and none survived classification");
+    expect(html).not.toContain("1 hosts came back");
+  });
+
   it("still renders the stat grid on an empty map, not just the badge", () => {
     const html = renderToStaticMarkup(
       <ResultPanel result={result({ kept: 0, queries: 9, opening: 3 })} errorText={null} />,
