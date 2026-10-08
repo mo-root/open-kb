@@ -9495,3 +9495,79 @@ No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
 13 skipped — identical census to SELF-687, unchanged by a read-only fire.
 
 Backlog item: SELF-688 - BLOCKED
+
+**SELF-693 (2026-10-08 overnight fire) — closed out the pluralization chain
+across the rest of the web app, then tried one genuinely new angle
+(cursor-clamp parity between the two keyboard-navigable result lists); both
+came back clean.** Continued SELF-678/679/687/689/690/691/692's search for
+unguarded `${count} <plural>` sites, this time grepping every `${…}` in
+`packages/web` immediately followed by a bareword from the usual list
+(nodes/links/entities/hosts/calls/queries/results/runs/items) rather than a
+file-by-file read, to catch any site the earlier file-driven passes skipped.
+Thirty-one hits, all traced by hand:
+
+- `GraphCanvas.tsx:1904`'s `${graph.nodes.length} nodes` in the pane's own
+  `aria-label` — SELF-678's own commit already named this one exempt (the
+  component's `graph.nodes.length <= 1` early return a few lines above the
+  sr-only paragraph routes any 1-node graph to a different branch entirely,
+  so this count can never read 1 past that guard) and re-reading the guard
+  today confirms it still holds.
+- `KbOverview.tsx:890`'s `${entities.length - unplaced} of ${entities.length}
+  entities … carry a relation` — already carries the `entity`/`entities` and
+  `carries`/`carry` guards SELF-678's commit flagged as "left for a future
+  fire"; some fire between then and now closed it, confirmed by reading the
+  live file rather than trusting the backlog's own note.
+- `app/runs/[id]/page.tsx:232`'s call count already reads
+  `` `${cost.calls} call${cost.calls === 1 ? "" : "s"}` ``; lines 211/237's
+  `${kb.unplaced} unplaced` has no plural form to guard — "unplaced" is an
+  invariant adjective, correct at any count.
+- `SearchesPanel.tsx:156` (`` `asked as a ${s.family} query` ``) and
+  `NoteView.tsx:219` (`` `surfaced by a ${f} query` ``) are both singular
+  strings with no count variable at all — the regex matched the trailing
+  noun, not a real plural site.
+- `lib/spend-limits.ts:804` and `:838` do have a bare `runs` tied to a count
+  with no guard, but both live only in the `log:` field of `SpendVerdict` —
+  read every call site of `rateLimitResponse`/`SpendVerdict` in
+  `app/api/map/route.ts` to confirm `log` is written to the server log only,
+  never serialised into the response the visitor sees. The sibling
+  user-facing `error:` string two lines above each already runs the
+  count through the file's own `plural()` helper. Not a user-visible gap.
+
+With that class exhausted on this pass, tried a different angle: `lib/graph/
+search.ts`'s `clampCursor` was built, per its own doc comment, to fix one
+specific shape — a keyboard-navigated result list whose length can shrink
+without the query that produced it changing, leaving the cursor pointing
+past the new list and making Enter silently select nothing.
+`CommandPalette.tsx` is the app's other keyboard-navigated result list and
+does not use `clampCursor` — it only resets `cursor` to 0 on `q` changing
+(line 225) and otherwise clamps inline on the arrow-key handlers themselves
+(`Math.min(c + 1, results.flat.length - 1)` / `Math.max(c - 1, 0)`). Read
+the full chain that produces `results.flat.length` to see whether the same
+shrink-without-`q`-changing gap reaches it: `commands` (line 184) is three
+fixed routes plus `kbs` (fetched once, guarded by `if (kbs) return` at line
+155, so it only ever grows from `null` to an array — never shrinks) plus
+`extra`, the per-page `Map` that `usePaletteCommands` registers into. The
+one caller, `KbBrowser.tsx:168`, memoizes its `commands` off `[notes,
+setTab, openNote]`, and `notes` is the KB's own note list for the page's
+lifetime — it does not shrink while that page is mounted. The remaining way
+`extra` could shrink is the registering page unmounting, but the palette
+itself is a full-screen modal (`role="dialog"`) whose backdrop button closes
+it (`setOpen(false)`) on any click outside the panel, and every command's
+own `runAt` closes the palette before calling `cmd.run()` (line 231) — so
+there is no interaction path in the current UI that navigates away, or
+otherwise unmounts the page underneath, while the palette stays open. The
+gap `clampCursor` exists to close is real for `GraphSearch.tsx` (a sibling
+widget, the legend's type toggle, can shrink its results while the search
+box stays focused) but not reachable for `CommandPalette.tsx` as the app is
+currently wired. Also noted `runAt` already guards a stale index safely
+regardless (`const cmd = results.flat[i]; if (!cmd) return;`), so even a
+future caller that broke this invariant would degrade to "Enter does
+nothing" rather than crash. No code change — the two components do not, in
+fact, share the bug shape, so there is nothing here to fix without inventing
+a reachable path that does not exist today.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check` exit 0. `pnpm test` exit 0: 3426 tests passing, 13 skipped —
+identical census to SELF-692, unchanged by a read-only fire.
+
+Backlog item: SELF-693 - BLOCKED
