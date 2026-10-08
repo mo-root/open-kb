@@ -9728,3 +9728,75 @@ reran clean before staging.
 two new), 13 skipped — same gated census as SELF-695.
 
 Backlog item: SELF-696
+
+**SELF-697 (2026-10-08 overnight fire) — `scripts/batch.ts` had the same
+Ctrl+C gap SELF-695/696 just closed in `sweep.ts`/`swarm.ts`, and SELF-696's
+own note on it ("an interactive Ctrl+C ... hits the whole foreground process
+group (both parent and child)") turns out to be wrong — checked by actually
+spawning one.** `scripts/batch.ts` runs each sweep as `spawn("npx", args, {
+detached: true, ... })` deliberately, so its own `TIMEOUT_S` watchdog can
+`process.kill(-child.pid, "SIGKILL")` to reach the whole group. `detached`
+does this by calling `setsid()`, which does not just give the child a new
+process GROUP — it gives it a brand new SESSION with no controlling terminal
+at all. Verified rather than assumed: spawned a `detached: true` child in a
+throwaway script and read `ps -o pid,pgid,sid,comm` back for both processes —
+the parent showed its own pid as both pgid and sid (ordinary foreground job),
+the child showed its OWN pid as both pgid AND sid, proving it left the
+parent's session entirely. A terminal's Ctrl+C is delivered by the tty driver
+to the foreground process group of ITS controlling terminal; a process with
+no controlling terminal is categorically outside that delivery, regardless of
+what group the parent happens to sit in. So SELF-696's parenthetical — stated
+in passing, while explaining why `swarm.ts` needed its own look rather than a
+drive-by, and never checked against this file — does not hold for
+`batch.ts`: Node's default unhandled-SIGINT/SIGTERM kills the PARENT only,
+instantly, and every sweep still running at that moment is orphaned —
+unsupervised (the `TIMEOUT_S` timer dies with the parent that owned it), no
+longer billed for, still spending against its own run cap, and invisible to
+the operator who just asked the whole batch to stop.
+
+Mirrored `scripts/interrupt.ts`'s `installInterruptHandler` into a new
+`installBatchInterruptHandler` in `scripts/batch.ts` itself (not
+`interrupt.ts`, since the shape is different enough to not share code: one
+`AbortController` there, a live SET of child pids here) — first signal
+reports the batch's own running total and sends SIGINT (not SIGKILL) to every
+currently-tracked child's process group, so each child's OWN interrupt
+handler (already wired into `scripts/sweep.ts` by SELF-695) gets to report
+and unwind cleanly exactly as it would standing alone, rather than being
+killed outright; second signal escalates to SIGKILL on every tracked group
+and exits at once, the same double-tap SELF-695/696 already give a single
+sweep. Added a `runningPids: Set<number>` populated the moment each child has
+a pid and cleared in `finish()`, and an `interrupted` holder the `worker()`
+loop now checks in two places: before picking up the next domain (same
+pattern as the existing `budgetStopped` check two lines below it) and in the
+retry loop, so a domain the operator just interrupted is not immediately
+retried as a fresh sweep — the one thing Ctrl+C is supposed to rule out.
+`unstarted` (the resume-hint list at the end) now also fires on
+`interrupted`, not only `budgetStopped`, since both leave the same kind of
+work undone.
+
+Tested the handler itself the way `tests/interrupt.test.ts` pins
+`installInterruptHandler`: `process.kill`/`console.error`/`process.exit`
+stubbed, `process.emit("SIGINT"/"SIGTERM")` driving it — no subprocess, no
+network, no model call. Covers: first signal signals every tracked pid's
+group and reports spend without exiting; singular/plural wording; one dead
+pid's `ESRCH` does not stop the rest from being signalled; `pids()` is read
+live rather than snapshotted at install time (the batch's own set keeps
+changing as children start and finish); second signal SIGKILLs and exits
+`EXIT.interrupted`; SIGTERM behaves the same as SIGINT; `unregister` leaves
+no listener behind. A source-grep guard (same "cannot drive the real CLI
+body, it spawns real processes at module scope" reasoning
+`tests/the-cli-entrypoints-have-a-dollar-bound.test.ts` already uses)
+confirms the wiring — the handler installed against the live pid set and
+`spent`, and both `add`/`delete` calls — is actually present in
+`scripts/batch.ts`, not just defined and orphaned. Verified non-vacuous by
+mutation: stashed just `scripts/batch.ts` back to its pre-fix state with the
+new tests left in place — 9 of the 39 tests in `tests/batch.test.ts` failed
+(the import itself breaks, since `installBatchInterruptHandler` no longer
+exists, plus the wiring guard); restored the fix and reran clean before
+staging.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check` exit 0. `pnpm test` exit 0: 3441 tests passing (up from 3432,
+nine new), 13 skipped — same gated census as SELF-696.
+
+Backlog item: SELF-697

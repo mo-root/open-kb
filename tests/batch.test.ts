@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs"
+import { fileURLToPath } from "node:url"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { EXIT } from "../scripts/fatal.js"
 import {
@@ -5,6 +7,7 @@ import {
   dedupeAnchors,
   doneAnchorsFromManifest,
   flag,
+  installBatchInterruptHandler,
   readFlag,
   stringFlag,
   type Outcome,
@@ -291,5 +294,148 @@ describe("computeOutcome", () => {
     expect(out.anchor).toBe("other.com")
     expect(out.attempt).toBe(3)
     expect(out.at).toBe("stamp")
+  })
+})
+
+/**
+ * `scripts/batch.ts`'s own body cannot be driven end to end here — it spawns
+ * real child processes the moment it runs (see `tests/batch-refuses-before-
+ * it-spends-anything.test.ts`'s own note on that boundary). So this pins the
+ * handler itself, the same way `tests/interrupt.test.ts` pins
+ * `installInterruptHandler`: `process.kill` stubbed rather than a real
+ * `AbortController`, since this handler signals a SET of tracked child pids
+ * instead of aborting one.
+ *
+ * D-scope, self-discovered (SELF-697): a Ctrl+C on a running `batch.ts` today
+ * hits Node's own default and kills only the parent — confirmed by spawning a
+ * real `detached: true` child the way `runOne` does and reading its
+ * `ps -o pid,pgid,sid` back: pgid/sid both equal the child's OWN pid, a brand
+ * new session with no controlling terminal, so the terminal's SIGINT never
+ * reaches it regardless of what group the parent is in. Every sweep still
+ * running at that moment is orphaned: unsupervised, no longer timed out (the
+ * timer dies with the parent), still spending, and invisible to an operator
+ * who just asked the whole batch to stop.
+ */
+describe("installBatchInterruptHandler", () => {
+  function setUp(initialPids: number[]) {
+    let pids = initialPids
+    const tracker = { pids: () => pids }
+    const holder = { interrupted: false }
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined)
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never)
+    const killSpy = vi.spyOn(process, "kill").mockImplementation(() => true)
+    const unregister = installBatchInterruptHandler(tracker, () => 4.5, holder)
+    return { holder, errorSpy, exitSpy, killSpy, unregister, setPids: (p: number[]) => (pids = p) }
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it("on the first signal, reports spend and SIGINTs every tracked pid's group, without exiting", () => {
+    const { holder, errorSpy, exitSpy, killSpy, unregister } = setUp([111, 222])
+    try {
+      process.emit("SIGINT")
+      expect(holder.interrupted).toBe(true)
+      expect(errorSpy.mock.calls.map((c) => String(c[0])).join("\n")).toContain("$4.50 spent so far")
+      expect(killSpy).toHaveBeenCalledWith(-111, "SIGINT")
+      expect(killSpy).toHaveBeenCalledWith(-222, "SIGINT")
+      expect(exitSpy).not.toHaveBeenCalled()
+    } finally {
+      unregister()
+    }
+  })
+
+  it("says how many it signalled, singular for exactly one", () => {
+    const { errorSpy, unregister } = setUp([111])
+    try {
+      process.emit("SIGINT")
+      expect(errorSpy.mock.calls.map((c) => String(c[0])).join("\n")).toContain("Signalling 1 in-flight sweep ")
+    } finally {
+      unregister()
+    }
+  })
+
+  it("plural wording for more than one", () => {
+    const { errorSpy, unregister } = setUp([111, 222])
+    try {
+      process.emit("SIGINT")
+      expect(errorSpy.mock.calls.map((c) => String(c[0])).join("\n")).toContain("Signalling 2 in-flight sweeps ")
+    } finally {
+      unregister()
+    }
+  })
+
+  it("one dead pid's ESRCH does not stop the rest from being signalled", () => {
+    const { killSpy, unregister } = setUp([111, 222])
+    killSpy.mockImplementation((pid) => {
+      if (pid === -111) throw Object.assign(new Error("ESRCH"), { code: "ESRCH" })
+      return true
+    })
+    try {
+      expect(() => process.emit("SIGINT")).not.toThrow()
+      expect(killSpy).toHaveBeenCalledWith(-222, "SIGINT")
+    } finally {
+      unregister()
+    }
+  })
+
+  it("reads pids() live rather than a snapshot taken at install time", () => {
+    const { setPids, killSpy, unregister } = setUp([111])
+    setPids([111, 999])
+    try {
+      process.emit("SIGINT")
+      expect(killSpy).toHaveBeenCalledWith(-999, "SIGINT")
+    } finally {
+      unregister()
+    }
+  })
+
+  it("a second signal SIGKILLs every tracked pid and exits EXIT.interrupted", () => {
+    const { exitSpy, killSpy, unregister } = setUp([333])
+    try {
+      process.emit("SIGINT")
+      process.emit("SIGINT")
+      expect(killSpy).toHaveBeenCalledWith(-333, "SIGKILL")
+      expect(exitSpy).toHaveBeenCalledWith(EXIT.interrupted)
+    } finally {
+      unregister()
+    }
+  })
+
+  it("SIGTERM is handled the same way as SIGINT", () => {
+    const { holder, killSpy, unregister } = setUp([444])
+    try {
+      process.emit("SIGTERM")
+      expect(holder.interrupted).toBe(true)
+      expect(killSpy).toHaveBeenCalledWith(-444, "SIGINT")
+    } finally {
+      unregister()
+    }
+  })
+
+  it("unregister leaves no listener behind", () => {
+    const before = process.listenerCount("SIGINT")
+    const { unregister } = setUp([])
+    expect(process.listenerCount("SIGINT")).toBe(before + 1)
+    unregister()
+    expect(process.listenerCount("SIGINT")).toBe(before)
+  })
+})
+
+/**
+ * A GUARD, NOT A PROOF, same reason `tests/interrupt.test.ts` gives for its
+ * own source-grep check on `scripts/sweep.ts`/`scripts/swarm.ts`: this file's
+ * `invokedDirectly` body spawns real child processes at module scope the
+ * moment it runs, so nothing here can import and drive it end to end. What a
+ * grep catches is the wiring being quietly removed while the handler it
+ * calls stays behind, green and unreferenced.
+ */
+describe("scripts/batch.ts wires the handler into its own run", () => {
+  it("installs the handler against the tracked pids and the running total, before any worker starts", () => {
+    const src = readFileSync(fileURLToPath(new URL("../scripts/batch.ts", import.meta.url)), "utf8")
+    expect(src).toContain("installBatchInterruptHandler({ pids: () => [...runningPids] }, () => spent, interrupted)")
+    expect(src).toContain("runningPids.add(child.pid)")
+    expect(src).toContain("runningPids.delete(child.pid)")
   })
 })

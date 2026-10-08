@@ -235,6 +235,75 @@ export function computeOutcome(i: OutcomeInputs): Outcome {
   }
 }
 
+/**
+ * CTRL+C ON A RUNNING BATCH today kills ONLY THE PARENT. Confirmed by
+ * spawning a `detached: true` child (the shape `runOne` below always uses,
+ * required so the per-run `TIMEOUT_S` kill can reach the whole process group
+ * by negative pid) and reading its process/session group back with
+ * `ps -o pid,pgid,sid`: pgid and sid both equal the CHILD's own pid, not the
+ * parent's — `detached` calls `setsid()`, which gives the child a brand new
+ * session with no controlling terminal at all. The terminal's own SIGINT
+ * delivery (what a real Ctrl+C sends) only reaches the foreground process
+ * group of ITS controlling terminal, which the child is no longer part of —
+ * so it never arrives there, regardless of what group the parent happens to
+ * be in. That contradicts a claim this file's own history made in passing
+ * (the SELF-696 commit message, discussing why `scripts/swarm.ts` was a
+ * distinct case: "an interactive Ctrl+C ... hits the whole foreground
+ * process group (both parent and child)") without this file ever being
+ * checked. It is not: Node's default unhandled-SIGINT kills the parent
+ * instantly, and every sweep still running at that moment is orphaned —
+ * unsupervised, no longer subject to `TIMEOUT_S` (the timer dies with the
+ * parent), still spending against its own run cap, and invisible to the
+ * operator who just asked the WHOLE batch to stop.
+ *
+ * Mirrors `scripts/interrupt.ts`'s `installInterruptHandler`, widened from
+ * one `AbortController` to the set of currently-spawned child process
+ * groups: the first signal reports what the batch has spent so far and sends
+ * SIGINT (not SIGKILL) to each tracked group, so each child's OWN interrupt
+ * handler (wired into `scripts/sweep.ts` by SELF-695) gets to report and
+ * unwind cleanly exactly as it would standing alone — the batch's worker
+ * loop then sees `holder.interrupted` and stops handing out new domains or
+ * retrying the one each worker was holding. A second signal means the
+ * graceful path did not clear fast enough and escalates to SIGKILL on every
+ * tracked group before exiting at once, the same double-tap escape hatch
+ * `installInterruptHandler` gives a single sweep.
+ */
+export function installBatchInterruptHandler(
+  runningPids: { pids(): number[] },
+  totalUsd: () => number,
+  holder: { interrupted: boolean },
+): () => void {
+  const signalAll = (sig: NodeJS.Signals) => {
+    for (const pid of runningPids.pids()) {
+      try {
+        process.kill(-pid, sig)
+      } catch {
+        /* already gone, or never got its own group — nothing left to signal */
+      }
+    }
+  }
+  const handler = () => {
+    if (holder.interrupted) {
+      console.error("\nsecond Ctrl+C — killing every in-flight sweep now, whatever they had bought is lost.")
+      signalAll("SIGKILL")
+      process.exit(EXIT.interrupted)
+    }
+    holder.interrupted = true
+    const n = runningPids.pids().length
+    console.error(
+      `\nstopped by Ctrl+C — $${totalUsd().toFixed(2)} spent so far. Signalling ${n} in-flight ` +
+        `sweep${n === 1 ? "" : "s"} to stop cleanly; nothing further will be started.`,
+    )
+    signalAll("SIGINT")
+  }
+  process.on("SIGINT", handler)
+  process.on("SIGTERM", handler)
+  return () => {
+    process.off("SIGINT", handler)
+    process.off("SIGTERM", handler)
+  }
+}
+
 /* --------------------------------------------------------------------- main */
 
 // Body left un-indented after the `invokedDirectly` guard, the same choice
@@ -402,6 +471,11 @@ if (!todo.length) {
  *  only reliable attribution is "the file that was not there before". */
 const before = new Set(readdirSync("runs").filter((f) => f.endsWith(".json")))
 
+/** Every currently-spawned child's pid, so a Ctrl+C on the batch can reach
+ *  them — see `installBatchInterruptHandler` above. */
+const runningPids = new Set<number>()
+const interrupted = { interrupted: false }
+
 function runOne(anchor: string, attempt: number): Promise<Outcome> {
   return new Promise((resolve) => {
     const started = Date.now()
@@ -425,6 +499,10 @@ function runOne(anchor: string, attempt: number): Promise<Outcome> {
       // on it, it is only the SIGNALLING that needed the group.
       detached: true,
     })
+    // Tracked from the moment it has a pid, not just while a timeout could
+    // fire — `installBatchInterruptHandler`'s SIGINT needs to reach it for
+    // however long it is actually running, which starts here.
+    if (child.pid) runningPids.add(child.pid)
 
     let tail = ""
     const keep = (buf: Buffer) => {
@@ -459,6 +537,7 @@ function runOne(anchor: string, attempt: number): Promise<Outcome> {
       if (settled) return
       settled = true
       clearTimeout(timer)
+      if (child.pid) runningPids.delete(child.pid)
       const seconds = Math.round((Date.now() - started) / 1000)
       const after = readdirSync("runs").filter((f) => f.endsWith(".json"))
       const mine = after.find((f) => !before.has(f) && f.startsWith(`sweep-${anchor.replace(/\W+/g, "-")}-`))
@@ -533,11 +612,25 @@ let inFlight = 0
  *  outcomes at the end, where it is the same answer every time. */
 let budgetStopped = false
 
+installBatchInterruptHandler({ pids: () => [...runningPids] }, () => spent, interrupted)
+
 async function worker(): Promise<void> {
   for (;;) {
     const i = cursor++
     if (i >= todo.length) return
     const anchor = todo[i]!
+
+    // STOP TAKING NEW WORK THE MOMENT CTRL+C ARRIVES, same shape as the
+    // budget check two lines down: both read a flag any worker can have set,
+    // both drain the queue by pushing `cursor` to the end rather than racing
+    // each other to decide. `installBatchInterruptHandler` has already
+    // signalled every in-flight sweep to stop; this is what keeps a worker
+    // that just finished (or never started) from picking up the next domain
+    // underneath it.
+    if (interrupted.interrupted) {
+      cursor = todo.length
+      return
+    }
 
     // THE CHECK THAT DID NOT EXIST. `spent` was printed on every line below and
     // compared to nothing, so this loop would start the fiftieth domain exactly
@@ -574,7 +667,12 @@ async function worker(): Promise<void> {
       // A CAPPED RUN IS NOT RETRIED. Every other failure here is worth another
       // attempt because it might not happen twice; this one will, and it costs a
       // full cap to find out. See `EXIT.capped`.
-      for (let attempt = 2; !out.ok && !out.capped && attempt <= RETRIES + 1; attempt++) {
+      //
+      // NOR IS ONE THE OPERATOR JUST INTERRUPTED. `out` here failed because
+      // `installBatchInterruptHandler` told this exact child to stop — retrying
+      // it would start a brand new sweep a moment after the operator asked the
+      // whole batch to stop, the one thing Ctrl+C is supposed to rule out.
+      for (let attempt = 2; !out.ok && !out.capped && !interrupted.interrupted && attempt <= RETRIES + 1; attempt++) {
         console.log(`  ${anchor} failed (${out.detail}) — retry ${attempt - 1} of ${RETRIES}`)
         out = await runOne(anchor, attempt)
       }
@@ -599,11 +697,11 @@ await Promise.all(Array.from({ length: Math.min(CONCURRENCY, todo.length) }, () 
 
 const failed = outcomes.filter((o) => !o.ok)
 const capped = outcomes.filter((o) => o.capped)
-/** What the budget left undone, in list order — read off the outcomes rather
- *  than accumulated by the workers, so two workers stopping at once cannot
- *  reorder it or drop the domain one of them was holding. */
+/** What the budget — or a Ctrl+C — left undone, in list order — read off the
+ *  outcomes rather than accumulated by the workers, so two workers stopping
+ *  at once cannot reorder it or drop the domain one of them was holding. */
 const attempted = new Set(outcomes.map((o) => o.anchor))
-const unstarted = budgetStopped ? todo.filter((a) => !attempted.has(a)) : []
+const unstarted = budgetStopped || interrupted.interrupted ? todo.filter((a) => !attempted.has(a)) : []
 console.log(`\n${"=".repeat(78)}`)
 console.log(
   `${outcomes.length - failed.length}/${outcomes.length} built · $${spent.toFixed(2)}` +
