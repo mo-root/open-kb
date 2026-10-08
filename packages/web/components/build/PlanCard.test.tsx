@@ -155,6 +155,19 @@ describe("PlanCard: the empty-plan message", () => {
     expect(html).toContain("24 queries planned");
     expect(html).toContain("per-query reasons were not carried on the stream");
   });
+
+  it("reads 'query', not 'queries', when the count-only frame carries exactly one", () => {
+    // `readPlanned` (types.ts) sets `count` from a bare `queries: <number>` frame
+    // with no array to render, so this branch is reachable at any count the
+    // engine can report — and a run can be asked for as little as one query
+    // (run-doctor.test.ts's own comment: "queries must be between 1 and
+    // MAX_QUERIES"). The string was hardcoded plural with no `=== 1` guard,
+    // unlike the sibling `plan.ceiling === 1 ? "" : "s"` idiom a few lines above
+    // it in this same file.
+    const html = renderToStaticMarkup(<PlanCard plan={plan({ count: 1, queries: [] })} />);
+    expect(html).toContain("1 query planned");
+    expect(html).not.toContain("1 queries planned");
+  });
 });
 
 describe("PlanCard: query groups and running offsets", () => {

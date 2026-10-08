@@ -275,7 +275,7 @@ export function PlanCard({ plan }: { plan: PlanView }) {
       {plan.queries.length === 0 ? (
         <p className="mt-4 text-xs text-slate-500">
           {plan.count > 0
-            ? `${plan.count} queries planned. This run reported only the count — the per-query reasons were not carried on the stream.`
+            ? `${plan.count} quer${plan.count === 1 ? "y" : "ies"} planned. This run reported only the count — the per-query reasons were not carried on the stream.`
             : "No queries planned."}
         </p>
       ) : (
