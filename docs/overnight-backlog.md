@@ -9613,3 +9613,62 @@ passing, 13 skipped — identical census to SELF-693, unchanged by a
 read-only fire.
 
 Backlog item: SELF-694 - BLOCKED
+
+**SELF-695 (2026-10-08 overnight fire) — a genuinely new angle: signal
+handling, never audited by name across SELF-1 through SELF-694.** Grepped
+`process.on("SIGINT"` / `"SIGTERM"` / `process.emit(` across `packages/` and
+`scripts/`: zero hits before this fire. `scripts/sweep.ts` and
+`scripts/swarm.ts` each build their own run-scoped `AbortController`
+(`abort`) that every checkpoint in `packages/sweep/src/sweep.ts`
+(`signal?.aborted`) and the spend-cap watchdog (`withSpendCap` in
+`packages/core/src/spend-cap.ts`) already treat as "stop, cleanly, now" —
+but nothing wires a real Ctrl+C (or `kill`'s default SIGTERM) to it. Node's
+own default for an unhandled SIGINT is to kill the process on the spot, with
+no listener and nothing printed, even though every OTHER way a CLI run here
+can end (a spend-cap trip, `fatal()`) prints what was spent first. A person
+who starts the ~28-minute first run `--quick`'s own comment describes and
+stops it partway through today learns nothing about what it cost them.
+
+Added `scripts/interrupt.ts`'s `installInterruptHandler(abort, totalUsd,
+holder)`: on the first SIGINT or SIGTERM it prints the run's running total
+(`spans.totalUsd()`) and calls `abort.abort()`, the same mechanism a cap trip
+uses; a second signal means the first did not unwind fast enough (a call
+stuck past its own checkpoint) and exits at once with a new `EXIT.interrupted`
+(7) rather than leaving the operator stuck. Wired into `scripts/sweep.ts`
+only, the entrypoint `--quick` and the rest of this backlog's "user's first
+run" language is about — `scripts/swarm.ts`'s own cap-stop shape
+(`capStop.trip`/`capStop.ending`, a wider "drain every in-flight mission"
+unwind) is different enough that bolting the same handler on deserves its own
+look rather than a drive-by here, and is left for a future fire.
+`scripts/batch.ts` spawns `sweep.ts` as a child process and already has its
+own kill-the-PID mechanism for a wedged run (see its own file comment); an
+interactive Ctrl+C while `batch.ts` runs hits the whole foreground process
+group (both parent and child) under the shell's own signal delivery, a
+different path this item does not touch.
+
+`scripts/sweep.ts`'s existing `.catch` and its `out === null && capStop.trip`
+branch (the ending for a cap trip that left nothing to write) now have exact
+siblings keyed on the new `interrupted` holder instead of `capStop.trip` — no
+`runs/stopped-*.json` is written for a Ctrl+C (unlike a cap trip, there is
+nothing further to audit once the handler has already printed what it cost),
+and a run interrupted late enough that the link phase already produced a map
+falls through to the normal write path unchanged, exactly as a late cap trip
+already does.
+
+Tested at the unit level, per `tests/fatal.test.ts`'s own established pattern
+for a function that calls `process.exit`: `tests/interrupt.test.ts` stubs
+`process.exit`/`console.error`, builds a real `AbortController`, and drives
+the handler with `process.emit("SIGINT"/"SIGTERM")` — no subprocess, no
+network, no model call, so it cannot cross this loop's "no live or paid
+runs" line the way actually executing `scripts/sweep.ts` past argv parsing
+would (confirmed by reading `tests/batch-refuses-before-it-spends-
+anything.test.ts`'s own note on exactly that boundary). Asserts: first
+signal aborts and reports the spend without exiting; second signal exits
+with `EXIT.interrupted`; SIGTERM is handled the same way as SIGINT; and the
+returned unregister function leaves no listener behind.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check` exit 0. `pnpm test` exit 0: 3430 tests passing (up from 3426,
+four new), 13 skipped — same gated census as SELF-694.
+
+Backlog item: SELF-695

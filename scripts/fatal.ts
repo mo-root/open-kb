@@ -35,6 +35,13 @@ export const EXIT = {
    * its retry, which is why it is a code and not a message.
    */
   capped: 6,
+  /**
+   * The run was stopped by Ctrl+C (SIGINT) or SIGTERM partway through. Like
+   * `capped`, and for the same reason: a person or a process manager asked
+   * for this ending on purpose, so a caller should not read it as something
+   * to retry. See `scripts/interrupt.ts`.
+   */
+  interrupted: 7,
   /** Anything else. */
   other: 1,
 } as const

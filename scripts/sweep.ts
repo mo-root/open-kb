@@ -12,6 +12,9 @@
  * that figure in `scripts/spend-caps.ts`. `OPENKB_CLI_RUN_CAP_USD` changes it;
  * the word `off` removes it. A stopped run is written to
  * `runs/stopped-<domain>-<stamp>.json` with its spans, and exits 6.
+ *
+ * Ctrl+C (or SIGTERM) stops it too — see `scripts/interrupt.ts` — printing
+ * what was spent before it exits 7, rather than Node's silent default kill.
  */
 import { openrouter } from "@openrouter/ai-sdk-provider"
 import {
@@ -25,6 +28,7 @@ import {
 import { priceForModel } from "../packages/providers/src/index.js"
 import { sweep, readUi, onMap } from "../packages/sweep/src/index.js"
 import { EXIT, fatal } from "./fatal.js"
+import { installInterruptHandler } from "./interrupt.js"
 import { diagnose } from "./run-doctor.js"
 import {
   CLI_LIMIT_VARS,
@@ -178,6 +182,11 @@ const capStop: { trip: SpendTrip | null } = { trip: null }
  *  it had already succeeded. Same guard as `record.status !== "running"` on the
  *  web route, spelled for a process that has no run registry. */
 const engine = { running: true }
+/** Same shape as `capStop` above, for the other way this run can be told to
+ *  stop early: a person at the keyboard, rather than the spend watchdog. See
+ *  `scripts/interrupt.ts`. */
+const interrupted = { interrupted: false }
+installInterruptHandler(abort, () => spans.totalUsd(), interrupted)
 
 console.log(
   `sweep on ${anchor}: ` +
@@ -301,10 +310,11 @@ const out = await withSpendCap(
       capStop.trip = trip
     },
   },
-  // A cap stop arrives as the engine's own `aborted` throw. `fatal` would print
-  // it as a mystery and exit 1, so this catch takes the stop before `fatal` can
-  // have it — everything else is still a genuine failure and still goes there.
-).catch((e: unknown) => (capStop.trip ? null : fatal(e, "sweep")))
+  // A cap stop, or a Ctrl+C, both arrive as the engine's own `aborted` throw.
+  // `fatal` would print either as a mystery and exit 1, so this catch takes
+  // the stop before `fatal` can have it — everything else is still a genuine
+  // failure and still goes there.
+).catch((e: unknown) => (capStop.trip || interrupted.interrupted ? null : fatal(e, "sweep")))
 spans.close()
 
 // Every query the run actually fired, including whatever the widening loop
@@ -429,6 +439,20 @@ if (out === null && capStop.trip) {
   // tell "this run cost what it was allowed to cost" from "this run broke",
   // because the first must not be retried and the second should be.
   process.exit(EXIT.capped)
+}
+
+/**
+ * THE SAME ENDING, for a Ctrl+C that landed before the engine had a map to
+ * hand back — same `out === null` guard and the same reasoning above about
+ * why the link phase can still leave a real (if thinner) map worth writing
+ * instead. No `runs/stopped-*.json` here: unlike a cap trip, which is
+ * routine enough to want a record `scripts/run-doctor.ts` can read back, a
+ * person stopping their own run on purpose has nothing further to audit —
+ * `installInterruptHandler` already printed what it cost on its way out.
+ */
+if (out === null && interrupted.interrupted) {
+  console.log(`\nno map written — the run was stopped before it had one to write.`)
+  process.exit(EXIT.interrupted)
 }
 
 const { stats, entities } = out!
