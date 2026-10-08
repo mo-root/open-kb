@@ -18,6 +18,10 @@
  * run stopped by it is written to `runs/stopped-<domain>-<stamp>.json` with its
  * spans and its ending. The watchdog below argues all of it.
  *
+ * Ctrl+C (or SIGTERM) stops it too — see `scripts/interrupt.ts`, the same
+ * handler `scripts/sweep.ts` wires onto its own `AbortController` — printing
+ * what was spent before it exits 7, rather than Node's silent default kill.
+ *
  * --from-sweep <path>: the sweep→swarm handoff. Loads a prior sweep run of
  * the SAME domain (validated; a different market is refused by name) and
  * seeds the board from it when orientation lands: peek missions that verify
@@ -74,6 +78,7 @@ import {
   type SweepRunLike,
 } from "../packages/swarm/src/index.js"
 import { EXIT, fatal } from "./fatal.js"
+import { installInterruptHandler } from "./interrupt.js"
 import {
   CLI_LIMIT_VARS,
   SWARM_CAP_HEADROOM,
@@ -280,6 +285,17 @@ const capStop: { trip: SpendTrip | null; ending: unknown } = { trip: null, endin
  *  gap between "the orchestrator has finished" and "the spans have stopped
  *  arriving" is wider than a sweep's. */
 const engine = { running: true }
+/** Same shape as `capStop` above, for the other way this run can be told to
+ *  stop early: a person at the keyboard, rather than the spend watchdog. The
+ *  identical handler `scripts/sweep.ts` wires onto its own `abort` — see
+ *  `scripts/interrupt.ts`. Before this, a Ctrl+C here hit Node's own default
+ *  (the process dies with no listener, nothing printed) because only
+ *  `scripts/sweep.ts` had ever wired the handler up; confirmed by grep
+ *  (`process.on("SIGINT"`) returning zero hits in this file before this fire,
+ *  same check `scripts/interrupt.ts`'s own comment made for the repo as a
+ *  whole before SIGINT handling existed anywhere in it. */
+const interrupted = { interrupted: false }
+installInterruptHandler(abort, () => spans.totalUsd(), interrupted)
 
 console.log(
   RUN_CAP_USD === null
@@ -331,14 +347,24 @@ const run = await withSpendCap(
     },
   },
 ).catch((e: unknown) => {
-  if (!capStop.trip) return fatal(e, "swarm")
+  // A Ctrl+C drives the exact same `abort.signal.aborted` path a cap trip
+  // does (`orchestrator.ts`'s `abortedEnd()` is reached from either), so
+  // without this check this rejection reads as a crash: `capStop.trip` stays
+  // null for a manual interrupt, and the old `if (!capStop.trip) return
+  // fatal(...)` sent it through `fatal()`, which prints "the run failed" and
+  // exits 1 — discarding the ending `installInterruptHandler` already told
+  // the operator was coming, and losing the one thing that tells "the user
+  // stopped this" apart from "this broke".
+  if (!capStop.trip && !interrupted.interrupted) return fatal(e, "swarm")
   // THE ORCHESTRATOR'S OWN ENDING, off the error it threw. `abortedEnd()` closes
   // the books before it rejects — in-flight missions settle, every claim is
   // closed, and the `SwarmEnding` it attaches carries the node and edge counts,
   // the realized spend and the full residue: precisely what would have been done
   // next, ranked. Dropping that on the floor would throw away the most useful
-  // thing a stopped swarm produces.
-  capStop.ending = (e as { ending?: unknown }).ending
+  // thing a stopped swarm produces. Only recorded for a cap trip, which is the
+  // one of the two that writes it to a file below — an interrupted run follows
+  // `scripts/sweep.ts`'s own choice not to, a few lines down.
+  if (capStop.trip) capStop.ending = (e as { ending?: unknown }).ending
   return null
 })
 spans.close()
@@ -385,6 +411,23 @@ if (run === null && capStop.trip) {
   console.log(`\nwrote ${path} (${spanRows.length} spans)`)
   // Nothing failed; the run cost what it was allowed to cost. See EXIT.capped.
   process.exit(EXIT.capped)
+}
+
+/**
+ * THE SAME ENDING, for a Ctrl+C that landed before the orchestrator had a map
+ * to hand back — same `run === null` guard the cap-trip branch above uses.
+ * No `runs/stopped-*.json` here, on purpose: `scripts/sweep.ts` already made
+ * this call for ITS own interrupted branch (unlike a cap trip, which is
+ * routine enough to want a file `scripts/run-doctor.ts` can read back, a
+ * person stopping their own run on purpose has nothing further to audit) and
+ * this keeps the same answer rather than inventing a second one. The
+ * orchestrator's own `say()` already printed `ending.humanReason` through
+ * `onLog` on its way out, and `installInterruptHandler` already printed what
+ * was spent — both before this line ever runs.
+ */
+if (run === null && interrupted.interrupted) {
+  console.log(`\nno map written — the run was stopped before it had one to write.`)
+  process.exit(EXIT.interrupted)
 }
 
 const out = serializeSwarmRun(run!)

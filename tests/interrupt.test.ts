@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs"
+import { fileURLToPath } from "node:url"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { EXIT } from "../scripts/fatal.js"
 import { installInterruptHandler } from "../scripts/interrupt.js"
@@ -68,5 +70,42 @@ describe("installInterruptHandler", () => {
     expect(process.listenerCount("SIGINT")).toBe(before + 1)
     unregister()
     expect(process.listenerCount("SIGINT")).toBe(before)
+  })
+})
+
+/**
+ * BOTH CLI ENTRYPOINTS ARE ACTUALLY WIRED TO THIS, and a guard rather than a
+ * proof for the same reason `tests/the-cli-entrypoints-have-a-dollar-bound
+ * .test.ts` gives for its own source-grep checks: `scripts/sweep.ts` and
+ * `scripts/swarm.ts` both reach for live credentials at module scope, so
+ * nothing here can import and drive them end to end. What a grep catches is
+ * the wiring being quietly removed while the handler it calls stays behind,
+ * green and unreferenced.
+ *
+ * `scripts/swarm.ts` had no SIGINT/SIGTERM handling at all until this fire —
+ * confirmed by `git log`, the commit that added the assertion below is the
+ * same one that added the three lines it checks for. Before it, a Ctrl+C on
+ * a running swarm hit Node's own default (dead silently, nothing printed),
+ * the exact gap `scripts/interrupt.ts`'s own file comment already measured
+ * for `scripts/sweep.ts` before THAT handler existed.
+ */
+describe("both scripts/sweep.ts and scripts/swarm.ts are wired to the handler", () => {
+  const source = (name: string) => readFileSync(fileURLToPath(new URL(`../scripts/${name}`, import.meta.url)), "utf8")
+
+  it("sweep.ts installs the handler on its own abort and exits EXIT.interrupted", () => {
+    const src = source("sweep.ts")
+    expect(src).toContain("installInterruptHandler(abort")
+    expect(src).toContain("EXIT.interrupted")
+  })
+
+  it("swarm.ts installs the handler too, and its catch no longer sends an interrupt through fatal()", () => {
+    const src = source("swarm.ts")
+    expect(src).toContain("installInterruptHandler(abort")
+    // The bug this fire fixed: the orchestrator's `abortedEnd()` rejects on
+    // EITHER a cap trip or a manual abort, and the catch used to decide
+    // "was this fatal?" from `capStop.trip` alone — which a Ctrl+C never
+    // sets, so it was routed to `fatal()` and reported as a crash.
+    expect(src).toContain("!capStop.trip && !interrupted.interrupted")
+    expect(src).toContain("EXIT.interrupted")
   })
 })

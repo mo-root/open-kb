@@ -9672,3 +9672,59 @@ returned unregister function leaves no listener behind.
 four new), 13 skipped — same gated census as SELF-694.
 
 Backlog item: SELF-695
+
+**SELF-696 (2026-10-08 overnight fire) — closed the gap SELF-695 itself named
+and left open: `scripts/swarm.ts` had no SIGINT/SIGTERM handling at all.**
+Confirmed by grep (`process.on("SIGINT"`) returning zero hits in
+`scripts/swarm.ts` before this fire — SELF-695 wired the handler into
+`scripts/sweep.ts` only, naming swarm's differently-shaped cap-stop path
+"different enough... left for a future fire" rather than a drive-by. Read
+`scripts/swarm.ts` end to end plus `packages/swarm/src/orchestrator.ts`'s
+`abortedEnd()`/`opts.signal?.aborted` to find the one real wrinkle: a manual
+Ctrl+C and a spend-cap trip both abort the SAME `AbortController` and the
+orchestrator's `abortedEnd()` rejects the SAME way for either, attaching a
+real `ending` either time (confirmed by reading the `for (;;)` loop's own
+`if (opts.signal?.aborted) return await abortedEnd()` check at the top,
+before the wall-clock/stillborn/cap branches below it — there is no second
+code path). But `scripts/swarm.ts`'s `.catch` decided "was this fatal?" from
+`capStop.trip` alone, which only the watchdog's `record` callback ever sets
+— so a manual interrupt (`capStop.trip` staying null) fell through to
+`fatal(e, "swarm")`, which prints "the run failed" and exits 1, discarding
+the ending `installInterruptHandler` already told the operator was coming
+and reporting a deliberate stop as a crash.
+
+Added `installInterruptHandler(abort, () => spans.totalUsd(), interrupted)`
+right beside the existing `capStop`/`engine` holders — the identical call
+`scripts/sweep.ts` already makes on its own `abort` — and widened the catch
+guard to `if (!capStop.trip && !interrupted.interrupted) return fatal(...)`.
+Did NOT extend `runs/stopped-*.json`/`stoppedRun()` to cover an interrupt:
+that type requires a `SpendTrip`, which a manual Ctrl+C has none of, and
+widening it would touch the shared `scripts/spend-caps.ts` shape (and its
+existing test's `record.stopped.by === "run-cap"` assertion) for a file this
+item does not need — `scripts/sweep.ts` already settled the same question
+for its own interrupted branch by writing nothing and printing "no map
+written" instead, and the swarm's new branch follows that exact precedent
+rather than inventing a second answer for the same question. The
+orchestrator's own `say()` already prints `ending.humanReason` through
+`onLog` as it unwinds (true on EITHER abort path, confirmed by reading
+`abortedEnd()`), and `installInterruptHandler` already prints what was
+spent, both before this new branch is ever reached — so nothing the ending
+carried is silently lost, it is on the terminal's scrollback rather than in
+a second file.
+
+`tests/interrupt.test.ts` gets a new source-grep describe block (the same
+"cannot drive it end to end, it reaches for live credentials at module
+scope" guard `tests/the-cli-entrypoints-have-a-dollar-bound.test.ts` already
+uses for the cap-trip wiring): asserts `scripts/sweep.ts` and
+`scripts/swarm.ts` both call `installInterruptHandler(abort` and reference
+`EXIT.interrupted`, and that `swarm.ts`'s catch contains the widened guard.
+Verified non-vacuous by mutation: stashed just `scripts/swarm.ts` back to
+its pre-fix state, reran — the new swarm.ts assertion failed exactly as
+expected (`installInterruptHandler(abort` absent); restored the fix and
+reran clean before staging.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check` exit 0. `pnpm test` exit 0: 3432 tests passing (up from 3430,
+two new), 13 skipped — same gated census as SELF-695.
+
+Backlog item: SELF-696
