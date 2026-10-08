@@ -85,6 +85,19 @@ hosted web app, or the repo itself would actually notice.
   probe-page count it was found to move with (0.05 average under five
   probes vs. 0.20 above), instead of standing alone as if it were only a
   function of the anchor.
+- **Ctrl+C (and SIGTERM) now stop a run cleanly instead of killing it
+  outright.** `scripts/sweep.ts`, `scripts/swarm.ts` and `scripts/batch.ts`
+  previously had no signal handling at all, so Node's own default killed the
+  process on the spot with no report of what it had already spent — unlike
+  every other way a run can end (a spend-cap trip, `fatal()`), which prints
+  that first. Each now reports the running total and aborts through the same
+  mechanism a spend-cap trip already uses; a second signal escalates to an
+  immediate exit. `batch.ts` needed its own handler rather than sharing
+  `sweep.ts`'s: its sweeps run as detached child processes (each in its own
+  session, confirmed by reading back `ps`'s `pgid`/`sid`), so a terminal's
+  Ctrl+C was never delivered to them at all — every sweep still running at
+  the moment the parent died was orphaned, unsupervised and still spending.
+  The new handler signals every tracked child's process group directly.
 
 ### Map quality
 
@@ -261,6 +274,15 @@ hosted web app, or the repo itself would actually notice.
   entity carries". `KbOverview`'s intelligence-rail title had the
   identical gap, read "1 of 1 entities carry a relation to the anchor" on
   a KB with exactly one non-anchor entity.
+- The same bare-plural gap, continued: `CostBreakdown`'s folded "+N more"
+  rollup read "1 calls" whenever the folded tail summed to exactly one
+  call; the run report page's cost tile, "Requested" row and "how it ran"
+  panel read "1 calls" / "1 queries" / "1 products named"; `PlanCard`'s
+  count-only frame and `BuildWorkflow`'s live activity feed both read
+  "1 queries" for a one-query plan; `SearchesPanel`'s header read "1
+  results" and `ProductsTab`'s catalog blurb read "grouped into 1
+  markets" — each reachable on an ordinary single-item or single-query
+  run, not a contrived input.
 - `lib/graph/labels.ts`'s label budget could silently drop a FORCED label
   (a search hit or the hovered node) once more than 60 matched in one
   frame — the one case its own doc comment promises never happens

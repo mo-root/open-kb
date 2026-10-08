@@ -9800,3 +9800,33 @@ staging.
 nine new), 13 skipped — same gated census as SELF-696.
 
 Backlog item: SELF-697
+
+**SELF-698 (2026-10-08 overnight fire) — `CHANGELOG.md` was stale again,
+eight real fixes behind: the same recurring gap SELF-554/631/641/671/683
+have each closed before.** Ran
+`git log d2c4ae8..HEAD --oneline` (the last sync) and read every non-
+`docs(overnight)` commit in that range end to end rather than trusting
+either side's own commit-subject line: `f5955a0`/`1845337`/`aa225e4`
+(SELF-695/696/697, Ctrl+C/SIGTERM handling for `sweep.ts`, `swarm.ts` and
+`batch.ts`) and `68e15c6`/`166d578`/`fdc6bba`/`805c27c`/`e5b8b6b`
+(SELF-687/689/690/691/692, five more bare-plural sites in
+`CostBreakdown`/the run report page/`PlanCard`/`BuildWorkflow`/
+`SearchesPanel`/`ProductsTab`) had no changelog entry. Cross-checked
+against the file's own existing "Bug fixes" and "Run economics and
+diagnostics" sections before writing anything, to avoid a duplicate —
+neither SIGINT handling nor any of the five new pluralization sites were
+already named (the GraphCanvas/KbOverview entry from SELF-678/679 names
+different sites than these five).
+
+Added one bullet to "Run economics and diagnostics" for the signal
+handling (grouped as one feature across the three scripts rather than
+three separate bullets, matching how the file already groups P0-1's three
+stage flags into one bullet) and one bullet to "Bug fixes" for the five
+pluralization sites (grouped the same way the existing GraphCanvas/
+KbOverview bullet groups four sites into one). No code change.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check` exit 0. `pnpm test` exit 0: 3441 tests passing, 13 skipped —
+identical census to SELF-697, unchanged by a docs-only change.
+
+Backlog item: SELF-698
