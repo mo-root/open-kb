@@ -9571,3 +9571,45 @@ a reachable path that does not exist today.
 identical census to SELF-692, unchanged by a read-only fire.
 
 Backlog item: SELF-693 - BLOCKED
+
+**SELF-694 (2026-10-08 overnight fire) — a genuinely new angle: audited
+every in-place `Array.prototype.sort()` call in `packages/core/src` and
+`packages/web` for the classic React/JS footgun — sorting an array that is
+still aliased by a caller, a prop, or a Map/state value the sort should
+leave untouched — rather than the comparator-correctness angle every prior
+sort-related SELF-<n> took.** `grep -rn '\.sort('` across both packages'
+non-test source returns 40 call sites; read each one back to where its
+receiver array was built, not just the comparator:
+
+- `packages/web/components/KbGallery.tsx:50`'s `rows.sort(...)` — `rows` is
+  either `kbs.filter(...)` or `kbs.slice()` two lines up (`sortedGallery`),
+  both fresh arrays on every call; the `kbs` prop itself is never touched.
+- `GraphCanvas.tsx:820`, `KbOverview.tsx:313,870,874`, `NotesTab.tsx:78`,
+  `DemoHome.tsx:113`, `BarMeter.tsx:49`, `catalog.ts`'s `byRank` pool (via
+  `[...kept, ...rooted]` or `kept` itself) — each receiver is a `[...x]`
+  spread, a `.map()`/`.filter()` result, or (the `catalog.ts` `kept` case) a
+  plain local array built fresh inside the same function and never read
+  again after the sort, so an in-place mutation there has no observable
+  alias.
+- `ResultPanel.tsx:78,81`, `sniff.ts:276`, `export-kb.ts` (nine sites),
+  `drift.ts` (five sites), `alias.ts` (three sites) — every receiver is the
+  direct result of `Object.entries()`/`[...set]`/`[...map.entries()]`,
+  which always allocates, so the mutation lands on a value nothing else
+  holds a reference to.
+- `audit.ts:135,169` — `strata.values()` entries and `picked` are both
+  local arrays this function alone builds and owns; `grounding.ts:92`'s
+  `missing` and `board.ts:192`'s `[...items]` are the same shape.
+
+Zero sites sort a prop, a cached/shared array, or a `Map`/`Set` value in
+place while anything else still holds that same reference — the bug class
+this sweep went looking for (a sort silently reordering a parent's state
+array behind its back, the shape that produces "the list looks fine until
+you re-render and it's scrambled differently") is not present anywhere in
+either package today.
+
+No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`). `pnpm check` exit 0. `pnpm test` exit 0: 3426 tests
+passing, 13 skipped — identical census to SELF-693, unchanged by a
+read-only fire.
+
+Backlog item: SELF-694 - BLOCKED
