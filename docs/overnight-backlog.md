@@ -9978,4 +9978,47 @@ two new), 13 skipped — same gated census as SELF-700.
 
 Backlog item: SELF-701
 
-Backlog item: SELF-699
+**SELF-702 (2026-10-10 overnight fire) — thirteen fresh-angle reads (lowest
+basename-mention count against this document, continuing SELF-684/685/686/688's
+method), all traced clean.** Ranked every non-test `.ts`/`.tsx` source file
+under `packages/` and `scripts/` by how many times its basename appears
+anywhere in this branch's commit messages and read the thirteen least-touched
+real (non-demo-gallery, non-generated) ones end to end: `viz/polar.ts`,
+`KbGallery.tsx` + `KbCard.tsx` (the real `/kb` gallery — in scope, unlike
+`DemoHome.tsx`'s showcase, which only reuses the same two components),
+`kb/layerMeta.tsx`, `core/src/breaker.ts`, `core/src/grounding.ts`,
+`kb/GraphLegend.tsx`, `kb/TabBar.tsx`, `lib/kb-lookup.ts`,
+`lib/scorecard-view.ts`, `lib/typingGuard.ts` (re-read), `core/src/ports.ts`,
+`core/src/testing/fake-provider.ts`, `swarm/src/family-ledger.ts`, and
+`scripts/interrupt.ts` plus its two mirrors' own call sites
+(`installBatchInterruptHandler` in `scripts/batch.ts`, the SIGINT wiring
+SELF-696 added to `scripts/swarm.ts`) for the copy-divergence shape this
+backlog has repeatedly found elsewhere (`isAbortError`, the two `hostOf`s,
+`polar`'s own header comment names the same risk for its two callers).
+
+No new gap. `KbGallery.tsx`'s empty-filter message ("No map matches
+"{q}".") only renders when a FILTER excludes every row — `app/kb/page.tsx`
+gates the truly-empty case (`kbs.length === 0`) before `KbGallery` is ever
+rendered, so the component never has to tell those two states apart.
+`KbCard.tsx`'s run-stamp regex (`/^\d{8,}$/`, accepting 8+ digits) is looser
+than every actual writer: every `stamp` in `scripts/{sweep,swarm,batch,
+bakeoff,demo-investigate}.ts` is `toISOString().slice(0, 19)` with the
+separators stripped, always exactly 14 digits, so the 8-only case the loose
+regex would mis-render (`"run 20260804·"`, no minutes) cannot occur against
+any writer this engine has. `installBatchInterruptHandler` and `scripts/
+swarm.ts`'s SIGINT wiring both read correctly against `scripts/interrupt.ts`'s
+original shape — SELF-696's own commit already caught and fixed the one real
+divergence (swarm's catch guard trusting `capStop.trip` alone); nothing past
+that fix has drifted.
+
+One stale doc note corrected in passing, not a code change: a trailing
+`Backlog item: SELF-699` line had been left after this document's own
+SELF-701 entry (upstream of a rebase this document itself does not track;
+every git log trailer this fire checked for SELF-699 points at `ebf5efe`'s
+real commit instead) — removed rather than left to confuse the next fire's
+read of "what does the tail of this file say happened last".
+
+`pnpm check` exit 0. `pnpm test` exit 0: 3449 tests passing, 13 skipped —
+identical census to SELF-701, unchanged by a read-only fire.
+
+Backlog item: SELF-702 - BLOCKED
