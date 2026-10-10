@@ -1,6 +1,13 @@
 import { renderToStaticMarkup } from "react-dom/server"
 import { describe, expect, it, vi } from "vitest"
-import { CommandPaletteProvider, PaletteButton, score, usePalette } from "./CommandPalette"
+import {
+  type Command,
+  CommandPaletteProvider,
+  groupByPriority,
+  PaletteButton,
+  score,
+  usePalette,
+} from "./CommandPalette"
 
 /**
  * CommandPalette.tsx had zero test coverage anywhere. D-scope sweep,
@@ -94,6 +101,46 @@ describe("score: ranking order matches the component's stated preference", () =>
     const contiguous = score("da", "xdax") // "d" at index 1, "a" at index 2 — no gap
     const gapped = score("da", "xdyax") // "d" at index 1, "a" at index 3 — one gap
     expect(contiguous).toBeLessThan(gapped)
+  })
+})
+
+/** Minimal stand-in: `run` is never called by these tests. */
+function cmd(group: string, title: string): Command {
+  return { id: `${group}:${title}`, title, group, run: () => {} }
+}
+
+describe("groupByPriority: the header comment's promised section order", () => {
+  it("orders Go to, then Knowledge bases, then Entities even when they arrive in a different order", () => {
+    const input = [cmd("Entities", "Enterprise Corp"), cmd("Knowledge bases", "Root Insurance"), cmd("Go to", "Runs")]
+    const groups = groupByPriority(input)
+    expect(groups.map((g) => g.name)).toEqual(["Go to", "Knowledge bases", "Entities"])
+  })
+
+  it("does not let a scoring tie put Knowledge bases ahead of Go to", () => {
+    // The real shape that broke this: `commands` builds the gallery
+    // ("Knowledge bases") ahead of the open KB's own tabs ("Go to"), so a
+    // tied best-match score used to leave the gallery item first in the
+    // pre-sorted input — e.g. a KB named "Products Inc" tied against the
+    // "Products & Ecosystem" tab, both scoring 0 as the better prefix hit.
+    const tiedInput = [cmd("Knowledge bases", "Products Inc"), cmd("Go to", "Products & Ecosystem")]
+    const groups = groupByPriority(tiedInput)
+    expect(groups.map((g) => g.name)).toEqual(["Go to", "Knowledge bases"])
+  })
+
+  it("keeps items within a group in their given (score) order", () => {
+    const input = [cmd("Go to", "Runs"), cmd("Go to", "Map a domain")]
+    const groups = groupByPriority(input)
+    expect(groups[0]!.items.map((c) => c.title)).toEqual(["Runs", "Map a domain"])
+  })
+
+  it("sorts an unrecognized group after the three named ones, in discovery order", () => {
+    const input = [cmd("Future Section", "Something new"), cmd("Entities", "Enterprise Corp"), cmd("Go to", "Runs")]
+    const groups = groupByPriority(input)
+    expect(groups.map((g) => g.name)).toEqual(["Go to", "Entities", "Future Section"])
+  })
+
+  it("returns no groups for an empty command list", () => {
+    expect(groupByPriority([])).toEqual([])
   })
 })
 

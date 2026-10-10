@@ -9856,4 +9856,75 @@ this gap; checked rather than assumed.)
 `pnpm check` exit 0. `pnpm test` exit 0: 3442 tests passing (up from 3441,
 one new), 13 skipped — same gated census as SELF-698.
 
+**SELF-700 (2026-10-10 overnight fire) — `CommandPalette.tsx`'s own header
+comment promises a fixed section order that the code never actually
+enforced.** Fresh-angle read of the whole file (394 lines). Prior reads of
+this file (SELF-193/194's test-coverage pass; SELF-674/675's and a later
+fire's own cursor-staleness/`clampCursor` reachability sweeps at lines
+2708/7142/7156/8678-8755/9541-9561) each checked one specific bug shape
+end to end and correctly found it unreachable here — none of them asked
+whether the header comment's own ordering claim held, which is the
+question this pass started from. The header comment (lines 24-29) states
+the palette
+"holds three kinds of command, always in this order, because it is the
+order of how specific the reader is being": Go to, then Knowledge bases,
+then Entities. The `results` useMemo (pre-fix, where `CommandPalette.tsx:240`
+now sits) built that order by which group's best-scoring command happened
+to appear first in the score-sorted list, not from any fixed priority —
+grouping is `Map` insertion order over `scored`, so a tie decides the
+section order. And a tie was reachable: `commands`
+(`CommandPalette.tsx:220-237`) concatenates `[...routes, ...gallery,
+...published]`, where `gallery` is the "Knowledge bases" group and
+`published` is `extra.values()` flattened — which is where `KbBrowser.tsx`'s
+own tab commands land, *tagged `group: "Go to"`* (`KbBrowser.tsx:172`,
+confirmed by reading it — its own comment at `CommandPalette.tsx:233-234`,
+"the open KB's tabs join 'Go to' rather than
+starting a fourth section," says this is intentional). So `gallery` sits
+ahead of the open KB's "Go to" tabs in the underlying array, and
+`Array.prototype.sort` is stable (guaranteed since ES2019/V8 7.0, which
+every supported Node here postdates) — a tied score (both 0, the best
+possible, from `score`'s own prefix short-circuit) between a gallery brand
+and a tab label keeps gallery first. Concretely: open a KB whose tab is
+labelled "Products & Ecosystem" (`KbBrowser.tsx:31`) while browsing a
+gallery that includes a KB named "Products Inc" — both score 0 on the
+query "pro" — and "Knowledge bases" renders above "Go to", the opposite of
+what the header comment promises.
+
+Fixed by pulling the grouping step into its own function,
+`groupByPriority` (`CommandPalette.tsx:113-132`, exported next to `score`
+for the same testability reason that function's own doc comment gives —
+this repo has no jsdom/RTL harness, confirmed again by grepping
+`vitest.config.ts` for `test.environment`, same gap `CommandPalette.test.tsx`'s
+header and `ThemeToggle.test.tsx`/`TabBar.test.tsx` already document), which
+groups by first appearance exactly as before but then sorts the *group
+order* (not the items within a group) against a `GROUP_PRIORITY` constant —
+`["Go to", "Knowledge bases", "Entities"]` — falling back to discovery order
+for any group name outside that list, so a future page's own group (a
+fourth section nobody has written yet) still renders deterministically
+rather than erroring. `results` (`CommandPalette.tsx:240-251`) now calls it
+instead of hand-rolling the `Map`/`order` walk inline.
+
+Five new tests in `CommandPalette.test.tsx` (`groupByPriority: the header
+comment's promised section order`): fixed order despite arrival order;
+the exact tie scenario above (`"Products Inc"` vs `"Products & Ecosystem"`),
+pinned so a future regression reproduces this item's own finding; items
+stay in score order within a group; an unrecognized group sorts after the
+three named ones; the empty-input edge. Verified non-vacuous by mutation,
+twice: first reverted the whole file to its pre-fix state with the new
+tests left in place — `groupByPriority` doesn't exist yet, all 5 new tests
+fail (`groupByPriority is not a function`) — restored. Then, to prove the
+tests pin the *ordering logic* and not merely the function's existence,
+kept the extraction but deleted just the `order.sort(...)` call (the old
+discovery-order behaviour, reintroduced through the new function's shape) —
+3 of the 5 new tests failed with the exact wrong order predicted above
+(`["Future Section", "Entities", "Go to"]` instead of
+`["Go to", "Entities", "Future Section"]`, etc.) — restored the sort and
+reran clean before staging.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check` exit 0. `pnpm test` exit 0: 3447 tests passing (up from 3442,
+five new), 13 skipped — same gated census as SELF-699.
+
+Backlog item: SELF-700
+
 Backlog item: SELF-699

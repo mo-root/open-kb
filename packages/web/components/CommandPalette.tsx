@@ -95,6 +95,42 @@ export function score(needle: string, hay: string): number {
   return 1 + first + gaps * 2 + hay.length * 0.01;
 }
 
+/** The section order the header comment above promises: Go to, then
+ *  Knowledge bases, then Entities. A group outside this list (a future
+ *  page's own name) sorts after all three, in the order it was first seen. */
+const GROUP_PRIORITY = ["Go to", "Knowledge bases", "Entities"];
+
+/** Group already-sorted (best match first) commands by `group`, in
+ *  `GROUP_PRIORITY` order rather than by which group's best match happened to
+ *  score lowest. Grouping by first-appearance-in-score-order let a tie decide
+ *  section order: `commands` builds the gallery ("Knowledge bases") ahead of
+ *  the open KB's own tabs ("Go to", per the comment at its call site), so a
+ *  query that ties a gallery brand against a tab label at the same score —
+ *  e.g. a KB named "Products Inc" against the "Products & Ecosystem" tab,
+ *  both prefix hits — put Knowledge bases first, ahead of Go to. Exported so
+ *  the ordering contract can be pinned without a jsdom harness (this repo has
+ *  none — see CommandPalette.test.tsx's own header comment). */
+export function groupByPriority(cmds: Command[]): { name: string; items: Command[] }[] {
+  const order: string[] = [];
+  const byGroup = new Map<string, Command[]>();
+  for (const c of cmds) {
+    if (!byGroup.has(c.group)) {
+      byGroup.set(c.group, []);
+      order.push(c.group);
+    }
+    byGroup.get(c.group)!.push(c);
+  }
+  order.sort((a, b) => {
+    const ia = GROUP_PRIORITY.indexOf(a);
+    const ib = GROUP_PRIORITY.indexOf(b);
+    if (ia === -1 && ib === -1) return 0; // neither named — keep discovery order (stable sort)
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+  return order.map((name) => ({ name, items: byGroup.get(name)! }));
+}
+
 /* ------------------------------------------------------------------ provider */
 
 type KbRow = { slug: string; manifest?: { brand?: string; root?: string; input?: string } | null };
@@ -203,23 +239,16 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
 
   const results = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    const scored = commands
+    const ranked = commands
       .map((c) => ({ c, s: score(needle, `${c.title} ${c.hint ?? ""}`.trim()) }))
       .filter((r) => r.s >= 0)
-      .sort((a, b) => a.s - b.s);
+      .sort((a, b) => a.s - b.s)
+      .map((r) => r.c);
     // Grouped for display, but flat for the cursor: arrow keys should walk the
     // whole list, not stop at a heading.
-    const order: string[] = [];
-    const byGroup = new Map<string, Command[]>();
-    for (const { c } of scored) {
-      if (!byGroup.has(c.group)) {
-        byGroup.set(c.group, []);
-        order.push(c.group);
-      }
-      byGroup.get(c.group)!.push(c);
-    }
-    const flat = order.flatMap((g) => byGroup.get(g)!);
-    return { groups: order.map((g) => ({ name: g, items: byGroup.get(g)! })), flat };
+    const groups = groupByPriority(ranked);
+    const flat = groups.flatMap((g) => g.items);
+    return { groups, flat };
   }, [commands, q]);
 
   useEffect(() => setCursor(0), [q]);
