@@ -9927,4 +9927,55 @@ five new), 13 skipped — same gated census as SELF-699.
 
 Backlog item: SELF-700
 
+**SELF-701 (2026-10-10 overnight fire) — swept `packages/web/components/icons/
+NodeGlyph.tsx` and `layerMeta.tsx`, two of the small untouched files SELF-515
+already read and cleared; this fresh pass asked a different question
+(`glyphForNotePath`'s own completeness against the real group set) and found
+one real gap.** `glyphForNotePath` maps a `NoteRef.path`'s top-level folder to
+an icon, and its explicit cases cover three of `KIND_GROUP`'s four real
+values (`kb-from-run.ts:73-79`: `products`, `players`, `communities`) plus a
+dead one carried over from the v1 port — `signals`, a folder this engine
+never writes (`KIND_GROUP` has no `signal` entry; confirmed by grepping the
+whole repo for `signals.md`/`communities.md`/`products.md` as literal root
+notes — none exist). The fourth real value, `unplaced` (`kind: "unknown"` —
+a host the kernel could not read at all), had no case at all and fell through
+to the generic basename lookup, reading `"docs"` — the one glyph that says
+"this is a page", not "this is an unread company".
+
+Not a rare shape: `lib/nodeTypes.ts`'s own `nodeTypeOf` comment measures 476
+of stripe.com's 2,522 kept entities and 383 of vercel.com's 2,333 in this
+exact group on the committed gallery maps. `nodeTypeOf` already folds
+`unplaced` to `"core"`, the same `NodeType` the anchor gets, and
+`TYPE_GLYPH.core` is `"company"` — so the one other place this exact gap
+exists, `NotesTab.tsx`'s group-header render, was already hand-patched for it
+(`g.name === "overview" ? "company" : glyphForNotePath(g.name)`), because
+`ANCHOR_PATH` (`"company.md"`, no slash) hits the same fallback and reads
+`"docs"` too if nothing intervenes. That hand-patch covers `overview`; it
+does not cover `unplaced`, which — unlike `overview` — IS a real top-level
+folder a path carries through `pathFor` (`kb-from-run.ts:167`,
+`"unplaced/<safe>.md"`), so it belongs inside `glyphForNotePath` itself, the
+one place every consumer of a real group folder already goes through.
+
+Fixed by adding `if (top === "unplaced") return "company";` next to the other
+three real `KIND_GROUP` cases (left the dead `signals` branch alone — a
+separate, lower-stakes cleanup, not this bug). Added two tests in
+`NodeGlyph.test.tsx`: `unplaced/unread-host.md` resolves to `"company"`
+alongside the other five top-level folders (renamed the describe block from
+"five" to "six"), and a second asserting it equals `TYPE_GLYPH.core`
+directly, pinning the invariant rather than just the literal string.
+Confirmed non-vacuous by mutation: reverted just the new `if` line, reran —
+both new tests failed exactly as predicted (`"docs"` where `"company"` was
+expected); restored the fix and reran clean before staging. Neither
+`NodeGlyph.test.tsx` nor `NotesTab.test.tsx` had ever asserted on the glyph
+icon itself before this (confirmed by grep — `NotesTab.test.tsx` tests
+`groupOf`'s string output but never the `NodeGlyph` it feeds), despite
+`NotesTab.test.tsx`'s own header already naming `unplaced` as one of the
+four live groups `pathFor` emits.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check` exit 0. `pnpm test` exit 0: 3449 tests passing (up from 3447,
+two new), 13 skipped — same gated census as SELF-700.
+
+Backlog item: SELF-701
+
 Backlog item: SELF-699

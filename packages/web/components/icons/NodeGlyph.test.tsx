@@ -12,16 +12,28 @@ import NodeGlyph, { GLYPH_KINDS, glyphForNotePath, TYPE_GLYPH } from "./NodeGlyp
  * nobody has swept").
  */
 
-describe("glyphForNotePath: the five top-level folders win over the basename", () => {
+describe("glyphForNotePath: the six top-level folders win over the basename", () => {
   it.each([
     ["products/apify-com.md", "product"],
     ["players/apify-com.md", "player"],
     ["communities/discord.md", "community"],
+    ["unplaced/unread-host.md", "company"],
     ["signals/launch.md", "signal"],
     ["docs/sources.md", "docs"],
     ["raw/scrape.md", "docs"],
   ] as const)("%s -> %s", (path, kind) => {
     expect(glyphForNotePath(path)).toBe(kind)
+  })
+
+  it("'unplaced' reads TYPE_GLYPH.core's glyph, the same one NotesTab.tsx hand-picks for 'overview'", () => {
+    // kb-from-run.ts's KIND_GROUP folds an unreadable host (kind: "unknown")
+    // into the "unplaced" group; nodeTypes.ts's nodeTypeOf folds that group to
+    // "core", the same type the anchor gets, and TYPE_GLYPH.core is "company".
+    // NotesTab.tsx's group header hand-picks "company" for "overview" for the
+    // same underlying reason (ANCHOR_PATH has no slash to match a top folder,
+    // so it never reaches this function at all) — the two groups render as
+    // the same type and should never wear different glyphs for it.
+    expect(glyphForNotePath("unplaced/unread-host.md")).toBe(TYPE_GLYPH.core)
   })
 
   it("wins even when the basename would otherwise map somewhere else (people.md is normally 'person')", () => {
@@ -66,7 +78,7 @@ describe("glyphForNotePath: root notes fall back to a basename lookup", () => {
     expect(glyphForNotePath(path)).toBe(kind)
   })
 
-  it("reads the basename lookup even under a folder that isn't one of the five special ones", () => {
+  it("reads the basename lookup even under a folder that isn't one of the six special ones", () => {
     expect(glyphForNotePath("some-other-folder/people.md")).toBe("person")
   })
 

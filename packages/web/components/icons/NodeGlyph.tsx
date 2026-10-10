@@ -276,6 +276,20 @@ export function glyphForNotePath(path: string): GlyphKind {
   if (top === "products") return "product";
   if (top === "players") return "player";
   if (top === "communities") return "community";
+  // "unplaced" is KIND_GROUP's fourth real value (kb-from-run.ts:79,
+  // `unknown: "unplaced"`) — a host the kernel could not read at all, 476 of
+  // stripe.com's 2,522 and 383 of vercel.com's 2,333 kept entities on the
+  // measured gallery maps (lib/nodeTypes.ts's own `nodeTypeOf` comment).
+  // `nodeTypeOf` already folds it to "core", the same type the anchor gets,
+  // and TYPE_GLYPH.core is "company" — but with no case here it fell through
+  // to the generic basename lookup below and read "docs" instead, the one
+  // glyph that implies "this is a page", not "this is an unread company".
+  // NotesTab.tsx's group header already hand-fixes this exact gap for
+  // "overview" (`g.name === "overview" ? "company" : glyphForNotePath(g.name)`)
+  // because ANCHOR_PATH has no slash either; "unplaced" has no such guard
+  // because, unlike "overview", it IS a real top-level folder a path carries
+  // through `pathFor` — so it belongs here, not at the call site.
+  if (top === "unplaced") return "company";
   if (top === "signals") return "signal";
   if (top === "docs" || top === "raw") return "docs";
   const base = p.split("/").pop() ?? p;
