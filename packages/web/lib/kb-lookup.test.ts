@@ -4,12 +4,15 @@ import type { StoredRun } from "./runs"
 
 /**
  * `findKb` is the two-branch refusal every `/api/kb/[id]*` route opens with
- * (the envelope, the graph, one note, the zip), and none of the four route
- * tests exercise a missing or failed id — each route test that touches
- * `findKb` at all does so only via a run that already completed. Mocking
- * `./runs` the way `public-runs.test.ts` mocks `./store/supabase` keeps this
- * a unit test of the branching, not a filesystem test — `runs.test.ts`
- * already owns `getStoredRun` end to end.
+ * (the envelope, the graph, one note, the zip). Each of the four route tests
+ * now exercises a MISSING id through its own real HTTP wiring (c93357a) —
+ * this file's own comment was the gap that commit closed, and this sentence
+ * used to still claim the gap was open. None of them exercises a FAILED id
+ * that way: every route test that writes a run to disk writes `status:
+ * "complete"`, so the failed-run branch below is still only reached through
+ * the mock. Mocking `./runs` the way `public-runs.test.ts` mocks
+ * `./store/supabase` keeps this a unit test of the branching, not a
+ * filesystem test — `runs.test.ts` already owns `getStoredRun` end to end.
  */
 const getStoredRun = vi.fn<(id: string) => Promise<StoredRun | null>>()
 vi.mock("./runs", () => ({

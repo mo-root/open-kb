@@ -10022,3 +10022,48 @@ read of "what does the tail of this file say happened last".
 identical census to SELF-701, unchanged by a read-only fire.
 
 Backlog item: SELF-702 - BLOCKED
+
+**SELF-703 (2026-10-10 overnight fire) — two of the last zero-mention web
+files in this document, `app/api/kb/[id]/graph/route.ts` and `.../note/
+route.ts`, read end to end; clean, but tracing their own test headers back to
+`kb-lookup.test.ts` found a stale claim there.** Ranked every non-test `.ts`/
+`.tsx` file the same way SELF-702 did and found two with zero prior mentions
+anywhere in this document: the two thin route handlers above (`findKb` +
+`graphOf`/`noteOf` + `guarded`, nothing else). Read both in full, plus
+`kb-from-run.ts`'s `noteOf`/`graphOf` and `kb-lookup.ts`'s `findKb` they call
+and `runs.ts`'s `isRunId`/`isCliRunId`/`runsPath` underneath those — no
+traversal surface (`note/route.ts`'s own header claim is correct: `path` is
+looked up inside the run's own JSON, never touches the filesystem), no
+missing-param or missing-id gap either route's test doesn't already cover.
+
+Reading each route's test header against `kb-lookup.test.ts`'s own comment
+(the one every one of the four route tests cites) surfaced a real staleness,
+not in code but in what the comments claim about test coverage. That comment
+says: "none of the four route tests exercise a missing or failed id." It was
+true when written (9b83ebd) and false by the time `graph/route.test.ts` and
+`note/route.test.ts` existed to read it: `c93357a`, committed the same day,
+added a real 404-on-missing-id test to all four `/api/kb/[id]*` route tests
+(confirmed by reading all four — `route.test.ts`, `graph/route.test.ts`,
+`note/route.test.ts`, `export/route.test.ts` — and grepping each for
+`status:`, which only ever appears as `"complete"`, never `"failed"`), but
+never came back to update the sentence it was explicitly fixing. Two
+comments were affected: `kb-lookup.test.ts`'s own claim, and
+`app/api/kb/[id]/route.test.ts`'s header, which overclaimed the other
+direction — "never exercised either [missing/failed] through its actual HTTP
+wiring. This is that test" — when that test only ever drives the missing-id
+branch; `graph/route.test.ts` and `note/route.test.ts`'s own headers already
+said "a missing id" correctly and needed no change.
+
+Fixed both stale comments to say precisely what is and is not covered where:
+missing-id is now exercised through real HTTP wiring on all four routes;
+failed-id is still only reached through `kb-lookup.test.ts`'s mock, on any of
+them. No code change — this is the same class of doc/comment drift
+SELF-702's trailing-line fix and the `bakeoff.ts` citation fixes (further up
+this document) already established as in scope for a fresh-angle sweep, just
+caught in a test-file header instead of a run artifact or a README table.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check` exit 0. `pnpm test` exit 0: 3449 tests passing, 13 skipped —
+identical census to SELF-702, unchanged by a comment-only fix.
+
+Backlog item: SELF-703 - BLOCKED

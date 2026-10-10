@@ -8,7 +8,9 @@ import { GET } from "./route"
  * `findKb` (missing/failed id) and `viewOf` (the envelope's shape) are each
  * pinned on their own — `kb-lookup.test.ts`, `kb-from-run.test.ts` — and that
  * file's own comment names this route as one of the four that had never
- * exercised either through its actual HTTP wiring. This is that test.
+ * exercised a missing id through its actual HTTP wiring. This is that test —
+ * a missing id only; a failed one still isn't driven through this route,
+ * same as the other three (see `kb-lookup.test.ts`'s own comment).
  */
 
 const UUID = "9d4a2c1e-70bb-4f0a-8b3e-6c5d21f8a704"
