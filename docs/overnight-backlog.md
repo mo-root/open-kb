@@ -10383,3 +10383,51 @@ tests passing, 13 skipped — identical census to SELF-710, unchanged by a
 docs-only fix.
 
 Backlog item: SELF-711
+
+**SELF-712 (2026-10-11 overnight fire) — a genuinely different tool-based
+angle (two stricter `tsconfig` flags, probed and reverted, the same method
+SELF-509 used for `--coverage`): no behavioral gap, just type-signature
+noise.** SELF-706/707/708/710/711 all used the same shape (a manual
+fresh-angle file read or a doc/link cross-check); this fire instead
+temporarily added `exactOptionalPropertyTypes` and
+`noPropertyAccessFromIndexSignature` to `tsconfig.base.json` (neither is on
+today) and ran `tsc -b packages/core packages/providers packages/sweep
+packages/swarm` against the result, to see whether either flag's stricter
+checking turns up a real mismatch the current `strict` + `noUncheckedIndexedAccess`
+baseline doesn't catch.
+
+`noPropertyAccessFromIndexSignature` found exactly 3 sites, all
+`prompts.ts:23,48` — `frontmatter.agent`/`.doctrine`/`.includes` accessed by
+dot rather than bracket notation on a `Record<string, string>`. Read
+`loadPrompt`/`composePrompt` end to end: every access is the right key,
+guarded the way the function's own doc comment describes (identity-mismatch
+throws), so this is the flag's bracket-notation style preference, not a
+wrong-key bug.
+
+`exactOptionalPropertyTypes` found ~20 sites across `board.ts`,
+`discovery.ts`, `evidence.ts`, `investigator.ts`, `judge.ts`, `sniff.ts`,
+`spans.ts`, `testing/fake-provider.ts` and `tools.ts` — every one the same
+shape: a field typed `foo?: T` assigned a value explicitly typed `T |
+undefined` (an `error`/`reason`/`signal`/`detail` carried through from an
+upstream optional) rather than the key being left out. Checked whether that
+distinction is ever observable in this codebase: grepped
+`packages/core/src` and `packages/web/lib` for `'x' in obj`/
+`hasOwnProperty` presence-checks on any of `Span`, `FetchRecord`,
+`SniffResult`, `BoardRow`, or `SpanInput` — zero. And every one of these
+objects is eventually `JSON.stringify`'d into a run file or a span record,
+where a key explicitly set to `undefined` and an omitted key serialize
+identically (`JSON.stringify({a: undefined}) === JSON.stringify({})`), so
+the two shapes behave the same wherever this repo actually reads them back.
+Fixing either flag's complaints would mean threading `| undefined` through
+~10 files' type definitions for zero change in behavior, not closing a gap
+a test could show was open — out of scope for a single-fire surgical diff,
+and the tool itself (unlike `noUncheckedIndexedAccess` when it was added)
+has nothing real left to earn its keep here.
+
+Reverted `tsconfig.base.json` before finishing — `git status`/`git diff`
+confirmed clean. No code change. `pnpm install --frozen-lockfile` first
+(fresh clone, no `node_modules`). `pnpm check` exit 0. `pnpm test` exit 0:
+3456 tests passing, 13 skipped — identical census to SELF-711, unchanged by
+a probe-and-revert fire.
+
+Backlog item: SELF-712 - BLOCKED
