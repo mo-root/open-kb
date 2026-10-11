@@ -10518,3 +10518,32 @@ passing, 13 skipped — identical census to SELF-713, unchanged by a
 read-only fire.
 
 Backlog item: SELF-714 - BLOCKED
+
+**SELF-715 (2026-10-11 overnight fire) — declined to run a thirteenth
+forced-angle sweep; escalated SELF-714's recommendation to the human instead
+of manufacturing another entry toward it.** Checked whether any of this D
+section's named targets (`core/src/ledger.ts`/`spend-cap.ts`, `export-kb.ts`,
+`scripts/*.ts`, `web/lib/store/supabase.ts`, the swarm orchestrator, doctrine
+contradictions, coverage gaps) had a genuinely unexplored corner left by
+grepping this file for each name — every one already has multiple
+dedicated, line-by-line passes on record (`ledger.ts`/`spend-cap.ts` at
+SELF-529, `supabase.ts` at SELF-547, `orchestrator.ts` at SELF-516 and again
+adversarially at several later SELF-<n>'s, doctrine cross-reads at SELF-572
+and SELF-630, coverage closed at SELF-509). That confirms SELF-714's
+assessment rather than adding a new angle to it: there is no file left in
+this D section's own target list that hasn't already had a dedicated pass,
+and SELF-706-714 already show the fallback (installing a new static-analysis
+tool each time just to have something left to probe) degrading in yield.
+Writing a fourteenth variation of "checked X, found nothing" would add to
+the exact noise-over-signal trend SELF-714 flagged, not resolve it. Deciding
+whether to keep this self-discovered-work mode running is explicitly a human
+call (SELF-714's own words), so this fire notified the branch owner directly
+with the trend and stopped here rather than manufacturing another data
+point for them to wade through.
+
+No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`). `pnpm check` exit 0. `pnpm test` exit 0: 3456 tests
+passing, 13 skipped — identical census to SELF-714, unchanged by a
+read-only fire.
+
+Backlog item: SELF-715 - BLOCKED
