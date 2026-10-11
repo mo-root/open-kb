@@ -10119,3 +10119,46 @@ clean before staging.
 four new), 13 skipped — same gated census as SELF-703.
 
 Backlog item: SELF-704
+
+**SELF-705 (2026-10-11 overnight fire) — `scripts/read.ts`'s own summary
+line was the one CLI script the web-wide pluralization audit (26ca32a)
+never reached, and it had the exact bare-plural bug that audit fixed four
+times over.** Ranked every non-test source file by basename-mention count
+against this document (continuing SELF-702/703/704's method) and read the
+lowest-ranked real candidates end to end: `SkipLink.tsx`, `app/
+global-error.tsx` and `components/ui.tsx` (all three clean — `ui.tsx`'s
+`KIND_TONES`/`TIER_TONES` already fall back on an unrecognized key, and
+`global-error.tsx` is already exhaustively reasoned about in its own header
+comment), and `scripts/read.ts`, which was not.
+
+`read.ts`'s `the run` summary line printed `${s.queries} queries →
+${s.serpCalls} searches → ${s.results} results → ${s.hosts} hosts` and, past
+it, `${edges.length} edges between entities` — none of the four counts (nor
+the fifth) guarded against 1, so a tiny or targeted run (`--maxQueries 1`,
+or an anchor with exactly one linked host) printed "1 queries", "1
+searches", "1 results", "1 hosts" or "1 edges". Confirmed this file was the
+gap, not a false alarm: grepped every `scripts/*.ts` for the `=== 1 ?`
+singular-guard shape the web audit's own fix pattern uses and found it
+already present in `run-doctor.ts`, `show-prompt.ts`, `batch.ts`,
+`bench.ts`, `audit.ts` and `bakeoff.ts` — `read.ts` was the one CLI script
+missing it, because the audit that added the pattern everywhere else
+(26ca32a) was scoped to `packages/web`, not scripts.
+
+Fixed by extracting a `plural(n, singular, pluralForm?)` helper next to the
+file's existing `resolve`/`tally` exports (`scripts/read.ts:96`) and routing
+all five counts through it; `serpCalls`/`queries` read as `number |
+undefined` off `r.stats` under this project's `noUncheckedIndexedAccess`, so
+each gets the same `?? 0` already used two lines down for `usd`/`seconds`.
+Added three new `describe("plural", …)` cases to `tests/read.test.ts`
+alongside the existing `resolve`/`tally` coverage: the singular case, a
+supplied irregular plural (`query`/`queries`, `search`/`searches`) on both
+0 and 2, and the default-plural-is-singular-plus-s path. No change to
+`resolve`, `tally`, or any other printed line — `kept.length`/`noise` and
+the `$…/…s` time line were already count-without-a-pluralized-noun shapes,
+not instances of this bug.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check` exit 0. `pnpm test` exit 0: 3456 tests passing (up from 3453,
+three new), 13 skipped — same gated census as SELF-704.
+
+Backlog item: SELF-705

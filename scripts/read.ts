@@ -87,6 +87,16 @@ export function tally(xs: readonly string[]): [string, number][] {
   return [...m.entries()].sort((a, b) => b[1] - a[1])
 }
 
+/** `"1 query"` vs `"2 queries"` — every sibling CLI script (run-doctor.ts,
+ *  bench.ts, batch.ts, audit.ts, bakeoff.ts) already guards its printed
+ *  counts this way, against the bare-plural bug the web-wide pluralization
+ *  audit (26ca32a) fixed four times over. This file's own summary line was
+ *  the one CLI script that sweep never reached: a one-query or one-host run
+ *  read "1 queries"/"1 hosts" with no guard at all. */
+export function plural(n: number, singular: string, pluralForm = `${singular}s`): string {
+  return `${n} ${n === 1 ? singular : pluralForm}`
+}
+
 // Gated the same way `recall.ts` and `show-prompt.ts` gate their CLI bodies:
 // importing this file for `resolve`/`tally` must not also read argv and
 // `runs/` on the machine doing the importing (a test runner included).
@@ -179,7 +189,10 @@ if (invokedDirectly) {
   }
 
   console.log(`the run`)
-  console.log(`  ${s.queries} queries → ${s.serpCalls} searches → ${s.results} results → ${s.hosts} hosts`)
+  console.log(
+    `  ${plural(s.queries ?? 0, "query", "queries")} → ${plural(s.serpCalls ?? 0, "search", "searches")} → ` +
+      `${plural(s.results ?? 0, "result")} → ${plural(s.hosts ?? 0, "host")}`,
+  )
   console.log(`  ${kept.length} on the map, ${r.entities.length - kept.length} judged noise`)
   console.log(`  $${(s.usd ?? 0).toFixed(2)} · ${Math.round(s.seconds ?? 0)}s\n`)
 
@@ -189,7 +202,7 @@ if (invokedDirectly) {
   for (const [k, n] of tally(kept.map((e) => e.kind))) console.log(`  ${String(n).padStart(4)}  ${k}`)
 
   const edges = r.edges ?? []
-  console.log(`\n${edges.length} edges between entities` + (edges.length ? "" : "  (linking did not run)"))
+  console.log(`\n${plural(edges.length, "edge")} between entities` + (edges.length ? "" : "  (linking did not run)"))
 
   console.log(`\nthe head of the map`)
   for (const e of kept.filter((x) => x.relation === "competitor").slice(0, 12)) {

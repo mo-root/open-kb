@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { resolve, tally } from "../scripts/read.js"
+import { plural, resolve, tally } from "../scripts/read.js"
 
 /**
  * `resolve` and `tally` — the file-matching and grouping logic behind
@@ -78,5 +78,30 @@ describe("tally", () => {
 
   it("returns an empty array for an empty input, not a crash", () => {
     expect(tally([])).toEqual([])
+  })
+})
+
+/**
+ * `plural` backs the one summary line (`the run` → queries/searches/results/
+ * hosts/edges) that the web-wide pluralization audit (26ca32a) never
+ * reached, because it only swept `packages/web`. Before this fix a one-query
+ * or one-host run printed "1 queries" / "1 hosts" with no guard at all —
+ * the same bare-plural shape fixed four times over in PlanCard.tsx,
+ * CostBreakdown.tsx, BuildWorkflow.tsx and the run report page.
+ */
+describe("plural", () => {
+  it("uses the singular form for exactly 1", () => {
+    expect(plural(1, "query", "queries")).toBe("1 query")
+    expect(plural(1, "host")).toBe("1 host")
+  })
+
+  it("uses the given plural form for counts other than 1, including 0", () => {
+    expect(plural(0, "query", "queries")).toBe("0 queries")
+    expect(plural(2, "query", "queries")).toBe("2 queries")
+  })
+
+  it("defaults the plural form to the singular plus 's' when not given", () => {
+    expect(plural(3, "result")).toBe("3 results")
+    expect(plural(1, "result")).toBe("1 result")
   })
 })
