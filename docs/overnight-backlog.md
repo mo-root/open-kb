@@ -10254,3 +10254,38 @@ No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
 13 skipped — identical census to SELF-706, unchanged by a read-only fire.
 
 Backlog item: SELF-707 - BLOCKED
+
+**SELF-708 (2026-10-11 overnight fire) — a dependency re-audit plus two more
+fresh-angle reads, all clean; no new gap.** Tried a genuinely different angle
+from SELF-706/707's basename-mention sweep first: re-ran `pnpm audit` cold
+(ten days after SELF-590 last closed it, so a new advisory landing against an
+unchanged lockfile was the one way this could turn up something without
+reading a single line of this repo's own code) — **0 findings**, same as
+SELF-590 left it. Also checked `README.md`/`DEPLOY.md`/`CONTRIBUTING.md` for
+a stale test-count or version claim the way SELF-509's citation-drift pass
+checked code comments — none of the three states a `pnpm test` count or a
+dependency version number that could drift, so there was nothing there to
+re-verify.
+
+Then picked two files the basename-count method would rank low but that
+SELF-706/707 did not individually list: `scripts/interrupt.ts` (5 mentions,
+all of them other files' comments pointing at it as "the mirror", never
+itself the read target) and `scripts/batch.ts`'s own
+`installBatchInterruptHandler` (the widened mirror its own comment at
+`batch.ts:259` describes). Read both end to end against
+`tests/interrupt.test.ts`'s four cases and the sibling `scripts/swarm.ts`/
+`scripts/sweep.ts` call sites: the double-signal escalation
+(`holder.interrupted` → `SIGKILL`+`EXIT.interrupted` on the second Ctrl+C),
+the negative-pid `process.kill(-pid, sig)` process-group signalling, and the
+unregister functions removing exactly the listeners installed, all checked
+out exactly as their own comments claim — no edge case (zero running pids,
+an already-exited child under the `catch` in `signalAll`) left unhandled.
+
+Confirms rather than repeats SELF-706/707's conclusion: this D-area read
+nothing new, and a dependency audit — the one check in this loop's toolbox
+that doesn't depend on human-written code having a bug left in it — is also
+clean. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`). `pnpm check` exit 0. `pnpm test` exit 0: 3456 tests passing,
+13 skipped — identical census to SELF-707, unchanged by a read-only fire.
+
+Backlog item: SELF-708 - BLOCKED
