@@ -17,6 +17,7 @@
  */
 import { execFileSync } from "node:child_process"
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs"
+import { EXIT } from "./fatal.js"
 
 export interface Contestant {
   key: string
@@ -90,6 +91,41 @@ export function failedRow(c: Contestant, recall: "run failed" | "no file"): Row 
   return { key: c.key, model: c.model, usd: NaN, seconds: NaN, entities: 0, hosts: 0, competitors: 0, unknowns: 0, recall, groundingMean: "-", file: "-" }
 }
 
+/**
+ * True when `e` — a thrown `execFileSync` error — means the child died
+ * because the operator pressed Ctrl+C, not because it crashed. `scripts/
+ * interrupt.ts` (SELF-695) gave `scripts/sweep.ts` its own SIGINT/SIGTERM
+ * handler, which catches the signal and exits through `EXIT.interrupted`
+ * (`.status`) rather than dying by the signal itself — the common case here,
+ * since a bake-off's child IS that same `sweep.ts`. A child with no such
+ * handler (or one killed before its handler could run) instead dies BY the
+ * signal, which Node reports as `.signal` with `.status` left `null`; both
+ * are checked.
+ *
+ * `.signal` alone is not enough: the SAME field is set when the
+ * `execFileSync` call's own `timeout` (30 min, below) kills a hung child —
+ * confirmed directly (`node -e` against a `sleep` child with a short
+ * `timeout`) — `.signal` reads `"SIGTERM"` there too, but Node also sets
+ * `.code` to `"ETIMEDOUT"` in exactly that case and only that case, so excluding
+ * it is what keeps a genuine hang from being misread as a deliberate stop.
+ *
+ * Residual, stated rather than fixed: `sweep.ts`'s own interrupt handling
+ * (scripts/sweep.ts:453) only reaches `EXIT.interrupted` while it has no map
+ * yet. Caught late enough that one already exists, it writes the thinner map
+ * it has and exits 0 — a real, intentional choice in `sweep.ts`, not a bug —
+ * so `execFileSync` never throws at all and this function is never asked.
+ * The loop below reads that contestant as an ordinary success and moves on
+ * to the next (paid) one. Catching that case would mean teaching `sweep.ts`
+ * to say "finished, but stopped early" as a THIRD outcome distinct from both
+ * "ran to completion" and "interrupted with nothing to show" — out of scope
+ * for a bake-off-only fix.
+ */
+export function wasInterrupted(e: unknown): boolean {
+  const err = e as { signal?: string | null; status?: number | null; code?: string }
+  if (err.code === "ETIMEDOUT") return false
+  return err.signal === "SIGINT" || err.signal === "SIGTERM" || err.status === EXIT.interrupted
+}
+
 /** The markdown table, given the rows already collected. Pure — `dateIso` is
  *  a parameter rather than a `new Date()` call in here, on purpose: the
  *  `invokedDirectly` body below takes that reading itself, separately from
@@ -143,6 +179,25 @@ const queries = queriesArg ?? "10"
 const rows: Row[] = []
 mkdirSync("runs/experiments", { recursive: true })
 
+// A bake-off is several sequential, real-money sweeps, and `execFileSync`
+// below does not `detached` its child — unlike scripts/batch.ts's concurrent
+// children — so it shares THIS process's own process group. A terminal's
+// Ctrl+C reaches both at once. Without a handler here, Node's default
+// SIGINT/SIGTERM disposition kills this process the instant that happens,
+// mid-`execFileSync`, discarding every row already collected from earlier
+// contestants along with the table that would have reported them — the same
+// "silent death" scripts/interrupt.ts's own header documents for sweep.ts,
+// swarm.ts and batch.ts before SELF-695/696/697. Confirmed directly
+// (`node -e`, a handled child, SIGINT sent to the shared process group):
+// registering ANY handler is enough to stop the default kill, even though
+// the handler's own body never gets to run before the blocked `execFileSync`
+// call returns — Node has no event-loop tick free to run it until then, and
+// by that point `wasInterrupted` below already has everything it needs,
+// straight off the error `execFileSync` throws. So the handler here does
+// nothing beyond existing.
+process.on("SIGINT", () => {})
+process.on("SIGTERM", () => {})
+
 for (const c of CONTESTANTS) {
   console.log(`\n=== ${c.key} (${c.model}) — ${c.note}`)
   const before = new Set(readdirSync("runs").filter((n) => n.startsWith(`sweep-${domain.replace(/\W+/g, "-")}`)))
@@ -153,6 +208,10 @@ for (const c of CONTESTANTS) {
       timeout: 30 * 60 * 1000,
     })
   } catch (e) {
+    if (wasInterrupted(e)) {
+      console.error(`\nstopped by Ctrl+C — writing the table for the ${rows.length} contestant${rows.length === 1 ? "" : "s"} that finished; no further contestant will start.`)
+      break
+    }
     console.error(`${c.key} FAILED: ${(e as Error).message} — recorded, moving on`)
     rows.push(failedRow(c, "run failed"))
     continue
@@ -170,7 +229,11 @@ for (const c of CONTESTANTS) {
   // Deal the quality packet; scoring happens via the audit workflow later.
   try {
     execFileSync("npx", ["tsx", "scripts/audit.ts", `runs/${file}`, "--n", "15"], { stdio: "inherit", env: process.env })
-  } catch {
+  } catch (e) {
+    if (wasInterrupted(e)) {
+      console.error(`\nstopped by Ctrl+C — writing the table for the ${rows.length} contestant${rows.length === 1 ? "" : "s"} that finished; no further contestant will start.`)
+      break
+    }
     console.error("audit packet deal failed — quality leg missing for this run")
   }
 }

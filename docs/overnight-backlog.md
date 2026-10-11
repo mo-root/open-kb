@@ -10067,3 +10067,55 @@ caught in a test-file header instead of a run artifact or a README table.
 identical census to SELF-702, unchanged by a comment-only fix.
 
 Backlog item: SELF-703 - BLOCKED
+
+**SELF-704 (2026-10-11 overnight fire) — `scripts/*.ts beyond sweep.ts` (D's
+own named scope) still had one script carrying the exact "Ctrl+C dies
+silently" shape SELF-695/696/697 had already fixed in sweep.ts, swarm.ts and
+batch.ts: `scripts/bakeoff.ts`.** Unlike those three, `bakeoff.ts` runs its
+children with `execFileSync` — synchronous, no `detached` — so it shares THIS
+process's own process group with the `npx tsx scripts/sweep.ts` child it
+blocks on; a terminal's Ctrl+C reaches both at once. With no handler of its
+own, Node's default SIGINT/SIGTERM disposition killed `bakeoff.ts` itself the
+instant that happened, discarding every row already collected from earlier
+(paid) contestants and the table.md that would have reported them — confirmed
+zero `process.on("SIGINT"/"SIGTERM")` anywhere in this file before this
+commit, the same check SELF-695's own commit made for sweep.ts.
+
+Fixed by registering a handler (prevents the default kill — confirmed
+directly, `node -e` against a handled child with the same signal sent to
+their shared process group) and detecting the stop directly off the thrown
+`execFileSync` error rather than off the handler's own flag: Node gives the
+handler no event-loop tick to run until the blocked `execFileSync` call
+already returns, by which point the error already carries everything needed
+(`.status === EXIT.interrupted`, the shape `sweep.ts`'s own SELF-695 handler
+exits through; or `.signal`, for a child killed outright). `.signal` alone
+would also fire on the call's own 30-minute `timeout`, confirmed directly
+(Node sets the identical `"SIGTERM"` there) — excluded by checking `.code !==
+"ETIMEDOUT"`, which only that path sets. Pulled into an exported
+`wasInterrupted(e)`, the same `rowFromRun`/`renderTable`/`failedRow` pure-logic
+split this file's own header already used for testability. Both
+`execFileSync` call sites (the sweep child and the audit-packet child) now
+`break` the contestant loop on a real interrupt instead of recording a FAILED
+row and moving on to spend money on the next one; the table still gets
+written for whatever finished.
+
+Residual stated in the new function's own comment, not fixed: a LATE
+Ctrl+C — caught after `sweep.ts` already has a map, however thin — makes
+`sweep.ts` write it and exit 0 by its own design (scripts/sweep.ts:453's
+comment), so `execFileSync` never throws and `wasInterrupted` is never asked;
+that contestant reads as an ordinary success and the loop moves on. Teaching
+`sweep.ts` a third outcome ("finished, but stopped early") to close this is
+out of scope for a bake-off-only fix.
+
+Added four tests in `tests/bakeoff.test.ts` for `wasInterrupted`: sweep.ts's
+own `EXIT.interrupted` exit, a raw signal kill, the `ETIMEDOUT` exclusion, and
+an ordinary crash. Confirmed non-vacuous by mutation: reverted just the
+`ETIMEDOUT` guard, reran — the timeout-exclusion test failed exactly as
+predicted (`true` where `false` was expected); restored the fix and reran
+clean before staging.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check` exit 0. `pnpm test` exit 0: 3453 tests passing (up from 3449,
+four new), 13 skipped — same gated census as SELF-703.
+
+Backlog item: SELF-704

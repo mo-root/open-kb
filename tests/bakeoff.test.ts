@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { CONTESTANTS, failedRow, renderTable, rowFromRun, type Contestant, type Row } from "../scripts/bakeoff.js"
+import { CONTESTANTS, failedRow, renderTable, rowFromRun, wasInterrupted, type Contestant, type Row } from "../scripts/bakeoff.js"
+import { EXIT } from "../scripts/fatal.js"
 
 /**
  * `scripts/bakeoff.ts` had zero test coverage anywhere. Its whole body ran at
@@ -121,6 +122,32 @@ describe("renderTable prints FAILED instead of $NaN, and stays readable empty", 
     // dangling run-file bullet, for a bake-off where every contestant errored
     // before a row was even pushed.
     expect(table.split("\n").filter((l) => l.startsWith("|"))).toHaveLength(2)
+  })
+})
+
+describe("wasInterrupted tells a deliberate Ctrl+C apart from a crash or a hang", () => {
+  it("reads true for sweep.ts's own clean exit through EXIT.interrupted", () => {
+    // scripts/sweep.ts (SELF-695) catches its own SIGINT/SIGTERM and exits
+    // through this code rather than dying by the signal — the realistic
+    // shape when a bake-off's child is interrupted before it has a map.
+    expect(wasInterrupted({ status: EXIT.interrupted, signal: null })).toBe(true)
+  })
+
+  it("reads true for a child killed directly by the signal, with no handler of its own", () => {
+    expect(wasInterrupted({ signal: "SIGINT", status: null })).toBe(true)
+    expect(wasInterrupted({ signal: "SIGTERM", status: null })).toBe(true)
+  })
+
+  it("reads false for the execFileSync timeout, which sets the same .signal", () => {
+    // Confirmed directly against a real spawnSync timeout: `.signal` reads
+    // "SIGTERM" there too (Node's own kill signal for a timed-out child),
+    // but `.code` reads "ETIMEDOUT" in that case and only that case — a
+    // 30-minute hang is not the operator asking to stop.
+    expect(wasInterrupted({ signal: "SIGTERM", status: null, code: "ETIMEDOUT" })).toBe(false)
+  })
+
+  it("reads false for an ordinary crash — a non-zero exit, no signal, no timeout", () => {
+    expect(wasInterrupted({ signal: null, status: 1 })).toBe(false)
   })
 })
 
