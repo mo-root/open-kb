@@ -10431,3 +10431,44 @@ confirmed clean. No code change. `pnpm install --frozen-lockfile` first
 a probe-and-revert fire.
 
 Backlog item: SELF-712 - BLOCKED
+
+**SELF-713 (2026-10-11 overnight fire) — a dead-export sweep with `knip`
+(another new-tool angle, following SELF-509/SELF-712's precedent of
+installing an analysis tool rather than reading by hand), four hits, all
+traced to real internal use; no new gap.** `pnpm dlx knip` against a fresh
+`pnpm install --frozen-lockfile` reported 4 "unused exports" and 23 "unused
+exported types" — a symbol `export`ed but never `import`ed from another
+file. Checked every one of the 4 value-level hits by hand with a
+repo-wide grep (not scoped to one package, so a cross-package import would
+still show up): `pairsOf` and `blockTheNetwork`
+(`packages/sweep/tests/fixture.ts:292,606`) are both called from inside
+`runFixture` in the same file (lines 737 and 751) — `blockTheNetwork` in
+particular is the exact DNS/fetch guard `an-anchor-that-does-not-resolve-
+fails-by-name.test.ts`'s own doc comment describes as "installed by every
+`runFixture` call," and reading `runFixture` end to end (not stopping at
+the point `pairsOf`'s one call site appears, the way an earlier pass in
+this same fire first misread it) confirms the install call is really
+there at line 751 — the comment is accurate, not stale. `noteRunStarted`
+(`packages/web/lib/spend-limits.ts:517`) is called from two sites 180 and
+260 lines down in the same file. `GLYPH_KINDS` is re-exported from the
+`icons` barrel (`index.ts:4`) but every actual import
+(`NodeGlyph.test.tsx`) goes straight at `./NodeGlyph`, the module that
+defines it, not through the barrel.
+
+All four are "exported wider than any caller needs," not "written and
+never wired in" — the distinction that would have made this a real gap in
+this codebase's own terms (see SELF-701's `unplaced` glyph case, SELF-699's
+dangling plural). Narrowing the four `export`s would be a no-behavior-
+change style diff, the same category SELF-712 declined to chase for the
+same reason: nothing a test could show was open. Did not spend time on the
+23 "unused exported types" — every value-level hit resolved to "used
+internally, not a gap," so the type-level list (read-only in TypeScript,
+never executed) was very unlikely to be different and the fire's time was
+better spent confirming the four that could actually matter.
+
+No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`). `pnpm check` exit 0. `pnpm test` exit 0: 3456 tests
+passing, 13 skipped — identical census to SELF-712, unchanged by a
+read-only fire.
+
+Backlog item: SELF-713 - BLOCKED
