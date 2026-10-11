@@ -10162,3 +10162,47 @@ not instances of this bug.
 three new), 13 skipped — same gated census as SELF-704.
 
 Backlog item: SELF-705
+
+**SELF-706 (2026-10-11 overnight fire) — eight fresh-angle reads (lowest
+basename-mention count against this document, continuing SELF-702's
+method), all traced clean.** Ranked every non-test source file by how many
+times its basename appears anywhere in this branch's commit messages and
+read the lowest-ranked real candidates never individually read by name in
+a prior SELF-<n>: `core/src/pricing.ts`, `core/src/investigator.ts`,
+`core/src/scorecard.ts`, `sweep/src/rank.ts`, `sweep/src/ui.ts`,
+`web/lib/zip.ts` (the hand-rolled store-only zip writer behind the export
+button), `web/lib/graph/layoutCache.ts`, and `web/lib/graph/settings.ts`.
+
+No new gap. Specifically checked and confirmed sound: `zip.ts`'s local
+and central-directory header field counts and order against the ZIP spec
+field-by-field (17 fields after the signature in the central header, 11
+after it in the local header — both match); `layoutCache.ts`'s
+`MIN_COVERAGE` gate is read correctly at its one call site
+(`GraphCanvas.tsx:926`, `hits >= nodes.length * MIN_COVERAGE`) against the
+same `nodeCount` local the memo that builds `nodes` already shadows, not
+the outer component-scope `nodeCount` declared later — two same-named
+bindings in different function scopes, not a forward reference;
+`settings.ts`'s `RANGES` and `loadSettings`'s per-field `clampNum` calls
+cover the identical 13 keys, so no slider can drift from its own clamp;
+`investigator.ts`'s per-turn cost accounting emits strictly after each
+turn (`onStepFinish`), so `ctx.spans.totalUsd()` read before and after
+`agent.generate()` brackets exactly that agent's own spend; `scorecard.ts`'s
+yield-window arithmetic (`window = min(6, history.length)`, `before` null
+until a full second window exists) matches its own doc comment in every
+length case tried by hand (0, 3, 6, 7, 12). `grounding.ts`'s `appears()`
+treating a hyphen as a word boundary (so a description term can match
+inside a larger hyphenated compound in the page text, e.g. "anti-bot"
+inside "custom-anti-bot-detection") looked like a gap at first read, but
+`grounding.test.ts`'s own "a 2-gram matches across whitespace and
+punctuation but not across other words" case names this exact choice on
+purpose ("hyphen is a boundary") and asserts the single-word side of it —
+tightening the boundary to treat hyphen as word-internal would flip that
+already-passing, intentionally-written test, so this is documented design,
+not an undiscovered bug; not re-counted as a ninth file read since
+SELF-702 already read it.
+
+`pnpm install --frozen-lockfile` first (fresh clone, no `node_modules`).
+`pnpm check` exit 0. `pnpm test` exit 0: 3456 tests passing, 13 skipped —
+identical census to SELF-705, unchanged by a read-only fire.
+
+Backlog item: SELF-706 - BLOCKED
