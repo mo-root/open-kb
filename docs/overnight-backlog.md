@@ -10472,3 +10472,49 @@ passing, 13 skipped — identical census to SELF-712, unchanged by a
 read-only fire.
 
 Backlog item: SELF-713 - BLOCKED
+
+**SELF-714 (2026-10-11 overnight fire) — three targeted drift checks, all
+clean; this D-area is saturated and this fire recommends the human review
+whether to keep it running.** Rather than repeat SELF-706-713's pattern of
+installing a new analysis tool to probe for drift already ruled out nine
+times today, picked three concrete, previously-unverified-today claims and
+checked each by hand against the current tree:
+
+1. The four `.mjs` guard scripts (`check-core-purity.mjs`,
+   `check-test-collection.mjs`, `check-skips.mjs`, and the `check-shared.mjs`
+   SELF-<n> (line 7285 of this file) extracted their common code into) —
+   grepped this file for each name; all four are already documented as
+   swept and deduplicated, nothing newer to check.
+2. README's stage-defaults table and Mermaid diagram (`README.md:96-122`)
+   against the actual env-flag defaults in `packages/sweep/src/sweep.ts`
+   (`OPENKB_TRIAGE`, `OPENKB_SECOND_LOOK`, `OPENKB_LISTICLE_HARVEST` default
+   on and disable via `=0`; `OPENKB_DROP_CONFIRM` defaults off and enables
+   via `=1`) — read both side by side; they match exactly, no drift.
+3. `CHANGELOG.md`'s "Also in this range" rollup (line 350) against the
+   SELF-tagged commits added since C4 shipped it — it already describes
+   itself as a generic catch-all ("one concrete gap or fix per commit...
+   rather than listed here... None changed what the product does") rather
+   than an itemized list, so there is no per-SELF-<n> entry that could have
+   gone stale; still accurate.
+
+All three came back clean. This fire's own read of the backlog file (lines
+9259-9260) found the D-area's own prior self-assessment already says the
+named targets "came back saturated" as of SELF-630, five weeks before this
+fire's date, and the nine fires immediately before this one
+(SELF-705-713, all tonight) found two small real fixes and seven "no new
+gap" results — including two that had to install a new static-analysis
+tool (`tsc` with stricter flags, `knip`) just to have a fresh angle left to
+try. That trend, not any single fire, is the finding worth recording: this
+open-ended self-discovered-work mode has produced 200+ commits since
+SELF-509 first measured coverage as complete, and the ratio of real fixes
+to "confirmed nothing" fires has been dropping fire over fire. This commit
+does not change that mode's rules (not this fire's call to make), but logs
+the trend plainly so a human reviewing this branch sees it stated once
+rather than having to notice it by reading hundreds of BLOCKED entries.
+
+No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`). `pnpm check` exit 0. `pnpm test` exit 0: 3456 tests
+passing, 13 skipped — identical census to SELF-713, unchanged by a
+read-only fire.
+
+Backlog item: SELF-714 - BLOCKED
