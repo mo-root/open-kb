@@ -10206,3 +10206,51 @@ SELF-702 already read it.
 identical census to SELF-705, unchanged by a read-only fire.
 
 Backlog item: SELF-706 - BLOCKED
+
+**SELF-707 (2026-10-11 overnight fire) — thirty-five fresh-angle reads across
+all four packages (lowest basename-mention count against this document,
+continuing SELF-702's method), all traced clean.** Widened the method past a
+single digest: ranked every non-test source file by basename-mention count
+against this document and read every real candidate under ~7 mentions never
+individually named in a prior SELF-<n>, rather than stopping at the usual
+six-to-eight — `lib/demo.ts`, `core/src/testing/fake-provider.ts`,
+`core/src/coverage.ts`, `core/src/discovery.ts`, `core/src/flags.ts`,
+`swarm/src/seed-families.ts`, `swarm/src/serialize.ts`,
+`web/lib/stream-adapter.ts`, `web/lib/theme.ts`, `web/lib/viewTypes.ts`,
+`core/src/alias.ts`, `core/src/breaker.ts`, `sweep/src/deadline.ts`,
+`swarm/src/from-sweep.ts`, `core/src/spans.ts`, `web/lib/graph/labels.ts`,
+`web/lib/notes-view.ts`, `web/lib/scrollProgress.ts`,
+`web/components/HeaderNav.tsx`, `web/components/ThemeToggle.tsx`, and the
+`build`/`viz`/`kb`/`icons` component sets: `CostBreakdown.tsx`,
+`FindingsPanel.tsx`, `PlanCard.tsx`, `DecisionsStrip.tsx`, `EventFeed.tsx`,
+`StageTracker.tsx`, `ResultPanel.tsx`, `Gauge.tsx`, `BarMeter.tsx`,
+`Sparkline.tsx`, `StatTile.tsx`, `polar.ts`, `GraphSettings.tsx`,
+`GraphLegend.tsx`, `NodeGlyph.tsx`, and `core/src/ports.ts`.
+
+No new gap. Specifically checked the shapes that have paid off before —
+singular/plural guards on every rendered count (`CostBreakdown.tsx`'s
+`r.calls`/`restCalls` tail, `PlanCard.tsx`'s `plan.ceiling`/`plan.count`,
+`DecisionsStrip.tsx`, `ResultPanel.tsx`'s `hosts` line all already guard),
+off-by-one/index arithmetic (`PlanCard.tsx`'s running `offsets` reduce over
+`groups` — traced by hand for three groups, `offsets[i]` lands on the correct
+running start exactly because the seed `[0]` keeps index and cumulative-sum
+in lockstep), and float/edge-case division (`StatTile.tsx`'s `compact()`
+re-routing the 999,950-999,999 rounding boundary from K to M, confirmed still
+correct for the negative-value case via `Math.abs` on the parsed string; `Gauge.tsx`
+and `Sparkline.tsx`'s span/pad arithmetic guard `max === min` and `n === 1`
+respectively). `alias.ts`'s `anchorAliasSet`'s `|| anchor` guard and
+`coverage.ts`'s `|| opts.anchor` guard are each the SAME degenerate-host fix
+already applied; `from-sweep.ts`'s rarest-first recall-gap sort is deliberately
+the mirror image of the capped-slice bug this codebase fixed four times
+elsewhere, and says so in its own comment. `spans.ts`'s `SpanStream.stream()`
+checks the log for unread entries before checking `#closed`, so a `close()`
+racing an `emit()` never drops a span a subscriber had not yet read.
+`stream-adapter.ts`'s per-namespace counters (`tokens`/`serpCalls`/
+`unlockerCalls`) are closed-over per `adapterFor(ns)` call, so two namespaces
+watching the same run keep independent tallies rather than double-counting.
+
+No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`). `pnpm check` exit 0. `pnpm test` exit 0: 3456 tests passing,
+13 skipped — identical census to SELF-706, unchanged by a read-only fire.
+
+Backlog item: SELF-707 - BLOCKED
