@@ -10354,3 +10354,32 @@ passing, 13 skipped — identical census to SELF-709, unchanged by a
 read-only fire.
 
 Backlog item: SELF-710 - BLOCKED
+
+**SELF-711 (2026-10-11 overnight fire) — a fresh angle: cross-checked every
+example invocation in the README's "Every command" block against the real
+argv parsing of the script it names, rather than against each script's own
+usage banner (the class SELF-676 already checked).** `scripts/export-kb.ts:143`
+reads the second positional (after filtering `--force`) straight into
+`outArg` -> `outDir` at line 187 — there is no mode keyword, only
+`[outDir] [--force] | --all`. The README showed
+`pnpm run export <run> vault  # the map as a folder of markdown`: a reader
+who copies that literally gets their export written to `./vault`, not the
+`runs/exports/kb-<anchor>/` path the Quickstart section already shows two
+screens up for the identical command with no second argument. "vault" reads
+like a label — it is the generic noun this codebase's own comments use for
+an exported folder (`packages/core/src/export-kb.ts:892`: "nothing in the
+vault linked to it") — but the CLI has no such concept; it is just an
+arbitrary `outDir` string. Removed the stray token so the example matches
+the default path already documented above it.
+
+Checked the other four lines in the same block against their scripts' real
+parsing: `sweep.ts`'s `--quick` (`scripts/sweep.ts:47`), `swarm.ts`'s
+ceiling positional, `diff-runs.ts`'s two-run-file usage, `audit.ts`'s
+`<run>` usage — all four already matched. "vault" was the only drift.
+
+No code change, docs only. `pnpm install --frozen-lockfile` first (fresh
+clone, no `node_modules`). `pnpm check` exit 0. `pnpm test` exit 0: 3456
+tests passing, 13 skipped — identical census to SELF-710, unchanged by a
+docs-only fix.
+
+Backlog item: SELF-711
