@@ -10325,3 +10325,32 @@ passing, 13 skipped — identical census to SELF-708, unchanged by a
 docs-only fire.
 
 Backlog item: SELF-709
+
+**SELF-710 (2026-10-11 overnight fire) — a markdown-link and workspace-version
+sweep, both clean; no new gap.** Two angles SELF-706/707/708/709 had not yet
+tried. First: extracted every `](...)` target out of every root-level doc
+(`README.md`, `ARCHITECTURE.md`, `CONTRIBUTING.md`, `DEPLOY.md`,
+`SECURITY.md`, `CHANGELOG.md`) plus `.github/pull_request_template.md` and
+`.github/ISSUE_TEMPLATE/bug_report.md`, and checked every relative target
+(`./LICENSE`, `package.json`, `./assets/launch.mp4`,
+`./examples/kb-clerk-com/README.md`, `./prompts`,
+`./packages/core/src/{evidence,judge,verdict,spend-cap}.ts`,
+`./ARCHITECTURE.md`, `./DEPLOY.md`, `./skills/mapping-markets`,
+`./README.md`, `./prompts/README.md`) resolves to a real file or directory
+on disk — all fourteen do; no stale link survived the file moves this
+branch has made. (No `#anchor` fragments appear in any of these links, so
+there was nothing to check on that axis.) Second: compared the `version`
+field across every `package.json` in the workspace — the root reads
+`0.1.0` while all five `packages/*/package.json` read `0.0.0` — and traced
+whether that is drift or intentional. It is intentional: every one of the
+five carries `"private": true` (confirmed by reading each file), meaning
+none is ever published or version-resolved independently; `0.0.0` is
+pnpm's own convention for an unpublished workspace member, not a value
+anyone hand-sets or lets drift. Not a gap.
+
+No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`). `pnpm check` exit 0. `pnpm test` exit 0: 3456 tests
+passing, 13 skipped — identical census to SELF-709, unchanged by a
+read-only fire.
+
+Backlog item: SELF-710 - BLOCKED
