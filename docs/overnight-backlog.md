@@ -10289,3 +10289,39 @@ clean. `pnpm install --frozen-lockfile` first (fresh clone, no
 13 skipped — identical census to SELF-707, unchanged by a read-only fire.
 
 Backlog item: SELF-708 - BLOCKED
+
+**SELF-709 (2026-10-11 overnight fire) — CHANGELOG.md had drifted five real
+fixes behind, the same gap 490084d and d2c4ae8 each closed before it.**
+Tried a genuinely different angle from SELF-706/707/708 first (a TODO/
+FIXME/XXX grep across every non-test source file, an `eslint-disable`/
+`@ts-ignore`/`@ts-expect-error`/`debugger` inventory, and a skip-census
+cross-check against `pnpm check`'s own gated-suite list) — all three came
+back empty or already individually audited (the four `eslint-disable`
+sites are the exact ones SELF-<n>'s `exhaustive-deps`/`no-img-element` pass
+already read line by line; the zero TODOs found is itself a sign of how
+thoroughly this branch has been combed, not a new gap). Fell back to
+490084d's own method instead: `git log 490084d..HEAD -- . | grep -v docs`
+to list every real `fix(...)` commit since the last changelog sync, which
+found five: SELF-699 (`ResultPanel`'s "1 hosts came back"), SELF-700
+(`CommandPalette`'s section-order tie-break), SELF-701 (`glyphForNotePath`'s
+missing `unplaced` case), SELF-704 (Ctrl+C on a running bake-off), and
+SELF-705 (`read.ts`'s own bare-plural summary line) — none had a
+`CHANGELOG.md` entry.
+
+Added one bullet each, grouped with their nearest existing entry rather
+than duplicated: SELF-704 extends the existing Ctrl+C/SIGTERM bullet in
+"Run economics and diagnostics" (same feature, one more script) instead of
+a new bullet; SELF-699/705 join the existing bare-plural paragraph's
+pattern in "Bug fixes" as one combined bullet (same gap, two more sites);
+SELF-700 and SELF-701 each get their own "Bug fixes" bullet, cross-checked
+against the section's existing entries first to avoid duplicating anything
+already there (confirmed none of the five were already covered by reading
+the section fully before editing, the same check 490084d's own commit
+describes making).
+
+No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`). `pnpm check` exit 0. `pnpm test` exit 0: 3456 tests
+passing, 13 skipped — identical census to SELF-708, unchanged by a
+docs-only fire.
+
+Backlog item: SELF-709

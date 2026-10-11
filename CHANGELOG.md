@@ -98,6 +98,13 @@ hosted web app, or the repo itself would actually notice.
   Ctrl+C was never delivered to them at all — every sweep still running at
   the moment the parent died was orphaned, unsupervised and still spending.
   The new handler signals every tracked child's process group directly.
+  `scripts/bakeoff.ts` needed the same fix on a different mechanism: it
+  blocks on each contestant via synchronous `execFileSync`, sharing this
+  process's own process group with the child, so a terminal's Ctrl+C killed
+  it outright with no handler of its own — discarding every contestant row
+  already collected. Now detects the stop off the blocked call's own thrown
+  error and breaks the loop, keeping the table for whichever contestants had
+  already finished.
 
 ### Map quality
 
@@ -235,6 +242,25 @@ hosted web app, or the repo itself would actually notice.
   — reading as a tile whose number failed to load, the exact defect the
   grid's own layout comment already reasoned about preventing, just missed
   on that breakpoint.
+- The same bare-plural gap, found on two more sites: `ResultPanel`'s
+  empty-map message read "1 hosts came back and none survived
+  classification" on a narrow anchor whose search returns exactly one
+  host; `scripts/read.ts`'s own run summary printed "1 queries", "1
+  searches", "1 results", "1 hosts" and "1 edges" on a small or targeted
+  run — the one CLI script the earlier web-wide pluralization audit never
+  reached, since that audit was scoped to `packages/web`.
+- `CommandPalette`'s header comment promises a fixed section order (Go to,
+  then Knowledge bases, then Entities), but the grouping logic actually
+  sorted by which group's best-scoring command happened to appear first —
+  a tied top score between a gallery KB name and the open KB's own tab
+  label (both tagged into different sections) rendered "Knowledge bases"
+  above "Go to", the opposite of the documented order.
+- `glyphForNotePath` had no case for `unplaced` (`kind: "unknown"`, a host
+  the kernel could not read at all) — the fourth real top-level note
+  folder, after `products`/`players`/`communities` — so it fell through to
+  the generic basename lookup and rendered a plain page icon instead of
+  the company glyph every other unresolved-company case uses. Not rare:
+  this group holds hundreds of entities on the committed gallery maps.
 - The swarm's `readTool` ran a model-chosen `grep` pattern directly against
   page text a hostile site fully controls; a catastrophically-backtracking
   pattern (e.g. `/(a+)+$/` against a crafted suffix) hung indefinitely on
