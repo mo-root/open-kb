@@ -166,7 +166,7 @@ set -a && source .env && set +a   # the CLI reads keys from the shell
 pnpm sweep yourcompany.com        # breadth: the map
 pnpm sweep yourcompany.com --quick  # a bounded first look: seals the search early, no paid link pass
 pnpm swarm yourcompany.com 5      # depth, with a ceiling
-pnpm run export <run> vault  # the map as a folder of markdown
+pnpm run export <run>        # the map as a folder of markdown
 pnpm run diff a.json b.json  # what moved between two runs of one anchor
 pnpm run audit <run>         # deal a review packet, score it symmetrically
 pnpm test                    # the full suite, offline, no network, no keys
