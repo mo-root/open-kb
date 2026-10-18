@@ -10547,3 +10547,40 @@ passing, 13 skipped — identical census to SELF-714, unchanged by a
 read-only fire.
 
 Backlog item: SELF-715 - BLOCKED
+
+**SELF-716 (2026-10-18 overnight fire) — re-confirmed SELF-714/SELF-715's
+finding and, unlike those two, actually has a channel to a live human: used
+it, once.** SELF-714 and SELF-715 could only write their escalation into
+this file's own text — a commit message, read only if and when a person
+opens this branch. This fire's harness carries a real push/email
+notification tool, so instead of writing a sixteenth "checked X, found
+nothing" entry, it sent the owner one notification stating: the backlog's
+A/B/C/D sections are all checked off, the self-discovered-work mode has
+produced 200+ commits since SELF-509 with yield dropping fire over fire
+(SELF-705-715: two small real fixes, nine "no new gap" results, two of
+which had to install a new static-analysis tool just to have an angle left
+to try), and SELF-714/SELF-715 both judged this D section saturated and
+asked for a human decision on whether to keep the loop running. That
+decision is still outstanding as of this fire.
+
+Re-ran the same check SELF-715 ran rather than trusting its five-week-old
+record blind: grepped this file for every D-section target
+(`ledger.ts`/`spend-cap.ts`, `export-kb.ts`, `scripts/*.ts`,
+`web/lib/store/supabase.ts`, the swarm orchestrator, doctrine
+contradictions, coverage gaps) and confirmed each still resolves to a
+dedicated line-by-line pass already on record, with nothing added to any
+of their names since SELF-715. No unexplored target exists; this fire did
+not install a new tool to manufacture one.
+
+**For the next fire of any of the three routines sharing this branch:** if
+you reach this point and SELF-716 is still the newest entry, the human has
+already been notified once — do not send a second one. Re-check this file
+for a newer entry (the human's answer, if any, will show up as new backlog
+items above this line or a direct instruction) before escalating again.
+
+No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`). `pnpm check` exit 0. `pnpm test` exit 0: 3456 tests
+passing, 13 skipped — identical census to SELF-715, unchanged by a
+read-only fire.
+
+Backlog item: SELF-716 - BLOCKED
