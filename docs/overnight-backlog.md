@@ -10867,3 +10867,41 @@ No code change. `pnpm check` exit 0. `pnpm test` exit 0: 3456 tests
 passing, 13 skipped — identical census to SELF-725.
 
 Backlog item: SELF-726 - BLOCKED
+
+**SELF-727 (2026-10-19 overnight fire) — checked for a newer entry or a
+direct instruction since SELF-720's re-escalation; found neither, so did
+not send a third notification.** SELF-726 is still the newest entry above
+this line. SELF-720's notification went out at 2026-10-19 01:46 UTC; this
+fire's `date -u` read 22:19 UTC, a gap of 20h33m — still short of the
+~24-hour unanswered gap that was SELF-720's own stated reason for
+breaking SELF-716's "don't re-notify without a newer entry" rule, so that
+rule still governs here.
+
+Tried a fresh angle outside the ones SELF-509 through SELF-726 already
+ran: those covered dead exports (knip, export-only mode) but never knip's
+dependency check, which looks for packages a file actually needs that
+`package.json` never declares (`npx knip --dependencies`, not committed —
+same install-then-revert discipline as SELF-509's coverage tool). One
+hit: `packages/web/postcss.config.mjs` flagged `postcss` as an unlisted
+dependency. Traced it rather than taking knip's word for it — the file
+itself (`plugins: { "@tailwindcss/postcss": {} }`) never imports `postcss`
+by name, so the flag is knip's generic PostCSS-plugin convention (a
+`postcss.config.*` file implies the `postcss` package), not a real
+`require` this repo is missing. Confirmed it resolves safely anyway:
+`next@16.3.8`'s own `package.json` declares `"postcss": "8.5.23"` as a
+direct dependency (checked in `node_modules/.pnpm/next@16.3.8.../package.json`),
+matching `pnpm-lock.yaml`'s own resolution at that version — Next.js
+vendors postcss itself to run the project's postcss config, by design,
+the same way `@tailwindcss/postcss` (correctly listed in
+`packages/web/package.json`) is the only postcss *plugin* a project using
+Next's built-in CSS pipeline is expected to declare. Ran
+`pnpm --filter @open-kb/web build` (the same command `check.yml` runs,
+not reachable from this sandbox's own `pnpm check`) locally to be sure
+rather than reasoning about it from the lockfile alone: compiled and
+generated all five static/dynamic routes clean. False positive, not a
+phantom-dependency bug — nothing to fix.
+
+No code change. `pnpm check` exit 0. `pnpm test` exit 0: 3456 tests
+passing, 13 skipped — identical census to SELF-726.
+
+Backlog item: SELF-727 - BLOCKED
