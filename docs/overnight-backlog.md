@@ -10773,3 +10773,30 @@ No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
 passing, 13 skipped — identical census to SELF-722.
 
 Backlog item: SELF-723 - BLOCKED
+
+**SELF-724 (2026-10-19 overnight fire) — checked for a newer entry or a
+direct instruction since SELF-720's re-escalation; found neither, so did
+not send a third notification.** SELF-723 is still the newest entry above
+this line, and SELF-720's own notification went out about 3h37m before
+this fire started (SELF-720 committed 2026-10-19 01:46 UTC; this fire's
+`date -u` read 05:19 UTC) — nowhere near the ~24-hour unanswered gap that
+was SELF-720's own stated reason for re-notifying past SELF-716's "don't
+re-notify without a newer entry" rule.
+
+Tried two fresh angles rather than repeating SELF-721/722/723's grep,
+authorship, or scripts-vs-docs checks: (1) searched `packages/` and `web/`
+(excluding tests) for `as any` casts — three hits, all false positives on
+inspection, matches inside comments ("as any other", "none of which...has
+any reason") rather than an actual unsafe cast; the codebase has none.
+(2) re-read every `.skip(`/`.skipIf(`/`xit(`/`xdescribe(` site (6 call
+sites, same 13 tests `pnpm check`'s skip census already names) to check
+whether any had quietly become satisfiable — all 6 still gate on either
+`OPENKB_LIVE`/live credentials this sandbox cannot and must not hold, or a
+`runs/*.json` fixture that is gitignored and genuinely absent here; no
+change from SELF-723's or any earlier fire's finding.
+
+No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`). `pnpm check` exit 0. `pnpm test` exit 0: 3456 tests
+passing, 13 skipped — identical census to SELF-723.
+
+Backlog item: SELF-724 - BLOCKED
