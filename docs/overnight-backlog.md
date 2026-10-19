@@ -10676,3 +10676,25 @@ No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
 passing, 13 skipped — identical census to SELF-719.
 
 Backlog item: SELF-720 - BLOCKED
+
+**SELF-721 (2026-10-19 overnight fire) — checked for a newer entry or a
+direct instruction since SELF-720's re-escalation; found neither, so did
+not send a third notification.** SELF-720 is still the newest entry above
+this line, and its own notification went out only about 1.5 hours before
+this fire started (SELF-720 committed 2026-10-19 01:46 UTC; this fire's
+`date -u` read 03:18 UTC) — not the ~24-hour unanswered gap that was
+SELF-720's own stated reason for breaking SELF-716's "don't re-notify
+without a newer entry" rule a second time. Paging the owner again this
+soon, with literally nothing new to report beyond "still no reply, still
+no reply," would be the exact noise this file's own escalation chain has
+been trying to avoid creating. Re-ran the same D-section-target grep
+SELF-717-719 ran (`ledger.ts`/`spend-cap.ts`, `export-kb.ts`,
+`scripts/*.ts`, `supabase.ts`, `orchestrator.ts`) — nothing newer than
+SELF-676 touches any of them, confirming the state is unchanged since
+SELF-720.
+
+No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`). `pnpm check` exit 0. `pnpm test` exit 0: 3456 tests
+passing, 13 skipped — identical census to SELF-720.
+
+Backlog item: SELF-721 - BLOCKED
