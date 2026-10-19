@@ -10939,3 +10939,40 @@ No code change. `pnpm check` exit 0. `pnpm test` exit 0: 3456 tests
 passing, 13 skipped — identical census to SELF-727.
 
 Backlog item: SELF-728 - BLOCKED
+
+**SELF-729 (2026-10-19 overnight fire) — checked for a newer entry or a
+direct instruction since SELF-720's re-escalation; found neither, so did
+not send a third notification.** SELF-728 is still the newest entry above
+this line. SELF-720's notification went out at 2026-10-19 01:46 UTC; this
+fire's `date -u` read 23:19 UTC, a gap of 21h33m — closer to the
+~24-hour unanswered gap that was SELF-720's own stated threshold, but not
+there yet, so SELF-716's "don't re-notify without a newer entry" rule
+still governs here. `git log --all --author="mo-root" --since="2026-08-25"`
+over the full unshallowed history (this fire's container also started
+shallow, per SELF-726/728; ran `git fetch --unshallow` first to resolve
+the branch's `a7bbc57` base) again shows zero commits — no bypass-the-doc
+reply.
+
+Also re-verified SELF-725's trigger-count correction directly rather than
+taking its record on faith: called this account's own `list_triggers`.
+Confirms SELF-725 exactly — two scheduled tasks share this branch, not
+the three the routine prompt's own fixed text claims (`open-kb overnight
+polish — :37`, cron `37 * * * *`; `open-kb overnight hardening —
+2026-08-21`, cron `17 * * * *`; no third offset, `has_more: false`). Both
+are still `enabled: true` with no `ended_reason` or `suspension_reason`,
+i.e. still nobody has paused them — the standing cost SELF-720 flagged is
+still accruing, at the two-routine rate SELF-725 already revised it to,
+with nothing new to add on top of that.
+
+No fresh angle attempted this fire: SELF-509 through SELF-728 already
+cover every static-analysis tool and manual-read angle this sandbox can
+reach without a live/paid run, and manufacturing a weaker variant of one
+of those 220 prior checks just to have something to write would be the
+exact noise-over-signal pattern SELF-714/715/716 already flagged and the
+reason this file's own escalation chain exists.
+
+No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`). `pnpm check` exit 0. `pnpm test` exit 0: 3456 tests
+passing, 13 skipped — identical census to SELF-728.
+
+Backlog item: SELF-729 - BLOCKED
