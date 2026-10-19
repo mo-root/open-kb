@@ -10839,3 +10839,31 @@ No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
 passing, 13 skipped — identical census to SELF-724.
 
 Backlog item: SELF-725 - BLOCKED
+
+**SELF-726 (2026-10-19 overnight fire) — checked for a newer entry or a
+direct instruction since SELF-720's re-escalation; found neither, so did
+not send a third notification.** SELF-725 is still the newest entry above
+this line. SELF-720's notification went out at 2026-10-19 01:46 UTC; this
+fire's `date -u` read 21:18 UTC, a gap of 19h32m — still short of the
+~24-hour unanswered gap that was SELF-720's own stated reason for
+breaking SELF-716's "don't re-notify without a newer entry" rule, so that
+rule still governs here. `git log --author="mo-root"` over the full
+unshallowed history (this fire ran `git fetch --unshallow` first, since
+the container's initial clone was shallow and could not resolve the
+branch's `a7bbc57` base) confirms SELF-722/725's finding again: nothing
+from the owner since 2026-08-25.
+
+Tried a fresh angle outside the ones SELF-717 through SELF-725 already
+ran: swept every tracked source, doc and config file for unresolved
+merge-conflict markers (`^<{7}`, `^={7}`, `^>{7}` at line start, across
+`packages/`, `web/`, `docs/`, `README.md`, `CHANGELOG.md`) — zero hits, so
+no half-finished rebase or merge is hiding in the tree. Also re-ran
+`pnpm install --frozen-lockfile` cold (fresh clone, no prior
+`node_modules`) specifically to check it still installs clean against the
+committed lockfile with no drift — it does, same dependency set as every
+prior fire.
+
+No code change. `pnpm check` exit 0. `pnpm test` exit 0: 3456 tests
+passing, 13 skipped — identical census to SELF-725.
+
+Backlog item: SELF-726 - BLOCKED
