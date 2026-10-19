@@ -10800,3 +10800,42 @@ No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
 passing, 13 skipped — identical census to SELF-723.
 
 Backlog item: SELF-724 - BLOCKED
+
+**SELF-725 (2026-10-19 overnight fire) — checked for a newer entry or a
+direct instruction since SELF-720's re-escalation; found neither, so did
+not send a third notification.** SELF-724 is still the newest entry above
+this line, and SELF-720's own notification went out about 3h52m before
+this fire started (SELF-720 committed 2026-10-19 01:46 UTC; this fire's
+`date -u` read 05:39 UTC) — nowhere near the ~24-hour unanswered gap that
+was SELF-720's own stated reason for re-notifying past SELF-716's "don't
+re-notify without a newer entry" rule. `git log --all --since="2026-10-19"`
+and an author filter both confirm the same thing SELF-722 found: no
+commit from `mo-root` anywhere on this repo since 2026-08-25, so no
+bypass-the-doc reply either.
+
+Tried a fresh angle outside git entirely, since SELF-717 through SELF-724
+all re-checked the repository and none had checked the schedule itself:
+listed this account's own scheduled tasks. This prompt's own text (fixed
+at creation, so every fire's copy says the same thing) asserts "THREE
+offset routines share this list and fire every ~20 minutes," and
+SELF-720's cost estimate was built on that figure. The account actually
+has two: `open-kb overnight polish — :37` (cron `37 * * * *`, the one
+that fired this session) and `open-kb overnight hardening — 2026-08-21`
+(cron `17 * * * *`) — nothing at a third offset (e.g. `:57`), and no
+disabled or ended third entry either; `has_more` was false, so this is
+the complete list, not a page cut short. Either a third was never
+provisioned or it was removed before this fire's window — this session
+has no history to tell which — but the operative fact for tonight's cost
+question is the same either way: the loop has been burning two
+install+check+test cycles an hour against this exhausted branch, not
+three. That revises SELF-720's estimate down by roughly a third; it is
+not itself a reason to re-notify (nothing here answers "pause or accept,"
+and the gap since SELF-720 is still short), but it belongs on the record
+so the next escalation, whenever it fires, cites the real count instead
+of repeating the prompt's stale "three."
+
+No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`). `pnpm check` exit 0. `pnpm test` exit 0: 3456 tests
+passing, 13 skipped — identical census to SELF-724.
+
+Backlog item: SELF-725 - BLOCKED
