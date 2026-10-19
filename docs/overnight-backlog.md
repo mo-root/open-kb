@@ -10732,3 +10732,44 @@ No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
 passing, 13 skipped — identical census to SELF-721.
 
 Backlog item: SELF-722 - BLOCKED
+
+**SELF-723 (2026-10-19 overnight fire) — checked for a newer entry or a
+direct instruction since SELF-720's re-escalation; found neither, so did
+not send a third notification.** SELF-722 is still the newest entry above
+this line, and SELF-720's own notification went out only about 2h40m
+before this fire started (SELF-720 committed 2026-10-19 01:46 UTC; this
+fire's `date -u` read 04:26 UTC) — nowhere near the ~24-hour unanswered
+gap that was SELF-720's own stated reason for re-notifying past SELF-716's
+"don't re-notify without a newer entry" rule.
+
+Tried a fresh angle rather than repeating the name-grep, basename-coverage
+or authorship checks already run: compared `scripts/*.ts` (24 files)
+against both `package.json`'s `"scripts"` block (14 entries) and the
+README's command documentation. Ten files have no `package.json` script
+and never appear in `README.md`: `corroboration-arrival.ts`,
+`demo-investigate.ts`, `export-target.ts`, `fatal.ts`, `interrupt.ts`,
+`query-yield.ts`, `recall.ts` (partially — named once in passing prose,
+not as a command), `run-doctor.ts`, `show-prompt.ts`, `spend-caps.ts`.
+Read each one's header to judge whether this is a real gap. It is not:
+`fatal.ts`, `interrupt.ts`, `export-target.ts` and `spend-caps.ts` are
+internal modules imported by `sweep.ts` and friends, not standalone CLIs
+— nothing to document as a command. `demo-investigate.ts` says "Spends
+real money" in its own header; leaving a live-spend tool out of the
+README a first-time cloner reads is the same judgement this loop's own
+"no live or paid runs" rule makes, not an oversight. `show-prompt.ts` is
+documented, just in `prompts/README.md` rather than the root one — the
+right place, since it inspects prompt composition, not the pipeline.
+That leaves `run-doctor.ts`, `query-yield.ts` and `corroboration-arrival.ts`
+as genuinely undocumented anywhere: all three are after-the-fact run
+analysis tools for whoever already has `runs/*.json` on disk (gitignored,
+never present in this sandbox), not part of a first user's path through
+the README — the same class of maintainer-only tool the README's own
+scope has left out all along (it documents the pipeline, not every
+script). Debatable, not a bug: leaving it alone rather than widening the
+README to cover tooling nobody asked documented.
+
+No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`). `pnpm check` exit 0. `pnpm test` exit 0: 3456 tests
+passing, 13 skipped — identical census to SELF-722.
+
+Backlog item: SELF-723 - BLOCKED
