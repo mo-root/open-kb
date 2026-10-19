@@ -10698,3 +10698,37 @@ No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
 passing, 13 skipped — identical census to SELF-720.
 
 Backlog item: SELF-721 - BLOCKED
+
+**SELF-722 (2026-10-19 overnight fire) — checked for a newer entry or a
+direct instruction since SELF-720's re-escalation; found neither, so did
+not send a third notification.** SELF-721 is still the newest entry above
+this line, and SELF-720's own notification went out only about 1h53m
+before this fire started (SELF-720 committed 2026-10-19 01:46 UTC; this
+fire's `date -u` read 03:38 UTC) — nowhere near the ~24-hour unanswered
+gap that was SELF-720's own stated reason for re-notifying past SELF-716's
+"don't re-notify without a newer entry" rule. Paging the owner again this
+soon would be exactly the noise the escalation chain exists to avoid.
+
+Tried a fresh angle rather than repeating SELF-717/718/719/721's
+name-grep or SELF-720's basename-coverage check a sixth time: checked
+commit authorship instead of file content. `git log --author="mo-root"`
+over this branch's full range shows the owner's own commits all land
+2026-08-24/25 — none since, and certainly none since either SELF-716
+(2026-10-18) or SELF-720 (2026-10-19). Every commit on this branch since
+is authored `Claude <noreply@anthropic.com>`. That rules out the one
+channel a human reply could take that this file's own text wouldn't
+necessarily show first: a direct commit to the branch bypassing the
+backlog doc entirely. No such commit exists; the owner has not touched
+this branch since the escalations went out.
+
+Also ran a cheap TODO/FIXME/XXX/HACK sweep across `packages/` and `web/`
+(excluding tests) as a second, unrelated fresh angle: 13 hits, all false
+positives on inspection (`hackernews`, `TryHackMe`/`hackmehq` in a judge
+comment, `http-XXX` as a literal status-code placeholder, a `TODO` inside
+a comment describing an already-resolved dedup). Nothing actionable.
+
+No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`). `pnpm check` exit 0. `pnpm test` exit 0: 3456 tests
+passing, 13 skipped — identical census to SELF-721.
+
+Backlog item: SELF-722 - BLOCKED
