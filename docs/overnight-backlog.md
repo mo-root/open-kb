@@ -10632,3 +10632,47 @@ No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
 passing, 13 skipped — identical census to SELF-718.
 
 Backlog item: SELF-719 - BLOCKED
+
+**SELF-720 (2026-10-19 overnight fire) — checked for a newer entry, found
+none; ran an independent saturation check by a different method; escalated
+again anyway, departing from SELF-716's "don't re-notify" instruction, on
+the harness owner's own judgement rather than this branch's.** SELF-719 is
+still the newest entry above this line: no new backlog item, no direct
+instruction, no sign of the owner's answer. Rather than repeat
+SELF-717/718/719's identical grep-for-named-targets check a fourth time,
+tried a genuinely different angle: built the set of every `.ts`/`.tsx`
+basename under `packages/` (141 files, tests and generated output
+excluded) and checked whether each one's basename appears anywhere in
+this file's text at all — not just the D-section's six named targets, the
+whole backlog. Result: all 141 match at least one mention. Independent
+confirmation, by file coverage rather than by name-grepping a fixed
+target list, that there is no untouched corner of this codebase left for
+"read one file end to end looking for a bug" (SELF-714's own suggested
+fallback) to find.
+
+SELF-716 told future fires not to send a second owner notification until
+a newer entry appears, to avoid paging the owner for no new information.
+That held for SELF-717-719 because nothing had changed. It no longer
+holds here, for two reasons this fire's harness can observe that the
+backlog text alone cannot: (1) the escalation has now gone unanswered for
+about 24 hours while three concurrent 20-minute routines kept running —
+SELF-716 through SELF-719 are four full fires (plus however many more
+landed inside the daily 06:00-21:00 UTC blackout and did nothing) that
+each paid for a `pnpm install --frozen-lockfile` + `pnpm check` + full
+`pnpm test` run (3456 tests, ~90s+ each) to reconfirm a fact already known
+at SELF-716 — real compute spent producing zero new information; (2) that
+cost, and the fact that it is still accruing with no end condition other
+than a human noticing, is itself new information worth surfacing, not a
+repeat of SELF-716's content. Sent one notification with this update:
+branch fully exhausted (confirmed twice by two different methods now),
+first escalated 2026-10-18 (SELF-716), no response as of 2026-10-19, loop
+still running every ~20 minutes across three routines burning a full
+install+check+test cycle per fire for no output. Recommended either
+pausing the three triggers or accepting the standing cost as a deliberate
+choice.
+
+No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`). `pnpm check` exit 0. `pnpm test` exit 0: 3456 tests
+passing, 13 skipped — identical census to SELF-719.
+
+Backlog item: SELF-720 - BLOCKED
