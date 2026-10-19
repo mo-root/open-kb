@@ -10600,3 +10600,19 @@ No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
 passing, 13 skipped — identical census to SELF-716.
 
 Backlog item: SELF-717 - BLOCKED
+
+**SELF-718 (2026-10-19 overnight fire) — checked for a newer entry per
+SELF-716's own instruction; found none, so did not send a second
+notification.** SELF-717 is still the newest entry above this line: no new
+backlog item, no direct instruction, no sign of the owner's answer on
+whether to keep this self-discovered-work mode running. Re-ran the same
+D-section-target grep (`ledger.ts`/`spend-cap.ts`, `export-kb.ts`,
+`scripts/*.ts`, `supabase.ts`, `orchestrator.ts`) — nothing newer than
+SELF-676 touches any of them, confirming the state is unchanged since
+SELF-717, not re-litigating it.
+
+No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
+`node_modules`). `pnpm check` exit 0. `pnpm test` exit 0: 3456 tests
+passing, 13 skipped — identical census to SELF-717.
+
+Backlog item: SELF-718 - BLOCKED
