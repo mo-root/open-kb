@@ -10905,3 +10905,37 @@ No code change. `pnpm check` exit 0. `pnpm test` exit 0: 3456 tests
 passing, 13 skipped — identical census to SELF-726.
 
 Backlog item: SELF-727 - BLOCKED
+
+**SELF-728 (2026-10-19 overnight fire) — checked for a newer entry or a
+direct instruction since SELF-720's re-escalation; found neither, so did
+not send a third notification.** SELF-727 is still the newest entry above
+this line. SELF-720's notification went out at 2026-10-19 01:46 UTC; this
+fire's `date -u` read 22:38 UTC, a gap of 20h52m — still short of the
+~24-hour unanswered gap that was SELF-720's own stated reason for
+breaking SELF-716's "don't re-notify without a newer entry" rule, so that
+rule still governs here. `git log --author="mo-root"` over the full
+unshallowed history (this fire's container also started from a shallow
+clone, per SELF-726; ran `git fetch --unshallow` before anything else to
+resolve the branch's `a7bbc57` base) again shows nothing from the owner
+since 2026-08-25 — no bypass-the-doc reply.
+
+Tried a fresh angle outside the ones SELF-509 through SELF-727 already
+ran: a committed-secret sweep, distinct from SELF-639's "does a caught
+fetch error ever print a credential" check (that one covers runtime log
+leakage; this one covers whether a real secret ever got committed to the
+tree). Scanned every tracked file (`git ls-files`, excluding `runs/`,
+`examples/` and the lockfile) for high-signal credential patterns —
+AWS access keys, PEM private-key headers, Slack tokens, Anthropic/OpenAI-
+style `sk-...` keys, GitHub PATs, Google API keys — zero hits. Checked
+`.env.example` by hand: every one of its 30+ variables is declared with
+an empty value, none hold a real token. Checked the full branch history
+(`git log --all --diff-filter=A --name-only`) for any file ever added at
+a `.env`-shaped path: the only match, in the entire history, is
+`.env.example` itself — no `.env`/`.env.local`/etc. was ever committed
+and later removed. No gap: this repo has never shipped a real secret in
+its tree.
+
+No code change. `pnpm check` exit 0. `pnpm test` exit 0: 3456 tests
+passing, 13 skipped — identical census to SELF-727.
+
+Backlog item: SELF-728 - BLOCKED
