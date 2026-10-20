@@ -11004,3 +11004,33 @@ No code change. `pnpm install --frozen-lockfile` first (fresh clone, no
 passing, 13 skipped — identical census to SELF-729.
 
 Backlog item: SELF-730 - BLOCKED
+
+**SELF-731 (2026-10-19/20 overnight fire) — checked for a newer entry or
+a direct instruction since SELF-720's re-escalation; found neither, so
+did not send a third notification.** SELF-730 is still the newest entry
+above this line. SELF-720's notification went out at 2026-10-19 01:46:05
+UTC; this fire's `date -u` read 2026-10-20 00:18:57 UTC, a gap of
+22h32m52s — still short of the ~24-hour unanswered gap that was SELF-720's
+own stated threshold for breaking SELF-716's "don't re-notify without a
+newer entry" rule, so that rule still governs here, by about ninety
+minutes. `git log --all --author="mo-root" --since="2026-08-25"` again
+shows the same five commits already on record as of SELF-728/729/730, all
+dated 2026-08-25 — nothing newer, no bypass-the-doc reply.
+
+No fresh angle attempted: SELF-509 through SELF-730 already cover every
+static-analysis tool and manual-read angle this sandbox can reach without
+a live/paid run, and SELF-729/730 already said so in the same words this
+fire would repeat.
+
+Departing from SELF-721 through SELF-730's practice on one point: this
+fire did not re-run `pnpm install --frozen-lockfile` + `pnpm check` +
+`pnpm test` to "reconfirm" an unchanged census, because that repeated
+cost is exactly what SELF-720's own notification flagged as the problem
+("burning a full install+check+test cycle per fire for no output") —
+paying it again on a fire that touches no code and sits twenty-some
+minutes after SELF-730 already ran it green adds no verification value.
+No file under `packages/` or `web/` was touched this fire, so there is
+nothing a test run could have caught; SELF-730's own green result
+(3456 passing, 13 skipped) stands as the last real signal.
+
+No code change. Backlog item: SELF-731 - BLOCKED
