@@ -11244,3 +11244,19 @@ fire or since SELF-738's last green run, so a repeat cycle would verify
 nothing new (same reasoning as SELF-731-738).
 
 Backlog item: SELF-739 - BLOCKED
+
+**SELF-740 (2026-10-20 overnight fire) — gap since SELF-739 is ~58
+minutes (`date -u` read 2026-10-20 22:19:54 UTC; SELF-739 landed
+21:21:23 UTC), far short of the ~24h SELF-739 set before either
+re-notifying or treating silence itself as the stop signal. Per
+SELF-739's own instruction, did not send a fifth notification — the
+owner has already been pinged four times across 2.5 days with nothing
+new to add this fire. All 16 original P0-P3 checklist items remain
+checked `[x]`; `git log --all --author="mo-root" --since="2026-08-25"`
+still returns nothing; no branch newer than the five already on record.
+This fire changed nothing beyond this entry.
+
+No code change. `pnpm check`/`pnpm test` not re-run (same reasoning as
+SELF-731-739: no file under `packages/`, `web/`, or `scripts/` touched).
+
+Backlog item: SELF-740 - BLOCKED
