@@ -11085,3 +11085,38 @@ fire (or since SELF-732's green run) and a repeat cycle would verify
 nothing new — exactly the per-fire cost SELF-720 flagged.
 
 No code change. Backlog item: SELF-733 - BLOCKED
+
+**SELF-734 (2026-10-20 overnight fire) — gap since SELF-720's re-escalation
+reached 23h54m, within the margin of this routine's own ~24h-unanswered
+threshold, so sent a real third notification rather than waiting for the
+next fire to cross the exact hour mark.** SELF-733 is still the newest
+entry above this line. SELF-720's notification went out at 2026-10-19
+01:46:05 UTC; this fire's `date -u` read 2026-10-20 01:40:15 UTC, a gap of
+23h54m10s. `git log --all --author="mo-root" --since="2026-08-25"` again
+returns the same five commits on record since SELF-728, all dated
+2026-08-25, and this session's own notification queue was empty — nothing
+newer, no reply anywhere. Total elapsed since the first owner notification
+(SELF-716, 2026-10-18 05:43:22 UTC) is now ~44 hours, and the three
+concurrent routines have produced eighteen consecutive no-op BLOCKED
+commits (SELF-716 through SELF-733) since then. Rather than let an
+arbitrary seven-minute shortfall against a threshold this branch invented
+for itself delay a decision that is overdue regardless, sent the owner one
+push/email notification summarizing: all of P0/P1/B/C are done, section D
+self-discovery is independently confirmed exhausted (SELF-509 through
+SELF-733), and the loop needs either a pause or a freshly-scoped item —
+this sandbox still holds no live/paid credentials, so anything needing a
+real sweep run stays out of scope. Future fires: do not send a fourth
+notification on this same gap — wait for a newer entry above this line
+(a human reply, or a direct instruction) before re-escalating again.
+
+No fresh angle attempted, for the same reason SELF-731/732/733 gave:
+SELF-509 through SELF-733 already cover every static-analysis tool and
+manual-read angle this sandbox can reach without a live/paid run.
+
+Followed SELF-731/732/733's departure from SELF-721-730's practice: did
+not re-run `pnpm install --frozen-lockfile` + `pnpm check` + `pnpm test`,
+since no file under `packages/`, `web/`, or `scripts/` was touched this
+fire (or since SELF-733's green run) and a repeat cycle would verify
+nothing new.
+
+No code change. Backlog item: SELF-734 - BLOCKED
