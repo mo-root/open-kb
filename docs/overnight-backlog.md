@@ -11133,3 +11133,24 @@ gave. No file under `packages/`, `web/`, or `scripts/` touched, so no
 `pnpm check`/`pnpm test` re-run (same reasoning as SELF-731-734).
 
 No code change. Backlog item: SELF-735 - BLOCKED
+
+**SELF-736 (2026-10-20 overnight fire) — SELF-735 is still the newest
+entry above this line. SELF-734's notification went out at 2026-10-20
+01:40:15 UTC; this fire's `date -u` read 2026-10-20 02:39:12 UTC, a gap of
+under an hour — nowhere near the ~24h-unanswered threshold, and well
+inside SELF-734's own closing instruction to wait for a newer entry or a
+direct instruction before re-escalating again. Checked this session's own
+notification queue (empty), `git log --all --author="mo-root"
+--since="2026-08-25"` (same five commits, all dated 2026-08-25, already on
+record since SELF-728), and `git branch -r`/`git tag` for anything new
+(same five branches already checked by SELF-733, no new tags) — nothing
+newer anywhere. Per SELF-734/735's rule, did not send a fourth
+notification.**
+
+No fresh angle attempted, for the same reason SELF-731 through SELF-735
+gave: SELF-509 through SELF-735 already cover every static-analysis tool
+and manual-read angle this sandbox can reach without a live/paid run. No
+file under `packages/`, `web/`, or `scripts/` touched, so no
+`pnpm check`/`pnpm test` re-run (same reasoning as SELF-731-735).
+
+No code change. Backlog item: SELF-736 - BLOCKED
