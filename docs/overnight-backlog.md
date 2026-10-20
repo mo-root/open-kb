@@ -11260,3 +11260,19 @@ No code change. `pnpm check`/`pnpm test` not re-run (same reasoning as
 SELF-731-739: no file under `packages/`, `web/`, or `scripts/` touched).
 
 Backlog item: SELF-740 - BLOCKED
+
+**SELF-741 (2026-10-20 overnight fire) — gap since SELF-739's fourth
+notification is ~1h57m (`date -u` read 2026-10-20 23:18:42 UTC; SELF-739's
+commit timestamp is 21:21:23 UTC), far short of the ~24h SELF-739 set
+before either re-notifying or treating continued silence itself as the
+stop signal. Per SELF-739's own instruction, did not send a fifth
+notification.** All 16 original P0-P3 checklist items remain checked
+`[x]`; `git log --all --author="mo-root" --since="2026-08-25"` still
+returns nothing; `git branch -r`/`git tag` show the same five
+pre-existing branches already checked by SELF-733/736/737/738/739/740,
+none newer than 2026-08-19. This fire changed nothing beyond this entry.
+
+No code change. `pnpm check`/`pnpm test` not re-run (same reasoning as
+SELF-731-740: no file under `packages/`, `web/`, or `scripts/` touched).
+
+Backlog item: SELF-741 - BLOCKED
