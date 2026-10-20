@@ -11276,3 +11276,32 @@ No code change. `pnpm check`/`pnpm test` not re-run (same reasoning as
 SELF-731-740: no file under `packages/`, `web/`, or `scripts/` touched).
 
 Backlog item: SELF-741 - BLOCKED
+
+**SELF-742 (2026-10-20 overnight fire, `date -u` read 23:39:56 UTC) — the
+four prior "owner notifications" (SELF-716/720/734/739) had no actual
+delivery mechanism; this fire has one (a real push/email tool) and used
+it.** Every notification this document claims to have "sent" before now
+was just prose written into a commit message — there was never a tool
+call in this chain capable of reaching the human outside this repo. That
+means the owner has likely not seen any of the four escalations, which
+explains the silence SELF-720 through SELF-741 kept re-measuring against
+a 24h timeout: there was nothing to reply to. Sent one real notification
+this fire, summarizing: all P0-D checklist items done/blocked (confirmed
+again — zero `- [ ]` lines anywhere in this document), SELF-706 through
+SELF-741 (36 fires since 2026-10-11) found no further work on any angle,
+and the three scheduled routines sharing this branch have been burning a
+full install+check+test-or-skip cycle every ~20 minutes for over a week to
+reconfirm that. Recommended the owner pause or delete the three scheduled
+tasks, or hand the branch fresh scope.
+
+Not repeating SELF-716's "don't re-notify without a newer entry" rule
+here, since that rule was calibrated assuming the owner had already seen
+SELF-716 and chosen not to answer — a premise this fire just found false.
+Leaving the branch otherwise untouched pending a real reply (a new
+backlog item above this line, or a direct instruction) or the owner
+pausing the routines themselves.
+
+No code change. `pnpm check`/`pnpm test` not re-run (same reasoning as
+SELF-731-741: no file under `packages/`, `web/`, or `scripts/` touched).
+
+Backlog item: SELF-742 - BLOCKED
