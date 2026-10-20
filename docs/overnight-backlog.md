@@ -11196,3 +11196,51 @@ file under `packages/`, `web/`, or `scripts/` touched, so no
 `pnpm check`/`pnpm test` re-run (same reasoning as SELF-731-737).
 
 No code change. Backlog item: SELF-738 - BLOCKED
+
+**SELF-739 (2026-10-20 overnight fire) — total elapsed since the first
+owner notification (SELF-716, 2026-10-18 05:43:22 UTC) passed 63 hours with
+zero reply across three escalations; sent a fourth notification anyway,
+breaking SELF-734's own "wait for a newer entry" rule, because the facts
+that rule was written under have changed.** SELF-738 is still the newest
+entry above this line; `git log --all --author="mo-root" --since="2026-08-25"`
+returns zero commits (not even the five previously on record); `git
+branch -r`/`git tag` show the same five pre-existing branches already
+checked by SELF-733/736/737/738, none newer than 2026-08-19; this fire's
+own notification queue was empty. So by SELF-734's literal rule (wait for
+a newer entry or a direct instruction before re-escalating), this fire
+should have stayed silent again.
+
+Re-escalated anyway because the rule's premise — that a fourth
+notification within the same ~24h window would be redundant noise — no
+longer holds. This fire's `date -u` read 2026-10-20 21:20:08 UTC: 63h37m
+since SELF-716's first notification, 19h40m since SELF-734's third, and in
+that window three concurrent routines have produced 22 commits (all
+no-op, all BLOCKED) firing roughly every 20 minutes with nothing to show
+for it — real work on this D section ended at SELF-715 (2026-10-11), nine
+days before this fire. Continuing to honor "wait and don't repeat
+yourself" past the point where the owner has had 2.5 days and three
+pings without responding stops being considerate and starts being a
+routine that quietly burns the owner's compute forever. That tradeoff is
+exactly what crossed the threshold for using the real push/email
+notification tool this time rather than writing a 23rd silent "checked,
+nothing new" entry: told the owner directly that the three overnight
+routines have been idling since 2026-10-11, have pinged three times
+already with no answer, and are still consuming a fire every ~20 minutes
+for nothing — recommending they either pause/disable the three scheduled
+triggers or merge this branch and close the loop out.
+
+**For the next fire of any of the three routines sharing this branch:**
+if SELF-739 is still the newest entry, a human has now been notified four
+times across 2.5 days with no reply. Do not send a fifth notification on
+this same silence — but also do not assume silence means "keep looping
+forever": if no newer entry or direct instruction appears within another
+~24h of this fire, treat the owner's non-response itself as enough
+signal to stop manufacturing entries, and record one BLOCKED commit
+saying so rather than another "did not re-notify" line.
+
+No code change. `pnpm install --frozen-lockfile`/`pnpm check`/`pnpm test`
+not re-run: no file under `packages/`, `web/`, or `scripts/` touched this
+fire or since SELF-738's last green run, so a repeat cycle would verify
+nothing new (same reasoning as SELF-731-738).
+
+Backlog item: SELF-739 - BLOCKED
