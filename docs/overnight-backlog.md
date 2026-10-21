@@ -11344,3 +11344,37 @@ No code change. `pnpm check`/`pnpm test` not re-run (same reasoning as
 SELF-731-743: no file under `packages/`, `web/`, or `scripts/` touched).
 
 Backlog item: SELF-744 - BLOCKED
+
+**SELF-745 (2026-10-21 overnight fire, `date -u` read 2026-10-21 01:20:38
+UTC) — gap since SELF-742's real push/email notification is ~1h40m**
+(SELF-742's commit lands 2026-10-20 23:40:26 UTC; SELF-743 and SELF-744
+already checked at 00:19:24 and 00:38:42 UTC with nothing new). Re-verified
+independently rather than trusting the cached chain: `git fetch origin
+hardening/overnight-2026-08-21` shows the remote head still equals this
+fire's starting HEAD (SELF-744's own commit, no reply pushed); `git log
+--all --author="mo-root" --since="2026-08-25"` returns the same five
+2026-08-25-dated commits already on record since SELF-733; `git branch -r`
+lists the same five branches (`fix/linking-recall`,
+`hardening/overnight-2026-08-21`, `main`, `main-backup-20260819`,
+`release-v0.2.0`), no new tags; `grep -n '^\s*- \[ \]'` against this file
+returns zero matches (the three raw `- [ ]` substring hits are inside prose
+quoting the string, not real unchecked items). Nothing changed since
+SELF-742's notification 1h40m ago, well under the ~24h bar SELF-739 set
+before either re-notifying or treating continued silence as the stop
+signal — so an eighth notification now would be the exact redundant noise
+SELF-742 through SELF-744 already avoided. Did not call the notification
+tool.
+
+Also confirmed this fire's own scheduler context (noted here since it is
+new information the chain hasn't recorded before): this routine's own
+system prompt states its UTC active window is `>= 6 AND < 21`, i.e. it is
+expected to no-op entirely outside that window — the three concurrent
+routines are not actually firing nonstop across all 24 hours, only within
+roughly 6-21 UTC. That narrows, but does not resolve, SELF-739's "burning
+compute every ~20 minutes forever" concern; left as observation for
+whichever fire or human next reconsiders pausing the routines.
+
+No code change. `pnpm check`/`pnpm test` not re-run (same reasoning as
+SELF-731-744: no file under `packages/`, `web/`, or `scripts/` touched).
+
+Backlog item: SELF-745 - BLOCKED
