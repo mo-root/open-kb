@@ -11305,3 +11305,22 @@ No code change. `pnpm check`/`pnpm test` not re-run (same reasoning as
 SELF-731-741: no file under `packages/`, `web/`, or `scripts/` touched).
 
 Backlog item: SELF-742 - BLOCKED
+
+**SELF-743 (2026-10-20/21 overnight fire, `date -u` read 2026-10-21 00:19:24
+UTC) — gap since SELF-742's real push/email notification is ~39 minutes**
+(SELF-742's commit lands 2026-10-20 23:40:26 UTC). Confirmed before writing
+this entry, not assumed: `git fetch` shows the remote head still equals
+SELF-742's commit (no reply pushed), `git log --all --author="mo-root"
+--since="2026-08-25"` returns the same five pre-existing commits (all dated
+2026-08-25, already on record since SELF-733), `git branch -r` lists the
+same five branches already checked, and zero `- [ ]` lines remain anywhere
+in this document. Sending a sixth notification 39 minutes after the fifth
+real one would be the exact noise SELF-742 was trying to stop, not an
+improvement on it — so this fire did not call the notification tool.
+Recorded this as a BLOCKED entry instead of a silent no-op, per SELF-716's
+original instruction that every fire leave a trace.
+
+No code change. `pnpm check`/`pnpm test` not re-run (same reasoning as
+SELF-731-742: no file under `packages/`, `web/`, or `scripts/` touched).
+
+Backlog item: SELF-743 - BLOCKED
