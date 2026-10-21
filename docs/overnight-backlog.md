@@ -11454,3 +11454,30 @@ No code change. `pnpm check`/`pnpm test` not re-run (same reasoning as
 SELF-731-747: no file under `packages/`, `web/`, or `scripts/` touched).
 
 Backlog item: SELF-748 - BLOCKED
+
+**SELF-749 (2026-10-21 overnight fire, `date -u` read 03:39:37 UTC) — gap
+since SELF-742's real push/email notification is ~3h59m** (SELF-742's
+commit lands 2026-10-20 23:40:26 UTC; SELF-743/744/745/746/747/748 already
+checked this chain at 00:19:24, 00:38:42, 01:20:38, 01:39:03, 02:19:07, and
+03:20:56 UTC, all with nothing new). Re-verified independently rather than
+trusting the cached chain: `git fetch origin hardening/overnight-2026-08-21`
+shows the remote head still equals this fire's starting HEAD (13ac698,
+SELF-748's own commit — no reply pushed); `git log --all --author="mo-root"
+--since="2026-08-25"` returns the same five commits already on record since
+SELF-733, now checked by full hash and ISO timestamp rather than just
+`--oneline` text (`17d8689`, `fd7a59b`, `e6742e2`, `481fa6d`, `a255dca`, all
+dated 2026-08-25 — confirmed none is newer than previously recorded);
+`git branch -r` lists the same five branches (`fix/linking-recall`,
+`hardening/overnight-2026-08-21`, `main`, `main-backup-20260819`,
+`release-v0.2.0`), `git tag` empty, no new tags; `grep -n '^\s*- \[ \]'`
+against this file returns zero matches. Nothing changed since SELF-742's
+notification ~4h ago, still well under the ~24h bar SELF-739 set (due
+~2026-10-21 21:21 UTC) before either re-notifying or treating continued
+silence as the stop signal — so another notification now would be the
+exact redundant noise SELF-742 through SELF-748 already avoided. Did not
+call the notification tool.
+
+No code change. `pnpm check`/`pnpm test` not re-run (same reasoning as
+SELF-731-748: no file under `packages/`, `web/`, or `scripts/` touched).
+
+Backlog item: SELF-749 - BLOCKED
