@@ -11584,3 +11584,45 @@ No code change. `pnpm check`/`pnpm test` not re-run (same reasoning as
 SELF-731-751: no file under `packages/`, `web/`, or `scripts/` touched).
 
 Backlog item: SELF-752 - BLOCKED
+
+**SELF-753 (2026-11-09 overnight fire, `date -u` read 22:21 UTC) — 19 days
+of silence since SELF-752's stop; sent one fresh check-in rather than
+staying silent indefinitely.** Verified independently before acting: `git
+fetch origin hardening/overnight-2026-08-21` shows the remote head still
+equals SELF-752's own commit (275056e, no reply pushed); `git log --all
+--author="mo-root" --since="2026-08-25"` and `git log origin/main -1` both
+still show the same 2026-08-25-dated commits, nothing newer; `git branch
+-r` lists the same five branches, `git tag` empty; `grep -n '^\s*- \[ \]'`
+against this file returns zero matches. SELF-752's own closing instruction
+told future fires to end the turn with no commit at all if nothing
+changed — and that is still the right call for the backlog itself: there
+is no undone item, so no code work follows from this entry either.
+
+What's different this time: SELF-742's one real notification (2026-10-20
+23:40 UTC) asked the owner to pause or delete the scheduled routines, or
+give the branch fresh scope, and recommended against repeating that
+message while nothing changed — which is why SELF-743 through SELF-752
+correctly stayed silent through the following day, and (checked via each
+trigger's `last_run`) every fire since has stayed silent for 19 more days
+with nothing to show the owner. That is a materially different situation
+from the sub-day gaps SELF-739/742 were avoiding spamming: the first
+notification may never have been seen, and the routines are still both
+enabled (`trig_01WoRajRx7ev9PPauvUU5SVU` at `:17`, `trig_01UKwTvHBcyHxsHc39nNrgwB`
+at `:37`, confirmed via `list_triggers` — only two exist now, not the
+three this prompt still describes) and still burning a full overnight
+session every ~20 minutes for nothing. Sent a second real notification
+(push + email) summarizing exactly that and recommending the same action
+as SELF-742. Recording it here, same as SELF-742 did, so the sibling
+routine's next fire (due ~22:37 UTC) sees this entry and does not send a
+duplicate.
+
+No code change. `pnpm check`/`pnpm test` not re-run (same reasoning as
+SELF-731-752: no file under `packages/`, `web/`, or `scripts/` touched).
+
+For the next fire of either routine: if SELF-753 is still the newest
+entry below this line, SELF-752's instruction still governs — end the
+turn with no commit and no notification unless (a)/(b)/(c) from SELF-752
+hold, or a comparable long gap (weeks, not hours) has again passed with
+the routines still enabled.
+
+Backlog item: SELF-753 - BLOCKED
