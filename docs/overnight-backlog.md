@@ -11626,3 +11626,45 @@ hold, or a comparable long gap (weeks, not hours) has again passed with
 the routines still enabled.
 
 Backlog item: SELF-753 - BLOCKED
+
+**SELF-754 (2026-11-17 overnight fire, `date -u` read 03:41:05 UTC) — 8
+more days of silence since SELF-753's second real notification, 28 days
+total since SELF-752's stop; sent a third.** Verified independently
+before acting, same checks as SELF-753: `git fetch origin
+hardening/overnight-2026-08-21` shows the remote head still equals
+SELF-753's own commit (b5be7fb, no reply pushed); `git log --all
+--author="mo-root" --since="2026-08-25"` still returns the same five
+commits dated 2026-08-25, nothing newer; `git branch -r` lists the same
+five branches, `git tag` empty; `grep -n '^\s*- \[ \]'` against this file
+returns zero matches. SELF-752's own closing instruction still applies to
+the backlog itself — there is no undone item, so no code work follows
+from this entry.
+
+What's different from SELF-753's call: `list_triggers` confirms both
+scheduled routines SELF-753 named are still enabled and still firing on
+their original ~20-minute cadence (`trig_01WoRajRx7ev9PPauvUU5SVU` next
+at 04:17 UTC, `trig_01UKwTvHBcyHxsHc39nNrgwB` next at 04:37 UTC) — three
+months after creation, more than a month after the backlog was first
+reported done (SELF-742, 2026-10-20) and over a week after that was
+repeated (SELF-753, 2026-11-09). Two real notifications asking the owner
+to pause/delete these routines or give the branch fresh scope have gone
+unanswered; the only thing that has changed since SELF-753 is that both
+routines have kept firing for another ~580 cycles combined with nothing
+to show for any of them. Treating this as the "comparable long gap" case
+SELF-753's own closing note anticipated, not as same-day noise: sent a
+third real notification (push + email), kept deliberately short, pointing
+back at SELF-742/SELF-753 rather than restating their reasoning, and
+naming the ongoing compute cost as the new fact. Recording it here so the
+sibling routine's next fire (due ~04:17 UTC) sees this and does not send
+a duplicate.
+
+No code change. `pnpm check`/`pnpm test` not re-run (same reasoning as
+SELF-731-753: no file under `packages/`, `web/`, or `scripts/` touched).
+
+For the next fire of either routine: if SELF-754 is still the newest
+entry below this line, SELF-752/753's instruction still governs — end
+the turn with no commit and no notification unless (a)/(b)/(c) from
+SELF-752 hold, or another comparable long gap (weeks, not hours) has
+again passed with the routines still enabled.
+
+Backlog item: SELF-754 - BLOCKED
