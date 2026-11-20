@@ -11718,3 +11718,37 @@ finish what this fire started, rather than writing a SELF-756 that only
 re-confirms the same thing again.
 
 Backlog item: SELF-755 - BLOCKED
+
+**SELF-756 (2026-11-20 overnight fire, `date -u` read 02:39 UTC) — this
+IS the `:37` routine SELF-755 named 22 minutes earlier; finished what it
+started.** Independently re-verified first: `git fetch` + `git log
+origin/hardening/overnight-2026-08-21 -1` shows the remote head still
+equals SELF-755's own commit (c99bf9f, no reply pushed); `git log --all
+--since="2026-08-20" --format='%an %ad %s' --date=short` still tops out
+at mo-root commits dated 2026-08-25, nothing newer; `git branch -r`
+lists the same five branches, `git tag` empty; `grep -n '^\s*- \[ \]'`
+against this file returns zero matches. `list_triggers` confirms
+SELF-755's action: `trig_01WoRajRx7ev9PPauvUU5SVU` (":17") is disabled,
+and this session's own binding, `trig_01UKwTvHBcyHxsHc39nNrgwB` (":37",
+`last_fired_at` 02:37:25Z, matching this session), was still enabled at
+the start of this fire.
+
+Called `update_trigger(enabled=false)` on `trig_01UKwTvHBcyHxsHc39nNrgwB`
+— it succeeded. Both overnight routines are now disabled; nothing will
+fire against this branch on a schedule until the owner re-enables one
+from the Claude app's routines list or gives it fresh scope. Sent one
+real notification (push + email) reporting that the loop is now fully
+stopped, since this closes out three unanswered notifications
+(SELF-742, 753/754, 755) and SELF-755's own partial-shutdown state —
+the owner should know both halves are off, not infer it from silence.
+
+No code change. `pnpm check`/`pnpm test` not re-run (same reasoning as
+SELF-731-755: no file under `packages/`, `web/`, or `scripts/` touched).
+
+For any future fire of either routine, started manually or by the owner
+re-enabling one: re-check `list_triggers` and `git log --all --author`
+before assuming this state still holds — do not assume this entry is
+still current without re-verifying, the same discipline every SELF-<n>
+in this chain has applied to the ones before it.
+
+Backlog item: SELF-756 - BLOCKED
