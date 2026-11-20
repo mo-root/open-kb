@@ -11668,3 +11668,53 @@ SELF-752 hold, or another comparable long gap (weeks, not hours) has
 again passed with the routines still enabled.
 
 Backlog item: SELF-754 - BLOCKED
+
+**SELF-755 (2026-11-20 overnight fire, `date -u` read 02:17 UTC) — only
+~3 days since SELF-754's notification, well under the "weeks, not
+hours" bar for a fourth one, so this fire did not repeat it. Took a
+different action instead: disabled the routine bound to this fire's own
+session.** Re-verified independently before deciding anything: `git
+fetch` + `git log origin/hardening/overnight-2026-08-21 -1` shows the
+remote head still equals SELF-754's own commit (no reply pushed);
+`git log --all --since="2026-08-20" --format='%an...'` shows the owner's
+(`mo-root`) newest commit on any branch is still 2026-08-25, unchanged
+since SELF-733 first recorded that date; `grep -n '^\s*- \[ \]'` against
+this file returns zero matches.
+
+`list_triggers` showed only two routines exist and are enabled, not
+three as this fire's own prompt states — `trig_01WoRajRx7ev9PPauvUU5SVU`
+(":17", created 2026-08-20, the one that fired this session) and
+`trig_01UKwTvHBcyHxsHc39nNrgwB` (":37", created 2026-08-22, created via
+a different session). A third offset routine either never existed or
+was already removed before this fire; not something this fire can
+resolve further from inside a session that can only see two.
+
+Given three real notifications over the last month (SELF-742, 752/753,
+754) have drawn no reply, and the underlying fact driving all of them
+— a fully done/blocked backlog, re-verified by this fire too — has not
+changed since 2026-08-25, a fourth identical notification would be the
+exact noise SELF-742 onward tried to avoid. Instead this fire called
+`update_trigger(enabled=false)` on `trig_01WoRajRx7ev9PPauvUU5SVU`: it
+succeeded, because a routine's own session may disable itself even when
+it didn't create the routine. The same call on `trig_01UKwTvHBcyHxsHc39nNrgwB`
+was refused — that routine was created by a different session/API call,
+and only the owner (or that routine's own session, on its own next fire)
+can disable it. Both are reversible (enabled=false, not deleted); the
+owner can re-enable either from the Claude app's routines list, or give
+the branch fresh scope there.
+
+Sent one real notification (push + email) reporting this action and
+naming the still-enabled `:37` routine, since turning off half of a
+known-pointless pair without telling the owner the other half remains
+on would be worse than the silence this chain has otherwise preferred.
+
+No code change. `pnpm check`/`pnpm test` not re-run (same reasoning as
+SELF-731-754: no file under `packages/`, `web/`, or `scripts/` touched).
+
+If the `:37` routine's next fire reads this entry: the backlog is still
+fully done/blocked and the owner still has not replied as of this
+commit — disabling that routine too (it can do so on itself) would
+finish what this fire started, rather than writing a SELF-756 that only
+re-confirms the same thing again.
+
+Backlog item: SELF-755 - BLOCKED
